@@ -164,7 +164,6 @@ if data:
             st.write(r)
 
     st.divider()
-
 # ==========================================
     # 5. 기간별 탭 버튼 (5년 / 3년 / 최근 4분기 실적) 및 심층 분석
     # ==========================================
@@ -191,7 +190,7 @@ if data:
         else:
             return f"{sign}{int(abs_val):,}원"
 
-    # 연도별 데이터프레임 포맷팅 및 '종목명 맨 앞 배치' 함수
+    # 연도별 데이터프레임 포맷팅 함수 (인덱스 숨김 및 종목명 맨 앞 배치)
     def format_yearly_dataframe(df_target, stock_name):
         df_f = df_target.copy()
         if "net_income" in df_f.columns: df_f["net_income"] = df_f["net_income"].apply(format_korean_currency)
@@ -201,7 +200,6 @@ if data:
         if "roe" in df_f.columns: df_f["roe"] = df_f["roe"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
         if "debt_ratio" in df_f.columns: df_f["debt_ratio"] = df_f["debt_ratio"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
         
-        # 종목명 데이터 삽입
         df_f["종목명"] = stock_name
         
         rename_dict = {
@@ -210,8 +208,6 @@ if data:
             "roe": "ROE", "debt_ratio": "부채비율"
         }
         df_f = df_f.rename(columns=rename_dict)
-        
-        # 🔥 핵심: '종목명'이 테이블의 맨 처음에 오도록 컬럼 순서 강제 정렬
         desired_order = ["종목명", "연도", "당기순이익", "자본총계", "EPS (주당순이익)", "BPS (주당순자산)", "ROE", "부채비율"]
         existing_cols = [c for c in desired_order if c in df_f.columns]
         
@@ -235,7 +231,7 @@ if data:
                 df_5 = df_hist.tail(5).copy()
                 df_5['순이익_조원'] = df_5['net_income'] / 1_000_000_000_000
                 st.line_chart(df_5.set_index("year")[["순이익_조원"]])
-                st.dataframe(format_yearly_dataframe(df_5, stock_name), use_container_width=True)
+                st.dataframe(format_yearly_dataframe(df_5, stock_name), use_container_width=True, hide_index=True)
 
             # --- [탭 2: 3년 중기 체력] ---
             with tab_3y:
@@ -243,15 +239,15 @@ if data:
                 df_3 = df_hist.tail(3).copy()
                 df_3['순이익_조원'] = df_3['net_income'] / 1_000_000_000_000
                 st.line_chart(df_3.set_index("year")[["순이익_조원"]])
-                st.dataframe(format_yearly_dataframe(df_3, stock_name), use_container_width=True)
+                st.dataframe(format_yearly_dataframe(df_3, stock_name), use_container_width=True, hide_index=True)
 
     else:
         with tab_5y: st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
         with tab_3y: st.info("저장된 3개년 역사적 재무 데이터가 없습니다.")
 
-    # --- [탭 3: 최근 4분기 단기 실적 (yfinance 실시간 연동)] ---
+    # --- [탭 3: 최근 4분기 단기 실적 및 차트 (yfinance 실시간 연동)] ---
     with tab_q:
-        st.markdown(f"#### ⚡ [{stock_name}] 가장 최근 4개 분기 실적 요약")
+        st.markdown(f"#### ⚡ [{stock_name}] 가장 최근 4개 분기 실적 심층 분석")
         try:
             import yfinance as yf
             ticker_symbol = f"{selected_code}.KS" if selected_code.isdigit() and len(selected_code)==6 else selected_code
@@ -261,26 +257,51 @@ if data:
             if q_fin is not None and not q_fin.empty:
                 q_df = q_fin.T.head(4).copy()
                 parsed_rows = []
+                
+                # 데이터 추출 헬퍼 함수
+                def get_q_value(q_col, keys):
+                    for k in keys:
+                        if k in q_fin.index:
+                            val = q_fin.loc[k, q_col]
+                            if pd.notna(val): return val
+                    return None
+
                 for date_idx, row in q_df.iterrows():
                     q_date = str(date_idx).split(" ")[0]
                     
-                    net_inc = None
-                    for key in ['Net Income', 'Net Income Common Stockholders', 'Net Income From Continuing Operation']:
-                        if key in q_fin.index:
-                            val = q_fin.loc[key, date_idx]
-                            if pd.notna(val):
-                                net_inc = val
-                                break
+                    revenue = get_q_value(date_idx, ['Total Revenue', 'Revenue'])
+                    op_income = get_q_value(date_idx, ['Operating Income', 'Operating Revenue'])
+                    net_inc = get_q_value(date_idx, ['Net Income', 'Net Income Common Stockholders', 'Net Income From Continuing Operation'])
                     
                     parsed_rows.append({
                         "종목명": stock_name,
                         "분기 기준일": q_date,
-                        "분기 당기순이익": format_korean_currency(net_inc) if net_inc is not None else "-"
+                        "매출액": revenue,
+                        "영업이익": op_income,
+                        "당기순이익": net_inc,
+                        "_raw_net": net_inc if net_inc is not None else 0 # 차트용 원본 숫자
                     })
                 
-                df_quarterly = pd.DataFrame(parsed_rows)
-                st.dataframe(df_quarterly, use_container_width=True)
-                st.caption("💡 야후파이낸스(Yahoo Finance) 실시간 분기 공시 데이터를 기반으로 최근 4개 분기를 표출합니다.")
+                df_quarterly_raw = pd.DataFrame(parsed_rows)
+                
+                # 📈 분기별 순이익 추이 차트 생성 (시간순 정렬 위해 역순 변환 후 시각화)
+                df_chart = df_quarterly_raw.sort_values("분기 기준일").copy()
+                df_chart['순이익_조원'] = df_chart['_raw_net'] / 1_000_000_000_000
+                st.markdown("##### 📈 최근 4개 분기 당기순이익 추이")
+                st.line_chart(df_chart.set_index("분기 기준일")[["순이익_조원"]])
+
+                # 📄 테이블용 포맷팅 (최신순 정렬 유지)
+                df_table = df_quarterly_raw.sort_values("분기 기준일", ascending=False).copy()
+                df_table["매출액"] = df_table["매출액"].apply(format_korean_currency)
+                df_table["영업이익"] = df_table["영업이익"].apply(format_korean_currency)
+                df_table["당기순이익"] = df_table["당기순이익"].apply(format_korean_currency)
+                
+                # 불필요한 임시 컬럼 제거
+                df_table = df_table.drop(columns=["_raw_net"])
+                
+                st.markdown("##### 📄 분기별 재무제표 상세 요약")
+                st.dataframe(df_table, use_container_width=True, hide_index=True)
+                st.caption("💡 야후파이낸스(Yahoo Finance) 실시간 분기 공시 데이터를 기반으로 매출액, 영업이익, 당기순이익을 표출합니다.")
             else:
                 st.warning("해당 종목의 분기 실적 데이터를 불러올 수 없습니다.")
         except Exception as e:
