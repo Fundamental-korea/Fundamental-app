@@ -165,21 +165,58 @@ if data:
 
     st.divider()
 
- # ==========================================
-    # 5. 기간별 탭 버튼 (5년 / 3년 / 최근 분기) 및 시계열 분석
+# ==========================================
+    # 5. 기간별 탭 버튼 (5년 / 3년 / 최근 4분기 실적) 및 심층 분석
     # ==========================================
     st.subheader(f"📊 [{data.get('stock_name')}] 재무제표 기간별 심층 분석")
     
-    # 버튼 느낌을 주는 Streamlit 탭 생성
-    tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 실적 (분기)"])
+    # 버튼 느낌을 주는 Streamlit 탭 생성 (최근 4분기 추가)
+    tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 4분기 단기 실적"])
 
-    # DB에서 역사적 데이터 가져오기
+    # DB에서 역사적 데이터 가져오기 (연도별)
     history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
+
+    # 금액 변환 함수 (조/억 원)
+    def format_korean_currency(val):
+        if pd.isna(val): return "-"
+        val = float(val)
+        abs_val = abs(val)
+        sign = "-" if val < 0 else ""
+        if abs_val >= 1_000_000_000_000:
+            jo = abs_val // 1_000_000_000_000
+            eok = (abs_val % 1_000_000_000_000) // 100_000_000
+            return f"{sign}{int(jo):,}조 {int(eok):,}억원" if eok > 0 else f"{sign}{int(jo):,}조 원"
+        elif abs_val >= 100_000_000:
+            return f"{sign}{int(abs_val // 100_000_000):,}억원"
+        else:
+            return f"{sign}{int(abs_val):,}원"
+
+    # 연도별 데이터프레임 포맷팅 함수 (종목명 적용)
+    def format_yearly_dataframe(df_target, stock_name):
+        df_f = df_target.copy()
+        if "net_income" in df_f.columns: df_f["net_income"] = df_f["net_income"].apply(format_korean_currency)
+        if "total_equity" in df_f.columns: df_f["total_equity"] = df_f["total_equity"].apply(format_korean_currency)
+        if "eps" in df_f.columns: df_f["eps"] = df_f["eps"].apply(lambda x: f"{int(x):,} 원" if pd.notna(x) else "-")
+        if "bps" in df_f.columns: df_f["bps"] = df_f["bps"].apply(lambda x: f"{int(x):,} 원" if pd.notna(x) else "-")
+        if "roe" in df_f.columns: df_f["roe"] = df_f["roe"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
+        if "debt_ratio" in df_f.columns: df_f["debt_ratio"] = df_f["debt_ratio"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
+        
+        # 종목코드 대신 종목명 삽입
+        df_f["종목명"] = stock_name
+        
+        rename_dict = {
+            "year": "연도", "종목명": "종목명", "net_income": "당기순이익",
+            "total_equity": "자본총계", "eps": "EPS (주당순이익)", "bps": "BPS (주당순자산)",
+            "roe": "ROE", "debt_ratio": "부채비율"
+        }
+        df_f = df_f.rename(columns=rename_dict)
+        drop_cols = ["id", "created_at", "stock_code", "순이익_조원"]
+        return df_f.drop(columns=[c for c in drop_cols if c in df_f.columns])
+
+    stock_name = data.get('stock_name')
 
     if history_data.data and len(history_data.data) > 0:
         df_hist = pd.DataFrame(history_data.data)
-        
-        # 숫자형 안전 캐스팅
         numeric_cols = ["net_income", "total_equity", "eps", "bps", "roe", "debt_ratio"]
         for col in numeric_cols:
             if col in df_hist.columns:
@@ -187,64 +224,65 @@ if data:
 
         if 'year' in df_hist.columns:
             df_hist = df_hist.sort_values("year")
-            
-            # 금액 변환 함수
-            def format_korean_currency(val):
-                if pd.isna(val): return "-"
-                val = float(val)
-                abs_val = abs(val)
-                sign = "-" if val < 0 else ""
-                if abs_val >= 1_000_000_000_000:
-                    jo = abs_val // 1_000_000_000_000
-                    eok = (abs_val % 1_000_000_000_000) // 100_000_000
-                    return f"{sign}{int(jo):,}조 {int(eok):,}억원" if eok > 0 else f"{sign}{int(jo):,}조 원"
-                elif abs_val >= 100_000_000:
-                    return f"{sign}{int(abs_val // 100_000_000):,}억원"
-                else:
-                    return f"{sign}{int(abs_val):,}원"
-
-            # 데이터 포맷팅 공통 적용 함수
-            def format_dataframe(df_target):
-                df_f = df_target.copy()
-                if "net_income" in df_f.columns: df_f["net_income"] = df_f["net_income"].apply(format_korean_currency)
-                if "total_equity" in df_f.columns: df_f["total_equity"] = df_f["total_equity"].apply(format_korean_currency)
-                if "eps" in df_f.columns: df_f["eps"] = df_f["eps"].apply(lambda x: f"{int(x):,} 원" if pd.notna(x) else "-")
-                if "bps" in df_f.columns: df_f["bps"] = df_f["bps"].apply(lambda x: f"{int(x):,} 원" if pd.notna(x) else "-")
-                if "roe" in df_f.columns: df_f["roe"] = df_f["roe"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
-                if "debt_ratio" in df_f.columns: df_f["debt_ratio"] = df_f["debt_ratio"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
-                
-                rename_dict = {
-                    "year": "연도", "stock_code": "종목코드", "net_income": "당기순이익",
-                    "total_equity": "자본총계", "eps": "EPS (주당순이익)", "bps": "BPS (주당순자산)",
-                    "roe": "ROE", "debt_ratio": "부채비율"
-                }
-                df_f = df_f.rename(columns=rename_dict)
-                drop_cols = ["id", "created_at", "순이익_조원"]
-                return df_f.drop(columns=[c for c in drop_cols if c in df_f.columns])
 
             # --- [탭 1: 5년 장기 흐름] ---
             with tab_5y:
-                st.markdown(f"#### 📅 {data.get('stock_name')} 최근 5개년 재무 흐름")
+                st.markdown(f"#### 📅 [{stock_name}] 최근 5개년 재무 흐름")
                 df_5 = df_hist.tail(5).copy()
                 df_5['순이익_조원'] = df_5['net_income'] / 1_000_000_000_000
                 st.line_chart(df_5.set_index("year")[["순이익_조원"]])
-                st.dataframe(format_dataframe(df_5), use_container_width=True)
+                st.dataframe(format_yearly_dataframe(df_5, stock_name), use_container_width=True)
 
             # --- [탭 2: 3년 중기 체력] ---
             with tab_3y:
-                st.markdown(f"#### 🕒 {data.get('stock_name')} 최근 3개년 집중 분석 (코로나 이후 변화)")
+                st.markdown(f"#### 🕒 [{stock_name}] 최근 3개년 집중 분석")
                 df_3 = df_hist.tail(3).copy()
                 df_3['순이익_조원'] = df_3['net_income'] / 1_000_000_000_000
                 st.line_chart(df_3.set_index("year")[["순이익_조원"]])
-                st.dataframe(format_dataframe(df_3), use_container_width=True)
+                st.dataframe(format_yearly_dataframe(df_3, stock_name), use_container_width=True)
 
-            # --- [탭 3: 최근 실적 (분기)] ---
-            with tab_q:
-                st.markdown(f"#### ⚡ {data.get('stock_name')} 가장 최근 단기 실적 요약")
-                df_q = df_hist.tail(1).copy()
-                st.dataframe(format_dataframe(df_q), use_container_width=True)
-                st.info("💡 분기별 세부 데이터 테이블도 곧 연동될 예정입니다!")
-        else:
-            st.warning("데이터에 연도 정보가 없습니다.")
     else:
-        st.info("저장된 역사적 재무 데이터가 없습니다.")
+        with tab_5y: st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
+        with tab_3y: st.info("저장된 3개년 역사적 재무 데이터가 없습니다.")
+
+    # --- [탭 3: 최근 4분기 단기 실적 (yfinance 실시간 연동)] ---
+    with tab_q:
+        st.markdown(f"#### ⚡ [{stock_name}] 가장 최근 4개 분기 실적 요약")
+        try:
+            import yfinance as yf
+            # 한국 주식(.KS/.KQ)과 미국 주식 티커 자동 분기 처리
+            ticker_symbol = f"{selected_code}.KS" if selected_code.isdigit() and len(selected_code)==6 else selected_code
+            yticker = yf.Ticker(ticker_symbol)
+            q_fin = yticker.quarterly_financials
+            
+            if q_fin is not None and not q_fin.empty:
+                # 최근 4개 분기 컬럼 추출
+                q_df = q_fin.T.head(4).copy()
+                
+                # 분기별 데이터프레임 보기 좋게 정제
+                parsed_rows = []
+                for date_idx, row in q_df.iterrows():
+                    q_date = str(date_idx).split(" ")[0] # 날짜만 추출
+                    
+                    # 당기순이익 안전 추출
+                    net_inc = None
+                    for key in ['Net Income', 'Net Income Common Stockholders', 'Net Income From Continuing Operation']:
+                        if key in q_fin.index:
+                            val = q_fin.loc[key, date_idx]
+                            if pd.notna(val):
+                                net_inc = val
+                                break
+                    
+                    parsed_rows.append({
+                        "분기 기준일": q_date,
+                        "종목명": stock_name,
+                        "분기 당기순이익": format_korean_currency(net_inc) if net_inc is not None else "-"
+                    })
+                
+                df_quarterly = pd.DataFrame(parsed_rows)
+                st.dataframe(df_quarterly, use_container_width=True)
+                st.caption("💡 야후파이낸스(Yahoo Finance) 실시간 분기 공시 데이터를 기반으로 최근 4개 분기를 표출합니다.")
+            else:
+                st.warning("해당 종목의 분기 실적 데이터를 불러올 수 없습니다.")
+        except Exception as e:
+            st.error(f"분기 데이터를 불러오는 중 오류가 발생했습니다: {e}")
