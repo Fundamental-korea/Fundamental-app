@@ -170,7 +170,7 @@ if data:
     # ==========================================
     st.subheader(f"📊 [{data.get('stock_name')}] 재무제표 기간별 심층 분석")
     
-    # 버튼 느낌을 주는 Streamlit 탭 생성 (최근 4분기 추가)
+    # 버튼 느낌을 주는 Streamlit 탭 생성
     tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 4분기 단기 실적"])
 
     # DB에서 역사적 데이터 가져오기 (연도별)
@@ -191,7 +191,7 @@ if data:
         else:
             return f"{sign}{int(abs_val):,}원"
 
-    # 연도별 데이터프레임 포맷팅 함수 (종목명 적용)
+    # 연도별 데이터프레임 포맷팅 및 '종목명 맨 앞 배치' 함수
     def format_yearly_dataframe(df_target, stock_name):
         df_f = df_target.copy()
         if "net_income" in df_f.columns: df_f["net_income"] = df_f["net_income"].apply(format_korean_currency)
@@ -201,7 +201,7 @@ if data:
         if "roe" in df_f.columns: df_f["roe"] = df_f["roe"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
         if "debt_ratio" in df_f.columns: df_f["debt_ratio"] = df_f["debt_ratio"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
         
-        # 종목코드 대신 종목명 삽입
+        # 종목명 데이터 삽입
         df_f["종목명"] = stock_name
         
         rename_dict = {
@@ -210,8 +210,12 @@ if data:
             "roe": "ROE", "debt_ratio": "부채비율"
         }
         df_f = df_f.rename(columns=rename_dict)
-        drop_cols = ["id", "created_at", "stock_code", "순이익_조원"]
-        return df_f.drop(columns=[c for c in drop_cols if c in df_f.columns])
+        
+        # 🔥 핵심: '종목명'이 테이블의 맨 처음에 오도록 컬럼 순서 강제 정렬
+        desired_order = ["종목명", "연도", "당기순이익", "자본총계", "EPS (주당순이익)", "BPS (주당순자산)", "ROE", "부채비율"]
+        existing_cols = [c for c in desired_order if c in df_f.columns]
+        
+        return df_f[existing_cols]
 
     stock_name = data.get('stock_name')
 
@@ -250,21 +254,16 @@ if data:
         st.markdown(f"#### ⚡ [{stock_name}] 가장 최근 4개 분기 실적 요약")
         try:
             import yfinance as yf
-            # 한국 주식(.KS/.KQ)과 미국 주식 티커 자동 분기 처리
             ticker_symbol = f"{selected_code}.KS" if selected_code.isdigit() and len(selected_code)==6 else selected_code
             yticker = yf.Ticker(ticker_symbol)
             q_fin = yticker.quarterly_financials
             
             if q_fin is not None and not q_fin.empty:
-                # 최근 4개 분기 컬럼 추출
                 q_df = q_fin.T.head(4).copy()
-                
-                # 분기별 데이터프레임 보기 좋게 정제
                 parsed_rows = []
                 for date_idx, row in q_df.iterrows():
-                    q_date = str(date_idx).split(" ")[0] # 날짜만 추출
+                    q_date = str(date_idx).split(" ")[0]
                     
-                    # 당기순이익 안전 추출
                     net_inc = None
                     for key in ['Net Income', 'Net Income Common Stockholders', 'Net Income From Continuing Operation']:
                         if key in q_fin.index:
@@ -274,8 +273,8 @@ if data:
                                 break
                     
                     parsed_rows.append({
-                        "분기 기준일": q_date,
                         "종목명": stock_name,
+                        "분기 기준일": q_date,
                         "분기 당기순이익": format_korean_currency(net_inc) if net_inc is not None else "-"
                     })
                 
