@@ -164,7 +164,10 @@ if data:
             st.write(r)
 
     st.divider()
-# ==========================================
+# ==========================================#5
+
+import altair as alt  # 👈 핵심: altair를 맨 위에서 확실하게 임포트합니다.
+
 # 🔍 종목 이름 안전 정의
 if 'data' in locals() and isinstance(data, dict):
     stock_name = data.get('stock_name', selected_code)
@@ -238,7 +241,6 @@ with tab_q:
     st.markdown(f"#### ⚡ [{stock_name}] 가장 최근 4개 분기 실적 및 수익성 심층 분석")
     try:
         import yfinance as yf
-        import altair as alt
         
         ticker_symbol = f"{selected_code}.KS" if selected_code.isdigit() and len(selected_code)==6 else selected_code
         yticker = yf.Ticker(ticker_symbol)
@@ -306,3 +308,4 @@ with tab_q:
             st.warning("해당 종목의 분기 실적 데이터를 불러올 수 없습니다.")
     except Exception as e:
         st.error(f"분기 데이터를 불러오는 중 오류가 발생했습니다: {e}")
+        
