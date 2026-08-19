@@ -165,8 +165,8 @@ if data:
 
     st.divider()
 
-   # ==========================================
-    # 5. 최근 5년 재무 추이 시계열 분석 (콤마 및 단위 적용 버전)
+  # ==========================================
+    # 5. 최근 5년 재무 추이 시계열 분석 (한글 금액 단위 및 콤마 적용)
     # ==========================================
     st.subheader("📊 최근 5년 재무 추이 (시계열 분석)")
     history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
@@ -192,15 +192,40 @@ if data:
             # 데이터프레임 시각화용 복사본 생성
             df_display = df_hist.copy()
             
-            # 숫자 데이터에 천 단위 콤마(,) 및 단위 포맷팅 적용
+            # 🔥 핵심: 큰 금액을 '조 / 억 원' 단위로 예쁘게 바꿔주는 변환 함수
+            def format_korean_currency(val):
+                if pd.isna(val):
+                    return "-"
+                val = float(val)
+                abs_val = abs(val)
+                sign = "-" if val < 0 else ""
+                
+                if abs_val >= 1_000_000_000_000:
+                    jo = abs_val // 1_000_000_000_000
+                    eok = (abs_val % 1_000_000_000_000) // 100_000_000
+                    if eok > 0:
+                        return f"{sign}{int(jo):,}조 {int(eok):,}억원"
+                    else:
+                        return f"{sign}{int(jo):,}조 원"
+                elif abs_val >= 100_000_000:
+                    eok = abs_val // 100_000_000
+                    return f"{sign}{int(eok):,}억원"
+                else:
+                    return f"{sign}{int(abs_val):,}원"
+
+            # 데이터 포맷팅 적용
             if "net_income" in df_display.columns:
-                df_display["net_income"] = df_display["net_income"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "-")
+                df_display["net_income"] = df_display["net_income"].apply(format_korean_currency)
             if "total_equity" in df_display.columns:
-                df_display["total_equity"] = df_display["total_equity"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "-")
+                df_display["total_equity"] = df_display["total_equity"].apply(format_korean_currency)
+            
+            # EPS, BPS는 주당 금액이므로 '원' 단위 붙이기
             if "eps" in df_display.columns:
-                df_display["eps"] = df_display["eps"].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "-")
+                df_display["eps"] = df_display["eps"].apply(lambda x: f"{int(x):,} 원" if pd.notna(x) else "-")
             if "bps" in df_display.columns:
-                df_display["bps"] = df_display["bps"].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "-")
+                df_display["bps"] = df_display["bps"].apply(lambda x: f"{int(x):,} 원" if pd.notna(x) else "-")
+                
+            # ROE, 부채비율은 '%' 붙이기
             if "roe" in df_display.columns:
                 df_display["roe"] = df_display["roe"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
             if "debt_ratio" in df_display.columns:
@@ -210,8 +235,8 @@ if data:
             rename_dict = {
                 "year": "연도",
                 "stock_code": "종목코드",
-                "net_income": "당기순이익 (원)",
-                "total_equity": "자본총계 (원)",
+                "net_income": "당기순이익",
+                "total_equity": "자본총계",
                 "eps": "EPS (주당순이익)",
                 "bps": "BPS (주당순자산)",
                 "roe": "ROE",
