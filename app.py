@@ -167,7 +167,7 @@ if data:
 
  # ==========================================
     # 5. 기간별 탭 버튼 (5년 / 3년 / 최근 분기) 및 시계열 분석
-    - ==========================================
+    # ==========================================
     st.subheader(f"📊 [{data.get('stock_name')}] 재무제표 기간별 심층 분석")
     
     # 버튼 느낌을 주는 Streamlit 탭 생성
@@ -241,7 +241,6 @@ if data:
             # --- [탭 3: 최근 실적 (분기)] ---
             with tab_q:
                 st.markdown(f"#### ⚡ {data.get('stock_name')} 가장 최근 단기 실적 요약")
-                # 최신 1개년(가장 최근 연도 데이터) 집중 조명
                 df_q = df_hist.tail(1).copy()
                 st.dataframe(format_dataframe(df_q), use_container_width=True)
                 st.info("💡 분기별 세부 데이터 테이블도 곧 연동될 예정입니다!")
