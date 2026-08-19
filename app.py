@@ -168,7 +168,71 @@ if data:
  # ==========================================
     # 5. 기간별 재무 분석 탭 영역 (여기서부터 붙여넣으세요)
     # ==========================================
+# 🔍 종목 이름이 정의되지 않았을 경우를 대비한 안전 장치
+    if 'data' in locals() and isinstance(data, dict):
+        stock_name = data.get('stock_name', selected_code)
+    else:
+        stock_name = selected_code if 'selected_code' in locals() else "선택된 종목"
+
+    # ==========================================
+    # 5. 기간별 재무 분석 탭 영역
+    # ==========================================
     st.subheader(f"📊 [{stock_name}] 재무제표 기간별 심층 분석")
+    
+    tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 4분기 단기 실적"])
+
+    # 🎨 [디자인 통일] 막대 색상 및 두께 설정
+    bar_color = "#636EFA"  # 세련된 퍼플 블루 계열
+    bar_width = 30         # 고정된 막대 두께
+
+    # Supabase 역사적 연도별 데이터 호출
+    history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
+
+    if history_data.data and len(history_data.data) > 0:
+        df_hist = pd.DataFrame(history_data.data)
+        numeric_cols = ["net_income", "total_equity", "eps", "bps", "roe", "debt_ratio"]
+        for col in numeric_cols:
+            if col in df_hist.columns:
+                df_hist[col] = pd.to_numeric(df_hist[col], errors='coerce')
+
+        if 'year' in df_hist.columns:
+            df_hist = df_hist.sort_values("year")
+
+            # --- [탭 1: 5년 장기 흐름] ---
+            with tab_5y:
+                st.markdown(f"#### 📅 [{stock_name}] 최근 5개년 재무 흐름")
+                df_5 = df_hist.tail(5).copy()
+                df_5['year'] = df_5['year'].astype(int)
+                df_5['순이익_조원'] = df_5['net_income'] / 1_000_000_000_000
+                
+                chart_5y = alt.Chart(df_5).mark_bar(color=bar_color, size=bar_width).encode(
+                    x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
+                    y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
+                    tooltip=['year', '순이익_조원']
+                ).properties(height=300)
+                st.altair_chart(chart_5y, use_container_width=True)
+                
+                st.dataframe(format_yearly_dataframe(df_5, stock_name), use_container_width=True, hide_index=True)
+
+            # --- [탭 2: 3년 중기 체력] ---
+            with tab_3y:
+                st.markdown(f"#### 🕒 [{stock_name}] 최근 3개년 집중 분석")
+                df_3 = df_hist.tail(3).copy()
+                df_3['year'] = df_3['year'].astype(int)
+                df_3['순이익_조원'] = df_3['net_income'] / 1_000_000_000_000
+                
+                chart_3y = alt.Chart(df_3).mark_bar(color=bar_color, size=bar_width).encode(
+                    x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
+                    y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
+                    tooltip=['year', '순이익_조원']
+                ).properties(height=300)
+                st.altair_chart(chart_3y, use_container_width=True)
+                
+                st.dataframe(format_yearly_dataframe(df_3, stock_name), use_container_width=True, hide_index=True)
+
+    else:
+        with tab_5y: st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
+        with tab_3y: st.info("저장된 3개년 역사적 재무 데이터가 없습니다.")    st.subheader(f"📊 [{stock_name}] 재무제표 기간별 심층 분석")
     
     tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 4분기 단기 실적"])
 
