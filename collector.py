@@ -5,13 +5,9 @@ import pandas as pd
 from supabase import create_client
 
 # 환경변수에서 API Key 및 Supabase 설정 가져오기
-DART_API_KEY = os.environ.get(
-    "DART_API_KEY", "01c7269f5655e2d846d0e9d7f79f46aef8ac417f"
-)
-SUPABASE_URL = os.environ.get(
-    "SUPABASE_URL", "https://cnweggechipghcivruie.supabase.co"
-)
+SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+DART_API_KEY = os.environ.get("DART_API_KEY", "01c7269f5655e2d846d0e9d7f79f46aef8ac417f")
 
 dart = OpenDartReader(DART_API_KEY)
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
