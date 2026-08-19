@@ -245,20 +245,21 @@ if data:
         with tab_5y: st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
         with tab_3y: st.info("저장된 3개년 역사적 재무 데이터가 없습니다.")
 
-    # --- [탭 3: 최근 4분기 단기 실적 및 차트 (yfinance 실시간 연동)] ---
+  # --- [탭 3: 최근 4분기 단기 실적 및 심층 체력 분석] ---
     with tab_q:
-        st.markdown(f"#### ⚡ [{stock_name}] 가장 최근 4개 분기 실적 심층 분석")
+        st.markdown(f"#### ⚡ [{stock_name}] 가장 최근 4개 분기 실적 및 수익성 심층 분석")
         try:
             import yfinance as yf
+            import altair as alt  # 가로축 정렬을 위한 라이브러리
+            
             ticker_symbol = f"{selected_code}.KS" if selected_code.isdigit() and len(selected_code)==6 else selected_code
             yticker = yf.Ticker(ticker_symbol)
-            q_fin = yticker.quarterly_financials
+            q_fin = yticked_q_fin = yticker.quarterly_financials
             
             if q_fin is not None and not q_fin.empty:
                 q_df = q_fin.T.head(4).copy()
                 parsed_rows = []
                 
-                # 데이터 추출 헬퍼 함수
                 def get_q_value(q_col, keys):
                     for k in keys:
                         if k in q_fin.index:
@@ -273,35 +274,51 @@ if data:
                     op_income = get_q_value(date_idx, ['Operating Income', 'Operating Revenue'])
                     net_inc = get_q_value(date_idx, ['Net Income', 'Net Income Common Stockholders', 'Net Income From Continuing Operation'])
                     
+                    # 수익성 비율 계산 (영업이익률, 순이익률)
+                    op_margin = (op_income / revenue * 100) if (revenue and op_income and revenue != 0) else None
+                    net_margin = (net_inc / revenue * 100) if (revenue and net_inc and revenue != 0) else None
+                    
                     parsed_rows.append({
                         "종목명": stock_name,
                         "분기 기준일": q_date,
                         "매출액": revenue,
                         "영업이익": op_income,
                         "당기순이익": net_inc,
-                        "_raw_net": net_inc if net_inc is not None else 0 # 차트용 원본 숫자
+                        "영업이익률": op_margin,
+                        "순이익률": net_margin,
+                        "_raw_net": net_inc if net_inc is not None else 0
                     })
                 
                 df_quarterly_raw = pd.DataFrame(parsed_rows)
                 
-                # 📈 분기별 순이익 추이 차트 생성 (시간순 정렬 위해 역순 변환 후 시각화)
+                # 📈 [차트 가로 정렬 해결] Altair 라이브러리를 이용한 깔끔한 가로축 날짜 정렬
                 df_chart = df_quarterly_raw.sort_values("분기 기준일").copy()
                 df_chart['순이익_조원'] = df_chart['_raw_net'] / 1_000_000_000_000
+                
                 st.markdown("##### 📈 최근 4개 분기 당기순이익 추이")
-                st.line_chart(df_chart.set_index("분기 기준일")[["순이익_조원"]])
+                
+                # labelAngle=0을 주어 가로축 날짜가 세로로 꺾이지 않고 가로로 나란히 표시되도록 설정
+                chart = alt.Chart(df_chart).mark_line(point=True, strokeWidth=3).encode(
+                    x=alt.X('분기 기준일:N', title='분기 기준일', sort=None, axis=alt.Axis(labelAngle=0)),
+                    y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
+                    tooltip=['분기 기준일', '순이익_조원']
+                ).properties(height=320)
+                
+                st.altair_chart(chart, use_container_width=True)
 
-                # 📄 테이블용 포맷팅 (최신순 정렬 유지)
+                # 📄 테이블용 포맷팅 (최신순 정렬 유지 및 단위/퍼센트 적용)
                 df_table = df_quarterly_raw.sort_values("분기 기준일", ascending=False).copy()
                 df_table["매출액"] = df_table["매출액"].apply(format_korean_currency)
                 df_table["영업이익"] = df_table["영업이익"].apply(format_korean_currency)
                 df_table["당기순이익"] = df_table["당기순이익"].apply(format_korean_currency)
+                df_table["영업이익률"] = df_table["영업이익률"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
+                df_table["순이익률"] = df_table["순이익률"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
                 
-                # 불필요한 임시 컬럼 제거
                 df_table = df_table.drop(columns=["_raw_net"])
                 
-                st.markdown("##### 📄 분기별 재무제표 상세 요약")
+                st.markdown("##### 📄 분기별 재무제표 심층 요약")
                 st.dataframe(df_table, use_container_width=True, hide_index=True)
-                st.caption("💡 야후파이낸스(Yahoo Finance) 실시간 분기 공시 데이터를 기반으로 매출액, 영업이익, 당기순이익을 표출합니다.")
+                st.caption("💡 야후파이낸스 실시간 공시 데이터를 바탕으로 최근 4개 분기의 매출, 영업이익, 수익성 비율(마진)을 종합 산출합니다.")
             else:
                 st.warning("해당 종목의 분기 실적 데이터를 불러올 수 없습니다.")
         except Exception as e:
