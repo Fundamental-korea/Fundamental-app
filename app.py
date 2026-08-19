@@ -183,3 +183,55 @@ if data:
 else:
     st.warning(f"⚠️ **[{selected_option.split('(')[0].strip()}]** 데이터가 DB에 없습니다.")
     st.info("이 종목의 재무 데이터가 아직 Supabase에 수집되지 않았습니다. 수집 스크립트를 통해 데이터를 적재해 주세요!")
+st.title("🛡️ 펀더멘탈 방어 분석 대시보드")
+st.markdown("하락장 속에서도 살아남는 튼튼한 기업의 맷집을 숫자로 증명합니다.")
+
+# 종목 검색창
+stock_code = st.text_input("종목 코드를 입력하세요 (예: 005930)", "005930")
+
+# 방어력 등급 자동 계산 함수
+def get_defense_grade(roe, debt_ratio, per):
+    score = 0
+    if roe >= 10: score += 40
+    if debt_ratio <= 50: score += 30
+    if per <= 15: score += 30
+    
+    if score >= 80: return "S등급 (최강 방어주)", "green"
+    elif score >= 60: return "A등급 (안정적)", "blue"
+    else: return "주의 (하락장 취약)", "red"
+
+if st.button("분석 실행"):
+    # DB에서 현재 스냅샷 데이터 가져오기
+    current_data = supabase.table("Fundamental").select("*").eq("stock_code", stock_code).execute()
+    
+    if current_data.data:
+        data = current_data.data[0]
+        
+        st.subheader(f"📌 [{data.get('stock_name', stock_code)}] 핵심 펀더멘탈 진단")
+        
+        # 상단 핵심 지표 4개 출력
+        col1, col2, col3, col4 = st.columns(4)
+        col1.metric("PER", data.get('per', 0))
+        col2.metric("PBR", data.get('pbr', 0))
+        col3.metric("ROE (%)", data.get('roe', 0))
+        col4.metric("부채비율 (%)", data.get('debt_ratio', 0))
+        
+        # 방어력 등급 출력
+        grade, color = get_defense_grade(data.get('roe', 0), data.get('debt_ratio', 0), data.get('per', 0))
+        st.markdown(f"### 🛡️ 하락장 방어 등급: :{color}[{grade}]")
+        
+        st.divider()
+        
+        # 과거 5년 이력 시각화
+        st.subheader("📊 최근 5년 재무 추이 (시계열 분석)")
+        history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", stock_code).order("year").execute()
+        
+        if history_data.data:
+            df_hist = pd.DataFrame(history_data.data)
+            st.line_chart(df_hist.set_index("year")[["net_income"]])
+            st.dataframe(df_hist, use_container_width=True)
+        else:
+            st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
+            
+    else:
+        st.error("데이터베이스에 해당 종목 데이터가 없습니다. 수집 코드를 먼저 실행해 주세요.")
