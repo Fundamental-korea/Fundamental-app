@@ -1,6 +1,7 @@
 import streamlit as st
 import FinanceDataReader as fdr
 from supabase import create_client
+import pandas as pd
 
 # ==========================================
 # 1. 페이지 및 Supabase 설정
