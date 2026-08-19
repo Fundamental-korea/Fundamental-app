@@ -165,8 +165,8 @@ if data:
 
     st.divider()
 
-    # ==========================================
-    # 5. 최근 5년 재무 추이 시계열 분석 (UI/UX 개선 버전)
+   # ==========================================
+    # 5. 최근 5년 재무 추이 시계열 분석 (콤마 및 단위 적용 버전)
     # ==========================================
     st.subheader("📊 최근 5년 재무 추이 (시계열 분석)")
     history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
@@ -175,7 +175,7 @@ if data:
         df_hist = pd.DataFrame(history_data.data)
         
         # PostgreSQL NUMERIC 타입을 판다스 숫자형으로 안전하게 캐스팅
-        numeric_cols = ["net_income", "eps", "bps", "roe", "debt_ratio"]
+        numeric_cols = ["net_income", "total_equity", "eps", "bps", "roe", "debt_ratio"]
         for col in numeric_cols:
             if col in df_hist.columns:
                 df_hist[col] = pd.to_numeric(df_hist[col], errors='coerce')
@@ -183,19 +183,30 @@ if data:
         if 'year' in df_hist.columns:
             df_hist = df_hist.sort_values("year")
             
-            # [개선 1 & 2] 세로축 가독성 해결: 단위를 '조 원'으로 축소하여 Y축을 10, 20, 30으로 깔끔하게 표시
+            # 세로축 단위 '조 원' 기준 라인 차트
             if "net_income" in df_hist.columns:
                 df_hist['순이익_조원'] = df_hist['net_income'] / 1_000_000_000_000
-                
-                # 차트 제목 명확화
                 st.markdown("##### 📈 연도별 당기순이익 추이 (단위: 조 원)")
                 st.line_chart(df_hist.set_index("year")[["순이익_조원"]])
             
-            # [개선 3] 영어 컬럼명을 초보자 친화적인 한글로 전면 번역 및 불필요한 시스템 컬럼 숨기기
-            st.markdown("##### 📄 연도별 재무제표 상세 이력")
+            # 데이터프레임 시각화용 복사본 생성
             df_display = df_hist.copy()
             
-            # 컬럼명 한글 매핑 딕셔너리
+            # 숫자 데이터에 천 단위 콤마(,) 및 단위 포맷팅 적용
+            if "net_income" in df_display.columns:
+                df_display["net_income"] = df_display["net_income"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "-")
+            if "total_equity" in df_display.columns:
+                df_display["total_equity"] = df_display["total_equity"].apply(lambda x: f"{int(x):,}" if pd.notna(x) else "-")
+            if "eps" in df_display.columns:
+                df_display["eps"] = df_display["eps"].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "-")
+            if "bps" in df_display.columns:
+                df_display["bps"] = df_display["bps"].apply(lambda x: f"{x:,.2f}" if pd.notna(x) else "-")
+            if "roe" in df_display.columns:
+                df_display["roe"] = df_display["roe"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
+            if "debt_ratio" in df_display.columns:
+                df_display["debt_ratio"] = df_display["debt_ratio"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
+
+            # 컬럼명 한글 매핑
             rename_dict = {
                 "year": "연도",
                 "stock_code": "종목코드",
@@ -203,16 +214,16 @@ if data:
                 "total_equity": "자본총계 (원)",
                 "eps": "EPS (주당순이익)",
                 "bps": "BPS (주당순자산)",
-                "roe": "ROE (%)",
-                "debt_ratio": "부채비율 (%)"
+                "roe": "ROE",
+                "debt_ratio": "부채비율"
             }
             df_display = df_display.rename(columns=rename_dict)
             
-            # 일반 투자자에게 혼동을 주는 불필요한 시스템 컬럼(id, created_at, 임시 계산 컬럼) 제거
+            # 불필요한 시스템 컬럼 제거
             drop_cols = ["id", "created_at", "순이익_조원"]
             df_display = df_display.drop(columns=[c for c in drop_cols if c in df_display.columns])
             
-            # 데이터프레임 출력
+            st.markdown("##### 📄 연도별 재무제표 상세 이력")
             st.dataframe(df_display, use_container_width=True)
         else:
             st.warning("데이터에 연도(year) 정보가 포함되어 있지 않습니다.")
