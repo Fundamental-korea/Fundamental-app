@@ -166,7 +166,7 @@ if data:
     st.divider()
 
     # ==========================================
-    # 5. 최근 5년 재무 추이 시계열 분석 (NUMERIC 안전 변환 적용)
+    # 5. 최근 5년 재무 추이 시계열 분석 (UI/UX 개선 버전)
     # ==========================================
     st.subheader("📊 최근 5년 재무 추이 (시계열 분석)")
     history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
@@ -182,17 +182,39 @@ if data:
 
         if 'year' in df_hist.columns:
             df_hist = df_hist.sort_values("year")
+            
+            # [개선 1 & 2] 세로축 가독성 해결: 단위를 '조 원'으로 축소하여 Y축을 10, 20, 30으로 깔끔하게 표시
             if "net_income" in df_hist.columns:
-                st.line_chart(df_hist.set_index("year")[["net_income"]])
-            st.dataframe(df_hist, use_container_width=True)
+                df_hist['순이익_조원'] = df_hist['net_income'] / 1_000_000_000_000
+                
+                # 차트 제목 명확화
+                st.markdown("##### 📈 연도별 당기순이익 추이 (단위: 조 원)")
+                st.line_chart(df_hist.set_index("year")[["순이익_조원"]])
+            
+            # [개선 3] 영어 컬럼명을 초보자 친화적인 한글로 전면 번역 및 불필요한 시스템 컬럼 숨기기
+            st.markdown("##### 📄 연도별 재무제표 상세 이력")
+            df_display = df_hist.copy()
+            
+            # 컬럼명 한글 매핑 딕셔너리
+            rename_dict = {
+                "year": "연도",
+                "stock_code": "종목코드",
+                "net_income": "당기순이익 (원)",
+                "total_equity": "자본총계 (원)",
+                "eps": "EPS (주당순이익)",
+                "bps": "BPS (주당순자산)",
+                "roe": "ROE (%)",
+                "debt_ratio": "부채비율 (%)"
+            }
+            df_display = df_display.rename(columns=rename_dict)
+            
+            # 일반 투자자에게 혼동을 주는 불필요한 시스템 컬럼(id, created_at, 임시 계산 컬럼) 제거
+            drop_cols = ["id", "created_at", "순이익_조원"]
+            df_display = df_display.drop(columns=[c for c in drop_cols if c in df_display.columns])
+            
+            # 데이터프레임 출력
+            st.dataframe(df_display, use_container_width=True)
         else:
             st.warning("데이터에 연도(year) 정보가 포함되어 있지 않습니다.")
     else:
         st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
-
-    st.divider()
-    with st.expander("📄 상세 재무 데이터 (DB 원본)"):
-        st.json(data)
-else:
-    st.warning(f"⚠️ **[{selected_option.split('(')[0].strip()}]** 데이터가 DB에 없습니다.")
-    st.info("이 종목의 재무 데이터가 아직 Supabase에 수집되지 않았습니다. 수집 스크립트를 통해 데이터를 적재해 주세요!")
