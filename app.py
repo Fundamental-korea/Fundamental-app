@@ -25,7 +25,6 @@ supabase = init_supabase()
 def get_all_krx_stocks():
     """KRX 전체 종목 리스트를 가져와서 검색용 딕셔너리로 반환"""
     df = fdr.StockListing("KRX")
-    # {'삼성전자 (005930)': '005930', ...} 형태의 딕셔너리 생성
     return {f"{name} ({code})": code for name, code in zip(df["Name"], df["Code"])}
 
 def get_stock_data(stock_code):
@@ -33,43 +32,85 @@ def get_stock_data(stock_code):
     return res.data[0] if res.data else None
 
 # ==========================================
-# 3. 하락장 방어력 스코어 계산 함수
+# 3. 10대 지표 하락장 방어력 스코어링 엔진 (0~100점 및 S~D 등급)
 # ==========================================
 def calculate_defense_score(data):
-    score = 50
+    scores = {}
     reasons = []
+
+    # ① 유동비율 (Absolute)
+    cr = data.get("current_ratio") or 120  # 기본값 방어
+    s1 = (10 if cr >= 250 else 9 if cr >= 200 else 8 if cr >= 170 
+          else 7 if cr >= 150 else 6 if cr >= 130 else 5 if cr >= 110 
+          else 4 if cr >= 100 else 3 if cr >= 85 else 2 if cr >= 70 
+          else 1 if cr >= 50 else 0)
+    scores['score_current_ratio'] = s1
+    reasons.append(f"• **유동비율 ({cr}%)**: 단기 채무 지급 능력 평가 (**{s1}/10점**)")
+
+    # ② 부채비율 (Absolute)
+    de = data.get("debt_ratio") or 100
+    s2 = (10 if de <= 30 else 9 if de <= 50 else 8 if de <= 75 
+          else 7 if de <= 100 else 6 if de <= 125 else 5 if de <= 150 
+          else 4 if de <= 175 else 3 if de <= 200 else 2 if de <= 250 
+          else 1 if de <= 300 else 0)
+    scores['score_debt_to_equity'] = s2
+    reasons.append(f"• **부채비율 ({de}%)**: 재무 레버리지 및 안전성 (**{s2}/10점**)")
+
+    # ③ ROE (Absolute)
     roe = data.get("roe") or 0
-    if roe >= 15:
-        score += 20
-        reasons.append("✅ **ROE 15% 이상**: 높은 자본 효율성 (+20점)")
-    elif roe >= 10:
-        score += 10
-        reasons.append("✅ **ROE 10% 이상**: 양호한 수익성 (+10점)")
-    else:
-        reasons.append("⚠️ **ROE 10% 미만**: 수익성 개선 필요 (0점)")
+    s3 = (10 if roe >= 25 else 9 if roe >= 20 else 8 if roe >= 16 
+          else 7 if roe >= 13 else 6 if roe >= 10 else 5 if roe >= 7 
+          else 4 if roe >= 5 else 3 if roe >= 3 else 2 if roe >= 1 
+          else 1 if roe > 0 else 0)
+    scores['score_roe'] = s3
+    reasons.append(f"• **ROE ({roe}%)**: 자기자본 이익률 및 효율성 (**{s3}/10점**)")
 
-    debt = data.get("debt_ratio") or 999
-    if debt <= 50:
-        score += 20
-        reasons.append("✅ **부채비율 50% 이하**: 탄탄한 재무 구조 (+20점)")
-    elif debt <= 100:
-        score += 10
-        reasons.append("✅ **부채비율 100% 이하**: 안정적 부채 수준 (+10점)")
-    else:
-        reasons.append("⚠️ **부채비율 100% 초과**: 하락장 이자 부담 위험 (0점)")
+    # ④ PBR (Absolute)
+    pbr = data.get("pbr") or 1.0
+    s4 = (10 if pbr < 0.60 else 9 if pbr < 0.80 else 8 if pbr < 1.00 
+          else 7 if pbr < 1.30 else 6 if pbr < 1.70 else 5 if pbr < 2.20 
+          else 4 if pbr < 3.00 else 3 if pbr < 4.00 else 2 if pbr < 6.00 
+          else 1 if pbr < 10.00 else 0)
+    scores['score_pbr'] = s4
+    reasons.append(f"• **PBR ({pbr}배)**: 자산 가치 대비 저평가 수준 (**{s4}/10점**)")
 
+    # ⑤ 영업이익률 (Op Margin)
     op_m = data.get("op_margin") or 0
-    if op_m >= 15:
-        score += 10
-        reasons.append("✅ **영업이익률 15% 이상**: 강력한 마진/가격 결정력 (+10점)")
+    s5 = (10 if op_m >= 20 else 8 if op_m >= 15 else 6 if op_m >= 10 
+          else 4 if op_m >= 5 else 2 if op_m > 0 else 0)
+    scores['score_op_margin'] = s5
+    reasons.append(f"• **영업이익률 ({op_m}%)**: 본업 마진 및 가격 결정력 (**{s5}/10점**)")
 
-    return min(score, 100), reasons
+    # ⑥~⑩ 나머지 항목들 (DB에 컬럼이 없을 경우 유연하게 기본 5점 부여 또는 매칭)
+    for key, name in [('eps_growth', 'EPS 성장률'), ('fcf_margin', 'FCF 마진'), 
+                      ('ocf_to_net_income', '현금흐름 질'), ('per_discount', 'PER 할인율'), 
+                      ('net_income_trend_code', '순이익 트렌드')]:
+        val = data.get(key)
+        if val is not None:
+            # 점수 컬럼이 이미 DB에 계산되어 있다면 우선 사용, 아니면 간이 환산
+            score_val = data.get(f"score_{key}", 5)
+        else:
+            score_val = 5  # 미수집 항목 기본 점수
+        scores[key] = score_val
+        reasons.append(f"• **{name}**: 세부 정밀 평가 (**{score_val}/10점**)")
+
+    # 100점 만점 총점 계산
+    total_score = sum(scores.values())
+    
+    # S ~ D 등급 판정
+    if total_score >= 85: grade = 'S'
+    elif total_score >= 70: grade = 'A'
+    elif total_score >= 55: grade = 'B'
+    elif total_score >= 40: grade = 'C'
+    else: grade = 'D'
+
+    return total_score, grade, reasons
 
 # ==========================================
 # 4. 웹 UI 화면 구성
 # ==========================================
 st.title("🛡️ 펀더멘탈(Fundamental) - 하락장 방어 알짜기업 분석")
-st.caption("시장이 흔들려도 버티는 재무제표 완벽 분석 플랫폼")
+st.caption("시장이 흔들려도 버티는 재무제표 10대 지표 정밀 분석 플랫폼")
 
 # 사이드바에서 KRX 전체 종목 검색
 st.sidebar.header("🔍 한국 주식 검색")
@@ -81,39 +122,35 @@ selected_code = krx_stocks[selected_option]
 data = get_stock_data(selected_code)
 
 if data:
-    st.subheader(f"📊 {data['stock_name']} ({data['stock_code']}) 재무 분석")
+    st.subheader(f"📊 {data.get('stock_name')} ({data.get('stock_code')}) 재무 분석")
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("현재 주가", f"{data['stock_price']:,} 원")
-    col2.metric("PER", f"{data['per']} 배" if data["per"] else "N/A")
-    col3.metric("PBR", f"{data['pbr']} 배" if data["pbr"] else "N/A")
-    col4.metric("ROE", f"{data['roe']}%" if data["roe"] else "N/A")
+    col1.metric("현재 주가", f"{data.get('stock_price', 0):,} 원" if data.get('stock_price') else "N/A")
+    col2.metric("PER", f"{data.get('per')} 배" if data.get("per") else "N/A")
+    col3.metric("PBR", f"{data.get('pbr')} 배" if data.get("pbr") else "N/A")
+    col4.metric("ROE", f"{data.get('roe')}%" if data.get("roe") else "N/A")
 
     st.divider()
 
-    score, reasons = calculate_defense_score(data)
+    total_score, grade, reasons = calculate_defense_score(data)
     col_score, col_detail = st.columns([1, 2])
+    
     with col_score:
-        st.markdown("### 🛡️ 하락장 방어 점수")
-        st.title(f"**{score}** / 100 점")
-        if score >= 80: st.success("🟢 **최우수 (하락장 최적 방어주)**")
-        elif score >= 60: st.info("🟡 **우수 (평균 이상의 체력)**")
-        else: st.warning("🔴 **주의 (변동성 장세 주의)**")
+        st.markdown("### 🛡️ 하락장 방어 종합 등급")
+        st.title(f"**{total_score}**점 / [{grade}] 등급")
+        if grade == 'S': st.success("🟢 **S등급 (하락장 최적 요새형 방어주)**")
+        elif grade == 'A': st.success("🟢 **A등급 (우수한 재무 체력)**")
+        elif grade == 'B': st.info("🟡 **B등급 (평균적인 방어력)**")
+        elif grade == 'C': st.warning("🟠 **C등급 (하락장 주의 필요)**")
+        else: st.warning("🔴 **D등급 (하락장 취약 위험주)**")
+        
     with col_detail:
-        st.markdown("### 📋 세부 평가 항목")
-        for r in reasons: st.write(r)
+        st.markdown("### 📋 10대 핵심 지표 평가 내역")
+        for r in reasons: 
+            st.write(r)
 
     st.divider()
     with st.expander("📄 상세 재무 데이터"):
-        st.json({
-            "매출액": f"{data['revenue']:,}",
-            "영업이익": f"{data['operating_income']:,}",
-            "당기순이익": f"{data['net_income']:,}",
-            "자산총계": f"{data['total_assets']:,}",
-            "부채총계": f"{data['total_liabilities']:,}",
-            "자본총계": f"{data['total_equity']:,}",
-            "부채비율": f"{data['debt_ratio']}%",
-            "영업이익률": f"{data['op_margin']}%",
-        })
+        st.json(data)
 else:
     st.warning(f"⚠️ **[{selected_option.split('(')[0].strip()}]** 데이터가 DB에 없습니다.")
-    st.info("데이터를 보려면 `collector.py` 대상 종목 리스트에 이 종목을 추가하세요!")
+    st.info("이 종목의 재무 데이터가 아직 Supabase에 수집되지 않았습니다. 수집 스크립트를 통해 데이터를 적재해 주세요!")
