@@ -110,7 +110,7 @@ def calculate_defense_score(data):
 # 4. 웹 UI 화면 구성
 # ==========================================
 st.title("🛡️ 펀더멘탈(Fundamental) - 하락장 방어 알짜기업 분석")
-st.caption("시장이 흔들려도 버티는 재무제표 10대 지표 정밀 분석 플랫폼")
+st.caption("시장이 흔들려도 버티는 재무제표 10대 지표 정밀 분석 플랫폼 (실시간 연동)")
 
 # 사이드바에서 KRX 전체 종목 검색
 st.sidebar.header("🔍 한국 주식 검색")
@@ -118,22 +118,51 @@ krx_stocks = get_all_krx_stocks()
 selected_option = st.sidebar.selectbox("종목 검색 (이름/코드 입력)", list(krx_stocks.keys()))
 selected_code = krx_stocks[selected_option]
 
-# DB에서 해당 종목의 데이터 조회
+# DB에서 해당 종목의 기본 재무 데이터 조회
 data = get_stock_data(selected_code)
 
 if data:
-    st.subheader(f"📊 {data.get('stock_name')} ({data.get('stock_code')}) 재무 분석")
+    # 🚀 [핵심 수정] FinanceDataReader를 통해 실시간 최신 주가 가져오기
+    try:
+        # 최근 5일간의 데이터를 가져와 가장 마지막(오늘/가장 최근) 종가 추출
+        df_price = fdr.DataReader(selected_code)
+        live_price = int(df_price['Close'].iloc[-1]) if not df_price.empty else data.get('stock_price', 0)
+    except Exception:
+        live_price = data.get('stock_price', 0)
+
+    # 실시간 주가 변동에 따른 PER 동적 보정 (PER = 실시간 주가 / EPS)
+    db_eps = data.get('eps')
+    if db_eps and db_eps > 0:
+        live_per = round(live_price / db_eps, 2)
+    else:
+        live_per = data.get('per')
+
+    # PBR 동적 보정 (PBR = 실시간 주가 / BPS)
+    db_bps = data.get('bps')
+    if db_bps and db_bps > 0:
+        live_pbr = round(live_price / db_bps, 2)
+    else:
+        live_pbr = data.get('pbr')
+
+    st.subheader(f"📊 {data.get('stock_name')} ({data.get('stock_code')}) 실시간 재무 분석")
+    
+    # 상단 지표 카드 (실시간 반영)
     col1, col2, col3, col4 = st.columns(4)
-    col1.metric("현재 주가", f"{data.get('stock_price', 0):,} 원" if data.get('stock_price') else "N/A")
-    col2.metric("PER", f"{data.get('per')} 배" if data.get("per") else "N/A")
-    col3.metric("PBR", f"{data.get('pbr')} 배" if data.get("pbr") else "N/A")
+    col1.metric("현재 실시간 주가", f"{live_price:,} 원", f"{live_price - data.get('stock_price', live_price):,} 원" if data.get('stock_price') else None)
+    col2.metric("실시간 PER", f"{live_per} 배" if live_per else "N/A")
+    col3.metric("실시간 PBR", f"{live_pbr} 배" if live_pbr else "N/A")
     col4.metric("ROE", f"{data.get('roe')}%" if data.get("roe") else "N/A")
 
     st.divider()
 
-    total_score, grade, reasons = calculate_defense_score(data)
-    col_score, col_detail = st.columns([1, 2])
+    # 방어력 점수 계산 시 실시간 보정된 데이터를 딕셔너리에 임시 갱신
+    eval_data = data.copy()
+    eval_data['per'] = live_per
+    eval_data['pbr'] = live_pbr
+
+    total_score, grade, reasons = calculate_defense_score(eval_data)
     
+    col_score, col_detail = st.columns([1, 2])
     with col_score:
         st.markdown("### 🛡️ 하락장 방어 종합 등급")
         st.title(f"**{total_score}**점 / [{grade}] 등급")
@@ -149,7 +178,7 @@ if data:
             st.write(r)
 
     st.divider()
-    with st.expander("📄 상세 재무 데이터"):
+    with st.expander("📄 상세 재무 데이터 (DB 원본)"):
         st.json(data)
 else:
     st.warning(f"⚠️ **[{selected_option.split('(')[0].strip()}]** 데이터가 DB에 없습니다.")
