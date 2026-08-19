@@ -1,3 +1,6 @@
 streamlit
 supabase
 pandas
+finance-datareader
+OpenDartReader
+requests
