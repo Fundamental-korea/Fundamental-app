@@ -149,8 +149,8 @@ if data:
     # 상단 지표 카드 (실시간 반영)
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("현재 실시간 주가", f"{live_price:,} 원", f"{live_price - data.get('stock_price', live_price):,} 원" if data.get('stock_price') else None)
-    col2.metric("실시간 PER", f"{live_per} 배" if live_per else "N/A")
-    col3.metric("실시간 PBR", f"{live_pbr} 배" if live_pbr else "N/A")
+    col2.metric("PER", f"{live_per} 배" if live_per else "N/A")
+    col3.metric("PBR", f"{live_pbr} 배" if live_pbr else "N/A")
     col4.metric("ROE", f"{data.get('roe')}%" if data.get("roe") else "N/A")
 
     st.divider()
