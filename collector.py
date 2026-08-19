@@ -6,7 +6,7 @@ from supabase import create_client
 
 # 1. 환경변수 설정 (GitHub Secrets가 비어있어도 안전하도록 기본값 하드코딩)
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNud2VnZ2VjaGlwZ2hjaXZydWllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODU5ODksImV4cCI6MjEwMjY2MTk4OX0.mYi7QB0ekkC0Jg49M18tqrMdCZBQgRHEK2J1EdIBZhc")
 DART_API_KEY = os.environ.get("DART_API_KEY", "01c7269f5655e2d846d0e9d7f79f46aef8ac417f")
 
 # 2. 클라이언트 및 DART 객체 전역 생성 (반복 호출 방지)
