@@ -165,6 +165,7 @@ if data:
 
     st.divider()
 # ==========================================
+ # ==========================================
     # 5. 기간별 탭 버튼 (5년 / 3년 / 최근 4분기 실적) 및 심층 분석
     # ==========================================
     st.subheader(f"📊 [{data.get('stock_name')}] 재무제표 기간별 심층 분석")
@@ -214,7 +215,7 @@ if data:
 
     stock_name = data.get('stock_name')
 
-    # 🔥 [핵심 수정] Supabase에서 역사적 데이터 정상 호출
+    # 🔥 Supabase에서 역사적 데이터 정상 호출
     history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
 
     if history_data.data and len(history_data.data) > 0:
@@ -234,8 +235,15 @@ if data:
                 df_5['year'] = df_5['year'].astype(int)
                 df_5['순이익_조원'] = df_5['net_income'] / 1_000_000_000_000
                 
-                # 📈 직관적인 막대 차트 적용
-                st.bar_chart(df_5.set_index("year")[["순이익_조원"]], color="#ff4b4b")
+                # 📈 Altair 막대 차트 적용 (두께 조절: size=30)
+                import altair as alt
+                chart_5y = alt.Chart(df_5).mark_bar(color="#ff4b4b", size=30).encode(
+                    x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
+                    y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
+                    tooltip=['year', '순이익_조원']
+                ).properties(height=320)
+                st.altair_chart(chart_5y, use_container_width=True)
+                
                 st.dataframe(format_yearly_dataframe(df_5, stock_name), use_container_width=True, hide_index=True)
 
             # --- [탭 2: 3년 중기 체력] ---
@@ -245,8 +253,14 @@ if data:
                 df_3['year'] = df_3['year'].astype(int)
                 df_3['순이익_조원'] = df_3['net_income'] / 1_000_000_000_000
                 
-                # 📈 직관적인 막대 차트 적용
-                st.bar_chart(df_3.set_index("year")[["순이익_조원"]], color="#ff4b4b")
+                # 📈 Altair 막대 차트 적용 (두께 조절: size=30)
+                chart_3y = alt.Chart(df_3).mark_bar(color="#ff4b4b", size=30).encode(
+                    x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
+                    y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
+                    tooltip=['year', '순이익_조원']
+                ).properties(height=320)
+                st.altair_chart(chart_3y, use_container_width=True)
+                
                 st.dataframe(format_yearly_dataframe(df_3, stock_name), use_container_width=True, hide_index=True)
 
     else:
@@ -298,13 +312,13 @@ if data:
                 
                 df_quarterly_raw = pd.DataFrame(parsed_rows)
                 
-                # 📈 최근 4분기 막대 차트 (가로축 날짜 정렬)
+                # 📈 최근 4분기 막대 차트 (가로축 날짜 정렬 + 두께 조절: size=30)
                 df_chart = df_quarterly_raw.sort_values("분기 기준일").copy()
                 df_chart['순이익_조원'] = df_chart['_raw_net'] / 1_000_000_000_000
                 
                 st.markdown("##### 📈 최근 4개 분기 당기순이익 추이")
                 
-                chart = alt.Chart(df_chart).mark_bar(color="#ffa500").encode(
+                chart = alt.Chart(df_chart).mark_bar(color="#ffa500", size=30).encode(
                     x=alt.X('분기 기준일:N', title='분기 기준일', sort=None, axis=alt.Axis(labelAngle=0)),
                     y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
                     tooltip=['분기 기준일', '순이익_조원']
