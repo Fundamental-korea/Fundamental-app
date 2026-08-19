@@ -39,8 +39,8 @@ def calculate_defense_score(data):
     scores = {}
     reasons = []
 
-    # ① 유동비율 (Absolute)
-    cr = data.get("current_ratio") or 120  # 기본값 방어
+    # ① 유동비율
+    cr = data.get("current_ratio") or 120 
     s1 = (10 if cr >= 250 else 9 if cr >= 200 else 8 if cr >= 170 
           else 7 if cr >= 150 else 6 if cr >= 130 else 5 if cr >= 110 
           else 4 if cr >= 100 else 3 if cr >= 85 else 2 if cr >= 70 
@@ -48,7 +48,7 @@ def calculate_defense_score(data):
     scores['score_current_ratio'] = s1
     reasons.append(f"• **유동비율 ({cr}%)**: 단기 채무 지급 능력 평가 (**{s1}/10점**)")
 
-    # ② 부채비율 (Absolute)
+    # ② 부채비율
     de = data.get("debt_ratio") or 100
     s2 = (10 if de <= 30 else 9 if de <= 50 else 8 if de <= 75 
           else 7 if de <= 100 else 6 if de <= 125 else 5 if de <= 150 
@@ -57,7 +57,7 @@ def calculate_defense_score(data):
     scores['score_debt_to_equity'] = s2
     reasons.append(f"• **부채비율 ({de}%)**: 재무 레버리지 및 안전성 (**{s2}/10점**)")
 
-    # ③ ROE (Absolute)
+    # ③ ROE
     roe = data.get("roe") or 0
     s3 = (10 if roe >= 25 else 9 if roe >= 20 else 8 if roe >= 16 
           else 7 if roe >= 13 else 6 if roe >= 10 else 5 if roe >= 7 
@@ -66,7 +66,7 @@ def calculate_defense_score(data):
     scores['score_roe'] = s3
     reasons.append(f"• **ROE ({roe}%)**: 자기자본 이익률 및 효율성 (**{s3}/10점**)")
 
-    # ④ PBR (Absolute)
+    # ④ PBR
     pbr = data.get("pbr") or 1.0
     s4 = (10 if pbr < 0.60 else 9 if pbr < 0.80 else 8 if pbr < 1.00 
           else 7 if pbr < 1.30 else 6 if pbr < 1.70 else 5 if pbr < 2.20 
@@ -75,30 +75,24 @@ def calculate_defense_score(data):
     scores['score_pbr'] = s4
     reasons.append(f"• **PBR ({pbr}배)**: 자산 가치 대비 저평가 수준 (**{s4}/10점**)")
 
-    # ⑤ 영업이익률 (Op Margin)
+    # ⑤ 영업이익률
     op_m = data.get("op_margin") or 0
     s5 = (10 if op_m >= 20 else 8 if op_m >= 15 else 6 if op_m >= 10 
           else 4 if op_m >= 5 else 2 if op_m > 0 else 0)
     scores['score_op_margin'] = s5
     reasons.append(f"• **영업이익률 ({op_m}%)**: 본업 마진 및 가격 결정력 (**{s5}/10점**)")
 
-    # ⑥~⑩ 나머지 항목들 (DB에 컬럼이 없을 경우 유연하게 기본 5점 부여 또는 매칭)
+    # ⑥~⑩ 나머지 항목들
     for key, name in [('eps_growth', 'EPS 성장률'), ('fcf_margin', 'FCF 마진'), 
-                      ('ocf_to_net_income', '현금흐름 질'), ('per_discount', 'PER 할인율'), 
-                      ('net_income_trend_code', '순이익 트렌드')]:
+                     ('ocf_to_net_income', '현금흐름 질'), ('per_discount', 'PER 할인율'), 
+                     ('net_income_trend_code', '순이익 트렌드')]:
         val = data.get(key)
-        if val is not None:
-            # 점수 컬럼이 이미 DB에 계산되어 있다면 우선 사용, 아니면 간이 환산
-            score_val = data.get(f"score_{key}", 5)
-        else:
-            score_val = 5  # 미수집 항목 기본 점수
+        score_val = data.get(f"score_{key}", 5) if val is not None else 5
         scores[key] = score_val
         reasons.append(f"• **{name}**: 세부 정밀 평가 (**{score_val}/10점**)")
 
-    # 100점 만점 총점 계산
     total_score = sum(scores.values())
     
-    # S ~ D 등급 판정
     if total_score >= 85: grade = 'S'
     elif total_score >= 70: grade = 'A'
     elif total_score >= 55: grade = 'B'
@@ -123,31 +117,22 @@ selected_code = krx_stocks[selected_option]
 data = get_stock_data(selected_code)
 
 if data:
-    # 🚀 [핵심 수정] FinanceDataReader를 통해 실시간 최신 주가 가져오기
     try:
-        # 최근 5일간의 데이터를 가져와 가장 마지막(오늘/가장 최근) 종가 추출
         df_price = fdr.DataReader(selected_code)
         live_price = int(df_price['Close'].iloc[-1]) if not df_price.empty else data.get('stock_price', 0)
     except Exception:
         live_price = data.get('stock_price', 0)
 
-    # 실시간 주가 변동에 따른 PER 동적 보정 (PER = 실시간 주가 / EPS)
+    # 실시간 주가 변동에 따른 PER/PBR 동적 보정
     db_eps = data.get('eps')
-    if db_eps and db_eps > 0:
-        live_per = round(live_price / db_eps, 2)
-    else:
-        live_per = data.get('per')
+    live_per = round(live_price / db_eps, 2) if db_eps and db_eps > 0 else data.get('per')
 
-    # PBR 동적 보정 (PBR = 실시간 주가 / BPS)
     db_bps = data.get('bps')
-    if db_bps and db_bps > 0:
-        live_pbr = round(live_price / db_bps, 2)
-    else:
-        live_pbr = data.get('pbr')
+    live_pbr = round(live_price / db_bps, 2) if db_bps and db_bps > 0 else data.get('pbr')
 
     st.subheader(f"📊 {data.get('stock_name')} ({data.get('stock_code')}) 실시간 재무 분석")
     
-    # 상단 지표 카드 (실시간 반영)
+    # 상단 지표 카드
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("현재 실시간 주가", f"{live_price:,} 원", f"{live_price - data.get('stock_price', live_price):,} 원" if data.get('stock_price') else None)
     col2.metric("PER", f"{live_per} 배" if live_per else "N/A")
@@ -156,7 +141,7 @@ if data:
 
     st.divider()
 
-    # 방어력 점수 계산 시 실시간 보정된 데이터를 딕셔너리에 임시 갱신
+    # 방어력 점수 계산 시 실시간 보정 데이터 반영
     eval_data = data.copy()
     eval_data['per'] = live_per
     eval_data['pbr'] = live_pbr
@@ -179,60 +164,35 @@ if data:
             st.write(r)
 
     st.divider()
+
+    # ==========================================
+    # 5. 최근 5년 재무 추이 시계열 분석 (NUMERIC 안전 변환 적용)
+    # ==========================================
+    st.subheader("📊 최근 5년 재무 추이 (시계열 분석)")
+    history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
+
+    if history_data.data and len(history_data.data) > 0:
+        df_hist = pd.DataFrame(history_data.data)
+        
+        # PostgreSQL NUMERIC 타입을 판다스 숫자형으로 안전하게 캐스팅
+        numeric_cols = ["net_income", "eps", "bps", "roe", "debt_ratio"]
+        for col in numeric_cols:
+            if col in df_hist.columns:
+                df_hist[col] = pd.to_numeric(df_hist[col], errors='coerce')
+
+        if 'year' in df_hist.columns:
+            df_hist = df_hist.sort_values("year")
+            if "net_income" in df_hist.columns:
+                st.line_chart(df_hist.set_index("year")[["net_income"]])
+            st.dataframe(df_hist, use_container_width=True)
+        else:
+            st.warning("데이터에 연도(year) 정보가 포함되어 있지 않습니다.")
+    else:
+        st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
+
+    st.divider()
     with st.expander("📄 상세 재무 데이터 (DB 원본)"):
         st.json(data)
 else:
     st.warning(f"⚠️ **[{selected_option.split('(')[0].strip()}]** 데이터가 DB에 없습니다.")
     st.info("이 종목의 재무 데이터가 아직 Supabase에 수집되지 않았습니다. 수집 스크립트를 통해 데이터를 적재해 주세요!")
-st.title("🛡️ 펀더멘탈 방어 분석 대시보드")
-st.markdown("하락장 속에서도 살아남는 튼튼한 기업의 맷집을 숫자로 증명합니다.")
-
-# 종목 검색창
-stock_code = st.text_input("종목 코드를 입력하세요 (예: 005930)", "005930")
-
-# 방어력 등급 자동 계산 함수
-def get_defense_grade(roe, debt_ratio, per):
-    score = 0
-    if roe >= 10: score += 40
-    if debt_ratio <= 50: score += 30
-    if per <= 15: score += 30
-    
-    if score >= 80: return "S등급 (최강 방어주)", "green"
-    elif score >= 60: return "A등급 (안정적)", "blue"
-    else: return "주의 (하락장 취약)", "red"
-
-if st.button("분석 실행"):
-    # DB에서 현재 스냅샷 데이터 가져오기
-    current_data = supabase.table("Fundamental").select("*").eq("stock_code", stock_code).execute()
-    
-    if current_data.data:
-        data = current_data.data[0]
-        
-        st.subheader(f"📌 [{data.get('stock_name', stock_code)}] 핵심 펀더멘탈 진단")
-        
-        # 상단 핵심 지표 4개 출력
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("PER", data.get('per', 0))
-        col2.metric("PBR", data.get('pbr', 0))
-        col3.metric("ROE (%)", data.get('roe', 0))
-        col4.metric("부채비율 (%)", data.get('debt_ratio', 0))
-        
-        # 방어력 등급 출력
-        grade, color = get_defense_grade(data.get('roe', 0), data.get('debt_ratio', 0), data.get('per', 0))
-        st.markdown(f"### 🛡️ 하락장 방어 등급: :{color}[{grade}]")
-        
-        st.divider()
-        
-        # 과거 5년 이력 시각화
-        st.subheader("📊 최근 5년 재무 추이 (시계열 분석)")
-        history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", stock_code).order("year").execute()
-        
-        if history_data.data:
-            df_hist = pd.DataFrame(history_data.data)
-            st.line_chart(df_hist.set_index("year")[["net_income"]])
-            st.dataframe(df_hist, use_container_width=True)
-        else:
-            st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
-            
-    else:
-        st.error("데이터베이스에 해당 종목 데이터가 없습니다. 수집 코드를 먼저 실행해 주세요.")
