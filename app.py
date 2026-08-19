@@ -165,203 +165,144 @@ if data:
 
     st.divider()
 # ==========================================
- # ==========================================
-    # 5. 기간별 재무 분석 탭 영역 (여기서부터 붙여넣으세요)
-    # ==========================================
-# 🔍 종목 이름이 정의되지 않았을 경우를 대비한 안전 장치
-    if 'data' in locals() and isinstance(data, dict):
-        stock_name = data.get('stock_name', selected_code)
-    else:
-        stock_name = selected_code if 'selected_code' in locals() else "선택된 종목"
+# 🔍 종목 이름 안전 정의
+if 'data' in locals() and isinstance(data, dict):
+    stock_name = data.get('stock_name', selected_code)
+else:
+    stock_name = selected_code if 'selected_code' in locals() else "선택된 종목"
 
-    # ==========================================
-    # 5. 기간별 재무 분석 탭 영역
-    # ==========================================
-    st.subheader(f"📊 [{stock_name}] 재무제표 기간별 심층 분석")
-    
-    tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 4분기 단기 실적"])
+# ==========================================
+# 5. 기간별 재무 분석 탭 영역
+# ==========================================
+st.subheader(f"📊 [{stock_name}] 재무제표 기간별 심층 분석")
 
-    # 🎨 [디자인 통일] 막대 색상 및 두께 설정
-    bar_color = "#636EFA"  # 세련된 퍼플 블루 계열
-    bar_width = 30         # 고정된 막대 두께
+tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 4분기 단기 실적"])
 
-    # Supabase 역사적 연도별 데이터 호출
-    history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
+# 🎨 [디자인 통일] 막대 색상 및 두께 설정
+bar_color = "#636EFA"  # 세련된 퍼플 블루 계열
+bar_width = 30         # 고정된 막대 두께
 
-    if history_data.data and len(history_data.data) > 0:
-        df_hist = pd.DataFrame(history_data.data)
-        numeric_cols = ["net_income", "total_equity", "eps", "bps", "roe", "debt_ratio"]
-        for col in numeric_cols:
-            if col in df_hist.columns:
-                df_hist[col] = pd.to_numeric(df_hist[col], errors='coerce')
+# Supabase 역사적 연도별 데이터 호출
+history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
 
-        if 'year' in df_hist.columns:
-            df_hist = df_hist.sort_values("year")
+if history_data.data and len(history_data.data) > 0:
+    df_hist = pd.DataFrame(history_data.data)
+    numeric_cols = ["net_income", "total_equity", "eps", "bps", "roe", "debt_ratio"]
+    for col in numeric_cols:
+        if col in df_hist.columns:
+            df_hist[col] = pd.to_numeric(df_hist[col], errors='coerce')
 
-            # --- [탭 1: 5년 장기 흐름] ---
-            with tab_5y:
-                st.markdown(f"#### 📅 [{stock_name}] 최근 5개년 재무 흐름")
-                df_5 = df_hist.tail(5).copy()
-                df_5['year'] = df_5['year'].astype(int)
-                df_5['순이익_조원'] = df_5['net_income'] / 1_000_000_000_000
-                
-                chart_5y = alt.Chart(df_5).mark_bar(color=bar_color, size=bar_width).encode(
-                    x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
-                    y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
-                    tooltip=['year', '순이익_조원']
-                ).properties(height=300)
-                st.altair_chart(chart_5y, use_container_width=True)
-                
-                st.dataframe(format_yearly_dataframe(df_5, stock_name), use_container_width=True, hide_index=True)
+    if 'year' in df_hist.columns:
+        df_hist = df_hist.sort_values("year")
 
-            # --- [탭 2: 3년 중기 체력] ---
-            with tab_3y:
-                st.markdown(f"#### 🕒 [{stock_name}] 최근 3개년 집중 분석")
-                df_3 = df_hist.tail(3).copy()
-                df_3['year'] = df_3['year'].astype(int)
-                df_3['순이익_조원'] = df_3['net_income'] / 1_000_000_000_000
-                
-                chart_3y = alt.Chart(df_3).mark_bar(color=bar_color, size=bar_width).encode(
-                    x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
-                    y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
-                    tooltip=['year', '순이익_조원']
-                ).properties(height=300)
-                st.altair_chart(chart_3y, use_container_width=True)
-                
-                st.dataframe(format_yearly_dataframe(df_3, stock_name), use_container_width=True, hide_index=True)
-
-    else:
-        with tab_5y: st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
-        with tab_3y: st.info("저장된 3개년 역사적 재무 데이터가 없습니다.")    st.subheader(f"📊 [{stock_name}] 재무제표 기간별 심층 분석")
-    
-    tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 4분기 단기 실적"])
-
-    # 🎨 [디자인 통일] 막대 색상 및 두께 설정
-    bar_color = "#636EFA"  # 세련된 퍼플 블루 계열
-    bar_width = 30         # 너무 두껍지 않게 고정된 막대 두께
-
-    # Supabase 역사적 연도별 데이터 호출
-    history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
-
-    if history_data.data and len(history_data.data) > 0:
-        df_hist = pd.DataFrame(history_data.data)
-        numeric_cols = ["net_income", "total_equity", "eps", "bps", "roe", "debt_ratio"]
-        for col in numeric_cols:
-            if col in df_hist.columns:
-                df_hist[col] = pd.to_numeric(df_hist[col], errors='coerce')
-
-        if 'year' in df_hist.columns:
-            df_hist = df_hist.sort_values("year")
-
-            # --- [탭 1: 5년 장기 흐름] ---
-            with tab_5y:
-                st.markdown(f"#### 📅 [{stock_name}] 최근 5개년 재무 흐름")
-                df_5 = df_hist.tail(5).copy()
-                df_5['year'] = df_5['year'].astype(int)
-                df_5['순이익_조원'] = df_5['net_income'] / 1_000_000_000_000
-                
-                # Altair 막대 차트 적용 (두께 및 색상 통일)
-                chart_5y = alt.Chart(df_5).mark_bar(color=bar_color, size=bar_width).encode(
-                    x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
-                    y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
-                    tooltip=['year', '순이익_조원']
-                ).properties(height=300)
-                st.altair_chart(chart_5y, use_container_width=True)
-                
-                st.dataframe(format_yearly_dataframe(df_5, stock_name), use_container_width=True, hide_index=True)
-
-            # --- [탭 2: 3년 중기 체력] ---
-            with tab_3y:
-                st.markdown(f"#### 🕒 [{stock_name}] 최근 3개년 집중 분석")
-                df_3 = df_hist.tail(3).copy()
-                df_3['year'] = df_3['year'].astype(int)
-                df_3['순이익_조원'] = df_3['net_income'] / 1_000_000_000_000
-                
-                # Altair 막대 차트 적용 (두께 및 색상 통일)
-                chart_3y = alt.Chart(df_3).mark_bar(color=bar_color, size=bar_width).encode(
-                    x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
-                    y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
-                    tooltip=['year', '순이익_조원']
-                ).properties(height=300)
-                st.altair_chart(chart_3y, use_container_width=True)
-                
-                st.dataframe(format_yearly_dataframe(df_3, stock_name), use_container_width=True, hide_index=True)
-
-    else:
-        with tab_5y: st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
-        with tab_3y: st.info("저장된 3개년 역사적 재무 데이터가 없습니다.")
-
-    # --- [탭 3: 최근 4분기 단기 실적] ---
-    with tab_q:
-        st.markdown(f"#### ⚡ [{stock_name}] 가장 최근 4개 분기 실적 및 수익성 심층 분석")
-        try:
-            import yfinance as yf
-            import altair as alt
+        # --- [탭 1: 5년 장기 흐름] ---
+        with tab_5y:
+            st.markdown(f"#### 📅 [{stock_name}] 최근 5개년 재무 흐름")
+            df_5 = df_hist.tail(5).copy()
+            df_5['year'] = df_5['year'].astype(int)
+            df_5['순이익_조원'] = df_5['net_income'] / 1_000_000_000_000
             
-            ticker_symbol = f"{selected_code}.KS" if selected_code.isdigit() and len(selected_code)==6 else selected_code
-            yticker = yf.Ticker(ticker_symbol)
-            q_fin = yticker.quarterly_financials
+            chart_5y = alt.Chart(df_5).mark_bar(color=bar_color, size=bar_width).encode(
+                x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
+                y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
+                tooltip=['year', '순이익_조원']
+            ).properties(height=300)
+            st.altair_chart(chart_5y, use_container_width=True)
             
-            if q_fin is not None and not q_fin.empty:
-                q_df = q_fin.T.head(4).copy()
-                parsed_rows = []
-                
-                def get_q_value(q_col, keys):
-                    for k in keys:
-                        if k in q_fin.index:
-                            val = q_fin.loc[k, q_col]
-                            if pd.notna(val): return val
-                    return None
+            st.dataframe(format_yearly_dataframe(df_5, stock_name), use_container_width=True, hide_index=True)
 
-                for date_idx, row in q_df.iterrows():
-                    q_date = str(date_idx).split(" ")[0]
-                    
-                    revenue = get_q_value(date_idx, ['Total Revenue', 'Revenue'])
-                    op_income = get_q_value(date_idx, ['Operating Income', 'Operating Revenue'])
-                    net_inc = get_q_value(date_idx, ['Net Income', 'Net Income Common Stockholders', 'Net Income From Continuing Operation'])
-                    
-                    op_margin = (op_income / revenue * 100) if (revenue and op_income and revenue != 0) else None
-                    net_margin = (net_inc / revenue * 100) if (revenue and net_inc and revenue != 0) else None
-                    
-                    parsed_rows.append({
-                        "종목명": stock_name,
-                        "분기 기준일": q_date,
-                        "매출액": revenue,
-                        "영업이익": op_income,
-                        "당기순이익": net_inc,
-                        "영업이익률": op_margin,
-                        "순이익률": net_margin,
-                        "_raw_net": net_inc if net_inc is not None else 0
-                    })
-                
-                df_quarterly_raw = pd.DataFrame(parsed_rows)
-                
-                df_chart = df_quarterly_raw.sort_values("분기 기준일").copy()
-                df_chart['순이익_조원'] = df_chart['_raw_net'] / 1_000_000_000_000
-                
-                st.markdown("##### 📈 최근 4개 분기 당기순이익 추이")
-                
-                # 최근 4분기 막대 차트 (가로축 정렬 + 색상 및 두께 통일)
-                chart_q = alt.Chart(df_chart).mark_bar(color=bar_color, size=bar_width).encode(
-                    x=alt.X('분기 기준일:N', title='분기 기준일', sort=None, axis=alt.Axis(labelAngle=0)),
-                    y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
-                    tooltip=['분기 기준일', '순이익_조원']
-                ).properties(height=300)
-                
-                st.altair_chart(chart_q, use_container_width=True)
+        # --- [탭 2: 3년 중기 체력] ---
+        with tab_3y:
+            st.markdown(f"#### 🕒 [{stock_name}] 최근 3개년 집중 분석")
+            df_3 = df_hist.tail(3).copy()
+            df_3['year'] = df_3['year'].astype(int)
+            df_3['순이익_조원'] = df_3['net_income'] / 1_000_000_000_000
+            
+            chart_3y = alt.Chart(df_3).mark_bar(color=bar_color, size=bar_width).encode(
+                x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
+                y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
+                tooltip=['year', '순이익_조원']
+            ).properties(height=300)
+            st.altair_chart(chart_3y, use_container_width=True)
+            
+            st.dataframe(format_yearly_dataframe(df_3, stock_name), use_container_width=True, hide_index=True)
 
-                df_table = df_quarterly_raw.sort_values("분기 기준일", ascending=False).copy()
-                df_table["매출액"] = df_table["매출액"].apply(format_korean_currency)
-                df_table["영업이익"] = df_table["영업이익"].apply(format_korean_currency)
-                df_table["당기순이익"] = df_table["당기순이익"].apply(format_korean_currency)
-                df_table["영업이익률"] = df_table["영업이익률"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
-                df_table["순이익률"] = df_table["순이익률"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
+else:
+    with tab_5y:
+        st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
+    with tab_3y:
+        st.info("저장된 3개년 역사적 재무 데이터가 없습니다.")
+
+# --- [탭 3: 최근 4분기 단기 실적] ---
+with tab_q:
+    st.markdown(f"#### ⚡ [{stock_name}] 가장 최근 4개 분기 실적 및 수익성 심층 분석")
+    try:
+        import yfinance as yf
+        import altair as alt
+        
+        ticker_symbol = f"{selected_code}.KS" if selected_code.isdigit() and len(selected_code)==6 else selected_code
+        yticker = yf.Ticker(ticker_symbol)
+        q_fin = yticker.quarterly_financials
+        
+        if q_fin is not None and not q_fin.empty:
+            q_df = q_fin.T.head(4).copy()
+            parsed_rows = []
+            
+            def get_q_value(q_col, keys):
+                for k in keys:
+                    if k in q_fin.index:
+                        val = q_fin.loc[k, q_col]
+                        if pd.notna(val): return val
+                return None
+
+            for date_idx, row in q_df.iterrows():
+                q_date = str(date_idx).split(" ")[0]
                 
-                df_table = df_table.drop(columns=["_raw_net"])
+                revenue = get_q_value(date_idx, ['Total Revenue', 'Revenue'])
+                op_income = get_q_value(date_idx, ['Operating Income', 'Operating Revenue'])
+                net_inc = get_q_value(date_idx, ['Net Income', 'Net Income Common Stockholders', 'Net Income From Continuing Operation'])
                 
-                st.markdown("##### 📄 분기별 재무제표 심층 요약")
-                st.dataframe(df_table, use_container_width=True, hide_index=True)
-            else:
-                st.warning("해당 종목의 분기 실적 데이터를 불러올 수 없습니다.")
-        except Exception as e:
-            st.error(f"분기 데이터를 불러오는 중 오류가 발생했습니다: {e}")
+                op_margin = (op_income / revenue * 100) if (revenue and op_income and revenue != 0) else None
+                net_margin = (net_inc / revenue * 100) if (revenue and net_inc and revenue != 0) else None
+                
+                parsed_rows.append({
+                    "종목명": stock_name,
+                    "분기 기준일": q_date,
+                    "매출액": revenue,
+                    "영업이익": op_income,
+                    "당기순이익": net_inc,
+                    "영업이익률": op_margin,
+                    "순이익률": net_margin,
+                    "_raw_net": net_inc if net_inc is not None else 0
+                })
+            
+            df_quarterly_raw = pd.DataFrame(parsed_rows)
+            
+            df_chart = df_quarterly_raw.sort_values("분기 기준일").copy()
+            df_chart['순이익_조원'] = df_chart['_raw_net'] / 1_000_000_000_000
+            
+            st.markdown("##### 📈 최근 4개 분기 당기순이익 추이")
+            
+            chart_q = alt.Chart(df_chart).mark_bar(color=bar_color, size=bar_width).encode(
+                x=alt.X('분기 기준일:N', title='분기 기준일', sort=None, axis=alt.Axis(labelAngle=0)),
+                y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
+                tooltip=['분기 기준일', '순이익_조원']
+            ).properties(height=300)
+            
+            st.altair_chart(chart_q, use_container_width=True)
+
+            df_table = df_quarterly_raw.sort_values("분기 기준일", ascending=False).copy()
+            df_table["매출액"] = df_table["매출액"].apply(format_korean_currency)
+            df_table["영업이익"] = df_table["영업이익"].apply(format_korean_currency)
+            df_table["당기순이익"] = df_table["당기순이익"].apply(format_korean_currency)
+            df_table["영업이익률"] = df_table["영업이익률"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
+            df_table["순이익률"] = df_table["순이익률"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
+            
+            df_table = df_table.drop(columns=["_raw_net"])
+            
+            st.markdown("##### 📄 분기별 재무제표 심층 요약")
+            st.dataframe(df_table, use_container_width=True, hide_index=True)
+        else:
+            st.warning("해당 종목의 분기 실적 데이터를 불러올 수 없습니다.")
+    except Exception as e:
+        st.error(f"분기 데이터를 불러오는 중 오류가 발생했습니다: {e}")
