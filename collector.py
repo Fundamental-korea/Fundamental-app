@@ -31,10 +31,12 @@ def sync_kor_stock_fundamental(stock_code, stock_name, bsns_year="2024"):
         current_price = int(target_stock.iloc[0]["Close"])
         issued_shares = int(target_stock.iloc[0]["Stocks"])
 
-        # DART 재무 데이터 호출
+       # DART 재무 데이터 호출
         df_fin = dart.finstate(stock_code, int(bsns_year))
-        if df_fin is None or df_fin.empty:
-            print(f"❌ [{stock_name}] {bsns_year}년 DART 재무제표가 없습니다.")
+        
+        # 🛡️ [수정/보완] 데이터가 없거나, 데이터프레임 형식이 아니거나, 비어있는 경우 완벽 방어
+        if df_fin is None or not isinstance(df_fin, pd.DataFrame) or df_fin.empty:
+            print(f"❌ [{stock_name}] {bsns_year}년 DART 재무제표가 없거나 형식이 올바르지 않습니다.")
             return
 
         # 연결재무제표(CFS) 우선 사용
