@@ -14,7 +14,7 @@ st.set_page_config(
 )
 
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://cnweggechipghcivruie.supabase.co")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNud2VnZ2VjaGlwZ2hjaXZydWllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODU5ODksImV4cCI6MjEwMjY2MTk4OX0.mYi7QB0ekkC0Jg49M18tqrMdCZBQgRHEK2J1EdIBZhc")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNud2VnZ2VjaGlwZ2hjaXZydWllIiwicm9sZSI6ImFub24iICI0MjE2NTk4OSIsImV4cCI6MjEwMjY2MTk4OX0.mYi7QB0ekkC0Jg49M18tqrMdCZBQgRHEK2J1EdIBZhc")
 
 @st.cache_resource
 def init_supabase():
@@ -22,12 +22,15 @@ def init_supabase():
 
 supabase = init_supabase()
 
+# URL 쿼리 파라미터에서 현재 선택된 종목 코드 확인 (새 탭 대응)
+query_params = st.query_params
+selected_code = query_params.get("code", None)
+
 # ==========================================
-# 2. 데이터 불러오기 및 검색 함수
+# 2. 공통 데이터 함수들
 # ==========================================
 @st.cache_data
 def get_all_krx_stocks():
-    """KRX 전체 종목 리스트를 가져와서 검색용 딕셔너리로 반환"""
     try:
         df = fdr.StockListing("KRX")
         return {f"{name} ({code})": code for name, code in zip(df["Name"], df["Code"])}
@@ -38,14 +41,10 @@ def get_stock_data(stock_code):
     res = supabase.table("Fundamental").select("*").eq("stock_code", stock_code).execute()
     return res.data[0] if res.data else None
 
-# ==========================================
-# 3. 10대 지표 하락장 방어력 스코어링 엔진 (0~100점 및 S~D 등급)
-# ==========================================
 def calculate_defense_score(data):
     scores = {}
     reasons = []
 
-    # ① 유동비율
     cr = data.get("current_ratio") or 120 
     s1 = (10 if cr >= 250 else 9 if cr >= 200 else 8 if cr >= 170 
           else 7 if cr >= 150 else 6 if cr >= 130 else 5 if cr >= 110 
@@ -54,7 +53,6 @@ def calculate_defense_score(data):
     scores['score_current_ratio'] = s1
     reasons.append(f"• **유동비율 ({cr}%)**: 단기 채무 지급 능력 평가 (**{s1}/10점**)")
 
-    # ② 부채비율
     de = data.get("debt_ratio") or 100
     s2 = (10 if de <= 30 else 9 if de <= 50 else 8 if de <= 75 
           else 7 if de <= 100 else 6 if de <= 125 else 5 if de <= 150 
@@ -63,7 +61,6 @@ def calculate_defense_score(data):
     scores['score_debt_to_equity'] = s2
     reasons.append(f"• **부채비율 ({de}%)**: 재무 레버리지 및 안전성 (**{s2}/10점**)")
 
-    # ③ ROE
     roe = data.get("roe") or 0
     s3 = (10 if roe >= 25 else 9 if roe >= 20 else 8 if roe >= 16 
           else 7 if roe >= 13 else 6 if roe >= 10 else 5 if roe >= 7 
@@ -72,7 +69,6 @@ def calculate_defense_score(data):
     scores['score_roe'] = s3
     reasons.append(f"• **ROE ({roe}%)**: 자기자본 이익률 및 효율성 (**{s3}/10점**)")
 
-    # ④ PBR
     pbr = data.get("pbr") or 1.0
     s4 = (10 if pbr < 0.60 else 9 if pbr < 0.80 else 8 if pbr < 1.00 
           else 7 if pbr < 1.30 else 6 if pbr < 1.70 else 5 if pbr < 2.20 
@@ -81,14 +77,12 @@ def calculate_defense_score(data):
     scores['score_pbr'] = s4
     reasons.append(f"• **PBR ({pbr}배)**: 자산 가치 대비 저평가 수준 (**{s4}/10점**)")
 
-    # ⑤ 영업이익률
     op_m = data.get("op_margin") or 0
     s5 = (10 if op_m >= 20 else 8 if op_m >= 15 else 6 if op_m >= 10 
           else 4 if op_m >= 5 else 2 if op_m > 0 else 0)
     scores['score_op_margin'] = s5
     reasons.append(f"• **영업이익률 ({op_m}%)**: 본업 마진 및 가격 결정력 (**{s5}/10점**)")
 
-    # ⑥~⑩ 나머지 항목들
     for key, name in [('eps_growth', 'EPS 성장률'), ('fcf_margin', 'FCF 마진'), 
                        ('ocf_to_net_income', '현금흐름 질'), ('per_discount', 'PER 할인율'), 
                        ('net_income_trend_code', '순이익 트렌드')]:
@@ -144,18 +138,13 @@ def format_yearly_dataframe(df_target, stock_name):
     existing_cols = [c for c in desired_order if c in df_f.columns]
     return df_f[existing_cols]
 
-# ==========================================
-# 4. 세션 상태 관리 (메인 화면 vs 상세 분석 창)
-# ==========================================
-if "selected_code" not in st.session_state:
-    st.session_state.selected_code = None
 
 # ==========================================
-# 5. 화면 분기 렌더링
+# 3. 화면 분기 (메인 포털 vs 새 탭 상세 분석 창)
 # ==========================================
-if st.session_state.selected_code is None:
+if not selected_code:
     # ----------------------------------------------------
-    # [뷰 A] 메인 화면 (검색 포털 및 UI 스케치 반영)
+    # [뷰 A] 메인 검색 포털 화면
     # ----------------------------------------------------
     col_logo, col_quote, col_login = st.columns([1, 4, 1])
     with col_logo:
@@ -193,41 +182,38 @@ if st.session_state.selected_code is None:
         
         krx_stocks = get_all_krx_stocks()
         stock_options = list(krx_stocks.keys())
-        
         selected_option = st.selectbox("분석하고 싶은 한국 주식 선택 (종목명/코드)", stock_options)
         
-        col_btn1, col_btn2 = st.columns([1, 5])
-        with col_btn1:
-            if st.button("종목 분석", type="primary"):
-                st.session_state.selected_code = krx_stocks[selected_option]
-                st.rerun()
+        target_code = krx_stocks[selected_option]
+
+        # HTML 새 탭(target="_blank") 버튼 구현으로 광고 수익 극대화 구조 설계
+        st.markdown(
+            f"""
+            <a href="/?code={target_code}" target="_blank" style="text-decoration: none;">
+                <div style="display: inline-block; background-color: #ff4b4b; color: white; padding: 10px 20px; border-radius: 5px; font-weight: bold; text-align: center;">
+                    🚀 새 창(탭)으로 종목 분석 리포트 열기
+                </div>
+            </a>
+            """,
+            unsafe_allow_html=True
+        )
 
         st.markdown("<br><br>", unsafe_allow_html=True)
 
-        st.markdown("### 🔥 Market Trends")
+        st.markdown("### 🔥 Market Trends (클릭 시 새 탭으로 분석 열림)")
         col_t1, col_t2, col_t3 = st.columns(3)
         
         with col_t1:
             st.markdown("##### 6. Most searched Stocks")
-            if st.button("삼성전자 (005930) 바로가기"):
-                st.session_state.selected_code = "005930"
-                st.rerun()
-            if st.button("SK하이닉스 (000660) 바로가기"):
-                st.session_state.selected_code = "000660"
-                st.rerun()
+            st.markdown("- [삼성전자 (005930)](/?code=005930) <br>- [SK하이닉스 (000660)](/?code=000660)", unsafe_allow_html=True)
             
         with col_t2:
             st.markdown("##### 7. Trending Searches (US)")
-            st.caption("- 애플 (AAPL)\n- 테슬라 (TSLA)\n- 마이크로소프트 (MSFT)")
+            st.caption("- 애플 (AAPL)\n- 테슬라 (TSLA)")
             
         with col_t3:
             st.markdown("##### 8. Trending Searches (KOR)")
-            if st.button("현대차 (005380) 바로가기"):
-                st.session_state.selected_code = "005380"
-                st.rerun()
-            if st.button("기아 (000270) 바로가기"):
-                st.session_state.selected_code = "000270"
-                st.rerun()
+            st.markdown("- [현대차 (005380)](/?code=005380) <br>- [기아 (000270)](/?code=000270)", unsafe_allow_html=True)
 
     with right_ad:
         st.markdown("---")
@@ -236,15 +222,9 @@ if st.session_state.selected_code is None:
 
 else:
     # ----------------------------------------------------
-    # [뷰 B] 선택한 종목 상세 분석 창 (새로운 화면으로 열림)
+    # [뷰 B] 새 탭으로 열린 종목 상세 분석 리포트 화면
     # ----------------------------------------------------
-    selected_code = st.session_state.selected_code
-    
-    if st.button("⬅️ 메인 검색 화면으로 돌아가기", type="secondary"):
-        st.session_state.selected_code = None
-        st.rerun()
-
-    st.markdown("---")
+    st.markdown("### 🛡️ 펀더멘탈 분석 상세 리포트 (새 탭 전용)")
     
     data = get_stock_data(selected_code)
 
@@ -262,10 +242,10 @@ else:
         db_bps = data.get('bps')
         live_pbr = round(live_price / db_bps, 2) if db_bps and db_bps > 0 else data.get('pbr')
 
-        st.subheader(f"📊 [{stock_name}] ({selected_code}) 실시간 재무 분석 리포트")
+        st.subheader(f"📊 [{stock_name}] ({selected_code}) 실시간 재무 분석")
         
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("현재 실시간 주가", f"{live_price:,} 원", f"{live_price - data.get('stock_price', live_price):,} 원" if data.get('stock_price') else None)
+        col1.metric("현재 실시간 주가", f"{live_price:,} 원")
         col2.metric("PER", f"{live_per} 배" if live_per else "N/A")
         col3.metric("PBR", f"{live_pbr} 배" if live_pbr else "N/A")
         col4.metric("ROE", f"{data.get('roe')}%" if data.get("roe") else "N/A")
@@ -408,4 +388,4 @@ else:
             except Exception as e:
                 st.error(f"분기 데이터를 불러오는 중 오류가 발생했습니다: {e}")
     else:
-        st.error("선택한 종목의 데이터가 Supabase DB에 존재하지 않습니다. 먼저 데이터를 수집해 주세요!")
+        st.error("선택한 종목의 데이터가 Supabase DB에 존재하지 않습니다.")
