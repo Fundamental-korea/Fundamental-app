@@ -117,39 +117,48 @@ st.markdown("""
         font-weight: bold !important;
     }
 
-    /* 5. 검색 폼 UI 스타일링 */
+    /* 🔥 핵심: Form 프레임을 통합 검색창 컨테이너로 변환 */
     div[data-testid="stForm"] {
-        border: none !important;
-        padding: 0 !important;
-        background-color: transparent !important;
-    }
-
-    div[data-baseweb="input"], div[data-baseweb="base-input"], div[data-baseweb="select"] > div {
         background-color: #FFFDF9 !important;
         border: 2px solid #F4A261 !important;
-        border-radius: 12px !important;
-        height: 60px !important;
-        padding: 0 8px !important;
-        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.1) !important;
+        border-radius: 14px !important;
+        padding: 5px 10px !important;
+        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12) !important;
+        margin-bottom: 25px !important;
+    }
+
+    /* 내부 입력창 테두리 제거 및 배경 투명화 */
+    div[data-baseweb="input"], div[data-baseweb="base-input"], div[data-baseweb="select"] > div {
+        background-color: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+        height: 50px !important;
     }
     div[data-baseweb="input"] input {
         color: #1A1A1A !important;
-        background-color: #FFFDF9 !important;
+        background-color: transparent !important;
         -webkit-text-fill-color: #1A1A1A !important;
-        font-size: 17px !important;
+        font-size: 16px !important;
         font-weight: 600 !important;
     }
 
-    /* 검색 폼 전용 제출 버튼 디자인 */
+    /* 내부 우측 검색 버튼 디자인 (검색창 내부 안착) */
+    div[data-testid="stFormSubmitButton"] {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+    }
     div[data-testid="stFormSubmitButton"] > button {
         background-color: #F4A261 !important;
         color: #FFFFFF !important;
         border: none !important;
         font-weight: bold !important;
-        border-radius: 12px !important;
-        height: 60px !important;
-        font-size: 18px !important;
-        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.2) !important;
+        border-radius: 10px !important;
+        height: 46px !important;
+        font-size: 16px !important;
+        width: 100% !important;
+        box-shadow: 0 2px 6px rgba(244, 162, 97, 0.3) !important;
+        transition: all 0.2s ease !important;
     }
     div[data-testid="stFormSubmitButton"] > button:hover {
         background-color: #D97706 !important;
@@ -173,7 +182,7 @@ st.markdown("""
         color: #D97706 !important;
     }
 
-    /* 6. 하단 트렌드 카드 */
+    /* 하단 트렌드 카드 */
     .bottom-cards-wrapper {
         margin-top: 30px;
     }
@@ -294,7 +303,7 @@ def calculate_defense_score(data):
     return score, grade, reasons
 
 def open_new_tab(code):
-    """자바스크립트를 이용해 안전하게 새 탭을 여는 함수"""
+    """새 탭으로 상세 분석 페이지 오픈"""
     js_code = f"""
     <script>
         window.open('/?code={code}', '_blank');
@@ -345,13 +354,13 @@ if not selected_code:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
     with main_content:
-        # [스케치 1, 2, 3, 4] 탭
+        # 1, 2, 3, 4번 탭
         tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
         with tab1:
-            # st.form으로 감싸서 엔터 키 입력 시 이벤트 즉시 발동
+            # 통합 검색창 스타일 Form (버튼이 검색창 내부 우측에 탑재)
             with st.form(key="us_search_form", clear_on_submit=False):
-                col_in, col_btn = st.columns([5, 1])
+                col_in, col_btn = st.columns([8.5, 1.5])
                 with col_in:
                     us_ticker = st.text_input(
                         label="미국주식검색",
@@ -371,7 +380,7 @@ if not selected_code:
                 
         with tab2:
             with st.form(key="kr_search_form", clear_on_submit=False):
-                col_sel, col_btn2 = st.columns([5, 1])
+                col_sel, col_btn2 = st.columns([8.5, 1.5])
                 krx_stocks = get_krx_stocks()
                 stock_options = ["🔍 종목을 선택하세요..."] + list(krx_stocks.keys())
                 
@@ -398,7 +407,7 @@ if not selected_code:
         with tab4:
             st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
 
-        # [스케치 6, 7, 8] 하단 트렌드 카드 (target='_blank' 적용)
+        # 하단 트렌드 카드 (새 창 열기 적용)
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
         
