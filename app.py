@@ -116,7 +116,7 @@ st.markdown("""
         font-weight: bold !important;
     }
 
-    /* 5. 🔥 검은색 제거 & 단일 주황색 테두리 검색창 스타일링 */
+    /* 5. 단일 주황색 테두리 검색창 및 선택창 스타일 */
     div[data-testid="stTextInput"], div[data-testid="stSelectbox"] {
         margin-top: 10px;
         margin-bottom: 25px;
@@ -135,6 +135,24 @@ st.markdown("""
         -webkit-text-fill-color: #1A1A1A !important;
         font-size: 17px !important;
         font-weight: 600 !important;
+    }
+
+    /* 🔥 [핵심 수정] 드롭다운 목록(Popover/Menu) 가독성 문제 완전 해결 */
+    div[data-baseweb="popover"], div[data-baseweb="menu"], ul[role="listbox"] {
+        background-color: #FFFFFF !important;
+        border: 1.5px solid #F4A261 !important;
+        border-radius: 10px !important;
+    }
+    li[role="option"], div[role="option"] {
+        background-color: #FFFFFF !important;
+        color: #1A1A1A !important;
+        font-size: 16px !important;
+        font-weight: 500 !important;
+        padding: 10px 15px !important;
+    }
+    li[role="option"]:hover, div[role="option"]:hover {
+        background-color: #FFF3E0 !important;
+        color: #D97706 !important;
     }
 
     /* 6. 하단 트렌드 카드 */
@@ -305,7 +323,6 @@ if not selected_code:
         tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
         with tab1:
-            # 주황색 테두리의 단일 검색창 (Enter 클릭 시 자동 이동)
             us_ticker = st.text_input(
                 label="미국주식검색",
                 value="",
