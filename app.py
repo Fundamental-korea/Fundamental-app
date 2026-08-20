@@ -2,10 +2,9 @@ import streamlit as st
 import FinanceDataReader as fdr
 from supabase import create_client
 import pandas as pd
-import altair as alt
 
 # ==========================================
-# 1. 페이지 및 커스텀 디자인 설정 (피드백 반영 버전)
+# 1. 페이지 및 커스텀 디자인 설정 (스케치 반영 버전)
 # ==========================================
 st.set_page_config(
     page_title="Fundamental Analyzer - 하락장 방어 플랫폼", 
@@ -13,10 +12,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# 커스텀 CSS (광고창 슬림화, 탭 간격 확보, Quote 높이 확대, 검색창 화이트+주황테두리)
 st.markdown("""
     <style>
-    /* 전체 배경: 화이트 + 4모서리 파스텔 주황 원형 글로우 */
+    /* 전체 배경: 화이트 + 부드러운 모서리 파스텔 주황 글로우 */
     .stApp {
         background-color: #FFFFFF;
         color: #1A1A1A;
@@ -29,15 +27,19 @@ st.markdown("""
         background-attachment: fixed;
     }
     
-    /* 일반 카드 박스 */
-    .custom-card {
-        background-color: #FAFAFA;
-        border: 1px solid #E5E5E5;
-        border-radius: 12px;
-        padding: 20px;
-        margin-bottom: 15px;
-        color: #1A1A1A;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    /* 상단 로고 박스 */
+    .logo-box {
+        border: 2px solid #F4A261;
+        border-radius: 8px;
+        padding: 12px 10px;
+        text-align: center;
+        font-weight: bold;
+        color: #D97706;
+        background-color: #FFFDF9;
+        height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
     }
 
     /* Investor Quote 칸 (세로로 확장하여 이목을 끌도록 디자인) */
@@ -45,7 +47,7 @@ st.markdown("""
         background-color: #FAFAFA;
         border: 1px solid #E5E5E5;
         border-radius: 10px;
-        padding: 24px 20px;
+        padding: 20px 24px;
         color: #333333;
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
         display: flex;
@@ -53,17 +55,48 @@ st.markdown("""
         height: 100%;
     }
 
-    /* 1, 2, 3, 4번 상단 탭 사이 간격(Gap) 넓히기 */
+    /* 좌우 광고 영역 (완벽한 대칭 사이즈) */
+    .ad-box {
+        background-color: #F8F9FA;
+        border: 2px dashed #D0D0D0;
+        border-radius: 10px;
+        text-align: center;
+        color: #888888;
+        padding: 180px 10px;
+        font-weight: bold;
+        height: 100%;
+    }
+
+    /* 1, 2, 3, 4번 상단 탭 간격 확보 */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 30px;
+        gap: 20px;
+        justify-content: center;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 50px;
-        white-space: pre-wrap;
+        height: 45px;
         background-color: #FAFAFA;
         border-radius: 8px;
         border: 1px solid #E5E5E5;
         padding: 0 20px;
+    }
+
+    /* 5번 검색창 영역 (흰색 바탕 + 주황색 테두리) */
+    .search-container {
+        background-color: #FFFFFF;
+        border: 2px solid #F4A261;
+        border-radius: 12px;
+        padding: 25px;
+        box-shadow: 0 4px 15px rgba(244,162,97,0.1);
+    }
+
+    /* 6, 7, 8번 하단 카드 디자인 */
+    .custom-card {
+        background-color: #FAFAFA;
+        border: 1px solid #E5E5E5;
+        border-radius: 12px;
+        padding: 20px;
+        height: 180px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
     }
 
     /* 파스텔 주황색 포인트 버튼 */
@@ -74,7 +107,7 @@ st.markdown("""
         border-radius: 8px;
         font-weight: bold;
         text-align: center;
-        display: inline-block;
+        display: block;
         text-decoration: none;
         box-shadow: 0 2px 6px rgba(244, 162, 97, 0.3);
     }
@@ -82,130 +115,60 @@ st.markdown("""
         background-color: #E79150;
         color: white;
     }
-
-    /* 세로로 길쭉하게 바뀐 광고 영역 박스 */
-    .ad-box {
-        background-color: #F8F9FA;
-        border: 2px dashed #D0D0D0;
-        border-radius: 10px;
-        text-align: center;
-        color: #888888;
-        padding: 160px 10px; /* 세로 길이를 늘림 */
-        font-weight: bold;
-    }
     </style>
 """, unsafe_allow_html=True)
 
-SUPABASE_URL = st.secrets.get("SUPABASE_URL", "https://cnweggechipghcivruie.supabase.co")
-SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNud2VnZ2VjaGlwZ2hjaXZydWllIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODcwODU5ODksImV4cCI6MjEwMjY2MTk4OX0.mYi7QB0ekkC0Jg49M18tqrMdCZBQgRHEK2J1EdIBZhc")
+# ==========================================
+# 2. Supabase 및 데이터 연동 설정
+# ==========================================
+SUPABASE_URL = st.secrets.get("SUPABASE_URL", "YOUR_SUPABASE_URL")
+SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "YOUR_SUPABASE_KEY")
 
 @st.cache_resource
 def init_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 supabase = init_supabase()
-query_params = st.query_params
-selected_code = query_params.get("code", None)
 
-# ==========================================
-# 2. 공통 데이터 및 함수 (기존과 동일)
-# ==========================================
 @st.cache_data
-def get_all_krx_stocks():
+def get_krx_stocks():
     try:
         df = fdr.StockListing("KRX")
         return {f"{name} ({code})": code for name, code in zip(df["Name"], df["Code"])}
     except Exception:
         return {"삼성전자 (005930)": "005930", "SK하이닉스 (000660)": "000660"}
 
-def get_stock_data(stock_code):
-    res = supabase.table("Fundamental").select("*").eq("stock_code", stock_code).execute()
-    return res.data[0] if res.data else None
-
-def calculate_defense_score(data):
-    scores = {}
-    reasons = []
-    cr = data.get("current_ratio") or 120 
-    s1 = (10 if cr >= 250 else 9 if cr >= 200 else 8 if cr >= 170 
-          else 7 if cr >= 150 else 6 if cr >= 130 else 5 if cr >= 110 
-          else 4 if cr >= 100 else 3 if cr >= 85 else 2 if cr >= 70 
-          else 1 if cr >= 50 else 0)
-    scores['score_current_ratio'] = s1
-    reasons.append(f"• **유동비율 ({cr}%)**: 단기 채무 지급 능력 평가 (**{s1}/10점**)")
-
-    de = data.get("debt_ratio") or 100
-    s2 = (10 if de <= 30 else 9 if de <= 50 else 8 if de <= 75 
-          else 7 if de <= 100 else 6 if de <= 125 else 5 if de <= 150 
-          else 4 if de <= 175 else 3 if de <= 200 else 2 if de <= 250 
-          else 1 if de <= 300 else 0)
-    scores['score_debt_to_equity'] = s2
-    reasons.append(f"• **부채비율 ({de}%)**: 재무 레버리지 및 안전성 (**{s2}/10점**)")
-
-    roe = data.get("roe") or 0
-    s3 = (10 if roe >= 25 else 9 if roe >= 20 else 8 if roe >= 16 
-          else 7 if roe >= 13 else 6 if roe >= 10 else 5 if roe >= 7 
-          else 4 if roe >= 5 else 3 if roe >= 3 else 2 if roe >= 1 
-          else 1 if roe > 0 else 0)
-    scores['score_roe'] = s3
-    reasons.append(f"• **ROE ({roe}%)**: 자기자본 이익률 및 효율성 (**{s3}/10점**)")
-
-    pbr = data.get("pbr") or 1.0
-    s4 = (10 if pbr < 0.60 else 9 if pbr < 0.80 else 8 if pbr < 1.00 
-          else 7 if pbr < 1.30 else 6 if pbr < 1.70 else 5 if pbr < 2.20 
-          else 4 if pbr < 3.00 else 3 if pbr < 4.00 else 2 if pbr < 6.00 
-          else 1 if pbr < 10.00 else 0)
-    scores['score_pbr'] = s4
-    reasons.append(f"• **PBR ({pbr}배)**: 자산 가치 대비 저평가 수준 (**{s4}/10점**)")
-
-    op_m = data.get("op_margin") or 0
-    s5 = (10 if op_m >= 20 else 8 if op_m >= 15 else 6 if op_m >= 10 
-          else 4 if op_m >= 5 else 2 if op_m > 0 else 0)
-    scores['score_op_margin'] = s5
-    reasons.append(f"• **영업이익률 ({op_m}%)**: 본업 마진 및 가격 결정력 (**{s5}/10점**)")
-
-    total_score = sum(scores.values())
-    grade = 'S' if total_score >= 85 else ('A' if total_score >= 70 else ('B' if total_score >= 55 else ('C' if total_score >= 40 else 'D')))
-    return total_score, grade, reasons
-
-def format_korean_currency(val):
-    if pd.isna(val): return "-"
-    val = float(val)
-    abs_val = abs(val)
-    sign = "-" if val < 0 else ""
-    if abs_val >= 1_000_000_000_000:
-        jo = abs_val // 1_000_000_000_000
-        eok = (abs_val % 1_000_000_000_000) // 100_000_000
-        return f"{sign}{int(jo):,}조 {int(eok):,}억원" if eok > 0 else f"{sign}{int(jo):,}조 원"
-    elif abs_val >= 100_000_000:
-        return f"{sign}{int(abs_val // 100_000_000):,}억원"
-    else:
-        return f"{sign}{int(abs_val):,}원"
-
 # ==========================================
-# 3. 화면 분기 (메인 포털 레이아웃 - 수정 완료 버전)
+# 3. 화면 분기 (메인 포털 vs 상세 분석 리포트)
 # ==========================================
+query_params = st.query_params
+selected_code = query_params.get("code", None)
+
 if not selected_code:
-    # 상단 헤더 영역 (로고 / 커진 Investor Quote / 로그인)
-    col_logo, col_quote, col_login = st.columns([1.2, 5.8, 1])
+    # --- [상단 영역]: Logo | Investor Quote | Log in ---
+    col_logo, col_quote, col_login = st.columns([1.2, 6.8, 1])
+    
     with col_logo:
-        st.markdown("<div style='border: 2px solid #F4A261; border-radius: 8px; padding: 25px 10px; text-align: center; font-weight: bold; color: #D97706; background-color: #FFFDF9; height: 100%; display: flex; align-items: center; justify-content: center;'>🛡️ Logo</div>", unsafe_allow_html=True)
+        st.markdown("<div class='logo-box'>📈 Logo</div>", unsafe_allow_html=True)
+        
     with col_quote:
         st.markdown("<div class='quote-box'>💡 <b>Investor Image</b> &nbsp;|&nbsp; <i>\"하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.\"</i></div>", unsafe_allow_html=True)
+        
     with col_login:
         if st.button("Log in", use_container_width=True):
-            st.toast("로그인 기능 준비 중!")
+            st.toast("로그인 기능 준비 중입니다!")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 3단 구조: 광고창 가로폭을 줄이고 세로로 길쭉하게 조정 ([0.8, 5.4, 0.8])
-    left_ad, main_content, right_ad = st.columns([0.8, 5.4, 0.8])
+    # --- [본문 레이아웃]: 좌우 광고창 사이즈를 완벽히 대칭으로 맞춤 ([1, 5, 1]) ---
+    left_ad, main_content, right_ad = st.columns([1, 5, 1])
 
     with left_ad:
-        st.markdown("<div class='ad-box'><b>Ads</b><br><br>Ad Space</div>", unsafe_allow_html=True)
+        st.markdown("<div class='ad-box'>Ads</div>", unsafe_allow_html=True)
 
     with main_content:
-        # [1, 2, 3, 4] 상단 탭 영역 (간격 벌어짐 적용됨)
-        tab1, tab2, tab3, tab4 = st.tabs(["🇺🇸 1. Us stock", "🇰🇷 2. Korea stock", "📰 3. Live news", "💎 4. Gem"])
+        # [1, 2, 3, 4] 상단 탭 영역
+        tab1, tab2, tab3, tab4 = st.tabs(["1. US stock", "2. Korea stock", "3. Live news", "4. Game"])
         
         with tab1: st.caption("미국 주식 펀더멘탈 분석 기능")
         with tab2: st.caption("한국 주식 재무제표 방어력 분석 기능")
@@ -214,11 +177,11 @@ if not selected_code:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # [5] 중앙 검색 탭 영역 (흰색 바탕 + 주황색 테두리 조합으로 변경)
-        st.markdown("<div style='background-color: #FFFFFF; border: 2px solid #F4A261; border-radius: 12px; padding: 25px; box-shadow: 0 4px 15px rgba(244,162,97,0.1);'>", unsafe_allow_html=True)
+        # [5] 중앙 검색 탭 영역 (흰색 바탕 + 주황색 테두리)
+        st.markdown("<div class='search-container'>", unsafe_allow_html=True)
         st.markdown("### 🔍 5. Searching Tab (종목 통합 검색)")
         
-        krx_stocks = get_all_krx_stocks()
+        krx_stocks = get_krx_stocks()
         stock_options = list(krx_stocks.keys())
         selected_option = st.selectbox("분석할 한국 주식을 선택하세요", stock_options)
         target_code = krx_stocks[selected_option]
@@ -228,7 +191,7 @@ if not selected_code:
             f"""
             <div style="text-align: center;">
                 <a href="/?code={target_code}" target="_blank" class="pastel-orange-btn">
-                    🚀 새 탭(Popup)으로 상세 재무 분석 리포트 열기
+                    🚀 상세 분석 리포트 열기
                 </a>
             </div>
             """,
@@ -238,12 +201,12 @@ if not selected_code:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # [6, 7, 8] 하단 트렌드 포털 카드 3개 배치
+        # [6, 7, 8] 하단 트렌드 카드 3개 배치
         col_t1, col_t2, col_t3 = st.columns(3)
         
         with col_t1:
             st.markdown("""
-                <div class='custom-card' style='height: 180px;'>
+                <div class='custom-card'>
                     <b>6. Most searched Stocks</b><br><br>
                     • <a href='/?code=005930' target='_blank' style='color: #D97706; text-decoration: none;'>삼성전자 (005930)</a><br>
                     • <a href='/?code=000660' target='_blank' style='color: #D97706; text-decoration: none;'>SK하이닉스 (000660)</a>
@@ -252,7 +215,7 @@ if not selected_code:
             
         with col_t2:
             st.markdown("""
-                <div class='custom-card' style='height: 180px;'>
+                <div class='custom-card'>
                     <b>7. Trending Searches (US)</b><br><br>
                     • Apple (AAPL)<br>
                     • Tesla (TSLA)<br>
@@ -262,7 +225,7 @@ if not selected_code:
             
         with col_t3:
             st.markdown("""
-                <div class='custom-card' style='height: 180px;'>
+                <div class='custom-card'>
                     <b>8. Trending Searches (KOR)</b><br><br>
                     • <a href='/?code=005380' target='_blank' style='color: #D97706; text-decoration: none;'>현대차 (005380)</a><br>
                     • <a href='/?code=000270' target='_blank' style='color: #D97706; text-decoration: none;'>기아 (000270)</a>
@@ -270,9 +233,16 @@ if not selected_code:
             """, unsafe_allow_html=True)
 
     with right_ad:
-        st.markdown("<div class='ad-box'><b>Ads</b><br><br>Ad Space</div>", unsafe_allow_html=True)
+        st.markdown("<div class='ad-box'>Ads</div>", unsafe_allow_html=True)
 
 else:
+    # --- [상세 분석 페이지]: 종목 카드가 선택되어 새 탭으로 열릴 때 ---
+    st.title(f"📊 상세 펀더멘탈 분석 리포트 (종목 코드: {selected_code})")
+    st.write("선택하신 종목의 재무 건전성 및 하락장 방어력 지표를 분석하는 공간입니다.")
+    
+    if st.button("⬅️ 메인 포털로 돌아가기"):
+        st.query_params.clear()
+        st.rerun()
     # 아래 상세 분석 창(새 탭 열릴 때 실행되는 로직)은 기존 코드 그대로 유지하면 됩니다!
     # ----------------------------------------------------
     # [뷰 B] 새 탭으로 열리는 상세 재무 분석 창 (완전판)
