@@ -238,10 +238,9 @@ def calculate_defense_score(data):
     return score, grade, reasons
 
 # ==========================================
-# 3. 인베스팅닷컴 스타일 2컬럼 검색 컴포넌트
+# 3. 인베스팅닷컴 스타일 동적 검색 컴포넌트
 # ==========================================
 def render_investing_search_box(stock_db, placeholder_text, key_prefix):
-    # stock_db: [{ "ticker": "AAPL", "name": "Apple Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸" }]
     import json
     json_db = json.dumps(stock_db, ensure_ascii=False)
     
@@ -289,9 +288,9 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 cursor: pointer;
             }}
 
-            /* 인베스팅닷컴 스타일 드롭다운 모달 */
+            /* 검색어 입력 시에만 나타나는 팝업 레이어 */
             .autocomplete-modal {{
-                display: flex;
+                display: none; /* 기본 상태: 숨김 */
                 flex-direction: column;
                 position: absolute;
                 top: 54px;
@@ -300,14 +299,14 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 background: #FFFFFF;
                 border: 1px solid #E2E8F0;
                 border-radius: 8px;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+                box-shadow: 0 10px 25px rgba(0,0,0,0.15);
                 z-index: 9999;
                 overflow: hidden;
             }}
 
             .modal-content {{
                 display: flex;
-                min-height: 340px;
+                min-height: 300px;
             }}
 
             /* 좌측: 실시간 연관 검색 목록 (65%) */
@@ -315,7 +314,7 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 flex: 65;
                 border-right: 1px solid #F1F5F9;
                 padding: 10px 0;
-                max-height: 360px;
+                max-height: 340px;
                 overflow-y: auto;
             }}
             .pane-title {{
@@ -330,7 +329,7 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
-                padding: 8px 16px;
+                padding: 10px 16px;
                 cursor: pointer;
                 transition: background 0.15s;
             }}
@@ -348,7 +347,7 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 font-weight: 700;
                 color: #0F172A;
                 font-size: 14px;
-                min-width: 60px;
+                min-width: 65px;
             }}
             .name {{
                 font-size: 13px;
@@ -365,9 +364,12 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
             .highlight {{
                 color: #D97706;
                 font-weight: 800;
+                background-color: #FEF3C7;
+                padding: 0 2px;
+                border-radius: 2px;
             }}
 
-            /* 우측: 관련 뉴스 및 가이드 분석 (35%) */
+            /* 우측: 뉴스 및 분석 탭 (35%) */
             .right-pane {{
                 flex: 35;
                 background-color: #FAFAFA;
@@ -433,7 +435,7 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
             <div id="{key_prefix}_modal" class="autocomplete-modal">
                 <div class="modal-content">
                     <div class="left-pane">
-                        <div id="{key_prefix}_title" class="pane-title">Popular Searches</div>
+                        <div id="{key_prefix}_title" class="pane-title">Matching Instruments</div>
                         <div id="{key_prefix}_list"></div>
                     </div>
                     <div class="right-pane">
@@ -465,27 +467,28 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
             const inputEl = document.getElementById('{key_prefix}_input');
             const modalEl = document.getElementById('{key_prefix}_modal');
             const listEl = document.getElementById('{key_prefix}_list');
-            const titleEl = document.getElementById('{key_prefix}_title');
             const footerQueryEl = document.getElementById('{key_prefix}_footer_query');
 
             function renderList(query) {{
                 const q = query.trim().toLowerCase();
-                footerQueryEl.innerText = q ? q : "...";
-
-                let filtered = [];
+                
+                // 입력값이 없으면 레이어 닫기
                 if (!q) {{
-                    titleEl.innerText = "Popular Searches";
-                    filtered = STOCKS.slice(0, 7);
-                }} else {{
-                    titleEl.innerText = "Matching Instruments";
-                    filtered = STOCKS.filter(s => 
-                        s.ticker.toLowerCase().includes(q) || 
-                        s.name.toLowerCase().includes(q)
-                    );
+                    modalEl.style.display = 'none';
+                    return;
                 }}
 
+                // 입력값이 있을 때만 레이어 표시
+                modalEl.style.display = 'flex';
+                footerQueryEl.innerText = q;
+
+                const filtered = STOCKS.filter(s => 
+                    s.ticker.toLowerCase().includes(q) || 
+                    s.name.toLowerCase().includes(q)
+                );
+
                 if (filtered.length === 0) {{
-                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:#94A3B8;">검색 결과가 없습니다.</div>';
+                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:#94A3B8;">일치하는 종목이 없습니다.</div>';
                     return;
                 }}
 
@@ -540,8 +543,12 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 }}
             }});
 
-            // 초기 구동 시 인기 검색어 출력
-            renderList('');
+            // 바깥 영역 클릭 시 드롭다운 닫기
+            document.addEventListener('click', (e) => {{
+                if (!e.target.closest('.search-wrapper')) {{
+                    modalEl.style.display = 'none';
+                }}
+            }});
         </script>
     </body>
     </html>
@@ -593,7 +600,7 @@ if not selected_code:
     with main_content:
         tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
-        # 1. 미국 주식 검색 (인베스팅닷컴 UI 형태)
+        # 1. 미국 주식 실시간 반응형 검색
         with tab1:
             us_stocks_db = [
                 {"ticker": "P", "name": "Pure Storage Inc", "exch": "Equities - NYSE", "flag": "🇺🇸"},
@@ -613,12 +620,12 @@ if not selected_code:
                 key_prefix="us_investing_search"
             )
             
-        # 2. 한국 주식 검색 (인베스팅닷컴 UI 형태)
+        # 2. 한국 주식 실시간 반응형 검색 ('삼', '하' 입력 시 즉시 반응)
         with tab2:
             krx_dict = get_krx_stocks()
             kr_stocks_db = []
             if krx_dict:
-                for name_code, info in list(krx_dict.items())[:100]:
+                for name_code, info in list(krx_dict.items())[:300]:
                     name_only = name_code.split(" (")[0]
                     kr_stocks_db.append({
                         "ticker": info["code"],
@@ -632,7 +639,17 @@ if not selected_code:
                     {"ticker": "000660", "name": "SK하이닉스", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
                     {"ticker": "005380", "name": "현대차", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
                     {"ticker": "035420", "name": "NAVER", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "035720", "name": "카카오", "exch": "Equities - KOSPI", "flag": "🇰🇷"}
+                    {"ticker": "035720", "name": "카카오", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "000270", "name": "기아", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "005490", "name": "POSCO홀딩스", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "006400", "name": "삼성SDI", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "207940", "name": "삼성바이오로직스", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "010140", "name": "삼성중공업", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "086790", "name": "하나금융지주", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "012330", "name": "현대모비스", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "042660", "name": "한화오션", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "009830", "name": "한화솔루션", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "000810", "name": "삼성화재", "exch": "Equities - KOSPI", "flag": "🇰🇷"}
                 ]
 
             render_investing_search_box(
