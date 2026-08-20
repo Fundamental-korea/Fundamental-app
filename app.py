@@ -17,7 +17,7 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-    /* 1. 전체 배경 */
+    /* 전체 배경 */
     html, body, [data-testid="stAppViewContainer"], .stApp {
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
@@ -34,7 +34,7 @@ st.markdown("""
         color: #1A1A1A !important;
     }
 
-    /* 2. 상단 헤더 */
+    /* 상단 헤더 */
     .logo-box {
         border: 2px solid #F4A261;
         border-radius: 14px;
@@ -72,7 +72,7 @@ st.markdown("""
         color: #333333 !important;
     }
 
-    /* 3. 좌우 Ads */
+    /* 좌우 Ads */
     .ad-box-tall {
         background-color: #F8F9FA;
         border: 2px dashed #D0D0D0;
@@ -89,11 +89,11 @@ st.markdown("""
         box-sizing: border-box;
     }
 
-    /* 4. 탭 스타일 */
+    /* 탭 스타일 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 20px !important;
         justify-content: center !important;
-        margin-bottom: 20px !important;
+        margin-bottom: 10px !important;
     }
     .stTabs [data-baseweb="tab"] {
         height: 46px !important;
@@ -119,7 +119,7 @@ st.markdown("""
 
     /* 하단 트렌드 카드 */
     .bottom-cards-wrapper {
-        margin-top: 30px;
+        margin-top: 10px;
     }
     .sketch-card {
         background-color: #FAFAFA;
@@ -238,108 +238,315 @@ def calculate_defense_score(data):
     return score, grade, reasons
 
 # ==========================================
-# 3. 커스텀 검색창 (자동완성 + Enter + 새 탭 전송)
+# 3. 인베스팅닷컴 스타일 2컬럼 검색 컴포넌트
 # ==========================================
-def render_custom_search_box(placeholder, datalist_options, key_prefix):
-    options_html = "".join([f'<option value="{opt}">' for opt in datalist_options])
+def render_investing_search_box(stock_db, placeholder_text, key_prefix):
+    # stock_db: [{ "ticker": "AAPL", "name": "Apple Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸" }]
+    import json
+    json_db = json.dumps(stock_db, ensure_ascii=False)
     
     custom_html = f"""
     <!DOCTYPE html>
     <html>
     <head>
+        <meta charset="utf-8">
         <style>
+            * {{
+                box-sizing: border-box;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            }}
             body {{
                 margin: 0;
                 padding: 0;
-                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
                 background: transparent;
             }}
-            .search-container {{
-                display: flex;
-                gap: 10px;
+            .search-wrapper {{
+                position: relative;
                 width: 100%;
             }}
-            .search-input {{
-                flex: 1;
+            .input-box {{
+                width: 100%;
                 height: 48px;
-                padding: 0 16px;
+                padding: 0 45px 0 16px;
                 border: 2px solid #F4A261;
-                border-radius: 12px;
+                border-radius: 8px;
                 font-size: 15px;
                 font-weight: 600;
                 outline: none;
-                background-color: #FFFDF9;
+                background: #FFFDF9;
                 color: #1A1A1A;
-                box-sizing: border-box;
             }}
-            .search-input:focus {{
+            .input-box:focus {{
                 border-color: #D97706;
-                box-shadow: 0 0 8px rgba(217, 119, 6, 0.25);
+                box-shadow: 0 0 8px rgba(217, 119, 6, 0.2);
             }}
-            .search-button {{
-                width: 110px;
-                height: 48px;
-                background-color: #F4A261;
-                color: white;
-                border: none;
-                border-radius: 12px;
-                font-size: 16px;
-                font-weight: bold;
+            .search-icon {{
+                position: absolute;
+                right: 15px;
+                top: 13px;
+                font-size: 18px;
+                color: #D97706;
                 cursor: pointer;
-                transition: background-color 0.2s;
-                box-sizing: border-box;
             }}
-            .search-button:hover {{
-                background-color: #D97706;
+
+            /* 인베스팅닷컴 스타일 드롭다운 모달 */
+            .autocomplete-modal {{
+                display: flex;
+                flex-direction: column;
+                position: absolute;
+                top: 54px;
+                left: 0;
+                width: 100%;
+                background: #FFFFFF;
+                border: 1px solid #E2E8F0;
+                border-radius: 8px;
+                box-shadow: 0 10px 25px rgba(0,0,0,0.12);
+                z-index: 9999;
+                overflow: hidden;
+            }}
+
+            .modal-content {{
+                display: flex;
+                min-height: 340px;
+            }}
+
+            /* 좌측: 실시간 연관 검색 목록 (65%) */
+            .left-pane {{
+                flex: 65;
+                border-right: 1px solid #F1F5F9;
+                padding: 10px 0;
+                max-height: 360px;
+                overflow-y: auto;
+            }}
+            .pane-title {{
+                font-size: 12px;
+                font-weight: 700;
+                color: #64748B;
+                padding: 6px 16px;
+                text-transform: uppercase;
+            }}
+
+            .stock-row {{
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                padding: 8px 16px;
+                cursor: pointer;
+                transition: background 0.15s;
+            }}
+            .stock-row:hover, .stock-row.active {{
+                background-color: #FFF7ED;
+            }}
+            .stock-info {{
+                display: flex;
+                align-items: center;
+                gap: 10px;
+                overflow: hidden;
+            }}
+            .flag {{ font-size: 16px; }}
+            .ticker {{
+                font-weight: 700;
+                color: #0F172A;
+                font-size: 14px;
+                min-width: 60px;
+            }}
+            .name {{
+                font-size: 13px;
+                color: #475569;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }}
+            .exch {{
+                font-size: 11px;
+                color: #94A3B8;
+                white-space: nowrap;
+            }}
+            .highlight {{
+                color: #D97706;
+                font-weight: 800;
+            }}
+
+            /* 우측: 관련 뉴스 및 가이드 분석 (35%) */
+            .right-pane {{
+                flex: 35;
+                background-color: #FAFAFA;
+                padding: 12px 16px;
+                display: flex;
+                flex-direction: column;
+                gap: 12px;
+            }}
+            .section-header {{
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                font-size: 12px;
+                font-weight: 700;
+                color: #334155;
+            }}
+            .more-link {{
+                font-size: 11px;
+                color: #2563EB;
+                text-decoration: none;
+            }}
+            .news-item {{
+                font-size: 12px;
+                color: #334155;
+                line-height: 1.4;
+                font-weight: 500;
+                cursor: pointer;
+            }}
+            .news-item:hover {{
+                text-decoration: underline;
+                color: #D97706;
+            }}
+
+            /* 하단 검색 실행 바 */
+            .modal-footer {{
+                border-top: 1px solid #F1F5F9;
+                padding: 10px 16px;
+                background: #F8FAFC;
+                font-size: 13px;
+                color: #2563EB;
+                font-weight: 600;
+                cursor: pointer;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+            }}
+            .modal-footer:hover {{
+                background: #F1F5F9;
             }}
         </style>
     </head>
     <body>
-        <div class="search-container">
+        <div class="search-wrapper">
             <input 
                 type="text" 
                 id="{key_prefix}_input" 
-                class="search-input" 
-                list="{key_prefix}_list" 
-                placeholder="{placeholder}"
-                onkeypress="handleKeyPress(event)"
+                class="input-box" 
+                placeholder="{placeholder_text}"
                 autocomplete="off"
             />
-            <datalist id="{key_prefix}_list">
-                {options_html}
-            </datalist>
-            <button class="search-button" onclick="executeSearch()">🔍 분석</button>
+            <span class="search-icon" onclick="triggerSearch()">🔍</span>
+
+            <div id="{key_prefix}_modal" class="autocomplete-modal">
+                <div class="modal-content">
+                    <div class="left-pane">
+                        <div id="{key_prefix}_title" class="pane-title">Popular Searches</div>
+                        <div id="{key_prefix}_list"></div>
+                    </div>
+                    <div class="right-pane">
+                        <div>
+                            <div class="section-header">
+                                <span>News</span>
+                                <a href="#" class="more-link">More</a>
+                            </div>
+                            <div style="margin-top: 6px;" class="news-item">S&P 500 하락장 대비 안전자산 및 고배당 저평가 펀더멘탈 분석</div>
+                            <div style="margin-top: 8px;" class="news-item">금리 변동성에 따른 우량주 ROE/PBR 체력 점검</div>
+                        </div>
+                        <div>
+                            <div class="section-header">
+                                <span>Analysis</span>
+                                <a href="#" class="more-link">More</a>
+                            </div>
+                            <div style="margin-top: 6px;" class="news-item">2026 하락장 방어력이 가장 뛰어난 S등급 기업 리스트</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer" onclick="triggerSearch()">
+                    <span>🔍</span> Search website for: <span id="{key_prefix}_footer_query" style="font-weight:700;"></span>
+                </div>
+            </div>
         </div>
 
         <script>
-            function executeSearch() {{
-                const inputVal = document.getElementById('{key_prefix}_input').value.trim();
-                if (!inputVal) return;
+            const STOCKS = {json_db};
+            const inputEl = document.getElementById('{key_prefix}_input');
+            const modalEl = document.getElementById('{key_prefix}_modal');
+            const listEl = document.getElementById('{key_prefix}_list');
+            const titleEl = document.getElementById('{key_prefix}_title');
+            const footerQueryEl = document.getElementById('{key_prefix}_footer_query');
 
-                let targetCode = inputVal;
-                // '삼성전자 (005930)' 형태에서 6자리 코드만 추출
-                const match = inputVal.match(/\(([^)]+)\)/);
-                if (match) {{
-                    targetCode = match[1];
-                }} else if (inputVal.includes(" - ")) {{
-                    targetCode = inputVal.split(" - ")[0];
+            function renderList(query) {{
+                const q = query.trim().toLowerCase();
+                footerQueryEl.innerText = q ? q : "...";
+
+                let filtered = [];
+                if (!q) {{
+                    titleEl.innerText = "Popular Searches";
+                    filtered = STOCKS.slice(0, 7);
+                }} else {{
+                    titleEl.innerText = "Matching Instruments";
+                    filtered = STOCKS.filter(s => 
+                        s.ticker.toLowerCase().includes(q) || 
+                        s.name.toLowerCase().includes(q)
+                    );
                 }}
 
-                // 새 탭(_blank)으로 분석 리포트 URL 열기
-                const targetUrl = window.parent.location.origin + window.parent.location.pathname + '?code=' + encodeURIComponent(targetCode);
+                if (filtered.length === 0) {{
+                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:#94A3B8;">검색 결과가 없습니다.</div>';
+                    return;
+                }}
+
+                let html = '';
+                filtered.forEach((item, idx) => {{
+                    const highlightTicker = highlightMatch(item.ticker, q);
+                    const highlightName = highlightMatch(item.name, q);
+                    html += `
+                        <div class="stock-row ${{idx === 0 ? 'active' : ''}}" onclick="selectStock('${{item.ticker}}')">
+                            <div class="stock-info">
+                                <span class="flag">${{item.flag}}</span>
+                                <span class="ticker">${{highlightTicker}}</span>
+                                <span class="name">${{highlightName}}</span>
+                            </div>
+                            <span class="exch">${{item.exch}}</span>
+                        </div>
+                    `;
+                }});
+                listEl.innerHTML = html;
+            }}
+
+            function highlightMatch(text, query) {{
+                if (!query) return text;
+                const reg = new RegExp(`(${{query}})`, 'gi');
+                return text.replace(reg, '<span class="highlight">$1</span>');
+            }}
+
+            function selectStock(ticker) {{
+                const targetUrl = window.parent.location.origin + window.parent.location.pathname + '?code=' + encodeURIComponent(ticker);
                 window.open(targetUrl, '_blank');
             }}
 
-            function handleKeyPress(event) {{
-                if (event.key === 'Enter') {{
-                    executeSearch();
-                }}
+            function triggerSearch() {{
+                const q = inputEl.value.trim();
+                if (!q) return;
+
+                const filtered = STOCKS.filter(s => 
+                    s.ticker.toLowerCase().includes(q.toLowerCase()) || 
+                    s.name.toLowerCase().includes(q.toLowerCase())
+                );
+                const targetCode = filtered.length > 0 ? filtered[0].ticker : q;
+                selectStock(targetCode);
             }}
+
+            inputEl.addEventListener('input', (e) => {{
+                renderList(e.target.value);
+            }});
+
+            inputEl.addEventListener('keypress', (e) => {{
+                if (e.key === 'Enter') {{
+                    triggerSearch();
+                }}
+            }});
+
+            // 초기 구동 시 인기 검색어 출력
+            renderList('');
         </script>
     </body>
     </html>
     """
-    components.html(custom_html, height=60)
+    components.html(custom_html, height=450)
 
 # ==========================================
 # 4. 메인 포털 UI
@@ -386,39 +593,52 @@ if not selected_code:
     with main_content:
         tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
-        # 1. 미국 주식 검색
+        # 1. 미국 주식 검색 (인베스팅닷컴 UI 형태)
         with tab1:
-            us_suggestions = [
-                "AAPL - Apple Inc.",
-                "NVDA - NVIDIA Corporation",
-                "TSLA - Tesla Inc.",
-                "MSFT - Microsoft Corporation",
-                "AMZN - Amazon.com Inc.",
-                "GOOGL - Alphabet Inc.",
-                "META - Meta Platforms Inc.",
-                "PLTR - Palantir Technologies",
-                "AMD - Advanced Micro Devices"
+            us_stocks_db = [
+                {"ticker": "P", "name": "Pure Storage Inc", "exch": "Equities - NYSE", "flag": "🇺🇸"},
+                {"ticker": "AMPH", "name": "Amphastar Pharmaceuticals", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+                {"ticker": "AAPL", "name": "Apple Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+                {"ticker": "NVDA", "name": "NVIDIA Corporation", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+                {"ticker": "TSLA", "name": "Tesla Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+                {"ticker": "MSFT", "name": "Microsoft Corp.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+                {"ticker": "AMZN", "name": "Amazon.com Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+                {"ticker": "GOOGL", "name": "Alphabet Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+                {"ticker": "META", "name": "Meta Platforms Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+                {"ticker": "PLTR", "name": "Palantir Technologies", "exch": "Equities - NYSE", "flag": "🇺🇸"}
             ]
-            render_custom_search_box(
-                placeholder="🔍 미국 주식 Ticker 또는 기업명 입력 후 Enter (예: AAPL, NVDA, TSLA)",
-                datalist_options=us_suggestions,
-                key_prefix="us_search"
+            render_investing_search_box(
+                stock_db=us_stocks_db,
+                placeholder_text="🔍 미국 주식 Ticker 또는 종목명 입력 (예: P, AAPL, NVDA)",
+                key_prefix="us_investing_search"
             )
             
-        # 2. 한국 주식 검색
+        # 2. 한국 주식 검색 (인베스팅닷컴 UI 형태)
         with tab2:
-            krx_stocks = get_krx_stocks()
-            kr_suggestions = list(krx_stocks.keys()) if krx_stocks else [
-                "삼성전자 (005930)",
-                "SK하이닉스 (000660)",
-                "현대차 (005380)",
-                "네이버 (035420)",
-                "카카오 (035720)"
-            ]
-            render_custom_search_box(
-                placeholder="🔍 한국 주식명 또는 6자리 코드 입력 후 Enter (예: 삼성전자, 005930)",
-                datalist_options=kr_suggestions,
-                key_prefix="kr_search"
+            krx_dict = get_krx_stocks()
+            kr_stocks_db = []
+            if krx_dict:
+                for name_code, info in list(krx_dict.items())[:100]:
+                    name_only = name_code.split(" (")[0]
+                    kr_stocks_db.append({
+                        "ticker": info["code"],
+                        "name": name_only,
+                        "exch": f"Equities - {info['market']}",
+                        "flag": "🇰🇷"
+                    })
+            else:
+                kr_stocks_db = [
+                    {"ticker": "005930", "name": "삼성전자", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "000660", "name": "SK하이닉스", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "005380", "name": "현대차", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "035420", "name": "NAVER", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+                    {"ticker": "035720", "name": "카카오", "exch": "Equities - KOSPI", "flag": "🇰🇷"}
+                ]
+
+            render_investing_search_box(
+                stock_db=kr_stocks_db,
+                placeholder_text="🔍 한국 주식명 또는 6자리 코드 입력 (예: 삼성전자, 005930)",
+                key_prefix="kr_investing_search"
             )
             
         with tab3:
@@ -427,7 +647,7 @@ if not selected_code:
         with tab4:
             st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
 
-        # 하단 트렌드 카드 (링크 클릭 시에도 새 탭 열기 반영)
+        # 하단 트렌드 카드
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
         
@@ -464,8 +684,8 @@ if not selected_code:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
 else:
-    # --- [상세 분석 리포트 페이지 (새 탭에서 열리는 화면)] ---
-    if st.button("⬅️ 창 닫기 / 이전으로"):
+    # --- [상세 분석 리포트 페이지] ---
+    if st.button("⬅️ 창 닫기 / 메인으로 돌아가기"):
         st.query_params.clear()
         st.rerun()
 
