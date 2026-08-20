@@ -354,7 +354,7 @@ st.set_page_config(
 )
 
 # 2. 상단 헤더 영역 (로고와 투자 격언 공간)
-col_logo, col_quote, col_login = st.cols([1, 4, 1])
+col_logo, col_quote, col_login = st.columns([1, 4, 1])
 with col_logo:
     st.markdown("### 🛡️ Logo")
 with col_quote:
