@@ -15,29 +15,71 @@ st.set_page_config(
     layout="wide"
 )
 
+# Streamlit 기본 테마 및 다크모드 무력화 CSS
 st.markdown("""
     <style>
-    /* 전체 배경 */
-    .stApp {
-        background-color: #FFFFFF;
-        color: #1A1A1A;
+    /* 1. 전체 배경 및 기본 글자색 고정 */
+    html, body, [data-testid="stAppViewContainer"], .stApp {
+        background-color: #FFFFFF !important;
+        color: #1A1A1A !important;
         background-image: 
-            radial-gradient(circle at 0% 0%, rgba(248, 190, 140, 0.35) 0%, transparent 45%),
-            radial-gradient(circle at 100% 0%, rgba(248, 190, 140, 0.35) 0%, transparent 45%),
-            radial-gradient(circle at 0% 100%, rgba(248, 190, 140, 0.35) 0%, transparent 45%),
-            radial-gradient(circle at 100% 100%, rgba(248, 190, 140, 0.35) 0%, transparent 45%);
-        background-repeat: no-repeat;
-        background-attachment: fixed;
+            radial-gradient(circle at 0% 0%, rgba(248, 190, 140, 0.25) 0%, transparent 45%),
+            radial-gradient(circle at 100% 0%, rgba(248, 190, 140, 0.25) 0%, transparent 45%),
+            radial-gradient(circle at 0% 100%, rgba(248, 190, 140, 0.25) 0%, transparent 45%),
+            radial-gradient(circle at 100% 100%, rgba(248, 190, 140, 0.25) 0%, transparent 45%) !important;
+        background-repeat: no-repeat !important;
+        background-attachment: fixed !important;
+    }
+
+    /* 모든 텍스트 요소를 검은색/어두운색으로 고정 */
+    p, span, div, label, h1, h2, h3, h4, h5, h6 {
+        color: #1A1A1A !important;
     }
     
-    /* 상단 로고 박스 */
+    /* 2. Streamlit Input 박스 (검색창) 정상화 */
+    div[data-baseweb="input"] {
+        background-color: #FFFFFF !important;
+        border: 2px solid #F4A261 !important;
+        border-radius: 8px !important;
+    }
+    div[data-baseweb="input"] input {
+        color: #1A1A1A !important;
+        background-color: #FFFFFF !important;
+    }
+
+    /* 3. Streamlit Selectbox (드롭다운) 정상화 */
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        color: #1A1A1A !important;
+        border: 1px solid #F4A261 !important;
+    }
+
+    /* 4. Streamlit 기본 버튼 정상화 */
+    div.stButton > button {
+        background-color: #F4A261 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        font-weight: bold !important;
+        border-radius: 8px !important;
+        padding: 8px 16px !important;
+        transition: all 0.3s ease !important;
+    }
+    div.stButton > button:hover {
+        background-color: #E79150 !important;
+        color: #FFFFFF !important;
+    }
+    div.stButton > button p {
+        color: #FFFFFF !important; /* 버튼 안 텍스트 흰색 강제 */
+    }
+
+    /* 5. 상단 로고 박스 */
     .logo-box {
         border: 2px solid #F4A261;
         border-radius: 8px;
         padding: 12px 10px;
         text-align: center;
         font-weight: bold;
-        color: #D97706;
+        color: #D97706 !important;
         background-color: #FFFDF9;
         height: 100%;
         display: flex;
@@ -45,13 +87,13 @@ st.markdown("""
         justify-content: center;
     }
 
-    /* Investor Quote 칸 */
+    /* 6. Investor Quote 칸 */
     .quote-box {
         background-color: #FAFAFA;
         border: 1px solid #E5E5E5;
         border-radius: 10px;
         padding: 20px;
-        color: #333333;
+        color: #333333 !important;
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
         min-height: 180px; 
         height: 180px;
@@ -62,13 +104,13 @@ st.markdown("""
         text-align: center;
     }
 
-    /* 좌우 광고 영역 */
+    /* 7. 좌우 광고 영역 */
     .ad-box {
         background-color: #F8F9FA;
         border: 2px dashed #D0D0D0;
         border-radius: 10px;
         text-align: center;
-        color: #888888;
+        color: #888888 !important;
         padding: 220px 5px;
         font-weight: bold;
         font-size: 14px;
@@ -79,29 +121,31 @@ st.markdown("""
         box-sizing: border-box;
     }
 
-    /* 상단 탭 간격 확보 */
+    /* 8. 상단 탭 스타일 */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 20px;
+        gap: 15px;
         justify-content: center;
     }
     .stTabs [data-baseweb="tab"] {
         height: 45px;
-        background-color: #FAFAFA;
+        background-color: #FAFAFA !important;
         border-radius: 8px;
         border: 1px solid #E5E5E5;
         padding: 0 20px;
     }
-
-    /* 검색창 영역 */
-    .search-container {
-        background-color: #FFFFFF;
-        border: 2px solid #F4A261;
-        border-radius: 12px;
-        padding: 25px;
-        box-shadow: 0 4px 15px rgba(244,162,97,0.1);
+    .stTabs [data-baseweb="tab"] p {
+        color: #444444 !important;
+        font-weight: 600;
+    }
+    .stTabs [aria-selected="true"] {
+        background-color: #FFFDF9 !important;
+        border: 2px solid #F4A261 !important;
+    }
+    .stTabs [aria-selected="true"] p {
+        color: #D97706 !important;
     }
 
-    /* 하단 카드 디자인 */
+    /* 9. 하단 트렌드 카드 */
     .custom-card {
         background-color: #FAFAFA;
         border: 1px solid #E5E5E5;
@@ -111,10 +155,10 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(0,0,0,0.03);
     }
 
-    /* 파스텔 주황색 포인트 버튼 */
+    /* 10. 커스텀 링크 버튼 */
     .pastel-orange-btn {
-        background-color: #F4A261;
-        color: white;
+        background-color: #F4A261 !important;
+        color: white !important;
         padding: 12px 20px;
         border-radius: 8px;
         font-weight: bold;
@@ -124,8 +168,8 @@ st.markdown("""
         box-shadow: 0 2px 6px rgba(244, 162, 97, 0.3);
     }
     .pastel-orange-btn:hover {
-        background-color: #E79150;
-        color: white;
+        background-color: #E79150 !important;
+        color: white !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -172,7 +216,7 @@ def get_stock_data(code):
                 return res.data[0]
         except Exception:
             pass
-    # DB 조회 실패 시 yfinance 기본 정보 파싱
+    
     ticker_symbol = f"{code}.KS" if code.isdigit() else code
     try:
         info = yf.Ticker(ticker_symbol).info
@@ -285,7 +329,7 @@ if not selected_code:
         st.markdown(f"""
             <div class='quote-box'>
                 <div style='font-size: 32px;'>👨‍💼</div> 
-                <div style='font-size: 15px; font-weight: bold; margin-top: 6px;'>
+                <div style='font-size: 15px; font-weight: bold; margin-top: 6px; color: #333333;'>
                     "{selected_quote}"
                 </div>
             </div>
@@ -308,15 +352,15 @@ if not selected_code:
         
         with tab1:
             st.caption("🇺🇸 미국 주식 펀더멘탈 간이 검색 (Ticker 입력)")
-            us_ticker = st.text_input("미국 주식 티커를 입력하세요 (예: AAPL, NVDA, TSLA)", value="AAPL").upper().strip()
-            if st.button("미국 주식 분석"):
+            us_ticker = st.text_input("미국 주식 티커를 입력하세요", value="AAPL", key="us_input").upper().strip()
+            if st.button("미국 주식 분석", key="us_btn"):
                 st.markdown(f"<a href='/?code={us_ticker}' target='_self' class='pastel-orange-btn'>🚀 {us_ticker} 분석 리포트 열기</a>", unsafe_allow_html=True)
                 
         with tab2:
             st.caption("🇰🇷 한국 주식 재무제표 방어력 검색")
             krx_stocks = get_krx_stocks()
             stock_options = list(krx_stocks.keys())
-            selected_option = st.selectbox("분석할 한국 주식을 선택하세요", stock_options)
+            selected_option = st.selectbox("분석할 한국 주식을 선택하세요", stock_options, key="kr_select")
             target_code = krx_stocks[selected_option]["code"]
             st.markdown(f"<br><a href='/?code={target_code}' target='_self' class='pastel-orange-btn'>🚀 {selected_option} 분석 리포트 열기</a>", unsafe_allow_html=True)
             
@@ -334,28 +378,28 @@ if not selected_code:
         with col_t1:
             st.markdown("""
                 <div class='custom-card'>
-                    <b>🔥 인기 검색 (국내)</b><br><br>
-                    • <a href='/?code=005930' style='color: #D97706; text-decoration: none;'>삼성전자 (005930)</a><br>
-                    • <a href='/?code=000660' style='color: #D97706; text-decoration: none;'>SK하이닉스 (000660)</a>
+                    <b style='color: #1A1A1A;'>🔥 인기 검색 (국내)</b><br><br>
+                    • <a href='/?code=005930' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br>
+                    • <a href='/?code=000660' style='color: #D97706; text-decoration: none; font-weight: 600;'>SK하이닉스 (000660)</a>
                 </div>
             """, unsafe_allow_html=True)
             
         with col_t2:
             st.markdown("""
                 <div class='custom-card'>
-                    <b>🇺🇸 Trending Searches (US)</b><br><br>
-                    • <a href='/?code=AAPL' style='color: #D97706; text-decoration: none;'>Apple (AAPL)</a><br>
-                    • <a href='/?code=NVDA' style='color: #D97706; text-decoration: none;'>NVIDIA (NVDA)</a><br>
-                    • <a href='/?code=TSLA' style='color: #D97706; text-decoration: none;'>Tesla (TSLA)</a>
+                    <b style='color: #1A1A1A;'>🇺🇸 Trending Searches (US)</b><br><br>
+                    • <a href='/?code=AAPL' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br>
+                    • <a href='/?code=NVDA' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br>
+                    • <a href='/?code=TSLA' style='color: #D97706; text-decoration: none; font-weight: 600;'>Tesla (TSLA)</a>
                 </div>
             """, unsafe_allow_html=True)
             
         with col_t3:
             st.markdown("""
                 <div class='custom-card'>
-                    <b>🚗 주주환원 우수 종목</b><br><br>
-                    • <a href='/?code=005380' style='color: #D97706; text-decoration: none;'>현대차 (005380)</a><br>
-                    • <a href='/?code=000270' style='color: #D97706; text-decoration: none;'>기아 (000270)</a>
+                    <b style='color: #1A1A1A;'>🚗 주주환원 우수 종목</b><br><br>
+                    • <a href='/?code=005380' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br>
+                    • <a href='/?code=000270' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -376,7 +420,6 @@ else:
     if data:
         stock_name = data.get('stock_name', selected_code)
         
-        # 티커 심볼 처리 (.KS / .KQ 구분)
         is_krx = selected_code.isdigit() and len(selected_code) == 6
         if is_krx:
             krx_stocks = get_krx_stocks()
@@ -389,7 +432,6 @@ else:
         else:
             ticker_symbol = selected_code.upper()
 
-        # 실시간 데이터 가져오기
         try:
             yticker = yf.Ticker(ticker_symbol)
             fast_info = yticker.fast_info
