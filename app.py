@@ -42,17 +42,25 @@ st.markdown("""
         justify-content: center;
     }
 
-    /* Investor Quote 칸 (세로로 확장하여 이목을 끌도록 디자인) */
+    /* Investor Quote 칸: 픽셀 단위로 높이를 크게 고정 */
     .quote-box {
         background-color: #FAFAFA;
         border: 1px solid #E5E5E5;
         border-radius: 10px;
-        padding: 20px 24px;
+        padding: 30px; /* 내부 여백 확보 */
         color: #333333;
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+        
+        /* 이 부분이 핵심! */
+        min-height: 250px; 
+        height: 250px;
+        
         display: flex;
+        flex-direction: column; /* 세로 정렬 */
         align-items: center;
-        height: 300%;
+        justify-content: center;
+        text-align: center;
+    
     }
 
     /* 좌우 광고 영역 (완벽한 대칭 사이즈) */
