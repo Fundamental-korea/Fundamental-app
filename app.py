@@ -1,10 +1,8 @@
-
 import streamlit as st
 import FinanceDataReader as fdr
 from supabase import create_client
 import pandas as pd
 import random
-import altair as alt
 import yfinance as yf
 
 # ==========================================
@@ -16,10 +14,10 @@ st.set_page_config(
     layout="wide"
 )
 
-# Streamlit 다크모드 완전 제압 & 스케치 맞춤형 CSS
+# Streamlit 레이아웃 높이 동기화 및 스케치(Main_2.png) 맞춤형 CSS
 st.markdown("""
     <style>
-    /* 1. 전체 배경 및 기본 글자색 고정 */
+    /* 1. 전체 배경 */
     html, body, [data-testid="stAppViewContainer"], .stApp {
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
@@ -32,38 +30,20 @@ st.markdown("""
         background-attachment: fixed !important;
     }
 
-    /* 모든 텍스트 기본 컬러 고정 */
     p, span, div, label, h1, h2, h3, h4, h5, h6 {
         color: #1A1A1A !important;
     }
 
-    /* 2. 🔥 [핵심] 검색창, 드롭다운 입력박스 다크모드 완전 강제 해제 */
-    div[data-baseweb="input"], 
-    div[data-baseweb="input"] *, 
-    div[data-baseweb="base-input"],
-    div[data-baseweb="base-input"] *,
-    input[type="text"] {
-        background-color: #FFFFFF !important;
-        color: #1A1A1A !important;
-        -webkit-text-fill-color: #1A1A1A !important;
+    /* 2. 컬럼 높이 자동 동기화 (Flexbox 적용) */
+    [data-testid="stHorizontalBlock"] {
+        align-items: stretch !important;
     }
-
-    div[data-baseweb="input"] {
-        border: 2px solid #F4A261 !important;
-        border-radius: 8px !important;
-        padding: 2px 8px !important;
+    [data-testid="stColumn"] {
+        display: flex ! grand;
+        flex-direction: column !important;
     }
-
-    div[data-baseweb="select"], 
-    div[data-baseweb="select"] * {
-        background-color: #FFFFFF !important;
-        color: #1A1A1A !important;
-        -webkit-text-fill-color: #1A1A1A !important;
-    }
-
-    div[data-baseweb="select"] > div {
-        border: 2px solid #F4A261 !important;
-        border-radius: 8px !important;
+    [data-testid="stColumn"] > div {
+        flex: 1 !important;
     }
 
     /* 3. 상단 헤더 컴포넌트 */
@@ -97,12 +77,12 @@ st.markdown("""
     }
 
     .quote-text {
-        font-size: 15px;
+        font-size: 16px;
         font-weight: 600;
         color: #333333 !important;
     }
 
-    /* 4. 좌우 양쪽 Ads (스케치 높이 맞춤 세로형 배너) */
+    /* 4. 좌우 양쪽 Ads (중앙 전체 높이에 맞춤) */
     .ad-box-tall {
         background-color: #F8F9FA;
         border: 2px dashed #D0D0D0;
@@ -110,59 +90,70 @@ st.markdown("""
         text-align: center;
         color: #888888 !important;
         font-weight: bold;
-        font-size: 15px;
-        min-height: 520px;
+        font-size: 16px;
         height: 100%;
+        min-height: 520px;
         display: flex;
         align-items: center;
         justify-content: center;
         box-sizing: border-box;
     }
 
-    /* 5. 중앙 영역 스케치 #5 (Searching Tab Frame) */
-    .search-tab-frame {
-        background-color: #FFFDF9;
-        border: 2px solid #F4A261;
-        border-radius: 14px;
-        padding: 24px;
-        margin-top: 10px;
-        margin-bottom: 25px;
-        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.08);
+    /* 5. 🔥 [스케치 5번] 단일 대형 주황색 테두리 검색창 */
+    div[data-baseweb="input"] {
+        border: 2.5px solid #F4A261 !important;
+        border-radius: 12px !important;
+        background-color: #FFFDF9 !important;
+        padding: 8px 12px !important;
+        height: 65px !important;
+        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12) !important;
     }
 
-    /* 6. 버튼 스타일 */
+    div[data-baseweb="input"] input {
+        font-size: 18px !important;
+        font-weight: 600 !important;
+        color: #1A1A1A !important;
+        background-color: transparent !important;
+        -webkit-text-fill-color: #1A1A1A !important;
+    }
+
+    div[data-baseweb="select"] > div {
+        border: 2.5px solid #F4A261 !important;
+        border-radius: 12px !important;
+        background-color: #FFFDF9 !important;
+        height: 65px !important;
+    }
+
+    /* 6. 버튼 및 탭 스타일 */
     div.stButton > button {
         background-color: #F4A261 !important;
         color: #FFFFFF !important;
         border: none !important;
         font-weight: bold !important;
         border-radius: 8px !important;
-        padding: 10px 18px !important;
-        transition: all 0.3s ease !important;
+        height: 50px !important;
+        font-size: 16px !important;
     }
     div.stButton > button:hover {
         background-color: #E79150 !important;
-        color: #FFFFFF !important;
-    }
-    div.stButton > button p {
-        color: #FFFFFF !important;
     }
 
-    /* 7. 탭 디자인 */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 12px;
+        gap: 16px;
         justify-content: center;
+        margin-bottom: 15px;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 42px;
+        height: 45px;
         background-color: #FAFAFA !important;
         border-radius: 8px;
         border: 1px solid #E5E5E5;
-        padding: 0 24px;
+        padding: 0 28px;
     }
     .stTabs [data-baseweb="tab"] p {
         color: #555555 !important;
         font-weight: 600;
+        font-size: 15px;
     }
     .stTabs [aria-selected="true"] {
         background-color: #FFFDF9 !important;
@@ -173,32 +164,17 @@ st.markdown("""
         font-weight: bold;
     }
 
-    /* 8. 하단 6, 7, 8번 스케치 카드 */
+    /* 7. 하단 6, 7, 8번 스케치 카드 (높이 확충) */
     .sketch-card {
         background-color: #FAFAFA;
         border: 1.5px solid #E5E5E5;
         border-radius: 12px;
-        padding: 20px;
-        height: 190px;
+        padding: 24px;
+        height: 240px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
     }
-
-    /* 커스텀 버튼 링크 */
-    .pastel-orange-btn {
-        background-color: #F4A261 !important;
-        color: white !important;
-        padding: 12px 20px;
-        border-radius: 8px;
-        font-weight: bold;
-        text-align: center;
-        display: inline-block;
-        width: 100%;
-        text-decoration: none;
-        box-shadow: 0 2px 6px rgba(244, 162, 97, 0.3);
-    }
-    .pastel-orange-btn:hover {
-        background-color: #E79150 !important;
-        color: white !important;
+    .sketch-card b {
+        font-size: 16px;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -300,13 +276,13 @@ def calculate_defense_score(data):
     return score, grade, reasons
 
 # ==========================================
-# 3. 화면 분기 (메인 포털 vs 상세 분석 리포트)
+# 3. 메인 포털 UI
 # ==========================================
 query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
-    # --- [상단 영역]: Logo | Investor Quote | Log in ---
+    # --- [상단 헤더]: Logo | Investor Quotes | Log in ---
     col_logo, col_quote, col_login = st.columns([1.2, 6.6, 1.2])
     
     with col_logo:
@@ -335,54 +311,48 @@ if not selected_code:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- [본문 레이아웃]: [Ads (Left)] | [Center Main] | [Ads (Right)] ---
+    # --- [본문 레이아웃]: Ads (Left) | Center Main | Ads (Right) ---
     left_ad, main_content, right_ad = st.columns([1.2, 5.6, 1.2])
 
     with left_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
     with main_content:
-        # [스케치 1, 2, 3, 4] 탭 네비게이션
+        # [스케치 1, 2, 3, 4] 탭
         tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
         with tab1:
-            st.markdown("""
-                <div class='search-tab-frame'>
-                    <div style='font-weight: bold; margin-bottom: 12px; color: #D97706;'>🇺🇸 미국 주식 펀더멘탈 검색</div>
-            """, unsafe_allow_html=True)
-            us_ticker = st.text_input("Ticker 입력 (예: AAPL, NVDA, TSLA)", value="AAPL", key="us_input").upper().strip()
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown(f"<a href='/?code={us_ticker}' target='_self' class='pastel-orange-btn'>🚀 {us_ticker} 분석 리포트 열기</a>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+            # [스케치 5번] 단일 주황색 테두리 검색창
+            us_ticker = st.text_input(
+                label="", 
+                value="", 
+                placeholder="🔍 Searching Tab: 미국 주식 Ticker 입력 (예: AAPL, NVDA, TSLA 후 Enter)", 
+                key="us_input"
+            ).upper().strip()
+            
+            if us_ticker:
+                st.markdown(f"<script>window.location.href='/?code={us_ticker}';</script>", unsafe_allow_html=True)
                 
         with tab2:
-            st.markdown("""
-                <div class='search-tab-frame'>
-                    <div style='font-weight: bold; margin-bottom: 12px; color: #D97706;'>🇰🇷 한국 주식 재무제표 방어력 검색</div>
-            """, unsafe_allow_html=True)
             krx_stocks = get_krx_stocks()
             stock_options = list(krx_stocks.keys())
-            selected_option = st.selectbox("분석할 한국 주식을 선택하세요", stock_options, key="kr_select")
+            selected_option = st.selectbox(
+                label="", 
+                options=stock_options, 
+                index=0, 
+                key="kr_select"
+            )
             target_code = krx_stocks[selected_option]["code"]
-            st.markdown("<br>", unsafe_allow_html=True)
-            st.markdown(f"<a href='/?code={target_code}' target='_self' class='pastel-orange-btn'>🚀 {selected_option} 분석 리포트 열기</a>", unsafe_allow_html=True)
-            st.markdown("</div>", unsafe_allow_html=True)
+            if st.button(f"🚀 {selected_option} 분석 리포트 열기", use_container_width=True):
+                st.markdown(f"<script>window.location.href='/?code={target_code}';</script>", unsafe_allow_html=True)
             
         with tab3:
-            st.markdown("""
-                <div class='search-tab-frame' style='text-align: center; padding: 40px;'>
-                    <h4>📰 Live News Insight</h4>
-                    <p style='color: #777 !important;'>실시간 증시 속보 및 주요 마켓 이슈 모니터링 준비 중입니다.</p>
-                </div>
-            """, unsafe_allow_html=True)
+            st.info("📰 실시간 증시 속보 및 뉴스 모니터링 준비 중입니다.")
             
         with tab4:
-            st.markdown("""
-                <div class='search-tab-frame' style='text-align: center; padding: 40px;'>
-                    <h4>💎 Gem Screener</h4>
-                    <p style='color: #777 !important;'>하락장 속 펀더멘탈 우수 저평가 종목(Gem) 자동 추출 엔진 준비 중입니다.</p>
-                </div>
-            """, unsafe_allow_html=True)
+            st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
+
+        st.markdown("<br>", unsafe_allow_html=True)
 
         # [스케치 6, 7, 8] 하단 트렌드 카드 3개
         col_6, col_7, col_8 = st.columns(3)
@@ -390,8 +360,8 @@ if not selected_code:
         with col_6:
             st.markdown("""
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A;'>🔥 Most searched Stocks</b><br><br>
-                    • <a href='/?code=005930' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br>
+                    <b style='color: #1A1A1A;'>Most searched Stocks</b><br><br>
+                    • <a href='/?code=005930' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br><br>
                     • <a href='/?code=000660' style='color: #D97706; text-decoration: none; font-weight: 600;'>SK하이닉스 (000660)</a>
                 </div>
             """, unsafe_allow_html=True)
@@ -399,9 +369,9 @@ if not selected_code:
         with col_7:
             st.markdown("""
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A;'>🇺🇸 Trending Searches (US)</b><br><br>
-                    • <a href='/?code=AAPL' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br>
-                    • <a href='/?code=NVDA' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br>
+                    <b style='color: #1A1A1A;'>Trending Searches (US)</b><br><br>
+                    • <a href='/?code=AAPL' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br><br>
+                    • <a href='/?code=NVDA' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br><br>
                     • <a href='/?code=TSLA' style='color: #D97706; text-decoration: none; font-weight: 600;'>Tesla (TSLA)</a>
                 </div>
             """, unsafe_allow_html=True)
@@ -409,8 +379,8 @@ if not selected_code:
         with col_8:
             st.markdown("""
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A;'>🇰🇷 Trending Searches (KOR)</b><br><br>
-                    • <a href='/?code=005380' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br>
+                    <b style='color: #1A1A1A;'>Trending Searches (KOR)</b><br><br>
+                    • <a href='/?code=005380' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br><br>
                     • <a href='/?code=000270' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
                 </div>
             """, unsafe_allow_html=True)
