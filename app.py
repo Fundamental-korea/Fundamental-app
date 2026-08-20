@@ -81,7 +81,7 @@ st.markdown("""
         color: #888888 !important;
         font-weight: bold;
         font-size: 15px;
-        min-height: 520px;
+        min-height: 580px;
         height: 100%;
         display: flex;
         align-items: center;
@@ -117,17 +117,44 @@ st.markdown("""
         font-weight: bold !important;
     }
 
-    /* 하단 트렌드 카드 */
+    /* 하단 트렌드 카드 (높이 수정을 통해 5개 항목이 넉넉히 들어가도록 반응형 변경) */
     .bottom-cards-wrapper {
-        margin-top: 10px;
+        margin-top: 15px;
     }
     .sketch-card {
         background-color: #FAFAFA;
         border: 1.5px solid #E5E5E5;
         border-radius: 12px;
-        padding: 24px;
-        height: 220px;
+        padding: 18px 20px;
+        min-height: 290px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+    }
+    .card-item-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 6px 0;
+        border-bottom: 1px dashed #E2E8F0;
+    }
+    .card-item-row:last-child {
+        border-bottom: none;
+    }
+    .stock-link {
+        color: #D97706 !important;
+        text-decoration: none !important;
+        font-weight: 600;
+        font-size: 13px;
+    }
+    .stock-link:hover {
+        text-decoration: underline !important;
+    }
+    .search-count-badge {
+        font-size: 11px;
+        color: #64748B;
+        background-color: #F1F5F9;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-weight: 600;
     }
 
     div.stButton > button {
@@ -288,9 +315,8 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 cursor: pointer;
             }}
 
-            /* 검색어 입력 시에만 나타나는 팝업 레이어 */
             .autocomplete-modal {{
-                display: none; /* 기본 상태: 숨김 */
+                display: none;
                 flex-direction: column;
                 position: absolute;
                 top: 54px;
@@ -309,7 +335,6 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 min-height: 300px;
             }}
 
-            /* 좌측: 실시간 연관 검색 목록 (65%) */
             .left-pane {{
                 flex: 65;
                 border-right: 1px solid #F1F5F9;
@@ -369,7 +394,6 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 border-radius: 2px;
             }}
 
-            /* 우측: 뉴스 및 분석 탭 (35%) */
             .right-pane {{
                 flex: 35;
                 background-color: #FAFAFA;
@@ -403,7 +427,6 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 color: #D97706;
             }}
 
-            /* 하단 검색 실행 바 */
             .modal-footer {{
                 border-top: 1px solid #F1F5F9;
                 padding: 10px 16px;
@@ -472,13 +495,11 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
             function renderList(query) {{
                 const q = query.trim().toLowerCase();
                 
-                // 입력값이 없으면 레이어 닫기
                 if (!q) {{
                     modalEl.style.display = 'none';
                     return;
                 }}
 
-                // 입력값이 있을 때만 레이어 표시
                 modalEl.style.display = 'flex';
                 footerQueryEl.innerText = q;
 
@@ -543,7 +564,6 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 }}
             }});
 
-            // 바깥 영역 클릭 시 드롭다운 닫기
             document.addEventListener('click', (e) => {{
                 if (!e.target.closest('.search-wrapper')) {{
                     modalEl.style.display = 'none';
@@ -600,7 +620,7 @@ if not selected_code:
     with main_content:
         tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
-        # 1. 미국 주식 실시간 반응형 검색
+        # 1. 미국 주식 실시간 검색
         with tab1:
             us_stocks_db = [
                 {"ticker": "P", "name": "Pure Storage Inc", "exch": "Equities - NYSE", "flag": "🇺🇸"},
@@ -620,7 +640,7 @@ if not selected_code:
                 key_prefix="us_investing_search"
             )
             
-        # 2. 한국 주식 실시간 반응형 검색 ('삼', '하' 입력 시 즉시 반응)
+        # 2. 한국 주식 실시간 검색
         with tab2:
             krx_dict = get_krx_stocks()
             kr_stocks_db = []
@@ -639,17 +659,7 @@ if not selected_code:
                     {"ticker": "000660", "name": "SK하이닉스", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
                     {"ticker": "005380", "name": "현대차", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
                     {"ticker": "035420", "name": "NAVER", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "035720", "name": "카카오", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "000270", "name": "기아", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "005490", "name": "POSCO홀딩스", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "006400", "name": "삼성SDI", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "207940", "name": "삼성바이오로직스", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "010140", "name": "삼성중공업", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "086790", "name": "하나금융지주", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "012330", "name": "현대모비스", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "042660", "name": "한화오션", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "009830", "name": "한화솔루션", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
-                    {"ticker": "000810", "name": "삼성화재", "exch": "Equities - KOSPI", "flag": "🇰🇷"}
+                    {"ticker": "035720", "name": "카카오", "exch": "Equities - KOSPI", "flag": "🇰🇷"}
                 ]
 
             render_investing_search_box(
@@ -664,35 +674,97 @@ if not selected_code:
         with tab4:
             st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
 
-        # 하단 트렌드 카드
+        # --- [개선된 하단 5개씩 구성 및 검색 수 표기 카드리스트] ---
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
         
+        # Card 1: Most searched Stocks (통합 검색 순위 top 5 + 검색 횟수)
         with col_6:
             st.markdown("""
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A;'>Most searched Stocks</b><br><br>
-                    • <a href='/?code=005930' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br><br>
-                    • <a href='/?code=000660' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>SK하이닉스 (000660)</a>
+                    <b style='color: #1A1A1A; font-size: 15px;'>🔥 Most Searched Stocks</b>
+                    <div style='margin-top: 12px;'>
+                        <div class='card-item-row'>
+                            <a href='/?code=005930' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
+                            <span class='search-count-badge'>18,420회</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=NVDA' target='_blank' class='stock-link'>2. NVIDIA (NVDA)</a>
+                            <span class='search-count-badge'>15,810회</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=000660' target='_blank' class='stock-link'>3. SK하이닉스 (000660)</a>
+                            <span class='search-count-badge'>12,340회</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=AAPL' target='_blank' class='stock-link'>4. Apple (AAPL)</a>
+                            <span class='search-count-badge'>9,580회</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=TSLA' target='_blank' class='stock-link'>5. Tesla (TSLA)</a>
+                            <span class='search-count-badge'>8,210회</span>
+                        </div>
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
             
+        # Card 2: Trending Searches (US Top 5)
         with col_7:
             st.markdown("""
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A;'>Trending Searches (US)</b><br><br>
-                    • <a href='/?code=AAPL' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br><br>
-                    • <a href='/?code=NVDA' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br><br>
-                    • <a href='/?code=TSLA' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>Tesla (TSLA)</a>
+                    <b style='color: #1A1A1A; font-size: 15px;'>🇺🇸 Trending Searches (US)</b>
+                    <div style='margin-top: 12px;'>
+                        <div class='card-item-row'>
+                            <a href='/?code=NVDA' target='_blank' class='stock-link'>1. NVIDIA (NVDA)</a>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=AAPL' target='_blank' class='stock-link'>2. Apple (AAPL)</a>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 2</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=TSLA' target='_blank' class='stock-link'>3. Tesla (TSLA)</a>
+                            <span style='font-size: 11px; color: #DC2626; font-weight: 700;'>▼ 1</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=PLTR' target='_blank' class='stock-link'>4. Palantir (PLTR)</a>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ NEW</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=MSFT' target='_blank' class='stock-link'>5. Microsoft (MSFT)</a>
+                            <span style='font-size: 11px; color: #64748B; font-weight: 700;'>-</span>
+                        </div>
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
             
+        # Card 3: Trending Searches (KOR Top 5)
         with col_8:
             st.markdown("""
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A;'>Trending Searches (KOR)</b><br><br>
-                    • <a href='/?code=005380' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br><br>
-                    • <a href='/?code=000270' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
+                    <b style='color: #1A1A1A; font-size: 15px;'>🇰🇷 Trending Searches (KOR)</b>
+                    <div style='margin-top: 12px;'>
+                        <div class='card-item-row'>
+                            <a href='/?code=005930' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=000660' target='_blank' class='stock-link'>2. SK하이닉스 (000660)</a>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 1</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=005380' target='_blank' class='stock-link'>3. 현대차 (005380)</a>
+                            <span style='font-size: 11px; color: #64748B; font-weight: 700;'>-</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=035420' target='_blank' class='stock-link'>4. NAVER (035420)</a>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 3</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=035720' target='_blank' class='stock-link'>5. 카카오 (035720)</a>
+                            <span style='font-size: 11px; color: #DC2626; font-weight: 700;'>▼ 2</span>
+                        </div>
+                    </div>
                 </div>
             """, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
