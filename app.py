@@ -17,7 +17,7 @@ st.set_page_config(
 
 st.markdown("""
     <style>
-    /* 전체 배경: 화이트 + 부드러운 모서리 파스텔 주황 글로우 */
+    /* 전체 배경 */
     .stApp {
         background-color: #FFFFFF;
         color: #1A1A1A;
@@ -45,7 +45,7 @@ st.markdown("""
         justify-content: center;
     }
 
-    /* Investor Quote 칸: 세로로 큼직한 높이 고정 및 Flex 정렬 */
+    /* Investor Quote 칸 */
     .quote-box {
         background-color: #FAFAFA;
         border: 1px solid #E5E5E5;
@@ -62,16 +62,21 @@ st.markdown("""
         text-align: center;
     }
 
-    /* 좌우 광고 영역 (완벽한 대칭 사이즈) */
+    /* 좌우 광고 영역: 가로는 좁고 세로는 길쭉하게 최적화 */
     .ad-box {
         background-color: #F8F9FA;
         border: 2px dashed #D0D0D0;
         border-radius: 10px;
         text-align: center;
         color: #888888;
-        padding: 180px 10px;
+        padding: 220px 5px; /* 세로는 길게, 좌우 여백은 최소화 */
         font-weight: bold;
+        font-size: 14px;
         height: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
     }
 
     /* 상단 탭 간격 확보 */
@@ -87,7 +92,7 @@ st.markdown("""
         padding: 0 20px;
     }
 
-    /* 검색창 영역 (흰색 바탕 + 주황색 테두리) */
+    /* 검색창 영역 */
     .search-container {
         background-color: #FFFFFF;
         border: 2px solid #F4A261;
