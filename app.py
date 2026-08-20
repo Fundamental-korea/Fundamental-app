@@ -161,29 +161,38 @@ if not selected_code:
         st.markdown("<div class='logo-box'>📈 Logo</div>", unsafe_allow_html=True)
         
     with col_quote:
-       # 3. 화면 분기 코드 안쪽
+    query_params = st.query_params
+selected_code = query_params.get("code", None)
+
 if not selected_code:
+    # --- [상단 영역]: Logo | Investor Quote | Log in ---
     col_logo, col_quote, col_login = st.columns([1.2, 6.8, 1])
     
+    with col_logo:
+        st.markdown("<div class='logo-box'>📈 Logo</div>", unsafe_allow_html=True)
+        
     with col_quote:
-        # 여기에 아래 코드를 넣어
         quotes = [
             "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
             "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
             "투자는 지능이 아니라 인내심의 게임이다."
         ]
-        # 랜덤하게 하나 뽑음
         selected_quote = random.choice(quotes)
         
         st.markdown(f"""
             <div class='quote-box'>
-                <div style='font-size: 50px;'>👨‍💼</div> 
-                <div style='font-size: 18px; font-weight: bold; margin-top: 10px;'>
+                <div style='font-size: 40px;'>👨‍💼</div> 
+                <div style='font-size: 16px; font-weight: bold; margin-top: 8px;'>
                     {selected_quote}
                 </div>
             </div>
         """, unsafe_allow_html=True)
         
+    with col_login:
+        if st.button("Log in", use_container_width=True):
+            st.toast("로그인 기능 준비 중입니다!")
+
+    st.markdown("<br>", unsafe_allow_html=True)
     with col_login:
         if st.button("Log in", use_container_width=True):
             st.toast("로그인 기능 준비 중입니다!")
