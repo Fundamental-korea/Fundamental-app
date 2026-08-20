@@ -346,27 +346,79 @@ if data:
 
 import streamlit as st
 
-# 화면을 꽉 채우는 넓은 레이아웃 설정
-st.set_page_config(layout="wide")
+# 1. 페이지 레이아웃을 넓게 설정 (좌우 광고 및 대시보드 공간 확보)
+st.set_page_config(
+    page_title="Fundamental Analyzer",
+    page_icon="🛡️",
+    layout="wide"
+)
 
-# 1. 탭 & 검색 영역 (스케치의 1, 2, 3, 4, 5번 영역)
-st.markdown("### 🔍 펀더멘탈 분석 검색")
+# 2. 상단 헤더 영역 (로고와 투자 격언 공간)
+col_logo, col_quote, col_login = st.cols([1, 4, 1])
+with col_logo:
+    st.markdown("### 🛡️ Logo")
+with col_quote:
+    st.info("💡 *\"하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.\"* — 펀더멘탈 분석")
+with col_login:
+    if st.button("Log in"):
+        st.toast("로그인 기능은 준비 중입니다!")
 
-# 탭 배치
-tab1, tab2, tab3, tab4 = st.tabs(["🇺🇸 US stock", "🇰🇷 Korea stock", "📰 Live news", "💎 Gem"])
+st.markdown("---")
 
-with tab1:
-    search_us = st.text_input("미국 주식 티커를 입력하세요 (예: AAPL)", key="us_search")
-with tab2:
-    search_kr = st.text_input("한국 주식 종목명/코드를 입력하세요 (예: 삼성전자)", key="kr_search")
-with tab3:
-    st.write("실시간 뉴스가 업데이트될 예정입니다.")
-with tab4:
-    st.write("Gem 분석 결과가 표시됩니다.")
+# 3. 좌우 광고 영역을 위한 3단 레이아웃 (좌측 광고 / 메인 콘텐츠 / 우측 광고)
+left_ad, main_content, right_ad = st.columns([1, 4, 1])
 
-# 검색 버튼 (직관적인 배치)
-if st.button("분석 시작"):
-    query = search_us if search_us else search_kr
-    if query:
-        st.success(f"'{query}'에 대한 펀더멘탈 데이터를 불러오는 중입니다...")
-        # 여기에 추후 DB 연동 로직 추가 예정
+with left_ad:
+    st.markdown("---")
+    st.markdown("<div style='text-align: center; color: gray;'><b>Ads</b><br><br>Advertisement Space</div>", unsafe_allow_html=True)
+    st.markdown("---")
+
+with main_content:
+    # --- 스케치 반영: 상단 탭 (US Stock, Korea Stock, Live news, Gem) ---
+    tab1, tab2, tab3, tab4 = st.tabs(["🇺🇸 US stock", "🇰🇷 Korea stock", "📰 Live news", "💎 Gem"])
+
+    with tab1:
+        st.write("미국 주식 시장의 펀더멘탈을 분석합니다.")
+    with tab2:
+        st.write("한국 주식 시장의 재무제표를 파헤칩니다.")
+    with tab3:
+        st.write("실시간 마켓 뉴스가 제공됩니다.")
+    with tab4:
+        st.write("AI 젬(Gem) 인사이트 분석 결과입니다.")
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # --- 스케치 반영: 화면 중앙에 배치된 검색 탭 (Searching Tab) ---
+    st.markdown("### 🔍 펀더멘탈 종목 검색")
+    search_query = st.text_input("기업명 또는 티커를 입력하세요 (예: AAPL, 삼성전자)", placeholder="여기에 검색어를 입력하세요...")
+    
+    col_btn1, col_btn2 = st.columns([1, 5])
+    with col_btn1:
+        search_clicked = st.button("검색하기", type="primary")
+    
+    if search_clicked and search_query:
+        st.success(f"'{search_query}'에 대한 재무 건전성 및 펀더멘탈 데이터를 불러오는 중입니다...")
+        # 추후 Supabase에서 데이터를 조회해 렌더링할 영역
+
+    st.markdown("<br><br>", unsafe_allow_html=True)
+
+    # --- 스케치 반영: 하단 트렌드 영역 (6, 7, 8번 박스) ---
+    st.markdown("### 🔥 Market Trends")
+    col_t1, col_t2, col_t3 = st.columns(3)
+    
+    with col_t1:
+        st.markdown("##### 6. Most searched Stocks")
+        st.caption("- 테슬라 (TSLA)\n- Apple (AAPL)\n- 삼성전자 (005930)")
+        
+    with col_t2:
+        st.markdown("##### 7. Trending Searches (US)")
+        st.caption("- 마이크로소프트\n- 엔비디아\n- 코카콜라 (방어주)")
+        
+    with col_t3:
+        st.markdown("##### 8. Trending Searches (KOR)")
+        st.caption("- SK하이닉스\n- 현대차\n- 기아")
+
+with right_ad:
+    st.markdown("---")
+    st.markdown("<div style='text-align: center; color: gray;'><b>Ads</b><br><br>Advertisement Space</div>", unsafe_allow_html=True)
+    st.markdown("---")
