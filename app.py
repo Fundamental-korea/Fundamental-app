@@ -117,53 +117,6 @@ st.markdown("""
         font-weight: bold !important;
     }
 
-    /* 🔥 핵심: Form 프레임을 통합 검색창 컨테이너로 변환 */
-    div[data-testid="stForm"] {
-        background-color: #FFFDF9 !important;
-        border: 2px solid #F4A261 !important;
-        border-radius: 14px !important;
-        padding: 5px 10px !important;
-        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12) !important;
-        margin-bottom: 25px !important;
-    }
-
-    /* 내부 입력창 테두리 제거 및 배경 투명화 */
-    div[data-baseweb="input"], div[data-baseweb="base-input"] {
-        background-color: transparent !important;
-        border: none !important;
-        box-shadow: none !important;
-        height: 50px !important;
-    }
-    div[data-baseweb="input"] input {
-        color: #1A1A1A !important;
-        background-color: transparent !important;
-        -webkit-text-fill-color: #1A1A1A !important;
-        font-size: 16px !important;
-        font-weight: 600 !important;
-    }
-
-    /* 내부 우측 검색 버튼 디자인 (검색창 내부 안착) */
-    div[data-testid="stFormSubmitButton"] {
-        display: flex;
-        align-items: center;
-        justify-content: flex-end;
-    }
-    div[data-testid="stFormSubmitButton"] > button {
-        background-color: #F4A261 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        font-weight: bold !important;
-        border-radius: 10px !important;
-        height: 46px !important;
-        font-size: 16px !important;
-        width: 100% !important;
-        box-shadow: 0 2px 6px rgba(244, 162, 97, 0.3) !important;
-        transition: all 0.2s ease !important;
-    }
-    div[data-testid="stFormSubmitButton"] > button:hover {
-        background-color: #D97706 !important;
-    }
-
     /* 하단 트렌드 카드 */
     .bottom-cards-wrapper {
         margin-top: 30px;
@@ -285,7 +238,111 @@ def calculate_defense_score(data):
     return score, grade, reasons
 
 # ==========================================
-# 3. 메인 포털 UI
+# 3. 커스텀 검색창 (자동완성 + Enter + 새 탭 전송)
+# ==========================================
+def render_custom_search_box(placeholder, datalist_options, key_prefix):
+    options_html = "".join([f'<option value="{opt}">' for opt in datalist_options])
+    
+    custom_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <style>
+            body {{
+                margin: 0;
+                padding: 0;
+                font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+                background: transparent;
+            }}
+            .search-container {{
+                display: flex;
+                gap: 10px;
+                width: 100%;
+            }}
+            .search-input {{
+                flex: 1;
+                height: 48px;
+                padding: 0 16px;
+                border: 2px solid #F4A261;
+                border-radius: 12px;
+                font-size: 15px;
+                font-weight: 600;
+                outline: none;
+                background-color: #FFFDF9;
+                color: #1A1A1A;
+                box-sizing: border-box;
+            }}
+            .search-input:focus {{
+                border-color: #D97706;
+                box-shadow: 0 0 8px rgba(217, 119, 6, 0.25);
+            }}
+            .search-button {{
+                width: 110px;
+                height: 48px;
+                background-color: #F4A261;
+                color: white;
+                border: none;
+                border-radius: 12px;
+                font-size: 16px;
+                font-weight: bold;
+                cursor: pointer;
+                transition: background-color 0.2s;
+                box-sizing: border-box;
+            }}
+            .search-button:hover {{
+                background-color: #D97706;
+            }}
+        </style>
+    </head>
+    <body>
+        <div class="search-container">
+            <input 
+                type="text" 
+                id="{key_prefix}_input" 
+                class="search-input" 
+                list="{key_prefix}_list" 
+                placeholder="{placeholder}"
+                onkeypress="handleKeyPress(event)"
+                autocomplete="off"
+            />
+            <datalist id="{key_prefix}_list">
+                {options_html}
+            </datalist>
+            <button class="search-button" onclick="executeSearch()">🔍 분석</button>
+        </div>
+
+        <script>
+            function executeSearch() {{
+                const inputVal = document.getElementById('{key_prefix}_input').value.trim();
+                if (!inputVal) return;
+
+                let targetCode = inputVal;
+                // '삼성전자 (005930)' 형태에서 6자리 코드만 추출
+                const match = inputVal.match(/\(([^)]+)\)/);
+                if (match) {{
+                    targetCode = match[1];
+                }} else if (inputVal.includes(" - ")) {{
+                    targetCode = inputVal.split(" - ")[0];
+                }}
+
+                // 새 탭(_blank)으로 분석 리포트 URL 열기
+                const targetUrl = window.parent.location.origin + window.parent.location.pathname + '?code=' + encodeURIComponent(targetCode);
+                window.open(targetUrl, '_blank');
+            }}
+
+            function handleKeyPress(event) {{
+                if (event.key === 'Enter') {{
+                    executeSearch();
+                }}
+            }}
+        </script>
+    </body>
+    </html>
+    """
+    components.html(custom_html, height=60)
+
+# ==========================================
+# 4. 메인 포털 UI
 # ==========================================
 query_params = st.query_params
 selected_code = query_params.get("code", None)
@@ -327,56 +384,42 @@ if not selected_code:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
     with main_content:
-        # 1, 2, 3, 4번 탭
         tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
-        # 🔥 Enter 키 입력 및 버튼 클릭 모두 즉시 실행되는 탭 파트
+        # 1. 미국 주식 검색
         with tab1:
-            with st.form(key="us_search_form", clear_on_submit=False):
-                col_in, col_btn = st.columns([8.5, 1.5])
-                with col_in:
-                    us_ticker = st.text_input(
-                        label="미국주식검색",
-                        value="",
-                        placeholder="🔍 미국 주식 Ticker 입력 후 Enter (예: AAPL, NVDA, TSLA)",
-                        label_visibility="collapsed"
-                    ).upper().strip()
-                
-                with col_btn:
-                    us_submit = st.form_submit_button("🔍 분석")
-                
-                if us_submit and us_ticker:
-                    st.query_params["code"] = us_ticker
-                    st.rerun()
-                
+            us_suggestions = [
+                "AAPL - Apple Inc.",
+                "NVDA - NVIDIA Corporation",
+                "TSLA - Tesla Inc.",
+                "MSFT - Microsoft Corporation",
+                "AMZN - Amazon.com Inc.",
+                "GOOGL - Alphabet Inc.",
+                "META - Meta Platforms Inc.",
+                "PLTR - Palantir Technologies",
+                "AMD - Advanced Micro Devices"
+            ]
+            render_custom_search_box(
+                placeholder="🔍 미국 주식 Ticker 또는 기업명 입력 후 Enter (예: AAPL, NVDA, TSLA)",
+                datalist_options=us_suggestions,
+                key_prefix="us_search"
+            )
+            
+        # 2. 한국 주식 검색
         with tab2:
-            with st.form(key="kr_search_form", clear_on_submit=False):
-                col_in2, col_btn2 = st.columns([8.5, 1.5])
-                with col_in2:
-                    kr_input = st.text_input(
-                        label="한국주식검색",
-                        value="",
-                        placeholder="🔍 한국 주식명 또는 6자리 코드 입력 후 Enter (예: 삼성전자, 005930)",
-                        label_visibility="collapsed"
-                    ).strip()
-                
-                with col_btn2:
-                    kr_submit = st.form_submit_button("🔍 분석")
-                
-                if kr_submit and kr_input:
-                    krx_stocks = get_krx_stocks()
-                    target_code = None
-                    
-                    for name_code, info in krx_stocks.items():
-                        if kr_input in name_code or kr_input == info["code"]:
-                            target_code = info["code"]
-                            break
-                    
-                    if target_code:
-                        st.query_params["code"] = target_code
-                        st.rerun()
-                    else:
-                        st.error("존재하지 않는 한국 주식 종목명/코드입니다.")
+            krx_stocks = get_krx_stocks()
+            kr_suggestions = list(krx_stocks.keys()) if krx_stocks else [
+                "삼성전자 (005930)",
+                "SK하이닉스 (000660)",
+                "현대차 (005380)",
+                "네이버 (035420)",
+                "카카오 (035720)"
+            ]
+            render_custom_search_box(
+                placeholder="🔍 한국 주식명 또는 6자리 코드 입력 후 Enter (예: 삼성전자, 005930)",
+                datalist_options=kr_suggestions,
+                key_prefix="kr_search"
+            )
             
         with tab3:
             st.info("📰 실시간 증시 속보 및 주요 뉴스 모니터링 준비 중입니다.")
@@ -384,7 +427,7 @@ if not selected_code:
         with tab4:
             st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
 
-        # 하단 트렌드 카드
+        # 하단 트렌드 카드 (링크 클릭 시에도 새 탭 열기 반영)
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
         
@@ -392,8 +435,8 @@ if not selected_code:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A;'>Most searched Stocks</b><br><br>
-                    • <a href='/?code=005930' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br><br>
-                    • <a href='/?code=000660' style='color: #D97706; text-decoration: none; font-weight: 600;'>SK하이닉스 (000660)</a>
+                    • <a href='/?code=005930' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br><br>
+                    • <a href='/?code=000660' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>SK하이닉스 (000660)</a>
                 </div>
             """, unsafe_allow_html=True)
             
@@ -401,9 +444,9 @@ if not selected_code:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A;'>Trending Searches (US)</b><br><br>
-                    • <a href='/?code=AAPL' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br><br>
-                    • <a href='/?code=NVDA' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br><br>
-                    • <a href='/?code=TSLA' style='color: #D97706; text-decoration: none; font-weight: 600;'>Tesla (TSLA)</a>
+                    • <a href='/?code=AAPL' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br><br>
+                    • <a href='/?code=NVDA' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br><br>
+                    • <a href='/?code=TSLA' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>Tesla (TSLA)</a>
                 </div>
             """, unsafe_allow_html=True)
             
@@ -411,8 +454,8 @@ if not selected_code:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A;'>Trending Searches (KOR)</b><br><br>
-                    • <a href='/?code=005380' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br><br>
-                    • <a href='/?code=000270' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
+                    • <a href='/?code=005380' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br><br>
+                    • <a href='/?code=000270' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
                 </div>
             """, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -421,8 +464,8 @@ if not selected_code:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
 else:
-    # --- [상세 분석 리포트 페이지] ---
-    if st.button("⬅️ 메인으로 돌아가기"):
+    # --- [상세 분석 리포트 페이지 (새 탭에서 열리는 화면)] ---
+    if st.button("⬅️ 창 닫기 / 이전으로"):
         st.query_params.clear()
         st.rerun()
 
