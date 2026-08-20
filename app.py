@@ -14,10 +14,9 @@ st.set_page_config(
     layout="wide"
 )
 
-# Streamlit 레이아웃 높이 동기화 및 스케치(Main_2.png) 맞춤형 CSS
 st.markdown("""
     <style>
-    /* 1. 전체 배경 */
+    /* 1. 전체 배경 및 기본 글자색 고정 */
     html, body, [data-testid="stAppViewContainer"], .stApp {
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
@@ -34,19 +33,7 @@ st.markdown("""
         color: #1A1A1A !important;
     }
 
-    /* 2. 컬럼 높이 자동 동기화 (Flexbox 적용) */
-    [data-testid="stHorizontalBlock"] {
-        align-items: stretch !important;
-    }
-    [data-testid="stColumn"] {
-        display: flex ! grand;
-        flex-direction: column !important;
-    }
-    [data-testid="stColumn"] > div {
-        flex: 1 !important;
-    }
-
-    /* 3. 상단 헤더 컴포넌트 */
+    /* 2. 상단 헤더 컴포넌트 */
     .logo-box {
         border: 2px solid #F4A261;
         border-radius: 12px;
@@ -82,7 +69,7 @@ st.markdown("""
         color: #333333 !important;
     }
 
-    /* 4. 좌우 양쪽 Ads (중앙 전체 높이에 맞춤) */
+    /* 3. 좌우 Ads (세로형 반응형) */
     .ad-box-tall {
         background-color: #F8F9FA;
         border: 2px dashed #D0D0D0;
@@ -91,69 +78,59 @@ st.markdown("""
         color: #888888 !important;
         font-weight: bold;
         font-size: 16px;
+        min-height: 560px;
         height: 100%;
-        min-height: 520px;
         display: flex;
         align-items: center;
         justify-content: center;
         box-sizing: border-box;
     }
 
-    /* 5. 🔥 [스케치 5번] 단일 대형 주황색 테두리 검색창 */
+    /* 4. 🔥 [스케치 5번] 주황색 테두리 단일 Searching Frame */
+    .search-frame-container {
+        border: 2px solid #F4A261;
+        border-radius: 14px;
+        background-color: #FFFDF9;
+        padding: 28px 24px;
+        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.08);
+        margin-bottom: 35px;
+    }
+
+    /* Streamlit 입력 위젯 스타일 강제 재정의 */
     div[data-baseweb="input"] {
-        border: 2.5px solid #F4A261 !important;
-        border-radius: 12px !important;
-        background-color: #FFFDF9 !important;
-        padding: 8px 12px !important;
-        height: 65px !important;
-        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12) !important;
-    }
-
-    div[data-baseweb="input"] input {
-        font-size: 18px !important;
-        font-weight: 600 !important;
-        color: #1A1A1A !important;
-        background-color: transparent !important;
-        -webkit-text-fill-color: #1A1A1A !important;
-    }
-
-    div[data-baseweb="select"] > div {
-        border: 2.5px solid #F4A261 !important;
-        border-radius: 12px !important;
-        background-color: #FFFDF9 !important;
-        height: 65px !important;
-    }
-
-    /* 6. 버튼 및 탭 스타일 */
-    div.stButton > button {
-        background-color: #F4A261 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        font-weight: bold !important;
+        background-color: #FFFFFF !important;
+        border: 1.5px solid #F4A261 !important;
         border-radius: 8px !important;
-        height: 50px !important;
+    }
+    div[data-baseweb="input"] input {
+        color: #1A1A1A !important;
+        background-color: #FFFFFF !important;
+        -webkit-text-fill-color: #1A1A1A !important;
         font-size: 16px !important;
     }
-    div.stButton > button:hover {
-        background-color: #E79150 !important;
+    div[data-baseweb="select"] > div {
+        background-color: #FFFFFF !important;
+        color: #1A1A1A !important;
+        border: 1.5px solid #F4A261 !important;
+        border-radius: 8px !important;
     }
 
+    /* 탭 스타일 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 16px;
         justify-content: center;
-        margin-bottom: 15px;
+        margin-bottom: 20px;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 45px;
+        height: 42px;
         background-color: #FAFAFA !important;
         border-radius: 8px;
         border: 1px solid #E5E5E5;
-        padding: 0 28px;
+        padding: 0 24px;
     }
     .stTabs [data-baseweb="tab"] p {
         color: #555555 !important;
         font-weight: 600;
-        font-size: 15px;
     }
     .stTabs [aria-selected="true"] {
         background-color: #FFFDF9 !important;
@@ -164,23 +141,40 @@ st.markdown("""
         font-weight: bold;
     }
 
-    /* 7. 하단 6, 7, 8번 스케치 카드 (높이 확충) */
+    /* 5. 🔥 [스케치 6, 7, 8번] 하단 위치 조정 (margin-top으로 간격 확보) */
+    .bottom-cards-wrapper {
+        margin-top: 25px;
+    }
+
     .sketch-card {
         background-color: #FAFAFA;
         border: 1.5px solid #E5E5E5;
         border-radius: 12px;
         padding: 24px;
-        height: 240px;
+        height: 220px;
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
     }
     .sketch-card b {
         font-size: 16px;
     }
+
+    /* 버튼 스타일 */
+    div.stButton > button {
+        background-color: #F4A261 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        font-weight: bold !important;
+        border-radius: 8px !important;
+        height: 46px !important;
+    }
+    div.stButton > button:hover {
+        background-color: #E79150 !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. Supabase 및 유틸리티 함수 설정
+# 2. 데이터 및 유틸리티 설정
 # ==========================================
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "YOUR_SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "YOUR_SUPABASE_KEY")
@@ -282,7 +276,7 @@ query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
-    # --- [상단 헤더]: Logo | Investor Quotes | Log in ---
+    # --- [상단 헤더]: Logo | Investor Quote | Log in ---
     col_logo, col_quote, col_login = st.columns([1.2, 6.6, 1.2])
     
     with col_logo:
@@ -322,39 +316,46 @@ if not selected_code:
         tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
         with tab1:
-            # [스케치 5번] 단일 주황색 테두리 검색창
+            st.markdown("<div class='search-frame-container'>", unsafe_allow_html=True)
             us_ticker = st.text_input(
-                label="", 
-                value="", 
-                placeholder="🔍 Searching Tab: 미국 주식 Ticker 입력 (예: AAPL, NVDA, TSLA 후 Enter)", 
+                "🇺🇸 미국 주식 Ticker 검색", 
+                value="AAPL", 
                 key="us_input"
             ).upper().strip()
             
-            if us_ticker:
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button("🚀 미국 주식 펀더멘탈 분석 리포트 열기", use_container_width=True):
                 st.markdown(f"<script>window.location.href='/?code={us_ticker}';</script>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
                 
         with tab2:
+            st.markdown("<div class='search-frame-container'>", unsafe_allow_html=True)
             krx_stocks = get_krx_stocks()
             stock_options = list(krx_stocks.keys())
             selected_option = st.selectbox(
-                label="", 
+                "🇰🇷 한국 주식 종목 선택", 
                 options=stock_options, 
-                index=0, 
                 key="kr_select"
             )
             target_code = krx_stocks[selected_option]["code"]
-            if st.button(f"🚀 {selected_option} 분석 리포트 열기", use_container_width=True):
+            
+            st.markdown("<br>", unsafe_allow_html=True)
+            if st.button(f"🚀 {selected_option} 펀더멘탈 분석 리포트 열기", use_container_width=True):
                 st.markdown(f"<script>window.location.href='/?code={target_code}';</script>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
             
         with tab3:
-            st.info("📰 실시간 증시 속보 및 뉴스 모니터링 준비 중입니다.")
+            st.markdown("<div class='search-frame-container' style='text-align: center;'>", unsafe_allow_html=True)
+            st.info("📰 실시간 증시 속보 및 주요 뉴스 모니터링 준비 중입니다.")
+            st.markdown("</div>", unsafe_allow_html=True)
             
         with tab4:
+            st.markdown("<div class='search-frame-container' style='text-align: center;'>", unsafe_allow_html=True)
             st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
+            st.markdown("</div>", unsafe_allow_html=True)
 
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # [스케치 6, 7, 8] 하단 트렌드 카드 3개
+        # [스케치 6, 7, 8] 하단 트렌드 카드 (여유 공간 확보 후 아래로배치)
+        st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
         
         with col_6:
@@ -384,6 +385,7 @@ if not selected_code:
                     • <a href='/?code=000270' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
                 </div>
             """, unsafe_allow_html=True)
+        st.markdown("</div>", unsafe_allow_html=True)
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
