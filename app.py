@@ -5,7 +5,7 @@ import pandas as pd
 import altair as alt
 
 # ==========================================
-# 1. 페이지 및 커스텀 디자인 설정 (파스텔 주황 포인트 & 다크 테마)
+# 1. 페이지 및 커스텀 디자인 설정 (화이트 테마 & 4방향 파스텔 주황 글로우)
 # ==========================================
 st.set_page_config(
     page_title="Fundamental Analyzer - 하락장 방어 플랫폼", 
@@ -13,27 +13,36 @@ st.set_page_config(
     layout="wide"
 )
 
-# 스케치 디자인(다크 배경 + 파스텔 주황 포인트)을 위한 CSS 주입
+# 4개 모서리에서 원형으로 퍼지는 은은한 파스텔 주황 그라데이션 CSS + 화이트 테마
 st.markdown("""
     <style>
-    /* 전체 배경 다크 모드 감성 */
+    /* 전체 배경: 화이트 + 4모서리 파스텔 주황 원형 글로우 */
     .stApp {
-        background-color: #121212;
-        color: #E0E0E0;
+        background-color: #FFFFFF;
+        color: #1A1A1A;
+        background-image: 
+            radial-gradient(circle at 0% 0%, rgba(248, 190, 140, 0.35) 0%, transparent 45%),
+            radial-gradient(circle at 100% 0%, rgba(248, 190, 140, 0.35) 0%, transparent 45%),
+            radial-gradient(circle at 0% 100%, rgba(248, 190, 140, 0.35) 0%, transparent 45%),
+            radial-gradient(circle at 100% 100%, rgba(248, 190, 140, 0.35) 0%, transparent 45%);
+        background-repeat: no-repeat;
+        background-attachment: fixed;
     }
     
-    /* 카드 박스 스타일링 (은은한 테두리) */
+    /* 카드 박스 스타일링 */
     .custom-card {
-        background-color: #1E1E1E;
-        border: 1px solid #333333;
+        background-color: #FAFAFA;
+        border: 1px solid #E5E5E5;
         border-radius: 12px;
         padding: 20px;
         margin-bottom: 15px;
+        color: #1A1A1A;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
     }
 
-    /* 파스텔 주황색 포인트 버튼 및 텍스트 */
+    /* 파스텔 주황색 포인트 버튼 */
     .pastel-orange-btn {
-        background-color: #E8934E;
+        background-color: #F4A261;
         color: white;
         padding: 10px 20px;
         border-radius: 8px;
@@ -41,19 +50,20 @@ st.markdown("""
         text-align: center;
         display: inline-block;
         text-decoration: none;
+        box-shadow: 0 2px 6px rgba(244, 162, 97, 0.3);
     }
     .pastel-orange-btn:hover {
-        background-color: #D67D3B;
+        background-color: #E79150;
         color: white;
     }
 
     /* 광고 영역 박스 */
     .ad-box {
-        background-color: #181818;
-        border: 2px dashed #3D3D3D;
+        background-color: #F8F9FA;
+        border: 2px dashed #D0D0D0;
         border-radius: 10px;
         text-align: center;
-        color: #777777;
+        color: #888888;
         padding: 100px 10px;
         font-weight: bold;
     }
@@ -68,8 +78,6 @@ def init_supabase():
     return create_client(SUPABASE_URL, SUPABASE_KEY)
 
 supabase = init_supabase()
-
-# URL 쿼리 파라미터에서 현재 선택된 종목 코드 확인 (새 탭 대응)
 query_params = st.query_params
 selected_code = query_params.get("code", None)
 
@@ -183,26 +191,23 @@ def format_yearly_dataframe(df_target, stock_name):
     return df_f[[c for c in desired_order if c in df_f.columns]]
 
 # ==========================================
-# 3. 화면 분기 (메인 스케치 포털 vs 새 탭 상세 분석 창)
+# 3. 화면 분기 (메인 포털 vs 새 탭 상세 분석 창)
 # ==========================================
 if not selected_code:
     # ----------------------------------------------------
     # [뷰 A] 스케치 기반 메인 포털 레이아웃
     # ----------------------------------------------------
-    
-    # 상단 헤더 영역 (로고 / 투자 격언 / 로그인)
     col_logo, col_quote, col_login = st.columns([1.2, 5.8, 1])
     with col_logo:
-        st.markdown("<div style='border: 2px solid #E8934E; border-radius: 8px; padding: 10px; text-align: center; font-weight: bold; color: #E8934E;'>🛡️ Logo</div>", unsafe_allow_html=True)
+        st.markdown("<div style='border: 2px solid #F4A261; border-radius: 8px; padding: 10px; text-align: center; font-weight: bold; color: #D97706; background-color: #FFFDF9;'>🛡️ Logo</div>", unsafe_allow_html=True)
     with col_quote:
-        st.markdown("<div style='background-color: #1E1E1E; border: 1px solid #333333; border-radius: 8px; padding: 10px 20px; color: #CCCCCC;'>💡 <b>Investor Image</b> | <i>\"하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.\"</i></div>", unsafe_allow_html=True)
+        st.markdown("<div style='background-color: #FAFAFA; border: 1px solid #E5E5E5; border-radius: 8px; padding: 10px 20px; color: #333333;'>💡 <b>Investor Image</b> | <i>\"하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.\"</i></div>", unsafe_allow_html=True)
     with col_login:
         if st.button("Log in", use_container_width=True):
             st.toast("로그인 기능 준비 중!")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 3단 구조 (좌측 광고 - 중앙 메인 컨텐츠 - 우측 광고)
     left_ad, main_content, right_ad = st.columns([1, 4.5, 1])
 
     with left_ad:
@@ -212,19 +217,15 @@ if not selected_code:
         # [1, 2, 3, 4] 상단 탭 영역
         tab1, tab2, tab3, tab4 = st.tabs(["🇺🇸 1. Us stock", "🇰🇷 2. Korea stock", "📰 3. Live news", "💎 4. Gem"])
         
-        with tab1:
-            st.caption("미국 주식 펀더멘탈 분석 기능")
-        with tab2:
-            st.caption("한국 주식 재무제표 방어력 분석 기능")
-        with tab3:
-            st.caption("실시간 증시 속보 및 마켓 인사이트")
-        with tab4:
-            st.caption("AI 기반 젬(Gem) 종목 스크리닝")
+        with tab1: st.caption("미국 주식 펀더멘탈 분석 기능")
+        with tab2: st.caption("한국 주식 재무제표 방어력 분석 기능")
+        with tab3: st.caption("실시간 증시 속보 및 마켓 인사이트")
+        with tab4: st.caption("AI 기반 젬(Gem) 종목 스크리닝")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # [5] 중앙 검색 탭 영역 (Searching Tab)
-        st.markdown("<div style='background-color: #1E1E1E; border: 2px solid #E8934E; border-radius: 12px; padding: 25px;'>", unsafe_allow_html=True)
+        # [5] 중앙 검색 탭 영역
+        st.markdown("<div style='background-color: #FAFAFA; border: 2px solid #F4A261; border-radius: 12px; padding: 25px; box-shadow: 0 4px 15px rgba(244,162,97,0.1);'>", unsafe_allow_html=True)
         st.markdown("### 🔍 5. Searching Tab (종목 통합 검색)")
         
         krx_stocks = get_all_krx_stocks()
@@ -254,8 +255,8 @@ if not selected_code:
             st.markdown("""
                 <div class='custom-card' style='height: 180px;'>
                     <b>6. Most searched Stocks</b><br><br>
-                    • <a href='/?code=005930' target='_blank' style='color: #E8934E;'>삼성전자 (005930)</a><br>
-                    • <a href='/?code=000660' target='_blank' style='color: #E8934E;'>SK하이닉스 (000660)</a>
+                    • <a href='/?code=005930' target='_blank' style='color: #D97706; text-decoration: none;'>삼성전자 (005930)</a><br>
+                    • <a href='/?code=000660' target='_blank' style='color: #D97706; text-decoration: none;'>SK하이닉스 (000660)</a>
                 </div>
             """, unsafe_allow_html=True)
             
@@ -273,8 +274,8 @@ if not selected_code:
             st.markdown("""
                 <div class='custom-card' style='height: 180px;'>
                     <b>8. Trending Searches (KOR)</b><br><br>
-                    • <a href='/?code=005380' target='_blank' style='color: #E8934E;'>현대차 (005380)</a><br>
-                    • <a href='/?code=000270' target='_blank' style='color: #E8934E;'>기아 (000270)</a>
+                    • <a href='/?code=005380' target='_blank' style='color: #D97706; text-decoration: none;'>현대차 (005380)</a><br>
+                    • <a href='/?code=000270' target='_blank' style='color: #D97706; text-decoration: none;'>기아 (000270)</a>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -283,10 +284,10 @@ if not selected_code:
 
 else:
     # ----------------------------------------------------
-    # [뷰 B] 새 탭으로 열리는 상세 분석 창
+    # [뷰 B] 새 탭으로 열리는 상세 재무 분석 창 (완전판)
     # ----------------------------------------------------
     st.markdown("### 🛡️ 펀더멘탈 방어력 상세 분석 리포트 (새 탭 전용)")
-    st.markdown("<hr style='border: 1px solid #E8934E;'>", unsafe_allow_html=True)
+    st.markdown("<hr style='border: 1px solid #F4A261;'>", unsafe_allow_html=True)
     
     data = get_stock_data(selected_code)
 
@@ -357,7 +358,7 @@ else:
                     df_5['year'] = df_5['year'].astype(int)
                     df_5['순이익_조원'] = df_5['net_income'] / 1_000_000_000_000
                     
-                    chart_5y = alt.Chart(df_5).mark_bar(color="#E8934E", size=30).encode(
+                    chart_5y = alt.Chart(df_5).mark_bar(color="#F4A261", size=30).encode(
                         x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
                         y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
                         tooltip=['year', '순이익_조원']
@@ -371,7 +372,7 @@ else:
                     df_3['year'] = df_3['year'].astype(int)
                     df_3['순이익_조원'] = df_3['net_income'] / 1_000_000_000_000
                     
-                    chart_3y = alt.Chart(df_3).mark_bar(color="#E8934E", size=30).encode(
+                    chart_3y = alt.Chart(df_3).mark_bar(color="#F4A261", size=30).encode(
                         x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
                         y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
                         tooltip=['year', '순이익_조원']
