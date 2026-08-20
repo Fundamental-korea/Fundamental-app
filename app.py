@@ -128,7 +128,7 @@ st.markdown("""
     }
 
     /* 내부 입력창 테두리 제거 및 배경 투명화 */
-    div[data-baseweb="input"], div[data-baseweb="base-input"], div[data-baseweb="select"] > div {
+    div[data-baseweb="input"], div[data-baseweb="base-input"] {
         background-color: transparent !important;
         border: none !important;
         box-shadow: none !important;
@@ -162,24 +162,6 @@ st.markdown("""
     }
     div[data-testid="stFormSubmitButton"] > button:hover {
         background-color: #D97706 !important;
-    }
-
-    /* 드롭다운 옵션 스타일 */
-    div[data-baseweb="popover"], div[data-baseweb="menu"], ul[role="listbox"] {
-        background-color: #FFFFFF !important;
-        border: 1.5px solid #F4A261 !important;
-        border-radius: 10px !important;
-    }
-    li[role="option"], div[role="option"] {
-        background-color: #FFFFFF !important;
-        color: #1A1A1A !important;
-        font-size: 16px !important;
-        font-weight: 500 !important;
-        padding: 10px 15px !important;
-    }
-    li[role="option"]:hover, div[role="option"]:hover {
-        background-color: #FFF3E0 !important;
-        color: #D97706 !important;
     }
 
     /* 하단 트렌드 카드 */
@@ -302,15 +284,6 @@ def calculate_defense_score(data):
     
     return score, grade, reasons
 
-def open_new_tab(code):
-    """새 탭으로 상세 분석 페이지 오픈"""
-    js_code = f"""
-    <script>
-        window.open('/?code={code}', '_blank');
-    </script>
-    """
-    components.html(js_code, height=0, width=0)
-
 # ==========================================
 # 3. 메인 포털 UI
 # ==========================================
@@ -357,8 +330,8 @@ if not selected_code:
         # 1, 2, 3, 4번 탭
         tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
+        # 🔥 Enter 키 입력 및 버튼 클릭 모두 즉시 실행되는 탭 파트
         with tab1:
-            # 통합 검색창 스타일 Form (버튼이 검색창 내부 우측에 탑재)
             with st.form(key="us_search_form", clear_on_submit=False):
                 col_in, col_btn = st.columns([8.5, 1.5])
                 with col_in:
@@ -372,34 +345,38 @@ if not selected_code:
                 with col_btn:
                     us_submit = st.form_submit_button("🔍 분석")
                 
-                if us_submit:
-                    if us_ticker:
-                        open_new_tab(us_ticker)
-                    else:
-                        st.warning("Ticker를 입력해주세요.")
+                if us_submit and us_ticker:
+                    st.query_params["code"] = us_ticker
+                    st.rerun()
                 
         with tab2:
             with st.form(key="kr_search_form", clear_on_submit=False):
-                col_sel, col_btn2 = st.columns([8.5, 1.5])
-                krx_stocks = get_krx_stocks()
-                stock_options = ["🔍 종목을 선택하세요..."] + list(krx_stocks.keys())
-                
-                with col_sel:
-                    selected_option = st.selectbox(
-                        label="한국주식선택",
-                        options=stock_options,
+                col_in2, col_btn2 = st.columns([8.5, 1.5])
+                with col_in2:
+                    kr_input = st.text_input(
+                        label="한국주식검색",
+                        value="",
+                        placeholder="🔍 한국 주식명 또는 6자리 코드 입력 후 Enter (예: 삼성전자, 005930)",
                         label_visibility="collapsed"
-                    )
+                    ).strip()
                 
                 with col_btn2:
                     kr_submit = st.form_submit_button("🔍 분석")
                 
-                if kr_submit:
-                    if selected_option and selected_option != "🔍 종목을 선택하세요...":
-                        target_code = krx_stocks[selected_option]["code"]
-                        open_new_tab(target_code)
+                if kr_submit and kr_input:
+                    krx_stocks = get_krx_stocks()
+                    target_code = None
+                    
+                    for name_code, info in krx_stocks.items():
+                        if kr_input in name_code or kr_input == info["code"]:
+                            target_code = info["code"]
+                            break
+                    
+                    if target_code:
+                        st.query_params["code"] = target_code
+                        st.rerun()
                     else:
-                        st.warning("종목을 선택해주세요.")
+                        st.error("존재하지 않는 한국 주식 종목명/코드입니다.")
             
         with tab3:
             st.info("📰 실시간 증시 속보 및 주요 뉴스 모니터링 준비 중입니다.")
@@ -407,7 +384,7 @@ if not selected_code:
         with tab4:
             st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
 
-        # 하단 트렌드 카드 (새 창 열기 적용)
+        # 하단 트렌드 카드
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
         
@@ -415,8 +392,8 @@ if not selected_code:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A;'>Most searched Stocks</b><br><br>
-                    • <a href='/?code=005930' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br><br>
-                    • <a href='/?code=000660' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>SK하이닉스 (000660)</a>
+                    • <a href='/?code=005930' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br><br>
+                    • <a href='/?code=000660' style='color: #D97706; text-decoration: none; font-weight: 600;'>SK하이닉스 (000660)</a>
                 </div>
             """, unsafe_allow_html=True)
             
@@ -424,9 +401,9 @@ if not selected_code:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A;'>Trending Searches (US)</b><br><br>
-                    • <a href='/?code=AAPL' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br><br>
-                    • <a href='/?code=NVDA' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br><br>
-                    • <a href='/?code=TSLA' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>Tesla (TSLA)</a>
+                    • <a href='/?code=AAPL' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br><br>
+                    • <a href='/?code=NVDA' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br><br>
+                    • <a href='/?code=TSLA' style='color: #D97706; text-decoration: none; font-weight: 600;'>Tesla (TSLA)</a>
                 </div>
             """, unsafe_allow_html=True)
             
@@ -434,8 +411,8 @@ if not selected_code:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A;'>Trending Searches (KOR)</b><br><br>
-                    • <a href='/?code=005380' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br><br>
-                    • <a href='/?code=000270' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
+                    • <a href='/?code=005380' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br><br>
+                    • <a href='/?code=000270' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
                 </div>
             """, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -444,7 +421,11 @@ if not selected_code:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
 else:
-    # --- [상세 분석 리포트 페이지 (새 탭에서 노출)] ---
+    # --- [상세 분석 리포트 페이지] ---
+    if st.button("⬅️ 메인으로 돌아가기"):
+        st.query_params.clear()
+        st.rerun()
+
     st.markdown("### 🛡️ 펀더멘탈 방어력 상세 분석 리포트")
     st.markdown("<hr style='border: 1px solid #F4A261;'>", unsafe_allow_html=True)
     
