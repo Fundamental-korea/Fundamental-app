@@ -343,3 +343,30 @@ if data:
                 st.warning("해당 종목의 분기 실적 데이터를 불러올 수 없습니다.")
         except Exception as e:
             st.error(f"분기 데이터를 불러오는 중 오류가 발생했습니다: {e}")
+
+import streamlit as st
+
+# 화면을 꽉 채우는 넓은 레이아웃 설정
+st.set_page_config(layout="wide")
+
+# 1. 탭 & 검색 영역 (스케치의 1, 2, 3, 4, 5번 영역)
+st.markdown("### 🔍 펀더멘탈 분석 검색")
+
+# 탭 배치
+tab1, tab2, tab3, tab4 = st.tabs(["🇺🇸 US stock", "🇰🇷 Korea stock", "📰 Live news", "💎 Gem"])
+
+with tab1:
+    search_us = st.text_input("미국 주식 티커를 입력하세요 (예: AAPL)", key="us_search")
+with tab2:
+    search_kr = st.text_input("한국 주식 종목명/코드를 입력하세요 (예: 삼성전자)", key="kr_search")
+with tab3:
+    st.write("실시간 뉴스가 업데이트될 예정입니다.")
+with tab4:
+    st.write("Gem 분석 결과가 표시됩니다.")
+
+# 검색 버튼 (직관적인 배치)
+if st.button("분석 시작"):
+    query = search_us if search_us else search_kr
+    if query:
+        st.success(f"'{query}'에 대한 펀더멘탈 데이터를 불러오는 중입니다...")
+        # 여기에 추후 DB 연동 로직 추가 예정
