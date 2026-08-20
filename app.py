@@ -4,6 +4,7 @@ from supabase import create_client
 import pandas as pd
 import random
 import yfinance as yf
+import streamlit.components.v1 as components
 
 # ==========================================
 # 1. 페이지 및 커스텀 디자인 설정
@@ -33,7 +34,7 @@ st.markdown("""
         color: #1A1A1A !important;
     }
 
-    /* 2. 상단 헤더 높이 확장 (130px) */
+    /* 2. 상단 헤더 */
     .logo-box {
         border: 2px solid #F4A261;
         border-radius: 14px;
@@ -88,7 +89,7 @@ st.markdown("""
         box-sizing: border-box;
     }
 
-    /* 4. 1, 2, 3, 4번 탭 간격 */
+    /* 4. 탭 스타일 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 20px !important;
         justify-content: center !important;
@@ -116,16 +117,18 @@ st.markdown("""
         font-weight: bold !important;
     }
 
-    /* 5. 단일 주황색 테두리 검색창 */
-    div[data-testid="stTextInput"], div[data-testid="stSelectbox"] {
-        margin-top: 10px;
-        margin-bottom: 25px;
+    /* 5. 검색 폼 UI 스타일링 */
+    div[data-testid="stForm"] {
+        border: none !important;
+        padding: 0 !important;
+        background-color: transparent !important;
     }
+
     div[data-baseweb="input"], div[data-baseweb="base-input"], div[data-baseweb="select"] > div {
         background-color: #FFFDF9 !important;
         border: 2px solid #F4A261 !important;
         border-radius: 12px !important;
-        height: 62px !important;
+        height: 60px !important;
         padding: 0 8px !important;
         box-shadow: 0 4px 12px rgba(244, 162, 97, 0.1) !important;
     }
@@ -137,7 +140,22 @@ st.markdown("""
         font-weight: 600 !important;
     }
 
-    /* 드롭다운 목록 가독성 스타일 */
+    /* 검색 폼 전용 제출 버튼 디자인 */
+    div[data-testid="stFormSubmitButton"] > button {
+        background-color: #F4A261 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        font-weight: bold !important;
+        border-radius: 12px !important;
+        height: 60px !important;
+        font-size: 18px !important;
+        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.2) !important;
+    }
+    div[data-testid="stFormSubmitButton"] > button:hover {
+        background-color: #D97706 !important;
+    }
+
+    /* 드롭다운 옵션 스타일 */
     div[data-baseweb="popover"], div[data-baseweb="menu"], ul[role="listbox"] {
         background-color: #FFFFFF !important;
         border: 1.5px solid #F4A261 !important;
@@ -168,7 +186,6 @@ st.markdown("""
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
     }
 
-    /* Log in 버튼 */
     div.stButton > button {
         background-color: #F4A261 !important;
         color: #FFFFFF !important;
@@ -276,6 +293,15 @@ def calculate_defense_score(data):
     
     return score, grade, reasons
 
+def open_new_tab(code):
+    """자바스크립트를 이용해 안전하게 새 탭을 여는 함수"""
+    js_code = f"""
+    <script>
+        window.open('/?code={code}', '_blank');
+    </script>
+    """
+    components.html(js_code, height=0, width=0)
+
 # ==========================================
 # 3. 메인 포털 UI
 # ==========================================
@@ -283,10 +309,6 @@ query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
-    # 세션 상태 추적 (중복 새창 열림 방지)
-    if "last_opened" not in st.session_state:
-        st.session_state.last_opened = None
-
     # --- [상단 헤더]: Logo | Investor Quote | Log in ---
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     
@@ -327,43 +349,48 @@ if not selected_code:
         tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
         with tab1:
-            us_ticker = st.text_input(
-                label="미국주식검색",
-                value="",
-                placeholder="🔍 Searching Tab: 미국 주식 Ticker 입력 후 Enter (예: AAPL, NVDA, TSLA)",
-                label_visibility="collapsed",
-                key="us_input"
-            ).upper().strip()
-            
-            # Enter 입력 시 새 탭/창으로 리포트 열기
-            if us_ticker and st.session_state.last_opened != us_ticker:
-                st.session_state.last_opened = us_ticker
-                st.markdown(f"""
-                    <script>
-                        window.open('/?code={us_ticker}', '_blank');
-                    </script>
-                """, unsafe_allow_html=True)
+            # st.form으로 감싸서 엔터 키 입력 시 이벤트 즉시 발동
+            with st.form(key="us_search_form", clear_on_submit=False):
+                col_in, col_btn = st.columns([5, 1])
+                with col_in:
+                    us_ticker = st.text_input(
+                        label="미국주식검색",
+                        value="",
+                        placeholder="🔍 미국 주식 Ticker 입력 후 Enter (예: AAPL, NVDA, TSLA)",
+                        label_visibility="collapsed"
+                    ).upper().strip()
+                
+                with col_btn:
+                    us_submit = st.form_submit_button("🔍 분석")
+                
+                if us_submit:
+                    if us_ticker:
+                        open_new_tab(us_ticker)
+                    else:
+                        st.warning("Ticker를 입력해주세요.")
                 
         with tab2:
-            krx_stocks = get_krx_stocks()
-            stock_options = ["🔍 종목을 선택하세요..."] + list(krx_stocks.keys())
-            selected_option = st.selectbox(
-                label="한국주식선택",
-                options=stock_options,
-                label_visibility="collapsed",
-                key="kr_select"
-            )
-            
-            # 종목 선택 시 새 탭/창으로 리포트 열기
-            if selected_option and selected_option != "🔍 종목을 선택하세요...":
-                target_code = krx_stocks[selected_option]["code"]
-                if st.session_state.last_opened != target_code:
-                    st.session_state.last_opened = target_code
-                    st.markdown(f"""
-                        <script>
-                            window.open('/?code={target_code}', '_blank');
-                        </script>
-                    """, unsafe_allow_html=True)
+            with st.form(key="kr_search_form", clear_on_submit=False):
+                col_sel, col_btn2 = st.columns([5, 1])
+                krx_stocks = get_krx_stocks()
+                stock_options = ["🔍 종목을 선택하세요..."] + list(krx_stocks.keys())
+                
+                with col_sel:
+                    selected_option = st.selectbox(
+                        label="한국주식선택",
+                        options=stock_options,
+                        label_visibility="collapsed"
+                    )
+                
+                with col_btn2:
+                    kr_submit = st.form_submit_button("🔍 분석")
+                
+                if kr_submit:
+                    if selected_option and selected_option != "🔍 종목을 선택하세요...":
+                        target_code = krx_stocks[selected_option]["code"]
+                        open_new_tab(target_code)
+                    else:
+                        st.warning("종목을 선택해주세요.")
             
         with tab3:
             st.info("📰 실시간 증시 속보 및 주요 뉴스 모니터링 준비 중입니다.")
@@ -371,7 +398,7 @@ if not selected_code:
         with tab4:
             st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
 
-        # [스케치 6, 7, 8] 하단 트렌드 카드 (target='_blank'로 새 창 열기 적용)
+        # [스케치 6, 7, 8] 하단 트렌드 카드 (target='_blank' 적용)
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
         
