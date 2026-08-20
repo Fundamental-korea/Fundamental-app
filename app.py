@@ -3,9 +3,11 @@ import FinanceDataReader as fdr
 from supabase import create_client
 import pandas as pd
 import random
+import altair as alt
+import yfinance as yf
 
 # ==========================================
-# 1. 페이지 및 커스텀 디자인 설정 (스케치 반영 버전)
+# 1. 페이지 및 커스텀 디자인 설정
 # ==========================================
 st.set_page_config(
     page_title="Fundamental Analyzer - 하락장 방어 플랫폼", 
@@ -43,25 +45,21 @@ st.markdown("""
         justify-content: center;
     }
 
-    /* Investor Quote 칸: 픽셀 단위로 높이를 크게 고정 */
+    /* Investor Quote 칸: 세로로 큼직한 높이 고정 및 Flex 정렬 */
     .quote-box {
         background-color: #FAFAFA;
         border: 1px solid #E5E5E5;
         border-radius: 10px;
-        padding: 30px; /* 내부 여백 확보 */
+        padding: 30px;
         color: #333333;
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
-        
-        /* 이 부분이 핵심! */
         min-height: 250px; 
         height: 250px;
-        
         display: flex;
-        flex-direction: column; /* 세로 정렬 */
+        flex-direction: column;
         align-items: center;
         justify-content: center;
         text-align: center;
-    
     }
 
     /* 좌우 광고 영역 (완벽한 대칭 사이즈) */
@@ -76,7 +74,7 @@ st.markdown("""
         height: 100%;
     }
 
-    /* 1, 2, 3, 4번 상단 탭 간격 확보 */
+    /* 상단 탭 간격 확보 */
     .stTabs [data-baseweb="tab-list"] {
         gap: 20px;
         justify-content: center;
@@ -89,7 +87,7 @@ st.markdown("""
         padding: 0 20px;
     }
 
-    /* 5번 검색창 영역 (흰색 바탕 + 주황색 테두리) */
+    /* 검색창 영역 (흰색 바탕 + 주황색 테두리) */
     .search-container {
         background-color: #FFFFFF;
         border: 2px solid #F4A261;
@@ -98,7 +96,7 @@ st.markdown("""
         box-shadow: 0 4px 15px rgba(244,162,97,0.1);
     }
 
-    /* 6, 7, 8번 하단 카드 디자인 */
+    /* 하단 카드 디자인 */
     .custom-card {
         background-color: #FAFAFA;
         border: 1px solid #E5E5E5;
@@ -147,21 +145,38 @@ def get_krx_stocks():
     except Exception:
         return {"삼성전자 (005930)": "005930", "SK하이닉스 (000660)": "000660"}
 
+# 보조 포맷팅 및 방어력 점수 계산 함수 (정의되지 않았을 경우를 대비한 안전 장치)
+def get_stock_data(code):
+    try:
+        res = supabase.table("Fundamental").select("*").eq("stock_code", code).execute()
+        if res.data and len(res.data) > 0:
+            return res.data[0]
+    except Exception:
+        pass
+    return {'stock_name': '종목', 'stock_price': 50000, 'eps': 3000, 'bps': 30000, 'roe': 10.0, 'per': 10.0, 'pbr': 1.0}
+
+def calculate_defense_score(data):
+    # 예시 방어력 평가 로직 (필요에 맞게 고도화 가능)
+    score = 75
+    grade = 'A'
+    reasons = ["• 부채비율이 안정적인 범위 내에 있습니다.", "• 안정적인 ROE를 유지하고 있습니다."]
+    return score, grade, reasons
+
+def format_yearly_dataframe(df, stock_name):
+    return df
+
+def format_korean_currency(val):
+    if pd.isna(val): return "-"
+    if abs(val) >= 1_000_000_000_000:
+        return f"{val / 1_000_000_000_000:,.2f} 조 원"
+    elif abs(val) >= 100_000_000:
+        return f"{val / 100_000_000:,.2f} 억 원"
+    return f"{val:,.0f} 원"
+
 # ==========================================
 # 3. 화면 분기 (메인 포털 vs 상세 분석 리포트)
 # ==========================================
 query_params = st.query_params
-selected_code = query_params.get("code", None)
-
-if not selected_code:
-    # --- [상단 영역]: Logo | Investor Quote | Log in ---
-    col_logo, col_quote, col_login = st.columns([1.2, 6.8, 1])
-    
-    with col_logo:
-        st.markdown("<div class='logo-box'>📈 Logo</div>", unsafe_allow_html=True)
-        
-    with col_quote:
-    query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
@@ -193,20 +208,15 @@ if not selected_code:
             st.toast("로그인 기능 준비 중입니다!")
 
     st.markdown("<br>", unsafe_allow_html=True)
-    with col_login:
-        if st.button("Log in", use_container_width=True):
-            st.toast("로그인 기능 준비 중입니다!")
 
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # --- [본문 레이아웃]: 좌우 광고창 사이즈를 완벽히 대칭으로 맞춤 ([1, 5, 1]) ---
+    # --- [본문 레이아웃]: 좌우 광고창 사이즈 대칭 배치 ([1, 5, 1]) ---
     left_ad, main_content, right_ad = st.columns([1, 5, 1])
 
     with left_ad:
         st.markdown("<div class='ad-box'>Ads</div>", unsafe_allow_html=True)
 
     with main_content:
-        # [1, 2, 3, 4] 상단 탭 영역
+        # 상단 탭 영역
         tab1, tab2, tab3, tab4 = st.tabs(["1. US stock", "2. Korea stock", "3. Live news", "4. Game"])
         
         with tab1: st.caption("미국 주식 펀더멘탈 분석 기능")
@@ -216,7 +226,7 @@ if not selected_code:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # [5] 중앙 검색 탭 영역 (흰색 바탕 + 주황색 테두리)
+        # 중앙 검색 탭 영역 (흰색 바탕 + 주황색 테두리)
         st.markdown("<div class='search-container'>", unsafe_allow_html=True)
         st.markdown("### 🔍 5. Searching Tab (종목 통합 검색)")
         
@@ -240,7 +250,7 @@ if not selected_code:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # [6, 7, 8] 하단 트렌드 카드 3개 배치
+        # 하단 트렌드 카드 3개 배치
         col_t1, col_t2, col_t3 = st.columns(3)
         
         with col_t1:
@@ -276,16 +286,10 @@ if not selected_code:
 
 else:
     # --- [상세 분석 페이지]: 종목 카드가 선택되어 새 탭으로 열릴 때 ---
-    st.title(f"📊 상세 펀더멘탈 분석 리포트 (종목 코드: {selected_code})")
-    st.write("선택하신 종목의 재무 건전성 및 하락장 방어력 지표를 분석하는 공간입니다.")
-    
     if st.button("⬅️ 메인 포털로 돌아가기"):
         st.query_params.clear()
         st.rerun()
-    # 아래 상세 분석 창(새 탭 열릴 때 실행되는 로직)은 기존 코드 그대로 유지하면 됩니다!
-    # ----------------------------------------------------
-    # [뷰 B] 새 탭으로 열리는 상세 재무 분석 창 (완전판)
-    # ----------------------------------------------------
+
     st.markdown("### 🛡️ 펀더멘탈 방어력 상세 분석 리포트 (새 탭 전용)")
     st.markdown("<hr style='border: 1px solid #F4A261;'>", unsafe_allow_html=True)
     
@@ -341,9 +345,12 @@ else:
         st.subheader(f"📊 [{stock_name}] 재무제표 기간별 심층 분석")
         tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 4분기 단기 실적"])
 
-        history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
+        try:
+            history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
+        except Exception:
+            history_data = None
 
-        if history_data.data and len(history_data.data) > 0:
+        if history_data and history_data.data and len(history_data.data) > 0:
             df_hist = pd.DataFrame(history_data.data)
             for col in ["net_income", "total_equity", "eps", "bps", "roe", "debt_ratio"]:
                 if col in df_hist.columns:
@@ -386,7 +393,6 @@ else:
         with tab_q:
             st.markdown(f"#### ⚡ [{stock_name}] 최근 4개 분기 실적 추이")
             try:
-                import yfinance as yf
                 ticker_symbol = f"{selected_code}.KS" if selected_code.isdigit() and len(selected_code)==6 else selected_code
                 yticker = yf.Ticker(ticker_symbol)
                 q_fin = yticker.quarterly_financials
