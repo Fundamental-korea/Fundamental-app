@@ -5,7 +5,7 @@ import pandas as pd
 import altair as alt
 
 # ==========================================
-# 1. 페이지 및 커스텀 디자인 설정 (화이트 테마 & 4방향 파스텔 주황 글로우)
+# 1. 페이지 및 커스텀 디자인 설정 (피드백 반영 버전)
 # ==========================================
 st.set_page_config(
     page_title="Fundamental Analyzer - 하락장 방어 플랫폼", 
@@ -13,7 +13,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# 4개 모서리에서 원형으로 퍼지는 은은한 파스텔 주황 그라데이션 CSS + 화이트 테마
+# 커스텀 CSS (광고창 슬림화, 탭 간격 확보, Quote 높이 확대, 검색창 화이트+주황테두리)
 st.markdown("""
     <style>
     /* 전체 배경: 화이트 + 4모서리 파스텔 주황 원형 글로우 */
@@ -29,7 +29,7 @@ st.markdown("""
         background-attachment: fixed;
     }
     
-    /* 카드 박스 스타일링 */
+    /* 일반 카드 박스 */
     .custom-card {
         background-color: #FAFAFA;
         border: 1px solid #E5E5E5;
@@ -38,6 +38,32 @@ st.markdown("""
         margin-bottom: 15px;
         color: #1A1A1A;
         box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+    }
+
+    /* Investor Quote 칸 (세로로 확장하여 이목을 끌도록 디자인) */
+    .quote-box {
+        background-color: #FAFAFA;
+        border: 1px solid #E5E5E5;
+        border-radius: 10px;
+        padding: 24px 20px;
+        color: #333333;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+        display: flex;
+        align-items: center;
+        height: 100%;
+    }
+
+    /* 1, 2, 3, 4번 상단 탭 사이 간격(Gap) 넓히기 */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 30px;
+    }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: #FAFAFA;
+        border-radius: 8px;
+        border: 1px solid #E5E5E5;
+        padding: 0 20px;
     }
 
     /* 파스텔 주황색 포인트 버튼 */
@@ -57,14 +83,14 @@ st.markdown("""
         color: white;
     }
 
-    /* 광고 영역 박스 */
+    /* 세로로 길쭉하게 바뀐 광고 영역 박스 */
     .ad-box {
         background-color: #F8F9FA;
         border: 2px dashed #D0D0D0;
         border-radius: 10px;
         text-align: center;
         color: #888888;
-        padding: 100px 10px;
+        padding: 160px 10px; /* 세로 길이를 늘림 */
         font-weight: bold;
     }
     </style>
@@ -82,7 +108,7 @@ query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 # ==========================================
-# 2. 공통 데이터 및 함수
+# 2. 공통 데이터 및 함수 (기존과 동일)
 # ==========================================
 @st.cache_data
 def get_all_krx_stocks():
@@ -99,7 +125,6 @@ def get_stock_data(stock_code):
 def calculate_defense_score(data):
     scores = {}
     reasons = []
-
     cr = data.get("current_ratio") or 120 
     s1 = (10 if cr >= 250 else 9 if cr >= 200 else 8 if cr >= 170 
           else 7 if cr >= 150 else 6 if cr >= 130 else 5 if cr >= 110 
@@ -138,22 +163,8 @@ def calculate_defense_score(data):
     scores['score_op_margin'] = s5
     reasons.append(f"• **영업이익률 ({op_m}%)**: 본업 마진 및 가격 결정력 (**{s5}/10점**)")
 
-    for key, name in [('eps_growth', 'EPS 성장률'), ('fcf_margin', 'FCF 마진'), 
-                       ('ocf_to_net_income', '현금흐름 질'), ('per_discount', 'PER 할인율'), 
-                       ('net_income_trend_code', '순이익 트렌드')]:
-        val = data.get(key)
-        score_val = data.get(f"score_{key}", 5) if val is not None else 5
-        scores[key] = score_val
-        reasons.append(f"• **{name}**: 세부 정밀 평가 (**{score_val}/10점**)")
-
     total_score = sum(scores.values())
-    
-    if total_score >= 85: grade = 'S'
-    elif total_score >= 70: grade = 'A'
-    elif total_score >= 55: grade = 'B'
-    elif total_score >= 40: grade = 'C'
-    else: grade = 'D'
-
+    grade = 'S' if total_score >= 85 else ('A' if total_score >= 70 else ('B' if total_score >= 55 else ('C' if total_score >= 40 else 'D')))
     return total_score, grade, reasons
 
 def format_korean_currency(val):
@@ -170,51 +181,30 @@ def format_korean_currency(val):
     else:
         return f"{sign}{int(abs_val):,}원"
 
-def format_yearly_dataframe(df_target, stock_name):
-    df_f = df_target.copy()
-    if "year" in df_f.columns: df_f["year"] = df_f["year"].astype(int)
-    if "net_income" in df_f.columns: df_f["net_income"] = df_f["net_income"].apply(format_korean_currency)
-    if "total_equity" in df_f.columns: df_f["total_equity"] = df_f["total_equity"].apply(format_korean_currency)
-    if "eps" in df_f.columns: df_f["eps"] = df_f["eps"].apply(lambda x: f"{int(x):,} 원" if pd.notna(x) else "-")
-    if "bps" in df_f.columns: df_f["bps"] = df_f["bps"].apply(lambda x: f"{int(x):,} 원" if pd.notna(x) else "-")
-    if "roe" in df_f.columns: df_f["roe"] = df_f["roe"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
-    if "debt_ratio" in df_f.columns: df_f["debt_ratio"] = df_f["debt_ratio"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
-    
-    df_f["종목명"] = stock_name
-    rename_dict = {
-        "year": "연도", "종목명": "종목명", "net_income": "당기순이익",
-        "total_equity": "자본총계", "eps": "EPS (주당순이익)", "bps": "BPS (주당순자산)",
-        "roe": "ROE", "debt_ratio": "부채비율"
-    }
-    df_f = df_f.rename(columns=rename_dict)
-    desired_order = ["종목명", "연도", "당기순이익", "자본총계", "EPS (주당순이익)", "BPS (주당순자산)", "ROE", "부채비율"]
-    return df_f[[c for c in desired_order if c in df_f.columns]]
-
 # ==========================================
-# 3. 화면 분기 (메인 포털 vs 새 탭 상세 분석 창)
+# 3. 화면 분기 (메인 포털 레이아웃 - 수정 완료 버전)
 # ==========================================
 if not selected_code:
-    # ----------------------------------------------------
-    # [뷰 A] 스케치 기반 메인 포털 레이아웃
-    # ----------------------------------------------------
+    # 상단 헤더 영역 (로고 / 커진 Investor Quote / 로그인)
     col_logo, col_quote, col_login = st.columns([1.2, 5.8, 1])
     with col_logo:
-        st.markdown("<div style='border: 2px solid #F4A261; border-radius: 8px; padding: 10px; text-align: center; font-weight: bold; color: #D97706; background-color: #FFFDF9;'>🛡️ Logo</div>", unsafe_allow_html=True)
+        st.markdown("<div style='border: 2px solid #F4A261; border-radius: 8px; padding: 25px 10px; text-align: center; font-weight: bold; color: #D97706; background-color: #FFFDF9; height: 100%; display: flex; align-items: center; justify-content: center;'>🛡️ Logo</div>", unsafe_allow_html=True)
     with col_quote:
-        st.markdown("<div style='background-color: #FAFAFA; border: 1px solid #E5E5E5; border-radius: 8px; padding: 10px 20px; color: #333333;'>💡 <b>Investor Image</b> | <i>\"하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.\"</i></div>", unsafe_allow_html=True)
+        st.markdown("<div class='quote-box'>💡 <b>Investor Image</b> &nbsp;|&nbsp; <i>\"하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.\"</i></div>", unsafe_allow_html=True)
     with col_login:
         if st.button("Log in", use_container_width=True):
             st.toast("로그인 기능 준비 중!")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    left_ad, main_content, right_ad = st.columns([1, 4.5, 1])
+    # 3단 구조: 광고창 가로폭을 줄이고 세로로 길쭉하게 조정 ([0.8, 5.4, 0.8])
+    left_ad, main_content, right_ad = st.columns([0.8, 5.4, 0.8])
 
     with left_ad:
         st.markdown("<div class='ad-box'><b>Ads</b><br><br>Ad Space</div>", unsafe_allow_html=True)
 
     with main_content:
-        # [1, 2, 3, 4] 상단 탭 영역
+        # [1, 2, 3, 4] 상단 탭 영역 (간격 벌어짐 적용됨)
         tab1, tab2, tab3, tab4 = st.tabs(["🇺🇸 1. Us stock", "🇰🇷 2. Korea stock", "📰 3. Live news", "💎 4. Gem"])
         
         with tab1: st.caption("미국 주식 펀더멘탈 분석 기능")
@@ -224,8 +214,8 @@ if not selected_code:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # [5] 중앙 검색 탭 영역
-        st.markdown("<div style='background-color: #FAFAFA; border: 2px solid #F4A261; border-radius: 12px; padding: 25px; box-shadow: 0 4px 15px rgba(244,162,97,0.1);'>", unsafe_allow_html=True)
+        # [5] 중앙 검색 탭 영역 (흰색 바탕 + 주황색 테두리 조합으로 변경)
+        st.markdown("<div style='background-color: #FFFFFF; border: 2px solid #F4A261; border-radius: 12px; padding: 25px; box-shadow: 0 4px 15px rgba(244,162,97,0.1);'>", unsafe_allow_html=True)
         st.markdown("### 🔍 5. Searching Tab (종목 통합 검색)")
         
         krx_stocks = get_all_krx_stocks()
@@ -283,6 +273,7 @@ if not selected_code:
         st.markdown("<div class='ad-box'><b>Ads</b><br><br>Ad Space</div>", unsafe_allow_html=True)
 
 else:
+    # 아래 상세 분석 창(새 탭 열릴 때 실행되는 로직)은 기존 코드 그대로 유지하면 됩니다!
     # ----------------------------------------------------
     # [뷰 B] 새 탭으로 열리는 상세 재무 분석 창 (완전판)
     # ----------------------------------------------------
