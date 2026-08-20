@@ -1,3 +1,4 @@
+
 import streamlit as st
 import FinanceDataReader as fdr
 from supabase import create_client
@@ -15,7 +16,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Streamlit 기본 테마 및 다크모드 무력화 CSS
+# Streamlit 다크모드 완전 제압 & 스케치 맞춤형 CSS
 st.markdown("""
     <style>
     /* 1. 전체 배경 및 기본 글자색 고정 */
@@ -23,97 +24,94 @@ st.markdown("""
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
         background-image: 
-            radial-gradient(circle at 0% 0%, rgba(248, 190, 140, 0.25) 0%, transparent 45%),
-            radial-gradient(circle at 100% 0%, rgba(248, 190, 140, 0.25) 0%, transparent 45%),
-            radial-gradient(circle at 0% 100%, rgba(248, 190, 140, 0.25) 0%, transparent 45%),
-            radial-gradient(circle at 100% 100%, rgba(248, 190, 140, 0.25) 0%, transparent 45%) !important;
+            radial-gradient(circle at 0% 0%, rgba(248, 190, 140, 0.2) 0%, transparent 45%),
+            radial-gradient(circle at 100% 0%, rgba(248, 190, 140, 0.2) 0%, transparent 45%),
+            radial-gradient(circle at 0% 100%, rgba(248, 190, 140, 0.2) 0%, transparent 45%),
+            radial-gradient(circle at 100% 100%, rgba(248, 190, 140, 0.2) 0%, transparent 45%) !important;
         background-repeat: no-repeat !important;
         background-attachment: fixed !important;
     }
 
-    /* 모든 텍스트 요소를 검은색/어두운색으로 고정 */
+    /* 모든 텍스트 기본 컬러 고정 */
     p, span, div, label, h1, h2, h3, h4, h5, h6 {
         color: #1A1A1A !important;
     }
-    
-    /* 2. Streamlit Input 박스 (검색창) 정상화 */
-    div[data-baseweb="input"] {
+
+    /* 2. 🔥 [핵심] 검색창, 드롭다운 입력박스 다크모드 완전 강제 해제 */
+    div[data-baseweb="input"], 
+    div[data-baseweb="input"] *, 
+    div[data-baseweb="base-input"],
+    div[data-baseweb="base-input"] *,
+    input[type="text"] {
         background-color: #FFFFFF !important;
+        color: #1A1A1A !important;
+        -webkit-text-fill-color: #1A1A1A !important;
+    }
+
+    div[data-baseweb="input"] {
+        border: 2px solid #F4A261 !important;
+        border-radius: 8px !important;
+        padding: 2px 8px !important;
+    }
+
+    div[data-baseweb="select"], 
+    div[data-baseweb="select"] * {
+        background-color: #FFFFFF !important;
+        color: #1A1A1A !important;
+        -webkit-text-fill-color: #1A1A1A !important;
+    }
+
+    div[data-baseweb="select"] > div {
         border: 2px solid #F4A261 !important;
         border-radius: 8px !important;
     }
-    div[data-baseweb="input"] input {
-        color: #1A1A1A !important;
-        background-color: #FFFFFF !important;
-    }
 
-    /* 3. Streamlit Selectbox (드롭다운) 정상화 */
-    div[data-baseweb="select"] > div {
-        background-color: #FFFFFF !important;
-        color: #1A1A1A !important;
-        border: 1px solid #F4A261 !important;
-    }
-
-    /* 4. Streamlit 기본 버튼 정상화 */
-    div.stButton > button {
-        background-color: #F4A261 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        font-weight: bold !important;
-        border-radius: 8px !important;
-        padding: 8px 16px !important;
-        transition: all 0.3s ease !important;
-    }
-    div.stButton > button:hover {
-        background-color: #E79150 !important;
-        color: #FFFFFF !important;
-    }
-    div.stButton > button p {
-        color: #FFFFFF !important; /* 버튼 안 텍스트 흰색 강제 */
-    }
-
-    /* 5. 상단 로고 박스 */
+    /* 3. 상단 헤더 컴포넌트 */
     .logo-box {
         border: 2px solid #F4A261;
-        border-radius: 8px;
-        padding: 12px 10px;
-        text-align: center;
-        font-weight: bold;
-        color: #D97706 !important;
+        border-radius: 12px;
         background-color: #FFFDF9;
-        height: 100%;
+        color: #D97706 !important;
+        font-weight: bold;
+        font-size: 16px;
+        height: 100px;
         display: flex;
         align-items: center;
         justify-content: center;
+        text-align: center;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.03);
     }
 
-    /* 6. Investor Quote 칸 */
     .quote-box {
         background-color: #FAFAFA;
-        border: 1px solid #E5E5E5;
-        border-radius: 10px;
-        padding: 20px;
-        color: #333333 !important;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.02);
-        min-height: 180px; 
-        height: 180px;
+        border: 1.5px solid #E5E5E5;
+        border-radius: 12px;
+        height: 100px;
         display: flex;
-        flex-direction: column;
+        flex-direction: row;
         align-items: center;
         justify-content: center;
-        text-align: center;
+        gap: 20px;
+        padding: 0 20px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.02);
     }
 
-    /* 7. 좌우 광고 영역 */
-    .ad-box {
+    .quote-text {
+        font-size: 15px;
+        font-weight: 600;
+        color: #333333 !important;
+    }
+
+    /* 4. 좌우 양쪽 Ads (스케치 높이 맞춤 세로형 배너) */
+    .ad-box-tall {
         background-color: #F8F9FA;
         border: 2px dashed #D0D0D0;
-        border-radius: 10px;
+        border-radius: 12px;
         text-align: center;
         color: #888888 !important;
-        padding: 220px 5px;
         font-weight: bold;
-        font-size: 14px;
+        font-size: 15px;
+        min-height: 520px;
         height: 100%;
         display: flex;
         align-items: center;
@@ -121,20 +119,49 @@ st.markdown("""
         box-sizing: border-box;
     }
 
-    /* 8. 상단 탭 스타일 */
+    /* 5. 중앙 영역 스케치 #5 (Searching Tab Frame) */
+    .search-tab-frame {
+        background-color: #FFFDF9;
+        border: 2px solid #F4A261;
+        border-radius: 14px;
+        padding: 24px;
+        margin-top: 10px;
+        margin-bottom: 25px;
+        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.08);
+    }
+
+    /* 6. 버튼 스타일 */
+    div.stButton > button {
+        background-color: #F4A261 !important;
+        color: #FFFFFF !important;
+        border: none !important;
+        font-weight: bold !important;
+        border-radius: 8px !important;
+        padding: 10px 18px !important;
+        transition: all 0.3s ease !important;
+    }
+    div.stButton > button:hover {
+        background-color: #E79150 !important;
+        color: #FFFFFF !important;
+    }
+    div.stButton > button p {
+        color: #FFFFFF !important;
+    }
+
+    /* 7. 탭 디자인 */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 15px;
+        gap: 12px;
         justify-content: center;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 45px;
+        height: 42px;
         background-color: #FAFAFA !important;
         border-radius: 8px;
         border: 1px solid #E5E5E5;
-        padding: 0 20px;
+        padding: 0 24px;
     }
     .stTabs [data-baseweb="tab"] p {
-        color: #444444 !important;
+        color: #555555 !important;
         font-weight: 600;
     }
     .stTabs [aria-selected="true"] {
@@ -143,19 +170,20 @@ st.markdown("""
     }
     .stTabs [aria-selected="true"] p {
         color: #D97706 !important;
+        font-weight: bold;
     }
 
-    /* 9. 하단 트렌드 카드 */
-    .custom-card {
+    /* 8. 하단 6, 7, 8번 스케치 카드 */
+    .sketch-card {
         background-color: #FAFAFA;
-        border: 1px solid #E5E5E5;
+        border: 1.5px solid #E5E5E5;
         border-radius: 12px;
         padding: 20px;
-        height: 180px;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.03);
+        height: 190px;
+        box-shadow: 0 4px 10px rgba(0,0,0,0.02);
     }
 
-    /* 10. 커스텀 링크 버튼 */
+    /* 커스텀 버튼 링크 */
     .pastel-orange-btn {
         background-color: #F4A261 !important;
         color: white !important;
@@ -163,7 +191,8 @@ st.markdown("""
         border-radius: 8px;
         font-weight: bold;
         text-align: center;
-        display: block;
+        display: inline-block;
+        width: 100%;
         text-decoration: none;
         box-shadow: 0 2px 6px rgba(244, 162, 97, 0.3);
     }
@@ -205,7 +234,7 @@ def get_krx_stocks():
         return {
             "삼성전자 (005930)": {"code": "005930", "market": "KOSPI"},
             "SK하이닉스 (000660)": {"code": "000660", "market": "KOSPI"},
-            "에코프로비엠 (247540)": {"code": "247540", "market": "KOSDAQ"}
+            "현대차 (005380)": {"code": "005380", "market": "KOSPI"}
         }
 
 def get_stock_data(code):
@@ -270,40 +299,6 @@ def calculate_defense_score(data):
     
     return score, grade, reasons
 
-def format_korean_currency(val):
-    if pd.isna(val) or val is None: return "-"
-    if abs(val) >= 1_000_000_000_000:
-        return f"{val / 1_000_000_000_000:,.2f} 조 원"
-    elif abs(val) >= 100_000_000:
-        return f"{val / 100_000_000:,.2f} 억 원"
-    return f"{val:,.0f} 원"
-
-def format_yearly_dataframe(df, stock_name):
-    df_formatted = df.copy()
-    columns_map = {
-        'year': '연도',
-        'net_income': '당기순이익',
-        'total_equity': '자본총계',
-        'eps': 'EPS(원)',
-        'bps': 'BPS(원)',
-        'roe': 'ROE(%)',
-        'debt_ratio': '부채비율(%)'
-    }
-    
-    for col in ['net_income', 'total_equity']:
-        if col in df_formatted.columns:
-            df_formatted[col] = df_formatted[col].apply(format_korean_currency)
-            
-    for col in ['roe', 'debt_ratio']:
-        if col in df_formatted.columns:
-            df_formatted[col] = df_formatted[col].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
-            
-    for col in ['eps', 'bps']:
-        if col in df_formatted.columns:
-            df_formatted[col] = df_formatted[col].apply(lambda x: f"{x:,.0f} 원" if pd.notna(x) else "-")
-            
-    return df_formatted.rename(columns=columns_map)
-
 # ==========================================
 # 3. 화면 분기 (메인 포털 vs 상세 분석 리포트)
 # ==========================================
@@ -312,7 +307,7 @@ selected_code = query_params.get("code", None)
 
 if not selected_code:
     # --- [상단 영역]: Logo | Investor Quote | Log in ---
-    col_logo, col_quote, col_login = st.columns([1.2, 6.8, 1])
+    col_logo, col_quote, col_login = st.columns([1.2, 6.6, 1.2])
     
     with col_logo:
         st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
@@ -329,64 +324,81 @@ if not selected_code:
         st.markdown(f"""
             <div class='quote-box'>
                 <div style='font-size: 32px;'>👨‍💼</div> 
-                <div style='font-size: 15px; font-weight: bold; margin-top: 6px; color: #333333;'>
-                    "{selected_quote}"
-                </div>
+                <div class='quote-text'>"{selected_quote}"</div>
             </div>
         """, unsafe_allow_html=True)
         
     with col_login:
+        st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
         if st.button("Log in", use_container_width=True):
             st.toast("로그인 기능 준비 중입니다!")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- [본문 레이아웃] ([1, 5, 1]) ---
-    left_ad, main_content, right_ad = st.columns([1, 5, 1])
+    # --- [본문 레이아웃]: [Ads (Left)] | [Center Main] | [Ads (Right)] ---
+    left_ad, main_content, right_ad = st.columns([1.2, 5.6, 1.2])
 
     with left_ad:
-        st.markdown("<div class='ad-box'>Ads</div>", unsafe_allow_html=True)
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
     with main_content:
-        tab1, tab2, tab3, tab4 = st.tabs(["1. US stock", "2. Korea stock", "3. Live news", "4. Gem Screener"])
+        # [스케치 1, 2, 3, 4] 탭 네비게이션
+        tab1, tab2, tab3, tab4 = st.tabs(["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"])
         
         with tab1:
-            st.caption("🇺🇸 미국 주식 펀더멘탈 간이 검색 (Ticker 입력)")
-            us_ticker = st.text_input("미국 주식 티커를 입력하세요", value="AAPL", key="us_input").upper().strip()
-            if st.button("미국 주식 분석", key="us_btn"):
-                st.markdown(f"<a href='/?code={us_ticker}' target='_self' class='pastel-orange-btn'>🚀 {us_ticker} 분석 리포트 열기</a>", unsafe_allow_html=True)
+            st.markdown("""
+                <div class='search-tab-frame'>
+                    <div style='font-weight: bold; margin-bottom: 12px; color: #D97706;'>🇺🇸 미국 주식 펀더멘탈 검색</div>
+            """, unsafe_allow_html=True)
+            us_ticker = st.text_input("Ticker 입력 (예: AAPL, NVDA, TSLA)", value="AAPL", key="us_input").upper().strip()
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(f"<a href='/?code={us_ticker}' target='_self' class='pastel-orange-btn'>🚀 {us_ticker} 분석 리포트 열기</a>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
                 
         with tab2:
-            st.caption("🇰🇷 한국 주식 재무제표 방어력 검색")
+            st.markdown("""
+                <div class='search-tab-frame'>
+                    <div style='font-weight: bold; margin-bottom: 12px; color: #D97706;'>🇰🇷 한국 주식 재무제표 방어력 검색</div>
+            """, unsafe_allow_html=True)
             krx_stocks = get_krx_stocks()
             stock_options = list(krx_stocks.keys())
             selected_option = st.selectbox("분석할 한국 주식을 선택하세요", stock_options, key="kr_select")
             target_code = krx_stocks[selected_option]["code"]
-            st.markdown(f"<br><a href='/?code={target_code}' target='_self' class='pastel-orange-btn'>🚀 {selected_option} 분석 리포트 열기</a>", unsafe_allow_html=True)
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown(f"<a href='/?code={target_code}' target='_self' class='pastel-orange-btn'>🚀 {selected_option} 분석 리포트 열기</a>", unsafe_allow_html=True)
+            st.markdown("</div>", unsafe_allow_html=True)
             
         with tab3:
-            st.caption("📰 실시간 증시 속보 및 마켓 인사이트 (업데이트 예정)")
+            st.markdown("""
+                <div class='search-tab-frame' style='text-align: center; padding: 40px;'>
+                    <h4>📰 Live News Insight</h4>
+                    <p style='color: #777 !important;'>실시간 증시 속보 및 주요 마켓 이슈 모니터링 준비 중입니다.</p>
+                </div>
+            """, unsafe_allow_html=True)
             
         with tab4:
-            st.caption("💎 AI 기반 하락장 방어주 젬(Gem) 스크리닝 (업데이트 예정)")
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # 하단 트렌드 카드 3개
-        col_t1, col_t2, col_t3 = st.columns(3)
-        
-        with col_t1:
             st.markdown("""
-                <div class='custom-card'>
-                    <b style='color: #1A1A1A;'>🔥 인기 검색 (국내)</b><br><br>
+                <div class='search-tab-frame' style='text-align: center; padding: 40px;'>
+                    <h4>💎 Gem Screener</h4>
+                    <p style='color: #777 !important;'>하락장 속 펀더멘탈 우수 저평가 종목(Gem) 자동 추출 엔진 준비 중입니다.</p>
+                </div>
+            """, unsafe_allow_html=True)
+
+        # [스케치 6, 7, 8] 하단 트렌드 카드 3개
+        col_6, col_7, col_8 = st.columns(3)
+        
+        with col_6:
+            st.markdown("""
+                <div class='sketch-card'>
+                    <b style='color: #1A1A1A;'>🔥 Most searched Stocks</b><br><br>
                     • <a href='/?code=005930' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br>
                     • <a href='/?code=000660' style='color: #D97706; text-decoration: none; font-weight: 600;'>SK하이닉스 (000660)</a>
                 </div>
             """, unsafe_allow_html=True)
             
-        with col_t2:
+        with col_7:
             st.markdown("""
-                <div class='custom-card'>
+                <div class='sketch-card'>
                     <b style='color: #1A1A1A;'>🇺🇸 Trending Searches (US)</b><br><br>
                     • <a href='/?code=AAPL' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br>
                     • <a href='/?code=NVDA' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br>
@@ -394,20 +406,20 @@ if not selected_code:
                 </div>
             """, unsafe_allow_html=True)
             
-        with col_t3:
+        with col_8:
             st.markdown("""
-                <div class='custom-card'>
-                    <b style='color: #1A1A1A;'>🚗 주주환원 우수 종목</b><br><br>
+                <div class='sketch-card'>
+                    <b style='color: #1A1A1A;'>🇰🇷 Trending Searches (KOR)</b><br><br>
                     • <a href='/?code=005380' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br>
                     • <a href='/?code=000270' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
                 </div>
             """, unsafe_allow_html=True)
 
     with right_ad:
-        st.markdown("<div class='ad-box'>Ads</div>", unsafe_allow_html=True)
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
 else:
-    # --- [상세 분석 페이지] ---
+    # --- [상세 분석 리포트 페이지] ---
     if st.button("⬅️ 메인 포털로 돌아가기"):
         st.query_params.clear()
         st.rerun()
@@ -419,8 +431,8 @@ else:
 
     if data:
         stock_name = data.get('stock_name', selected_code)
-        
         is_krx = selected_code.isdigit() and len(selected_code) == 6
+        
         if is_krx:
             krx_stocks = get_krx_stocks()
             market_type = "KOSPI"
@@ -476,133 +488,5 @@ else:
             st.markdown("### 📋 핵심 지표 평가 내역")
             for r in reasons: 
                 st.write(r)
-
-        st.divider()
-
-        st.subheader(f"📊 [{stock_name}] 재무제표 기간별 심층 분석")
-        tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 4분기 단기 실적"])
-
-        history_data = None
-        if supabase:
-            try:
-                history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
-            except Exception:
-                history_data = None
-
-        if history_data and history_data.data and len(history_data.data) > 0:
-            df_hist = pd.DataFrame(history_data.data)
-            for col in ["net_income", "total_equity", "eps", "bps", "roe", "debt_ratio"]:
-                if col in df_hist.columns:
-                    df_hist[col] = pd.to_numeric(df_hist[col], errors='coerce')
-
-            if 'year' in df_hist.columns:
-                df_hist = df_hist.sort_values("year")
-
-                with tab_5y:
-                    st.markdown(f"#### 📅 [{stock_name}] 최근 5개년 재무 흐름")
-                    df_5 = df_hist.tail(5).copy()
-                    df_5['year'] = df_5['year'].astype(int)
-                    
-                    unit_divider = 1_000_000_000_000 if is_krx else 1_000_000
-                    unit_label = "조 원" if is_krx else "M $"
-                    df_5['순이익_표시'] = df_5['net_income'] / unit_divider
-                    
-                    chart_5y = alt.Chart(df_5).mark_bar(color="#F4A261", size=30).encode(
-                        x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
-                        y=alt.Y('순이익_표시:Q', title=f'당기순이익 ({unit_label})'),
-                        tooltip=['year', '순이익_표시']
-                    ).properties(height=320)
-                    st.altair_chart(chart_5y, use_container_width=True)
-                    st.dataframe(format_yearly_dataframe(df_5.drop(columns=['순이익_표시'], errors='ignore'), stock_name), use_container_width=True, hide_index=True)
-
-                with tab_3y:
-                    st.markdown(f"#### 🕒 [{stock_name}] 최근 3개년 집중 분석")
-                    df_3 = df_hist.tail(3).copy()
-                    df_3['year'] = df_3['year'].astype(int)
-                    
-                    unit_divider = 1_000_000_000_000 if is_krx else 1_000_000
-                    unit_label = "조 원" if is_krx else "M $"
-                    df_3['순이익_표시'] = df_3['net_income'] / unit_divider
-                    
-                    chart_3y = alt.Chart(df_3).mark_bar(color="#F4A261", size=30).encode(
-                        x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
-                        y=alt.Y('순이익_표시:Q', title=f'당기순이익 ({unit_label})'),
-                        tooltip=['year', '순이익_표시']
-                    ).properties(height=320)
-                    st.altair_chart(chart_3y, use_container_width=True)
-                    st.dataframe(format_yearly_dataframe(df_3.drop(columns=['순이익_표시'], errors='ignore'), stock_name), use_container_width=True, hide_index=True)
-        else:
-            with tab_5y: st.info("저장된 5개년 히스토리 재무 데이터가 없습니다.")
-            with tab_3y: st.info("저장된 3개년 히스토리 재무 데이터가 없습니다.")
-
-        with tab_q:
-            st.markdown(f"#### ⚡ [{stock_name}] 최근 4개 분기 실적 추이")
-            try:
-                yticker = yf.Ticker(ticker_symbol)
-                q_fin = yticker.quarterly_financials
-                
-                if q_fin is not None and not q_fin.empty:
-                    q_df = q_fin.T.head(4).copy()
-                    parsed_rows = []
-                    
-                    def get_q_value(q_col, keys):
-                        for k in keys:
-                            if k in q_fin.index:
-                                val = q_fin.loc[k, q_col]
-                                if pd.notna(val): return val
-                        return None
-
-                    for date_idx, row in q_df.iterrows():
-                        q_date = str(date_idx).split(" ")[0]
-                        revenue = get_q_value(date_idx, ['Total Revenue', 'Revenue'])
-                        op_income = get_q_value(date_idx, ['Operating Income', 'Operating Revenue'])
-                        net_inc = get_q_value(date_idx, ['Net Income', 'Net Income Common Stockholders', 'Net Income From Continuing Operation'])
-                        
-                        op_margin = (op_income / revenue * 100) if (revenue and op_income and revenue != 0) else None
-                        net_margin = (net_inc / revenue * 100) if (revenue and net_inc and revenue != 0) else None
-                        
-                        parsed_rows.append({
-                            "종목명": stock_name,
-                            "분기 기준일": q_date,
-                            "매출액": revenue,
-                            "영업이익": op_income,
-                            "당기순이익": net_inc,
-                            "영업이익률": op_margin,
-                            "순이익률": net_margin,
-                            "_raw_net": net_inc if net_inc is not None else 0
-                        })
-                    
-                    df_quarterly_raw = pd.DataFrame(parsed_rows)
-                    df_chart = df_quarterly_raw.sort_values("분기 기준일").copy()
-                    
-                    unit_div = 1_000_000_000_000 if is_krx else 1_000_000
-                    unit_title = "당기순이익 (조 원)" if is_krx else "당기순이익 (M $)"
-                    df_chart['순이익_표시'] = df_chart['_raw_net'] / unit_div
-                    
-                    chart = alt.Chart(df_chart).mark_bar(color="#F4A261", size=30).encode(
-                        x=alt.X('분기 기준일:N', title='분기 기준일', sort=None, axis=alt.Axis(labelAngle=0)),
-                        y=alt.Y('순이익_표시:Q', title=unit_title),
-                        tooltip=['분기 기준일', '순이익_표시']
-                    ).properties(height=320)
-                    st.altair_chart(chart, use_container_width=True)
-
-                    df_table = df_quarterly_raw.sort_values("분기 기준일", ascending=False).copy()
-                    if is_krx:
-                        df_table["매출액"] = df_table["매출액"].apply(format_korean_currency)
-                        df_table["영업이익"] = df_table["영업이익"].apply(format_korean_currency)
-                        df_table["당기순이익"] = df_table["당기순이익"].apply(format_korean_currency)
-                    else:
-                        df_table["매출액"] = df_table["매출액"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "-")
-                        df_table["영업이익"] = df_table["영업이익"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "-")
-                        df_table["당기순이익"] = df_table["당기순이익"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "-")
-                        
-                    df_table["영업이익률"] = df_table["영업이익률"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
-                    df_table["순이익률"] = df_table["순이익률"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
-                    
-                    st.dataframe(df_table.drop(columns=["_raw_net"]), use_container_width=True, hide_index=True)
-                else:
-                    st.warning("해당 종목의 분기 실적 데이터를 불러올 수 없습니다.")
-            except Exception as e:
-                st.error(f"분기 데이터 로딩 중 오류 발생: {e}")
     else:
         st.error("선택한 종목의 데이터를 찾을 수 없습니다.")
