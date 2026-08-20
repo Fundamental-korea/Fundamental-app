@@ -33,7 +33,7 @@ st.markdown("""
         color: #1A1A1A !important;
     }
 
-    /* 2. 상단 헤더 컴포넌트 세로 높이 확장 (130px) */
+    /* 2. 상단 헤더 높이 확장 (130px) */
     .logo-box {
         border: 2px solid #F4A261;
         border-radius: 14px;
@@ -116,7 +116,7 @@ st.markdown("""
         font-weight: bold !important;
     }
 
-    /* 5. 단일 주황색 테두리 검색창 및 선택창 스타일 */
+    /* 5. 단일 주황색 테두리 검색창 */
     div[data-testid="stTextInput"], div[data-testid="stSelectbox"] {
         margin-top: 10px;
         margin-bottom: 25px;
@@ -137,7 +137,7 @@ st.markdown("""
         font-weight: 600 !important;
     }
 
-    /* 🔥 [핵심 수정] 드롭다운 목록(Popover/Menu) 가독성 문제 완전 해결 */
+    /* 드롭다운 목록 가독성 스타일 */
     div[data-baseweb="popover"], div[data-baseweb="menu"], ul[role="listbox"] {
         background-color: #FFFFFF !important;
         border: 1.5px solid #F4A261 !important;
@@ -283,6 +283,10 @@ query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
+    # 세션 상태 추적 (중복 새창 열림 방지)
+    if "last_opened" not in st.session_state:
+        st.session_state.last_opened = None
+
     # --- [상단 헤더]: Logo | Investor Quote | Log in ---
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     
@@ -331,9 +335,14 @@ if not selected_code:
                 key="us_input"
             ).upper().strip()
             
-            if us_ticker:
-                st.query_params["code"] = us_ticker
-                st.rerun()
+            # Enter 입력 시 새 탭/창으로 리포트 열기
+            if us_ticker and st.session_state.last_opened != us_ticker:
+                st.session_state.last_opened = us_ticker
+                st.markdown(f"""
+                    <script>
+                        window.open('/?code={us_ticker}', '_blank');
+                    </script>
+                """, unsafe_allow_html=True)
                 
         with tab2:
             krx_stocks = get_krx_stocks()
@@ -345,10 +354,16 @@ if not selected_code:
                 key="kr_select"
             )
             
+            # 종목 선택 시 새 탭/창으로 리포트 열기
             if selected_option and selected_option != "🔍 종목을 선택하세요...":
                 target_code = krx_stocks[selected_option]["code"]
-                st.query_params["code"] = target_code
-                st.rerun()
+                if st.session_state.last_opened != target_code:
+                    st.session_state.last_opened = target_code
+                    st.markdown(f"""
+                        <script>
+                            window.open('/?code={target_code}', '_blank');
+                        </script>
+                    """, unsafe_allow_html=True)
             
         with tab3:
             st.info("📰 실시간 증시 속보 및 주요 뉴스 모니터링 준비 중입니다.")
@@ -356,7 +371,7 @@ if not selected_code:
         with tab4:
             st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
 
-        # [스케치 6, 7, 8] 하단 트렌드 카드
+        # [스케치 6, 7, 8] 하단 트렌드 카드 (target='_blank'로 새 창 열기 적용)
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
         
@@ -364,8 +379,8 @@ if not selected_code:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A;'>Most searched Stocks</b><br><br>
-                    • <a href='/?code=005930' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br><br>
-                    • <a href='/?code=000660' style='color: #D97706; text-decoration: none; font-weight: 600;'>SK하이닉스 (000660)</a>
+                    • <a href='/?code=005930' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>삼성전자 (005930)</a><br><br>
+                    • <a href='/?code=000660' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>SK하이닉스 (000660)</a>
                 </div>
             """, unsafe_allow_html=True)
             
@@ -373,9 +388,9 @@ if not selected_code:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A;'>Trending Searches (US)</b><br><br>
-                    • <a href='/?code=AAPL' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br><br>
-                    • <a href='/?code=NVDA' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br><br>
-                    • <a href='/?code=TSLA' style='color: #D97706; text-decoration: none; font-weight: 600;'>Tesla (TSLA)</a>
+                    • <a href='/?code=AAPL' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>Apple (AAPL)</a><br><br>
+                    • <a href='/?code=NVDA' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>NVIDIA (NVDA)</a><br><br>
+                    • <a href='/?code=TSLA' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>Tesla (TSLA)</a>
                 </div>
             """, unsafe_allow_html=True)
             
@@ -383,8 +398,8 @@ if not selected_code:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A;'>Trending Searches (KOR)</b><br><br>
-                    • <a href='/?code=005380' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br><br>
-                    • <a href='/?code=000270' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
+                    • <a href='/?code=005380' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>현대차 (005380)</a><br><br>
+                    • <a href='/?code=000270' target='_blank' style='color: #D97706; text-decoration: none; font-weight: 600;'>기아 (000270)</a>
                 </div>
             """, unsafe_allow_html=True)
         st.markdown("</div>", unsafe_allow_html=True)
@@ -393,11 +408,7 @@ if not selected_code:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
 else:
-    # --- [상세 분석 리포트 페이지] ---
-    if st.button("⬅️ 메인 포털로 돌아가기"):
-        st.query_params.clear()
-        st.rerun()
-
+    # --- [상세 분석 리포트 페이지 (새 탭에서 노출)] ---
     st.markdown("### 🛡️ 펀더멘탈 방어력 상세 분석 리포트")
     st.markdown("<hr style='border: 1px solid #F4A261;'>", unsafe_allow_html=True)
     
