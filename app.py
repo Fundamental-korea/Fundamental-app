@@ -52,7 +52,7 @@ st.markdown("""
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
         display: flex;
         align-items: center;
-        height: 100%;
+        height: 300%;
     }
 
     /* 좌우 광고 영역 (완벽한 대칭 사이즈) */
