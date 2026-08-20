@@ -50,11 +50,11 @@ st.markdown("""
         background-color: #FAFAFA;
         border: 1px solid #E5E5E5;
         border-radius: 10px;
-        padding: 30px;
+        padding: 20px;
         color: #333333;
         box-shadow: 0 4px 10px rgba(0,0,0,0.02);
-        min-height: 250px; 
-        height: 250px;
+        min-height: 180px; 
+        height: 180px;
         display: flex;
         flex-direction: column;
         align-items: center;
@@ -62,14 +62,14 @@ st.markdown("""
         text-align: center;
     }
 
-    /* 좌우 광고 영역: 가로는 좁고 세로는 길쭉하게 최적화 */
+    /* 좌우 광고 영역 */
     .ad-box {
         background-color: #F8F9FA;
         border: 2px dashed #D0D0D0;
         border-radius: 10px;
         text-align: center;
         color: #888888;
-        padding: 220px 5px; /* 세로는 길게, 좌우 여백은 최소화 */
+        padding: 220px 5px;
         font-weight: bold;
         font-size: 14px;
         height: 100%;
@@ -115,7 +115,7 @@ st.markdown("""
     .pastel-orange-btn {
         background-color: #F4A261;
         color: white;
-        padding: 10px 20px;
+        padding: 12px 20px;
         border-radius: 8px;
         font-weight: bold;
         text-align: center;
@@ -131,14 +131,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. Supabase 및 데이터 연동 설정
+# 2. Supabase 및 유틸리티 함수 설정
 # ==========================================
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "YOUR_SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "YOUR_SUPABASE_KEY")
 
 @st.cache_resource
 def init_supabase():
-    return create_client(SUPABASE_URL, SUPABASE_KEY)
+    try:
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
+    except Exception:
+        return None
 
 supabase = init_supabase()
 
@@ -146,37 +149,116 @@ supabase = init_supabase()
 def get_krx_stocks():
     try:
         df = fdr.StockListing("KRX")
-        return {f"{name} ({code})": code for name, code in zip(df["Name"], df["Code"])}
+        stocks = {}
+        for _, row in df.iterrows():
+            market = row.get("Market", "KOSPI")
+            stocks[f"{row['Name']} ({row['Code']})"] = {
+                "code": str(row["Code"]),
+                "market": market
+            }
+        return stocks
     except Exception:
-        return {"삼성전자 (005930)": "005930", "SK하이닉스 (000660)": "000660"}
+        return {
+            "삼성전자 (005930)": {"code": "005930", "market": "KOSPI"},
+            "SK하이닉스 (000660)": {"code": "000660", "market": "KOSPI"},
+            "에코프로비엠 (247540)": {"code": "247540", "market": "KOSDAQ"}
+        }
 
-# 보조 포맷팅 및 방어력 점수 계산 함수 (정의되지 않았을 경우를 대비한 안전 장치)
 def get_stock_data(code):
+    if supabase:
+        try:
+            res = supabase.table("Fundamental").select("*").eq("stock_code", code).execute()
+            if res.data and len(res.data) > 0:
+                return res.data[0]
+        except Exception:
+            pass
+    # DB 조회 실패 시 yfinance 기본 정보 파싱
+    ticker_symbol = f"{code}.KS" if code.isdigit() else code
     try:
-        res = supabase.table("Fundamental").select("*").eq("stock_code", code).execute()
-        if res.data and len(res.data) > 0:
-            return res.data[0]
+        info = yf.Ticker(ticker_symbol).info
+        return {
+            'stock_name': info.get('shortName', code),
+            'stock_price': info.get('currentPrice', 0),
+            'eps': info.get('trailingEps', 0),
+            'bps': info.get('bookValue', 0),
+            'roe': round(info.get('returnOnEquity', 0) * 100, 2) if info.get('returnOnEquity') else 0.0,
+            'per': info.get('trailingPE', 0.0),
+            'pbr': info.get('priceToBook', 0.0)
+        }
     except Exception:
-        pass
-    return {'stock_name': '종목', 'stock_price': 50000, 'eps': 3000, 'bps': 30000, 'roe': 10.0, 'per': 10.0, 'pbr': 1.0}
+        return {'stock_name': f'종목({code})', 'stock_price': 0, 'eps': 0, 'bps': 0, 'roe': 0.0, 'per': 0.0, 'pbr': 0.0}
 
 def calculate_defense_score(data):
-    # 예시 방어력 평가 로직 (필요에 맞게 고도화 가능)
-    score = 75
-    grade = 'A'
-    reasons = ["• 부채비율이 안정적인 범위 내에 있습니다.", "• 안정적인 ROE를 유지하고 있습니다."]
+    score = 50
+    reasons = []
+    
+    roe = data.get('roe', 0) or 0
+    per = data.get('per', 0) or 0
+    pbr = data.get('pbr', 0) or 0
+    
+    if roe >= 15:
+        score += 20
+        reasons.append("• ROE가 15% 이상으로 높은 수익성을 유지하고 있습니다.")
+    elif roe >= 8:
+        score += 10
+        reasons.append("• ROE가 준수한 수준을 유지하고 있습니다.")
+    else:
+        reasons.append("• ROE 수익성 개선이 필요합니다.")
+        
+    if 0 < per <= 12:
+        score += 15
+        reasons.append("• PER이 낮아 밸류에이션 저평가 구간입니다.")
+    elif per > 30:
+        score -= 10
+        reasons.append("• PER이 높아 시장 기대감이 과도하게 반영되었을 수 있습니다.")
+        
+    if 0 < pbr <= 1.2:
+        score += 15
+        reasons.append("• PBR 1.2배 이하로 하락장 청산가치 방어력이 우수합니다.")
+        
+    score = max(0, min(100, score))
+    
+    if score >= 85: grade = 'S'
+    elif score >= 70: grade = 'A'
+    elif score >= 55: grade = 'B'
+    elif score >= 40: grade = 'C'
+    else: grade = 'D'
+    
     return score, grade, reasons
 
-def format_yearly_dataframe(df, stock_name):
-    return df
-
 def format_korean_currency(val):
-    if pd.isna(val): return "-"
+    if pd.isna(val) or val is None: return "-"
     if abs(val) >= 1_000_000_000_000:
         return f"{val / 1_000_000_000_000:,.2f} 조 원"
     elif abs(val) >= 100_000_000:
         return f"{val / 100_000_000:,.2f} 억 원"
     return f"{val:,.0f} 원"
+
+def format_yearly_dataframe(df, stock_name):
+    df_formatted = df.copy()
+    columns_map = {
+        'year': '연도',
+        'net_income': '당기순이익',
+        'total_equity': '자본총계',
+        'eps': 'EPS(원)',
+        'bps': 'BPS(원)',
+        'roe': 'ROE(%)',
+        'debt_ratio': '부채비율(%)'
+    }
+    
+    for col in ['net_income', 'total_equity']:
+        if col in df_formatted.columns:
+            df_formatted[col] = df_formatted[col].apply(format_korean_currency)
+            
+    for col in ['roe', 'debt_ratio']:
+        if col in df_formatted.columns:
+            df_formatted[col] = df_formatted[col].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
+            
+    for col in ['eps', 'bps']:
+        if col in df_formatted.columns:
+            df_formatted[col] = df_formatted[col].apply(lambda x: f"{x:,.0f} 원" if pd.notna(x) else "-")
+            
+    return df_formatted.rename(columns=columns_map)
 
 # ==========================================
 # 3. 화면 분기 (메인 포털 vs 상세 분석 리포트)
@@ -189,21 +271,22 @@ if not selected_code:
     col_logo, col_quote, col_login = st.columns([1.2, 6.8, 1])
     
     with col_logo:
-        st.markdown("<div class='logo-box'>📈 Logo</div>", unsafe_allow_html=True)
+        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
         
     with col_quote:
         quotes = [
             "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
             "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
-            "투자는 지능이 아니라 인내심의 게임이다."
+            "투자는 지능이 아니라 인내심의 게임이다.",
+            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다."
         ]
         selected_quote = random.choice(quotes)
         
         st.markdown(f"""
             <div class='quote-box'>
-                <div style='font-size: 40px;'>👨‍💼</div> 
-                <div style='font-size: 16px; font-weight: bold; margin-top: 8px;'>
-                    {selected_quote}
+                <div style='font-size: 32px;'>👨‍💼</div> 
+                <div style='font-size: 15px; font-weight: bold; margin-top: 6px;'>
+                    "{selected_quote}"
                 </div>
             </div>
         """, unsafe_allow_html=True)
@@ -214,75 +297,65 @@ if not selected_code:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- [본문 레이아웃]: 좌우 광고창 사이즈 대칭 배치 ([1, 5, 1]) ---
+    # --- [본문 레이아웃] ([1, 5, 1]) ---
     left_ad, main_content, right_ad = st.columns([1, 5, 1])
 
     with left_ad:
         st.markdown("<div class='ad-box'>Ads</div>", unsafe_allow_html=True)
 
     with main_content:
-        # 상단 탭 영역
-        tab1, tab2, tab3, tab4 = st.tabs(["1. US stock", "2. Korea stock", "3. Live news", "4. Game"])
+        tab1, tab2, tab3, tab4 = st.tabs(["1. US stock", "2. Korea stock", "3. Live news", "4. Gem Screener"])
         
-        with tab1: st.caption("미국 주식 펀더멘탈 분석 기능")
-        with tab2: st.caption("한국 주식 재무제표 방어력 분석 기능")
-        with tab3: st.caption("실시간 증시 속보 및 마켓 인사이트")
-        with tab4: st.caption("AI 기반 젬(Gem) 종목 스크리닝")
+        with tab1:
+            st.caption("🇺🇸 미국 주식 펀더멘탈 간이 검색 (Ticker 입력)")
+            us_ticker = st.text_input("미국 주식 티커를 입력하세요 (예: AAPL, NVDA, TSLA)", value="AAPL").upper().strip()
+            if st.button("미국 주식 분석"):
+                st.markdown(f"<a href='/?code={us_ticker}' target='_self' class='pastel-orange-btn'>🚀 {us_ticker} 분석 리포트 열기</a>", unsafe_allow_html=True)
+                
+        with tab2:
+            st.caption("🇰🇷 한국 주식 재무제표 방어력 검색")
+            krx_stocks = get_krx_stocks()
+            stock_options = list(krx_stocks.keys())
+            selected_option = st.selectbox("분석할 한국 주식을 선택하세요", stock_options)
+            target_code = krx_stocks[selected_option]["code"]
+            st.markdown(f"<br><a href='/?code={target_code}' target='_self' class='pastel-orange-btn'>🚀 {selected_option} 분석 리포트 열기</a>", unsafe_allow_html=True)
+            
+        with tab3:
+            st.caption("📰 실시간 증시 속보 및 마켓 인사이트 (업데이트 예정)")
+            
+        with tab4:
+            st.caption("💎 AI 기반 하락장 방어주 젬(Gem) 스크리닝 (업데이트 예정)")
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # 중앙 검색 탭 영역 (흰색 바탕 + 주황색 테두리)
-        st.markdown("<div class='search-container'>", unsafe_allow_html=True)
-        st.markdown("### 🔍 5. Searching Tab (종목 통합 검색)")
-        
-        krx_stocks = get_krx_stocks()
-        stock_options = list(krx_stocks.keys())
-        selected_option = st.selectbox("분석할 한국 주식을 선택하세요", stock_options)
-        target_code = krx_stocks[selected_option]
-
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown(
-            f"""
-            <div style="text-align: center;">
-                <a href="/?code={target_code}" target="_blank" class="pastel-orange-btn">
-                    🚀 상세 분석 리포트 열기
-                </a>
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
-        st.markdown("</div>", unsafe_allow_html=True)
-
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # 하단 트렌드 카드 3개 배치
+        # 하단 트렌드 카드 3개
         col_t1, col_t2, col_t3 = st.columns(3)
         
         with col_t1:
             st.markdown("""
                 <div class='custom-card'>
-                    <b>6. Most searched Stocks</b><br><br>
-                    • <a href='/?code=005930' target='_blank' style='color: #D97706; text-decoration: none;'>삼성전자 (005930)</a><br>
-                    • <a href='/?code=000660' target='_blank' style='color: #D97706; text-decoration: none;'>SK하이닉스 (000660)</a>
+                    <b>🔥 인기 검색 (국내)</b><br><br>
+                    • <a href='/?code=005930' style='color: #D97706; text-decoration: none;'>삼성전자 (005930)</a><br>
+                    • <a href='/?code=000660' style='color: #D97706; text-decoration: none;'>SK하이닉스 (000660)</a>
                 </div>
             """, unsafe_allow_html=True)
             
         with col_t2:
             st.markdown("""
                 <div class='custom-card'>
-                    <b>7. Trending Searches (US)</b><br><br>
-                    • Apple (AAPL)<br>
-                    • Tesla (TSLA)<br>
-                    • Microsoft (MSFT)
+                    <b>🇺🇸 Trending Searches (US)</b><br><br>
+                    • <a href='/?code=AAPL' style='color: #D97706; text-decoration: none;'>Apple (AAPL)</a><br>
+                    • <a href='/?code=NVDA' style='color: #D97706; text-decoration: none;'>NVIDIA (NVDA)</a><br>
+                    • <a href='/?code=TSLA' style='color: #D97706; text-decoration: none;'>Tesla (TSLA)</a>
                 </div>
             """, unsafe_allow_html=True)
             
         with col_t3:
             st.markdown("""
                 <div class='custom-card'>
-                    <b>8. Trending Searches (KOR)</b><br><br>
-                    • <a href='/?code=005380' target='_blank' style='color: #D97706; text-decoration: none;'>현대차 (005380)</a><br>
-                    • <a href='/?code=000270' target='_blank' style='color: #D97706; text-decoration: none;'>기아 (000270)</a>
+                    <b>🚗 주주환원 우수 종목</b><br><br>
+                    • <a href='/?code=005380' style='color: #D97706; text-decoration: none;'>현대차 (005380)</a><br>
+                    • <a href='/?code=000270' style='color: #D97706; text-decoration: none;'>기아 (000270)</a>
                 </div>
             """, unsafe_allow_html=True)
 
@@ -290,21 +363,37 @@ if not selected_code:
         st.markdown("<div class='ad-box'>Ads</div>", unsafe_allow_html=True)
 
 else:
-    # --- [상세 분석 페이지]: 종목 카드가 선택되어 새 탭으로 열릴 때 ---
+    # --- [상세 분석 페이지] ---
     if st.button("⬅️ 메인 포털로 돌아가기"):
         st.query_params.clear()
         st.rerun()
 
-    st.markdown("### 🛡️ 펀더멘탈 방어력 상세 분석 리포트 (새 탭 전용)")
+    st.markdown("### 🛡️ 펀더멘탈 방어력 상세 분석 리포트")
     st.markdown("<hr style='border: 1px solid #F4A261;'>", unsafe_allow_html=True)
     
     data = get_stock_data(selected_code)
 
     if data:
-        stock_name = data.get('stock_name', '종목')
+        stock_name = data.get('stock_name', selected_code)
+        
+        # 티커 심볼 처리 (.KS / .KQ 구분)
+        is_krx = selected_code.isdigit() and len(selected_code) == 6
+        if is_krx:
+            krx_stocks = get_krx_stocks()
+            market_type = "KOSPI"
+            for k, v in krx_stocks.items():
+                if v["code"] == selected_code:
+                    market_type = v["market"]
+                    break
+            ticker_symbol = f"{selected_code}.KQ" if market_type == "KOSDAQ" else f"{selected_code}.KS"
+        else:
+            ticker_symbol = selected_code.upper()
+
+        # 실시간 데이터 가져오기
         try:
-            df_price = fdr.DataReader(selected_code)
-            live_price = int(df_price['Close'].iloc[-1]) if not df_price.empty else data.get('stock_price', 0)
+            yticker = yf.Ticker(ticker_symbol)
+            fast_info = yticker.fast_info
+            live_price = int(fast_info.last_price) if fast_info and hasattr(fast_info, 'last_price') and fast_info.last_price else data.get('stock_price', 0)
         except Exception:
             live_price = data.get('stock_price', 0)
 
@@ -314,10 +403,11 @@ else:
         db_bps = data.get('bps')
         live_pbr = round(live_price / db_bps, 2) if db_bps and db_bps > 0 else data.get('pbr')
 
+        currency_unit = "원" if is_krx else "$"
         st.subheader(f"📊 [{stock_name}] ({selected_code}) 실시간 지표 분석")
         
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("현재 실시간 주가", f"{live_price:,} 원")
+        col1.metric("현재 실시간 주가", f"{live_price:,} {currency_unit}")
         col2.metric("PER", f"{live_per} 배" if live_per else "N/A")
         col3.metric("PBR", f"{live_pbr} 배" if live_pbr else "N/A")
         col4.metric("ROE", f"{data.get('roe')}%" if data.get("roe") else "N/A")
@@ -341,7 +431,7 @@ else:
             else: st.warning("🔴 **D등급 (하락장 취약 위험주)**")
             
         with col_detail:
-            st.markdown("### 📋 10대 핵심 지표 평가 내역")
+            st.markdown("### 📋 핵심 지표 평가 내역")
             for r in reasons: 
                 st.write(r)
 
@@ -350,10 +440,12 @@ else:
         st.subheader(f"📊 [{stock_name}] 재무제표 기간별 심층 분석")
         tab_5y, tab_3y, tab_q = st.tabs(["📅 5년 장기 흐름", "🕒 3년 핵심 집중", "⚡ 최근 4분기 단기 실적"])
 
-        try:
-            history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
-        except Exception:
-            history_data = None
+        history_data = None
+        if supabase:
+            try:
+                history_data = supabase.table("Fundamental_History").select("*").eq("stock_code", selected_code).order("year").execute()
+            except Exception:
+                history_data = None
 
         if history_data and history_data.data and len(history_data.data) > 0:
             df_hist = pd.DataFrame(history_data.data)
@@ -368,37 +460,42 @@ else:
                     st.markdown(f"#### 📅 [{stock_name}] 최근 5개년 재무 흐름")
                     df_5 = df_hist.tail(5).copy()
                     df_5['year'] = df_5['year'].astype(int)
-                    df_5['순이익_조원'] = df_5['net_income'] / 1_000_000_000_000
+                    
+                    unit_divider = 1_000_000_000_000 if is_krx else 1_000_000
+                    unit_label = "조 원" if is_krx else "M $"
+                    df_5['순이익_표시'] = df_5['net_income'] / unit_divider
                     
                     chart_5y = alt.Chart(df_5).mark_bar(color="#F4A261", size=30).encode(
                         x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
-                        y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
-                        tooltip=['year', '순이익_조원']
+                        y=alt.Y('순이익_표시:Q', title=f'당기순이익 ({unit_label})'),
+                        tooltip=['year', '순이익_표시']
                     ).properties(height=320)
                     st.altair_chart(chart_5y, use_container_width=True)
-                    st.dataframe(format_yearly_dataframe(df_5, stock_name), use_container_width=True, hide_index=True)
+                    st.dataframe(format_yearly_dataframe(df_5.drop(columns=['순이익_표시'], errors='ignore'), stock_name), use_container_width=True, hide_index=True)
 
                 with tab_3y:
                     st.markdown(f"#### 🕒 [{stock_name}] 최근 3개년 집중 분석")
                     df_3 = df_hist.tail(3).copy()
                     df_3['year'] = df_3['year'].astype(int)
-                    df_3['순이익_조원'] = df_3['net_income'] / 1_000_000_000_000
+                    
+                    unit_divider = 1_000_000_000_000 if is_krx else 1_000_000
+                    unit_label = "조 원" if is_krx else "M $"
+                    df_3['순이익_표시'] = df_3['net_income'] / unit_divider
                     
                     chart_3y = alt.Chart(df_3).mark_bar(color="#F4A261", size=30).encode(
                         x=alt.X('year:O', title='연도', axis=alt.Axis(labelAngle=0)),
-                        y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
-                        tooltip=['year', '순이익_조원']
+                        y=alt.Y('순이익_표시:Q', title=f'당기순이익 ({unit_label})'),
+                        tooltip=['year', '순이익_표시']
                     ).properties(height=320)
                     st.altair_chart(chart_3y, use_container_width=True)
-                    st.dataframe(format_yearly_dataframe(df_3, stock_name), use_container_width=True, hide_index=True)
+                    st.dataframe(format_yearly_dataframe(df_3.drop(columns=['순이익_표시'], errors='ignore'), stock_name), use_container_width=True, hide_index=True)
         else:
-            with tab_5y: st.info("저장된 5개년 역사적 재무 데이터가 없습니다.")
-            with tab_3y: st.info("저장된 3개년 역사적 재무 데이터가 없습니다.")
+            with tab_5y: st.info("저장된 5개년 히스토리 재무 데이터가 없습니다.")
+            with tab_3y: st.info("저장된 3개년 히스토리 재무 데이터가 없습니다.")
 
         with tab_q:
             st.markdown(f"#### ⚡ [{stock_name}] 최근 4개 분기 실적 추이")
             try:
-                ticker_symbol = f"{selected_code}.KS" if selected_code.isdigit() and len(selected_code)==6 else selected_code
                 yticker = yf.Ticker(ticker_symbol)
                 q_fin = yticker.quarterly_financials
                 
@@ -435,19 +532,28 @@ else:
                     
                     df_quarterly_raw = pd.DataFrame(parsed_rows)
                     df_chart = df_quarterly_raw.sort_values("분기 기준일").copy()
-                    df_chart['순이익_조원'] = df_chart['_raw_net'] / 1_000_000_000_000
+                    
+                    unit_div = 1_000_000_000_000 if is_krx else 1_000_000
+                    unit_title = "당기순이익 (조 원)" if is_krx else "당기순이익 (M $)"
+                    df_chart['순이익_표시'] = df_chart['_raw_net'] / unit_div
                     
                     chart = alt.Chart(df_chart).mark_bar(color="#F4A261", size=30).encode(
                         x=alt.X('분기 기준일:N', title='분기 기준일', sort=None, axis=alt.Axis(labelAngle=0)),
-                        y=alt.Y('순이익_조원:Q', title='당기순이익 (조 원)'),
-                        tooltip=['분기 기준일', '순이익_조원']
+                        y=alt.Y('순이익_표시:Q', title=unit_title),
+                        tooltip=['분기 기준일', '순이익_표시']
                     ).properties(height=320)
                     st.altair_chart(chart, use_container_width=True)
 
                     df_table = df_quarterly_raw.sort_values("분기 기준일", ascending=False).copy()
-                    df_table["매출액"] = df_table["매출액"].apply(format_korean_currency)
-                    df_table["영업이익"] = df_table["영업이익"].apply(format_korean_currency)
-                    df_table["당기순이익"] = df_table["당기순이익"].apply(format_korean_currency)
+                    if is_krx:
+                        df_table["매출액"] = df_table["매출액"].apply(format_korean_currency)
+                        df_table["영업이익"] = df_table["영업이익"].apply(format_korean_currency)
+                        df_table["당기순이익"] = df_table["당기순이익"].apply(format_korean_currency)
+                    else:
+                        df_table["매출액"] = df_table["매출액"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "-")
+                        df_table["영업이익"] = df_table["영업이익"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "-")
+                        df_table["당기순이익"] = df_table["당기순이익"].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "-")
+                        
                     df_table["영업이익률"] = df_table["영업이익률"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
                     df_table["순이익률"] = df_table["순이익률"].apply(lambda x: f"{x:,.2f}%" if pd.notna(x) else "-")
                     
@@ -457,4 +563,4 @@ else:
             except Exception as e:
                 st.error(f"분기 데이터 로딩 중 오류 발생: {e}")
     else:
-        st.error("선택한 종목의 데이터가 Supabase DB에 존재하지 않습니다.")
+        st.error("선택한 종목의 데이터를 찾을 수 없습니다.")
