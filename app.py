@@ -19,7 +19,7 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* 전체 배경 */
+    /* 전체 배경 강제 라이트 모드 고정 */
     html, body, [data-testid="stAppViewContainer"], .stApp {
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
@@ -92,38 +92,50 @@ st.markdown(
     }
 
     /* ========================================================= */
-    /* 커스텀 탭 버튼 스타일링 (확실하게 보장되는 폰트크기 & 간격) */
+    /* Streamlit 기본 버튼 & 로그인 버튼 스타일 강제 교체 */
     /* ========================================================= */
-    div.stButton > button.custom-tab-btn {
-        background-color: transparent !important;
-        color: #555555 !important;
-        border: none !important;
+    div.stButton > button {
+        background-color: #FFFFFF !important;
+        color: #1A1A1A !important;
+        border: 1.5px solid #E5E5E5 !important;
+        border-radius: 10px !important;
+        font-size: 16px !important;
+        font-weight: 700 !important;
+        box-shadow: 0 2px 5px rgba(0,0,0,0.04) !important;
+        transition: all 0.2s ease !important;
+    }
+
+    div.stButton > button:hover {
+        border-color: #F4A261 !important;
+        color: #D97706 !important;
+        background-color: #FFFDF9 !important;
+    }
+
+    /* ========================================================= */
+    /* Streamlit 네이티브 st.tabs 디자인 커스텀 (확실한 볼드/크기 적용) */
+    /* ========================================================= */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 24px !important;
         border-bottom: 2px solid #E5E5E5 !important;
-        border-radius: 0px !important;
+        padding-bottom: 4px !important;
+    }
+
+    .stTabs [data-baseweb="tab"] {
+        height: 55px !important;
+        white-space: pre !important;
         font-size: 22px !important;
         font-weight: 900 !important;
-        height: 60px !important;
-        width: 100% !important;
-        box-shadow: none !important;
-        transition: all 0.2s ease-in-out !important;
-    }
-
-    div.stButton > button.custom-tab-btn:hover {
-        color: #D97706 !important;
+        color: #666666 !important;
         background-color: transparent !important;
-    }
-
-    div.stButton > button.custom-tab-btn-active {
-        background-color: transparent !important;
-        color: #D97706 !important;
         border: none !important;
-        border-bottom: 4px solid #F4A261 !important;
-        border-radius: 0px !important;
+        padding: 0px 10px !important;
+    }
+
+    .stTabs [aria-selected="true"] {
+        color: #D97706 !important;
         font-size: 23px !important;
         font-weight: 900 !important;
-        height: 60px !important;
-        width: 100% !important;
-        box-shadow: none !important;
+        border-bottom: 4px solid #F4A261 !important;
     }
 
     /* 하단 트렌드 카드 */
@@ -173,9 +185,6 @@ st.markdown(
 # ==========================================
 # 2. 데이터 및 세션 상태 초기화
 # ==========================================
-if "selected_tab" not in st.session_state:
-    st.session_state.selected_tab = "US Market Overview"
-
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "YOUR_SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "YOUR_SUPABASE_KEY")
 
@@ -755,66 +764,53 @@ if not selected_code:
         )
 
     with main_content:
-        # 커스텀 탭 배치
-        tab_titles = [
-            "US Market Overview",
-            "Korea Market Overview",
-            "Live News",
-            "Gem Screener",
-        ]
-        c1, c2, c3, c4 = st.columns(4)
-
-        for i, title in enumerate(tab_titles):
-            col = [c1, c2, c3, c4][i]
-            is_active = st.session_state.selected_tab == title
-            btn_class = (
-                "custom-tab-btn-active" if is_active else "custom-tab-btn"
-            )
-
-            with col:
-                st.markdown(
-                    f"""
-                    <script>
-                    var buttons = window.parent.document.querySelectorAll('button');
-                    buttons.forEach(function(btn) {{
-                        if (btn.innerText === '{title}') {{
-                            btn.className = '{btn_class}';
-                        }}
-                    }});
-                    </script>
-                """,
-                    unsafe_allow_html=True,
-                )
-
-                if st.button(title, key=f"tab_btn_{i}"):
-                    st.session_state.selected_tab = title
-                    st.rerun()
-
-        st.markdown(
-            "<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True
+        # Streamlit 내장 st.tabs 사용하여 렌더링 (CSS로 스타일링 제어)
+        tab1, tab2, tab3, tab4 = st.tabs(
+            [
+                "US Market Overview",
+                "Korea Market Overview",
+                "Live News",
+                "Gem Screener",
+            ]
         )
 
         combined_stocks_db = get_combined_stock_db()
 
-        if st.session_state.selected_tab == "US Market Overview":
+        with tab1:
+            st.markdown(
+                "<div style='margin-bottom: 15px;'></div>",
+                unsafe_allow_html=True,
+            )
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "🇺🇸 **US Stock Market Overview**: S&P 500, 나스닥 지수 흐름, 섹터별 펀더멘탈 현황 및 매크로 지표 정보 공간입니다."
             )
 
-        elif st.session_state.selected_tab == "Korea Market Overview":
+        with tab2:
+            st.markdown(
+                "<div style='margin-bottom: 15px;'></div>",
+                unsafe_allow_html=True,
+            )
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "🇰🇷 **Korea Stock Market Overview**: 코스피, 코스닥 지수 동향, 외국인/기관 수급 및 국채 금리 현황 정보 공간입니다."
             )
 
-        elif st.session_state.selected_tab == "Live News":
+        with tab3:
+            st.markdown(
+                "<div style='margin-bottom: 15px;'></div>",
+                unsafe_allow_html=True,
+            )
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "📰 **Live News**: 글로벌 증시 속보 및 하락장 리스크 관리 뉴스를 실시간으로 모니터링하는 공간입니다."
             )
 
-        elif st.session_state.selected_tab == "Gem Screener":
+        with tab4:
+            st.markdown(
+                "<div style='margin-bottom: 15px;'></div>",
+                unsafe_allow_html=True,
+            )
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "💎 **Gem Screener**: ROE/PER/PBR 펀더멘탈 요건을 모두 충족한 하락장 우수 방어주(Gem) 스크리닝 리스트입니다."
@@ -929,9 +925,7 @@ if not selected_code:
         )
 
 else:
-    # =========================================================
-    # 💥 [완벽 복원] 종목 클릭 시 보여주는 '상세 분석 리포트 페이지'
-    # =========================================================
+    # 상세 분석 리포트 페이지
     if st.button("⬅️ 창 닫기 / 메인으로 돌아가기"):
         st.query_params.clear()
         st.rerun()
