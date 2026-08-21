@@ -714,8 +714,8 @@ if not selected_code:
             "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다. - 워런 버핏",
         ]
         st.markdown(
-            f"<div class='quote-box'><div class='quote-text'>"{random.choice(quotes)}"</div></div>",
-            unsafe_allow_html=True,
+           # ✅ 올바른 코드: 내부의 큰따옴표를 홑따옴표(')로 변경
+f"<div class='quote-box'><div class='quote-text'>{random.choice(quotes)}</div></div>",
         )
 
     with col_login:
