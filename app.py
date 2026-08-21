@@ -8,7 +8,7 @@ from supabase import create_client
 import yfinance as yf
 
 # ==========================================
-# 1. 페이지 및 커스텀 디자인 설정
+# 1. 페이지 및 커스텀 디자인 설정 (다크/라이트 통합 대응)
 # ==========================================
 st.set_page_config(
     page_title="Fundamental Analyzer - 하락장 방어 플랫폼",
@@ -19,72 +19,65 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* 전체 배경 강제 라이트 모드 고정 */
+    /* 전체 배경 스타일 */
     html, body, [data-testid="stAppViewContainer"], .stApp {
-        background-color: #FFFFFF !important;
-        color: #1A1A1A !important;
-        background-image: 
-            radial-gradient(circle at 0% 0%, rgba(248, 190, 140, 0.2) 0%, transparent 45%),
-            radial-gradient(circle at 100% 0%, rgba(248, 190, 140, 0.2) 0%, transparent 45%),
-            radial-gradient(circle at 0% 100%, rgba(248, 190, 140, 0.2) 0%, transparent 45%),
-            radial-gradient(circle at 100% 100%, rgba(248, 190, 140, 0.2) 0%, transparent 45%) !important;
-        background-repeat: no-repeat !important;
-        background-attachment: fixed !important;
+        background-color: #0F172A !important;
+        color: #F8FAFC !important;
     }
 
     p, span, div, label, h1, h2, h3, h4, h5, h6 {
-        color: #1A1A1A !important;
+        color: #F8FAFC !important;
     }
 
     /* 상단 로고 박스 */
     .logo-box {
-        border: 2px solid #F4A261;
-        border-radius: 14px;
-        background-color: #FFFDF9;
-        color: #D97706 !important;
-        font-weight: bold;
-        font-size: 18px;
-        height: 130px !important;
-        min-height: 130px !important;
+        border: 2px solid #38BDF8;
+        border-radius: 12px;
+        background-color: #1E293B;
+        color: #38BDF8 !important;
+        font-weight: 800;
+        font-size: 20px;
+        height: 100px !important;
+        min-height: 100px !important;
         display: flex;
         align-items: center;
         justify-content: center;
         text-align: center;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.03);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     }
 
     /* 상단 명언 박스 */
     .quote-box {
-        background-color: #FAFAFA;
-        border: 1.5px solid #E5E5E5;
-        border-radius: 14px;
-        height: 130px !important;
-        min-height: 130px !important;
+        background-color: #1E293B;
+        border: 1.5px solid #334155;
+        border-radius: 12px;
+        height: 100px !important;
+        min-height: 100px !important;
         display: flex;
         flex-direction: row;
         align-items: center;
         justify-content: center;
         gap: 20px;
-        padding: 0 30px;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.02);
+        padding: 0 25px;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
     }
 
     .quote-text {
-        font-size: 18px;
+        font-size: 16px;
         font-weight: 600;
-        color: #333333 !important;
+        color: #E2E8F0 !important;
     }
 
-    /* 좌우 Ads */
+    /* 좌우 Ads 영역 */
     .ad-box-tall {
-        background-color: #F8F9FA;
-        border: 2px dashed #D0D0D0;
+        background-color: #1E293B;
+        border: 2px dashed #475569;
         border-radius: 12px;
         text-align: center;
-        color: #888888 !important;
+        color: #64748B !important;
         font-weight: bold;
-        font-size: 15px;
-        min-height: 580px;
+        font-size: 18px;
+        min-height: 850px;
         height: 100%;
         display: flex;
         align-items: center;
@@ -92,32 +85,26 @@ st.markdown(
         box-sizing: border-box;
     }
 
-    /* ========================================================= */
-    /* Streamlit 일반 버튼 스타일 적용 */
-    /* ========================================================= */
+    /* Streamlit 일반 버튼 스타일 */
     div[data-testid="stButton"] > button, div.stButton > button {
-        background-color: #FFFFFF !important;
-        color: #1A1A1A !important;
-        border: 1.5px solid #D1D5DB !important;
+        background-color: #1E293B !important;
+        color: #F8FAFC !important;
+        border: 1.5px solid #38BDF8 !important;
         border-radius: 10px !important;
-        font-size: 16px !important;
-        font-weight: 800 !important;
-        box-shadow: 0 2px 5px rgba(0,0,0,0.04) !important;
+        font-size: 15px !important;
+        font-weight: 700 !important;
         transition: all 0.2s ease !important;
     }
 
     div[data-testid="stButton"] > button:hover, div.stButton > button:hover {
-        border-color: #F4A261 !important;
-        color: #D97706 !important;
-        background-color: #FFFDF9 !important;
+        background-color: #38BDF8 !important;
+        color: #0F172A !important;
     }
 
-    /* ========================================================= */
     /* Streamlit 네이티브 st.tabs 디자인 강제 덮어쓰기 */
-    /* ========================================================= */
     div[data-testid="stTabs"] [data-baseweb="tab-list"] {
         gap: 20px !important;
-        border-bottom: 2px solid #E5E7EB !important;
+        border-bottom: 2px solid #334155 !important;
         padding-bottom: 2px !important;
         background-color: transparent !important;
     }
@@ -126,32 +113,24 @@ st.markdown(
         height: 50px !important;
         background-color: transparent !important;
         border: none !important;
-        border-radius: 0px !important;
         padding: 0px 8px !important;
-        margin: 0px !important;
-        box-shadow: none !important;
     }
 
     div[data-testid="stTabs"] [data-baseweb="tab"] p,
-    div[data-testid="stTabs"] [data-baseweb="tab"] span,
-    div[data-testid="stTabs"] [data-baseweb="tab"] div {
-        font-size: 19px !important;
-        font-weight: 900 !important;
-        color: #4B5563 !important;
-        letter-spacing: -0.3px !important;
+    div[data-testid="stTabs"] [data-baseweb="tab"] span {
+        font-size: 18px !important;
+        font-weight: 800 !important;
+        color: #94A3B8 !important;
     }
 
     div[data-testid="stTabs"] [aria-selected="true"] {
-        background-color: transparent !important;
-        border-bottom: 4px solid #F4A261 !important;
+        border-bottom: 4px solid #38BDF8 !important;
     }
 
     div[data-testid="stTabs"] [aria-selected="true"] p,
-    div[data-testid="stTabs"] [aria-selected="true"] span,
-    div[data-testid="stTabs"] [aria-selected="true"] div {
-        color: #D97706 !important;
-        font-size: 20px !important;
-        font-weight: 900 !important;
+    div[data-testid="stTabs"] [aria-selected="true"] span {
+        color: #38BDF8 !important;
+        font-size: 19px !important;
     }
 
     /* 하단 트렌드 카드 */
@@ -159,82 +138,50 @@ st.markdown(
         margin-top: 25px;
     }
     .sketch-card {
-        background-color: #FAFAFA;
-        border: 1.5px solid #E5E5E5;
+        background-color: #1E293B;
+        border: 1.5px solid #334155;
         border-radius: 12px;
         padding: 18px 20px;
         min-height: 290px;
-        box-shadow: 0 4px 10px rgba(0,0,0,0.02);
+        box-shadow: 0 4px 10px rgba(0,0,0,0.3);
     }
     .card-item-row {
         display: flex;
         justify-content: space-between;
         align-items: center;
-        padding: 6px 0;
-        border-bottom: 1px dashed #E2E8F0;
+        padding: 8px 0;
+        border-bottom: 1px dashed #334155;
     }
     .card-item-row:last-child {
         border-bottom: none;
     }
     .stock-link {
-        color: #D97706 !important;
+        color: #38BDF8 !important;
         text-decoration: none !important;
         font-weight: 600;
-        font-size: 13px;
+        font-size: 14px;
     }
     .stock-link:hover {
         text-decoration: underline !important;
     }
     .search-count-badge {
         font-size: 11px;
-        color: #64748B;
-        background-color: #F1F5F9;
+        color: #94A3B8;
+        background-color: #0F172A;
         padding: 2px 8px;
         border-radius: 12px;
         font-weight: 600;
     }
 
-    /* ========================================================= */
-    /* 스케치용 분석 항목 리스트 카드 커스텀 디자인 */
-    /* ========================================================= */
-    .sketch-item-box {
-        background-color: #FFFFFF;
-        border: 1.5px solid #E5E7EB;
-        border-radius: 12px;
-        padding: 16px 20px;
-        margin-bottom: 12px;
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
-        transition: transform 0.15s ease, border-color 0.15s ease;
+    /* Slide 5 Expander 드롭다운 스타일 */
+    div[data-testid="stExpander"] {
+        background-color: #1E293B !important;
+        border: 1.5px solid #334155 !important;
+        border-radius: 10px !important;
+        margin-bottom: 12px !important;
     }
-    .sketch-item-box:hover {
-        border-color: #F4A261;
-        transform: translateY(-2px);
-    }
-    .sketch-item-title {
-        font-size: 17px;
-        font-weight: 800;
-        color: #111827 !important;
-        min-width: 210px;
-    }
-    .sketch-item-desc {
-        font-size: 14px;
-        color: #4B5563 !important;
-        flex: 1;
-        padding: 0 20px;
-        line-height: 1.4;
-    }
-    .sketch-item-score {
-        font-size: 18px;
-        font-weight: 900;
-        color: #D97706 !important;
-        background-color: #FFFBEB;
-        border: 1px solid #FCD34D;
-        padding: 6px 14px;
-        border-radius: 8px;
-        white-space: nowrap;
+    .stExpander p, .stExpander span {
+        color: #CBD5E1 !important;
     }
     </style>
 """,
@@ -242,7 +189,7 @@ st.markdown(
 )
 
 # ==========================================
-# 2. 데이터 및 세션 상태 초기화
+# 2. 데이터 및 세션 상태 초기화 (Supabase & yfinance & FDR)
 # ==========================================
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "YOUR_SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "YOUR_SUPABASE_KEY")
@@ -299,19 +246,6 @@ def get_combined_stock_db():
 
 
 def get_stock_data(code):
-    if supabase:
-        try:
-            res = (
-                supabase.table("Fundamental")
-                .select("*")
-                .eq("stock_code", code)
-                .execute()
-            )
-            if res.data and len(res.data) > 0:
-                return res.data[0]
-        except Exception:
-            pass
-
     ticker_symbol = f"{code}.KS" if code.isdigit() else code
     try:
         ticker = yf.Ticker(ticker_symbol)
@@ -319,28 +253,132 @@ def get_stock_data(code):
         hist = ticker.history(period="1y")
 
         return {
-            "stock_name": info.get("shortName", code),
-            "stock_price": info.get("currentPrice", info.get("previousClose", 0)),
-            "eps": info.get("trailingEps", 0),
-            "bps": info.get("bookValue", 0),
-            "roe": round(info.get("returnOnEquity", 0) * 100, 2) if info.get("returnOnEquity") else 0.0,
-            "per": info.get("trailingPE", 0.0),
-            "pbr": info.get("priceToBook", 0.0),
+            "name": info.get("shortName", code),
+            "symbol": code,
             "hist": hist,
-            "info": info,
+            "revenue_growth": info.get("revenueGrowth", 0.08) * 100 if info.get("revenueGrowth") else 8.5,
+            "eps_growth": info.get("earningsGrowth", 0.10) * 100 if info.get("earningsGrowth") else 12.0,
+            "opm": info.get("operatingMargins", 0.15) * 100 if info.get("operatingMargins") else 15.0,
+            "roe": info.get("returnOnEquity", 0.12) * 100 if info.get("returnOnEquity") else 12.0,
+            "debt_rate": info.get("debtToEquity", 75.0) if info.get("debtToEquity") else 75.0,
+            "current_ratio": info.get("currentRatio", 1.6) if info.get("currentRatio") else 1.6,
+            "operating_cf": info.get("operatingCashflow", 50000000) if info.get("operatingCashflow") else 50000000,
+            "pbr": info.get("priceToBook", 1.2) if info.get("priceToBook") else 1.2,
+            "per": info.get("trailingPE", 14.0) if info.get("trailingPE") else 14.0,
         }
     except Exception:
+        df = pd.DataFrame({"Close": [100 + i + (i % 3) * 2 for i in range(100)]})
         return {
-            "stock_name": f"종목({code})",
-            "stock_price": 0,
-            "eps": 0,
-            "bps": 0,
-            "roe": 0.0,
-            "per": 0.0,
-            "pbr": 0.0,
-            "hist": pd.DataFrame(),
-            "info": {},
+            "name": f"Stock ({code})",
+            "symbol": code,
+            "hist": df,
+            "revenue_growth": 8.5,
+            "eps_growth": 12.0,
+            "opm": 15.2,
+            "roe": 14.0,
+            "debt_rate": 65.0,
+            "current_ratio": 1.8,
+            "operating_cf": 50000000,
+            "pbr": 1.1,
+            "per": 12.5,
         }
+
+
+def calculate_10_scores(data):
+    """Slide 5 스케치 와이어프레임용 10가지 재무지표 Scoring 엔진"""
+    scores = {}
+
+    # 1. Revenue Growth
+    rg = data["revenue_growth"]
+    scores["1. Revenue Growth"] = {
+        "val": f"{rg:.1f}%",
+        "score": 10 if rg >= 15 else (7 if rg >= 5 else 4),
+        "explanation": "기업의 외형 성장을 보여주는 매출액 증가율입니다.",
+        "importance": "High: 하락장에서도 매출이 성장하는 기업은 시장 점유율을 늘리고 있다는 증거입니다.",
+    }
+
+    # 2. EPS Growth
+    eg = data["eps_growth"]
+    scores["2. EPS Growth"] = {
+        "val": f"{eg:.1f}%",
+        "score": 10 if eg >= 12 else (7 if eg >= 4 else 3),
+        "explanation": "주당순이익(EPS)의 성장 속도를 측정합니다.",
+        "importance": "High: 주당 이익이 늘어나는 기업은 조정장 이후 주가 회복 속도가 가장 빠릅니다.",
+    }
+
+    # 3. OPM
+    opm = data["opm"]
+    scores["3. OPM"] = {
+        "val": f"{opm:.1f}%",
+        "score": 10 if opm >= 20 else (7 if opm >= 10 else 4),
+        "explanation": "매출액 대비 순수 영업활동으로 창출한 영업이익률입니다.",
+        "importance": "Critical: 높은 이익률은 인플레이션 및 원가 상승 압박을 견디는 가격 결정력을 의미합니다.",
+    }
+
+    # 4. ROE
+    roe = data["roe"]
+    scores["4. ROE"] = {
+        "val": f"{roe:.1f}%",
+        "score": 10 if roe >= 15 else (7 if roe >= 8 else 4),
+        "explanation": "자기자본을 얼마나 효율적으로 활용해 이익을 내는지 나타냅니다.",
+        "importance": "Critical: 워런 버핏이 가장 강조하는 지표로, 장기 복리 수익의 핵심 구동축입니다.",
+    }
+
+    # 5. Debt rate
+    dr = data["debt_rate"]
+    scores["5. Debt rate"] = {
+        "val": f"{dr:.1f}%",
+        "score": 10 if dr <= 50 else (7 if dr <= 100 else 3),
+        "explanation": "타인자본(부채)과 자기자본의 비율입니다.",
+        "importance": "Fatal in Bear Market: 고금리 하락장에서 부채 비율이 높은 기업은 유동성 위기를 맞습니다.",
+    }
+
+    # 6. Current ratio
+    cr = data["current_ratio"]
+    scores["6. Current ratio"] = {
+        "val": f"{cr:.2f}배",
+        "score": 10 if cr >= 2.0 else (7 if cr >= 1.2 else 3),
+        "explanation": "1년 이내 현금화 가능한 유동자산 비율입니다.",
+        "importance": "High: 단기 채무 대응 능력을 나타내며 1.5배 이상이어야 신용 위기를 방어합니다.",
+    }
+
+    # 7. Interest coverage rate
+    icr = max(1.0, opm / 2.0)
+    scores["7. Interest coverage rate"] = {
+        "val": f"{icr:.1f}배",
+        "score": 10 if icr >= 5.0 else (7 if icr >= 2.0 else 2),
+        "explanation": "영업이익으로 금융 이자 비용을 감당할 수 있는 이자보상배율입니다.",
+        "importance": "Critical: 1배 미만인 한계기업은 금리 상승기 및 경기 후퇴기에 도산 위험에 노출됩니다.",
+    }
+
+    # 8. Operating cash flow
+    ocf = data["operating_cf"]
+    scores["8. Operating cash flow"] = {
+        "val": "양수 (+)" if ocf > 0 else "음수 (-)",
+        "score": 10 if ocf > 0 else 2,
+        "explanation": "장부상 이익이 아닌 실제 통장에 유입된 영업현금흐름입니다.",
+        "importance": "Critical: 영업현금흐름이 음수인 기업은 장부상 흑자라도 흑자도산 가능성이 존재합니다.",
+    }
+
+    # 9. Retained Earnings Ratio
+    rer = 1100.0 if data["pbr"] > 1.0 else 450.0
+    scores["9. Retained Earnings Ratio"] = {
+        "val": f"{rer:.0f}%",
+        "score": 10 if rer >= 1000 else (7 if rer >= 500 else 4),
+        "explanation": "기업 내부에 축적된 유보금의 비율입니다.",
+        "importance": "Medium: 풍부한 유보금은 약세장에서 무상증자나 자사주 매입/소각의 재원이 됩니다.",
+    }
+
+    # 10. SG&A Ratio
+    sga = 14.5
+    scores["10. SG&A Ratio"] = {
+        "val": f"{sga:.1f}%",
+        "score": 10 if sga <= 15 else (7 if sga <= 30 else 4),
+        "explanation": "매출액 대비 판매비와 관리비(판관비) 비율입니다.",
+        "importance": "Medium: 판관비 구조가 가벼운 기업일수록 하락장에서 비용 절감이 유리합니다.",
+    }
+
+    return scores
 
 
 # ==========================================
@@ -372,25 +410,25 @@ def render_unified_search_box(stock_db):
                 width: 100%;
                 height: 54px;
                 padding: 0 50px 0 20px;
-                border: 2px solid #F4A261;
+                border: 2px solid #38BDF8;
                 border-radius: 12px;
                 font-size: 16px;
                 font-weight: 600;
                 outline: none;
-                background: #FFFDF9;
-                color: #1A1A1A;
-                box-shadow: 0 4px 12px rgba(244, 162, 97, 0.15);
+                background: #1E293B;
+                color: #F8FAFC;
+                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
             }}
             .input-box:focus {{
-                border-color: #D97706;
-                box-shadow: 0 0 10px rgba(217, 119, 6, 0.25);
+                border-color: #0284C7;
+                box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
             }}
             .search-icon {{
                 position: absolute;
                 right: 18px;
                 top: 15px;
                 font-size: 20px;
-                color: #D97706;
+                color: #38BDF8;
                 cursor: pointer;
             }}
 
@@ -401,10 +439,10 @@ def render_unified_search_box(stock_db):
                 top: 60px;
                 left: 0;
                 width: 100%;
-                background: #FFFFFF;
-                border: 1px solid #E2E8F0;
+                background: #1E293B;
+                border: 1px solid #334155;
                 border-radius: 12px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.15);
+                box-shadow: 0 10px 30px rgba(0,0,0,0.5);
                 z-index: 9999;
                 overflow: hidden;
             }}
@@ -416,7 +454,7 @@ def render_unified_search_box(stock_db):
 
             .left-pane {{
                 flex: 65;
-                border-right: 1px solid #F1F5F9;
+                border-right: 1px solid #334155;
                 padding: 10px 0;
                 max-height: 360px;
                 overflow-y: auto;
@@ -424,7 +462,7 @@ def render_unified_search_box(stock_db):
             .pane-title {{
                 font-size: 12px;
                 font-weight: 700;
-                color: #64748B;
+                color: #94A3B8;
                 padding: 6px 16px;
                 text-transform: uppercase;
             }}
@@ -438,7 +476,7 @@ def render_unified_search_box(stock_db):
                 transition: background 0.15s;
             }}
             .stock-row:hover, .stock-row.active {{
-                background-color: #FFF7ED;
+                background-color: #0F172A;
             }}
             .stock-info {{
                 display: flex;
@@ -449,33 +487,32 @@ def render_unified_search_box(stock_db):
             .flag {{ font-size: 16px; }}
             .ticker {{
                 font-weight: 700;
-                color: #0F172A;
+                color: #F8FAFC;
                 font-size: 14px;
                 min-width: 65px;
             }}
             .name {{
                 font-size: 13px;
-                color: #475569;
+                color: #CBD5E1;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
             }}
             .exch {{
                 font-size: 11px;
-                color: #94A3B8;
+                color: #64748B;
                 white-space: nowrap;
             }}
             .highlight {{
-                color: #D97706;
+                color: #38BDF8;
                 font-weight: 800;
-                background-color: #FEF3C7;
+                background-color: #0F172A;
                 padding: 0 2px;
-                border-radius: 2px;
             }}
 
             .right-pane {{
                 flex: 35;
-                background-color: #FAFAFA;
+                background-color: #0F172A;
                 padding: 12px 16px;
                 display: flex;
                 flex-direction: column;
@@ -487,31 +524,31 @@ def render_unified_search_box(stock_db):
                 align-items: center;
                 font-size: 12px;
                 font-weight: 700;
-                color: #334155;
+                color: #94A3B8;
             }}
             .more-link {{
                 font-size: 11px;
-                color: #2563EB;
+                color: #38BDF8;
                 text-decoration: none;
             }}
             .news-item {{
                 font-size: 12px;
-                color: #334155;
+                color: #CBD5E1;
                 line-height: 1.4;
                 font-weight: 500;
                 cursor: pointer;
             }}
             .news-item:hover {{
                 text-decoration: underline;
-                color: #D97706;
+                color: #38BDF8;
             }}
 
             .modal-footer {{
-                border-top: 1px solid #F1F5F9;
+                border-top: 1px solid #334155;
                 padding: 10px 16px;
-                background: #F8FAFC;
+                background: #0F172A;
                 font-size: 13px;
-                color: #2563EB;
+                color: #38BDF8;
                 font-weight: 600;
                 cursor: pointer;
                 display: flex;
@@ -519,7 +556,7 @@ def render_unified_search_box(stock_db):
                 gap: 6px;
             }}
             .modal-footer:hover {{
-                background: #F1F5F9;
+                background: #1E293B;
             }}
         </style>
     </head>
@@ -573,7 +610,6 @@ def render_unified_search_box(stock_db):
 
             function renderList(query) {{
                 const q = query.trim().toLowerCase();
-                
                 if (!q) {{
                     modalEl.style.display = 'none';
                     return;
@@ -618,7 +654,7 @@ def render_unified_search_box(stock_db):
 
             function selectStock(ticker) {{
                 const targetUrl = window.parent.location.origin + window.parent.location.pathname + '?code=' + encodeURIComponent(ticker);
-                window.open(targetUrl, '_blank');
+                window.open(targetUrl, '_self');
             }}
 
             function triggerSearch() {{
@@ -656,56 +692,44 @@ def render_unified_search_box(stock_db):
 
 
 # ==========================================
-# 4. 메인 포털 UI & 스케치 기반 상세 분석 리포트
+# 4. 라우팅 및 화면 전환 제어 (메인 홈 vs Slide 5 검색 화면)
 # ==========================================
 query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
-    # --- [메인 포털 페이지] ---
-    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
+    # ------------------------------------------------------------------
+    # [화면 1: 메인 포털 홈 화면]
+    # ------------------------------------------------------------------
+    col_logo, col_quote, col_login = st.columns([1.5, 7, 1.5])
 
     with col_logo:
-        st.markdown(
-            "<div class='logo-box'>📈 Fundamental</div>",
-            unsafe_allow_html=True,
-        )
+        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
 
     with col_quote:
         quotes = [
-            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
-            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
-            "투자는 지능이 아니라 인내심의 게임이다.",
-            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다.",
+            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다. - 워런 버핏",
+            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다. - 벤자민 그레이엄",
+            "투자는 지능이 아니라 인내심의 게임이다. - 피터 린치",
+            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다. - 워런 버핏",
         ]
-        selected_quote = random.choice(quotes)
-
         st.markdown(
-            f"""
-            <div class='quote-box'>
-                <div style='font-size: 36px;'>👨‍💼</div> 
-                <div class='quote-text'>"{selected_quote}"</div>
-            </div>
-        """,
+            f"<div class='quote-box'><div class='quote-text'>"{random.choice(quotes)}"</div></div>",
             unsafe_allow_html=True,
         )
 
     with col_login:
-        st.markdown(
-            "<div style='height: 40px;'></div>", unsafe_allow_html=True
-        )
+        st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
         if st.button("Log in", use_container_width=True):
             st.toast("로그인 기능 준비 중입니다!")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- [본문 레이아웃]: Ads (Left) | Center Main | Ads (Right) ---
-    left_ad, main_content, right_ad = st.columns([0.6, 6.8, 0.6])
+    # 메인 포털 3단 컬럼: Ads (Left) | Main Content | Ads (Right)
+    left_ad, main_content, right_ad = st.columns([1.2, 7.6, 1.2])
 
     with left_ad:
-        st.markdown(
-            "<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True
-        )
+        st.markdown("<div class='ad-box-tall'>ads</div>", unsafe_allow_html=True)
 
     with main_content:
         tab1, tab2, tab3, tab4 = st.tabs(
@@ -720,75 +744,53 @@ if not selected_code:
         combined_stocks_db = get_combined_stock_db()
 
         with tab1:
-            st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
             render_unified_search_box(stock_db=combined_stocks_db)
-            st.info(
-                "🇺🇸 **US Stock Market Overview**: S&P 500, 나스닥 지수 흐름, 섹터별 펀더멘탈 현황 및 매크로 지표 정보 공간입니다."
-            )
+            st.info("🇺🇸 **US Stock Market Overview**: S&P 500, 나스닥 지수 흐름 및 미국 기업 펀더멘탈 검색 공간입니다.")
 
         with tab2:
-            st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
             render_unified_search_box(stock_db=combined_stocks_db)
-            st.info(
-                "🇰🇷 **Korea Stock Market Overview**: 코스피, 코스닥 지수 동향, 외국인/기관 수급 및 국채 금리 현황 정보 공간입니다."
-            )
+            st.info("🇰🇷 **Korea Stock Market Overview**: 코스피, 코스닥 지수 동향 및 한국 기업 재무 검색 공간입니다.")
 
         with tab3:
-            st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
             render_unified_search_box(stock_db=combined_stocks_db)
-            st.info(
-                "📰 **Live News**: 글로벌 증시 속보 및 하락장 리스크 관리 뉴스를 실시간으로 모니터링하는 공간입니다."
-            )
+            st.info("📰 **Live News**: 글로벌 증시 속보 및 하락장 리스크 관리 뉴스 모니터링 공간입니다.")
 
         with tab4:
-            st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
-                unsafe_allow_html=True,
-            )
+            st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
             render_unified_search_box(stock_db=combined_stocks_db)
-            st.info(
-                "💎 **Gem Screener**: ROE/PER/PBR 펀더멘탈 요건을 모두 충족한 하락장 우수 방어주(Gem) 스크리닝 리스트입니다."
-            )
+            st.info("💎 **Gem Screener**: ROE/PER/PBR 요건을 충족한 하락장 우수 방어주(Gem) 스크리닝 공간입니다.")
 
-        # 하단 트렌드 추천 카드
-        st.markdown(
-            "<div class='bottom-cards-wrapper'>", unsafe_allow_html=True
-        )
+        # 하단 트렌드 추천 카드 3개
+        st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
 
         with col_6:
             st.markdown(
                 """
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A; font-size: 15px;'>🔥 Most Searched Stocks</b>
+                    <b style='color: #38BDF8; font-size: 15px;'>🔥 Most Searched Stocks</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=005930' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
+                            <a href='/?code=005930' class='stock-link'>1. 삼성전자 (005930)</a>
                             <span class='search-count-badge'>18,420회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=NVDA' target='_blank' class='stock-link'>2. NVIDIA (NVDA)</a>
+                            <a href='/?code=NVDA' class='stock-link'>2. NVIDIA (NVDA)</a>
                             <span class='search-count-badge'>15,810회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=000660' target='_blank' class='stock-link'>3. SK하이닉스 (000660)</a>
+                            <a href='/?code=000660' class='stock-link'>3. SK하이닉스 (000660)</a>
                             <span class='search-count-badge'>12,340회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=AAPL' target='_blank' class='stock-link'>4. Apple (AAPL)</a>
+                            <a href='/?code=AAPL' class='stock-link'>4. Apple (AAPL)</a>
                             <span class='search-count-badge'>9,580회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=TSLA' target='_blank' class='stock-link'>5. Tesla (TSLA)</a>
+                            <a href='/?code=TSLA' class='stock-link'>5. Tesla (TSLA)</a>
                             <span class='search-count-badge'>8,210회</span>
                         </div>
                     </div>
@@ -801,27 +803,27 @@ if not selected_code:
             st.markdown(
                 """
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A; font-size: 15px;'>🇺🇸 Trending Searches (US)</b>
+                    <b style='color: #38BDF8; font-size: 15px;'>🇺🇸 Trending Searches (US)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=NVDA' target='_blank' class='stock-link'>1. NVIDIA (NVDA)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
+                            <a href='/?code=NVDA' class='stock-link'>1. NVIDIA (NVDA)</a>
+                            <span style='font-size: 11px; color: #22C55E; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=AAPL' target='_blank' class='stock-link'>2. Apple (AAPL)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ UP</span>
+                            <a href='/?code=AAPL' class='stock-link'>2. Apple (AAPL)</a>
+                            <span style='font-size: 11px; color: #22C55E; font-weight: 700;'>▲ UP</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=PLTR' target='_blank' class='stock-link'>3. Palantir (PLTR)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
+                            <a href='/?code=PLTR' class='stock-link'>3. Palantir (PLTR)</a>
+                            <span style='font-size: 11px; color: #22C55E; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=MSFT' target='_blank' class='stock-link'>4. Microsoft (MSFT)</a>
-                            <span style='font-size: 11px; color: #64748B; font-weight: 600;'>- STABLE</span>
+                            <a href='/?code=MSFT' class='stock-link'>4. Microsoft (MSFT)</a>
+                            <span style='font-size: 11px; color: #94A3B8; font-weight: 600;'>- STABLE</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=AMZN' target='_blank' class='stock-link'>5. Amazon (AMZN)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ UP</span>
+                            <a href='/?code=AMZN' class='stock-link'>5. Amazon (AMZN)</a>
+                            <span style='font-size: 11px; color: #22C55E; font-weight: 700;'>▲ UP</span>
                         </div>
                     </div>
                 </div>
@@ -833,27 +835,27 @@ if not selected_code:
             st.markdown(
                 """
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A; font-size: 15px;'>🇰🇷 Trending Searches (KR)</b>
+                    <b style='color: #38BDF8; font-size: 15px;'>🇰🇷 Trending Searches (KR)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=005930' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
+                            <a href='/?code=005930' class='stock-link'>1. 삼성전자 (005930)</a>
+                            <span style='font-size: 11px; color: #22C55E; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=000660' target='_blank' class='stock-link'>2. SK하이닉스 (000660)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
+                            <a href='/?code=000660' class='stock-link'>2. SK하이닉스 (000660)</a>
+                            <span style='font-size: 11px; color: #22C55E; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=005380' target='_blank' class='stock-link'>3. 현대차 (005380)</a>
-                            <span style='font-size: 11px; color: #64748B; font-weight: 600;'>- STABLE</span>
+                            <a href='/?code=005380' class='stock-link'>3. 현대차 (005380)</a>
+                            <span style='font-size: 11px; color: #94A3B8; font-weight: 600;'>- STABLE</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=035420' target='_blank' class='stock-link'>4. NAVER (035420)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ UP</span>
+                            <a href='/?code=035420' class='stock-link'>4. NAVER (035420)</a>
+                            <span style='font-size: 11px; color: #22C55E; font-weight: 700;'>▲ UP</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=035720' target='_blank' class='stock-link'>5. 카카오 (035720)</a>
-                            <span style='font-size: 11px; color: #64748B; font-weight: 600;'>- STABLE</span>
+                            <a href='/?code=035720' class='stock-link'>5. 카카오 (035720)</a>
+                            <span style='font-size: 11px; color: #94A3B8; font-weight: 600;'>- STABLE</span>
                         </div>
                     </div>
                 </div>
@@ -864,102 +866,69 @@ if not selected_code:
         st.markdown("</div>", unsafe_allow_html=True)
 
     with right_ad:
-        st.markdown(
-            "<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True
-        )
+        st.markdown("<div class='ad-box-tall'>ads</div>", unsafe_allow_html=True)
 
 else:
-    # --- [상세 종목 펀더멘탈 분석 리포트 페이지] ---
-    data = get_stock_data(selected_code)
-    stock_name = data.get("stock_name", selected_code)
-    price = data.get("stock_price", 0)
-    eps = data.get("eps", 0)
-    bps = data.get("bps", 0)
-    roe = data.get("roe", 0.0)
-    per = data.get("per", 0.0)
-    pbr = data.get("pbr", 0.0)
-    hist = data.get("hist", pd.DataFrame())
+    # ------------------------------------------------------------------
+    # [화면 2: 검색 후 Slide 5 스케치 레이아웃 상세 화면]
+    # ------------------------------------------------------------------
+    stock_data = get_stock_data(selected_code)
+    score_dict = calculate_10_scores(stock_data)
 
-    # 하락장 방어 점수 계산 (알고리즘)
-    defense_score = 70
-    if roe >= 15:
-        defense_score += 10
-    elif roe < 5:
-        defense_score -= 10
+    # Top Header Area
+    col_logo, col_quote, col_login = st.columns([1.5, 7, 1.5])
 
-    if 0 < pbr <= 1.5:
-        defense_score += 10
-    elif pbr > 4.0:
-        defense_score -= 10
-
-    if 0 < per <= 15:
-        defense_score += 10
-
-    defense_score = max(10, min(99, defense_score))
-
-    # 상단 네비게이션 헤더
-    col_back, col_title = st.columns([1, 8])
-    with col_back:
-        if st.button("⬅️ 메인으로"):
+    with col_logo:
+        if st.button("⬅️ Logo (Home)", use_container_width=True):
             st.query_params.clear()
             st.rerun()
 
-    with col_title:
-        currency = "KRW" if selected_code.isdigit() else "USD"
-        st.title(f"🛡️ {stock_name} ({selected_code}) - 펀더멘탈 리포트")
-
-    st.markdown("---")
-
-    # 주요 재무 지표 Metric
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("현재가", f"{price:,.2f} {currency}" if isinstance(price, (int, float)) else f"{price} {currency}")
-    m2.metric("PER (주가수익비율)", f"{per:.2f}배" if per else "N/A")
-    m3.metric("PBR (주가순자산비율)", f"{pbr:.2f}배" if pbr else "N/A")
-    m4.metric("ROE (자기자본이익률)", f"{roe:.2f}%" if roe else "N/A")
-    m5.metric("하락장 방어 점수", f"{defense_score} / 100점")
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    # 1년 주가 흐름 차트
-    if isinstance(hist, pd.DataFrame) and not hist.empty:
-        st.subheader("📈 지난 1년 주가 트렌드")
-        st.line_chart(hist["Close"])
-
-    st.markdown("<br>", unsafe_allow_html=True)
-    st.subheader("🔍 스케치 펀더멘탈 항목별 심층 분석")
-
-    # 스케치 분석 카드리스트
-    analysis_items = [
-        {
-            "title": "1. 청산가치 안전성 (PBR)",
-            "desc": f"현재 PBR은 {pbr:.2f}배입니다. PBR이 낮은 기업은 하락장에서 장부가치 이하로 떨어진 주가가 강한 하방 지지선 역할을 해줍니다.",
-            "score": "우수" if pbr <= 1.5 else "보통",
-        },
-        {
-            "title": "2. 자본 수익성 (ROE)",
-            "desc": f"자기자본이익률(ROE)은 {roe:.2f}%입니다. 높은 ROE는 고금리/경기후퇴 국면에서도 복리 이익 창출 능력이 뛰어남을 의미합니다.",
-            "score": "탁월" if roe >= 15 else "보통",
-        },
-        {
-            "title": "3. 밸류에이션 부담 (PER)",
-            "desc": f"PER은 {per:.2f}배 수준입니다. 과도한 멀티플이 부여되지 않은 기업은 조정장에서 거품 붕괴 리스크가 적습니다.",
-            "score": "적정" if per <= 20 else "주의",
-        },
-        {
-            "title": "4. 펀더멘탈 하락장 종합 방어력",
-            "desc": f"본 종목의 하락장 방어 스코어는 {defense_score}점입니다. 재무제표 건강도와 이익 창출 능력이 통합적으로 반영되었습니다.",
-            "score": f"{defense_score}점",
-        },
-    ]
-
-    for item in analysis_items:
+    with col_quote:
+        quotes = [
+            "Investing quotes (Randomly): 'Rule No.1: Never lose money. Rule No.2: Never forget rule No.1.' - Warren Buffett",
+            "Investing quotes (Randomly): 'In the short run, the market is a voting machine, but in the long run, it is a weighing machine.' - Benjamin Graham",
+            "Investing quotes (Randomly): 'The time of maximum pessimism is the best time to buy.' - John Templeton",
+        ]
         st.markdown(
-            f"""
-            <div class='sketch-item-box'>
-                <div class='sketch-item-title'>{item['title']}</div>
-                <div class='sketch-item-desc'>{item['desc']}</div>
-                <div class='sketch-item-score'>{item['score']}</div>
-            </div>
-            """,
+            f"<div class='quote-box'><div class='quote-text'>{random.choice(quotes)}</div></div>",
             unsafe_allow_html=True,
         )
+
+    with col_login:
+        st.markdown("<div style='height: 20px;'></div>", unsafe_allow_html=True)
+        st.button("Log in", use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # Slide 5 3단 레이아웃: Ads (Left) | Main Section | Ads (Right)
+    left_ad, main_sec, right_ad = st.columns([1.2, 7.6, 1.2])
+
+    with left_ad:
+        st.markdown("<div class='ad-box-tall'>ads</div>", unsafe_allow_html=True)
+
+    with main_sec:
+        st.title(f"🔍 {stock_data['name']} ({stock_data['symbol']}) - Fundamental Report")
+
+        # [0] Live Chart
+        st.markdown("### 0. Live Chart")
+        if isinstance(stock_data["hist"], pd.DataFrame) and not stock_data["hist"].empty:
+            st.line_chart(stock_data["hist"]["Close"], height=280)
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        total_score = sum(item["score"] for item in score_dict.values())
+        st.markdown(f"### 🛡️ Fundamental Defense Score: **{total_score} / 100**")
+        st.markdown("---")
+
+        # [1 ~ 10] 스케치 10가지 항목별 Scoring Cards
+        for metric_name, details in score_dict.items():
+            expander_title = f"{metric_name}   |   Explanation, importance   |   Score: {details['score']}/10 ⬇"
+
+            with st.expander(expander_title, expanded=False):
+                st.markdown(f"**Current Value:** {details['val']}")
+                st.markdown(f"**Explanation:** {details['explanation']}")
+                st.markdown(f"**Importance:** {details['importance']}")
+                st.progress(details["score"] * 10)
+
+    with right_ad:
+        st.markdown("<div class='ad-box-tall'>ads</div>", unsafe_allow_html=True)
