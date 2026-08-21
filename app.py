@@ -6,7 +6,6 @@ import random
 import yfinance as yf
 import streamlit.components.v1 as components
 import os
-from PIL import Image
 
 # ==========================================
 # 1. 페이지 및 커스텀 디자인 설정
@@ -36,7 +35,16 @@ st.markdown("""
         color: #1A1A1A !important;
     }
 
-    /* 상단 헤더 */
+    /* 상단 도메인 표시 (네모 영역) */
+    .domain-header {
+        font-size: 13px;
+        font-weight: 700;
+        color: #333333;
+        margin-bottom: 6px;
+        letter-spacing: -0.3px;
+    }
+
+    /* 상단 로고 박스 (동그라미 영역) */
     .logo-box {
         border: 2px solid #F4A261;
         border-radius: 14px;
@@ -53,11 +61,12 @@ st.markdown("""
     }
 
     .logo-box img {
-        max-height: 100px;
-        max-width: 100%;
+        max-height: 90px;
+        max-width: 90%;
         object-fit: contain;
     }
 
+    /* 기존 명언 박스 (원래대로 유지) */
     .intro-box {
         background-color: #FAFAFA;
         border: 1.5px solid #E5E5E5;
@@ -272,7 +281,7 @@ def calculate_defense_score(data):
     return score, grade, reasons
 
 # ==========================================
-# 3. 동적 검색 컴포넌트 (MVP 도메인 독립)
+# 3. 동적 검색 컴포넌트
 # ==========================================
 def render_investing_search_box(stock_db, placeholder_text, key_prefix):
     import json
@@ -527,7 +536,6 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
             }}
 
             function selectStock(ticker) {{
-                // MVP 호환: 현재 접속 URL 기준 이동
                 const targetUrl = window.parent.location.protocol + '//' + window.parent.location.host + window.parent.location.pathname + '?code=' + encodeURIComponent(ticker);
                 window.parent.location.href = targetUrl;
             }}
@@ -572,39 +580,43 @@ query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
-    # --- [상단 헤더]: Logo (PNG) | Intro / PNG | Log in ---
+    # --- [상단 헤더]: Domain + Logo | Intro Box (원래 명언) | Log in ---
     col_logo, col_quote, col_login = st.columns([1.5, 6.3, 1.0])
     
     with col_logo:
-        # 로고 PNG 이미지 연동
-        if os.path.exists("logo.png"):
-            st.image("logo.png", use_container_width=True)
-        else:
-            st.markdown("<div class='logo-box'><b style='font-size: 20px; color: #D97706;'>🛡️ Fundamental</b></div>", unsafe_allow_html=True)
+        # 1. 네모 위치: fundamental.com 표시
+        st.markdown("<div class='domain-header'>fundamental.com</div>", unsafe_allow_html=True)
         
-    with col_quote:
-        # intro.png 이미지 또는 하락장 방어 서비스 안내문구 표시
-        if os.path.exists("intro.png"):
-            st.image("intro.png", use_container_width=True)
+        # 2. 동그라미 위치: 전달주신 차트 PNG 이미지 전용 로고 박스
+        if os.path.exists("logo.png"):
+            st.markdown("""
+                <div class='logo-box'>
+                    <img src='app/static/logo.png' alt='logo' onError="this.onerror=null; this.src='https://raw.githubusercontent.com/streamlit/streamlit/main/docs/assets/logo.png';">
+                </div>
+            """, unsafe_allow_html=True)
         else:
-            quotes = [
-                "하락장은 우량한 기업을 헐값에 살 수 있는 기회다 - 재무제표 방어력 완벽 분석",
-                "시장이 공포에 질려 있을 때, 기업의 진짜 가치(Fundamental)에 집중하세요.",
-                "미국/한국 주식 하락장 속 펀더멘탈 체력 지수 및 ROE/PBR/PER 실시간 분석"
-            ]
-            selected_quote = random.choice(quotes)
-            st.markdown(f"""
-                <div class='intro-box'>
-                    <div>
-                        <div style='font-size: 13px; color: #D97706; font-weight: bold;'>🛡️ Fundamental Analyzer MVP</div>
-                        <div class='quote-text'>"{selected_quote}"</div>
-                    </div>
-                    <div style='font-size: 32px;'>📊</div>
+            # 기본 차트 이미지 (logo.png 없을 때 대비)
+            st.markdown("""
+                <div class='logo-box'>
+                    <img src='https://cdn-icons-png.flaticon.com/512/3594/3594363.png' alt='logo'>
                 </div>
             """, unsafe_allow_html=True)
         
+    with col_quote:
+        # 기존 명언 박스 (원래대로 유지)
+        st.markdown("""
+            <div style='height: 25px;'></div>
+            <div class='intro-box'>
+                <div>
+                    <div style='font-size: 13px; color: #D97706; font-weight: bold;'>🛡️ Fundamental Analyzer MVP</div>
+                    <div class='quote-text'>"시장이 공포에 질려 있을 때, 기업의 진짜 가치(Fundamental)에 집중하세요."</div>
+                </div>
+                <div style='font-size: 32px;'>📊</div>
+            </div>
+        """, unsafe_allow_html=True)
+        
     with col_login:
-        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 25px;'></div>", unsafe_allow_html=True)
         if st.button("Log in", use_container_width=True):
             st.toast("로그인 기능 준비 중입니다!")
 
