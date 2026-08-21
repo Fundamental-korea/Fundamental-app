@@ -1,7 +1,7 @@
-import random
 import json
-import pandas as pd
+import random
 import FinanceDataReader as fdr
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 from supabase import create_client
@@ -92,47 +92,38 @@ st.markdown(
     }
 
     /* ========================================================= */
-    /* 💥 탭 강력 스타일 재정의 (간격 60px+, 폰트 22px, Bold 900) */
+    /* 커스텀 탭 버튼 스타일링 (확실하게 보장되는 폰트크기 & 간격) */
     /* ========================================================= */
-    div[data-baseweb="tab-list"] {
-        display: flex !important;
-        justify-content: space-around !important;
-        align-items: center !important;
-        gap: 50px !important;
-        width: 100% !important;
-        margin-bottom: 25px !important;
-        border-bottom: 2px solid #E5E5E5 !important;
-        padding-bottom: 10px !important;
-    }
-
-    div[data-baseweb="tab"] {
-        height: 55px !important;
-        padding: 0 20px !important;
-        margin: 0 10px !important;
+    div.stButton > button.custom-tab-btn {
         background-color: transparent !important;
-        border: none !important;
-        outline: none !important;
-        cursor: pointer !important;
-    }
-
-    div[data-baseweb="tab"] p {
-        font-size: 22px !important; /* 글자 크기 훨씬 더 크게 */
-        font-weight: 900 !important; /* 엄청 굵게 */
         color: #555555 !important;
-        letter-spacing: -0.5px !important;
-        white-space: nowrap !important;
-    }
-
-    /* 선택된 탭 스타일 */
-    div[data-baseweb="tab"][aria-selected="true"] {
-        border-bottom: 4px solid #F4A261 !important;
-    }
-
-    div[data-baseweb="tab"][aria-selected="true"] p {
-        color: #D97706 !important;
+        border: none !important;
+        border-bottom: 2px solid #E5E5E5 !important;
+        border-radius: 0px !important;
+        font-size: 22px !important;
         font-weight: 900 !important;
-        transform: scale(1.05); /* 선택된 탭 살짝 확대 */
-        transition: transform 0.2s ease;
+        height: 60px !important;
+        width: 100% !important;
+        box-shadow: none !important;
+        transition: all 0.2s ease-in-out !important;
+    }
+
+    div.stButton > button.custom-tab-btn:hover {
+        color: #D97706 !important;
+        background-color: transparent !important;
+    }
+
+    div.stButton > button.custom-tab-btn-active {
+        background-color: transparent !important;
+        color: #D97706 !important;
+        border: none !important;
+        border-bottom: 4px solid #F4A261 !important;
+        border-radius: 0px !important;
+        font-size: 23px !important;
+        font-weight: 900 !important;
+        height: 60px !important;
+        width: 100% !important;
+        box-shadow: none !important;
     }
 
     /* 하단 트렌드 카드 */
@@ -174,23 +165,17 @@ st.markdown(
         border-radius: 12px;
         font-weight: 600;
     }
-
-    div.stButton > button {
-        background-color: #F4A261 !important;
-        color: #FFFFFF !important;
-        border: none !important;
-        font-weight: bold !important;
-        border-radius: 10px !important;
-        height: 48px !important;
-    }
     </style>
 """,
     unsafe_allow_html=True,
 )
 
 # ==========================================
-# 2. 데이터 및 유틸리티 설정
+# 2. 데이터 및 세션 상태 초기화
 # ==========================================
+if "selected_tab" not in st.session_state:
+    st.session_state.selected_tab = "US Market Overview"
+
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "YOUR_SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "YOUR_SUPABASE_KEY")
 
@@ -718,13 +703,13 @@ def render_unified_search_box(stock_db):
 
 
 # ==========================================
-# 4. 메인 포털 UI
+# 4. 메인 포털 UI & 상세 분석 리포트 분기 처리
 # ==========================================
 query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
-    # --- [상단 헤더]: Logo | Investor Quote | Log in ---
+    # --- [메인 메인 포털 페이지] ---
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
     with col_logo:
@@ -770,44 +755,72 @@ if not selected_code:
         )
 
     with main_content:
-        # 1. 상단 탭 (숫자 없이, 크게, 볼드로 넓게 떨어진 배치)
-        tab1, tab2, tab3, tab4 = st.tabs(
-            [
-                "US Market Overview",
-                "Korea Market Overview",
-                "Live News",
-                "Gem Screener",
-            ]
+        # 커스텀 탭 배치
+        tab_titles = [
+            "US Market Overview",
+            "Korea Market Overview",
+            "Live News",
+            "Gem Screener",
+        ]
+        c1, c2, c3, c4 = st.columns(4)
+
+        for i, title in enumerate(tab_titles):
+            col = [c1, c2, c3, c4][i]
+            is_active = st.session_state.selected_tab == title
+            btn_class = (
+                "custom-tab-btn-active" if is_active else "custom-tab-btn"
+            )
+
+            with col:
+                st.markdown(
+                    f"""
+                    <script>
+                    var buttons = window.parent.document.querySelectorAll('button');
+                    buttons.forEach(function(btn) {{
+                        if (btn.innerText === '{title}') {{
+                            btn.className = '{btn_class}';
+                        }}
+                    }});
+                    </script>
+                """,
+                    unsafe_allow_html=True,
+                )
+
+                if st.button(title, key=f"tab_btn_{i}"):
+                    st.session_state.selected_tab = title
+                    st.rerun()
+
+        st.markdown(
+            "<div style='margin-bottom: 20px;'></div>", unsafe_allow_html=True
         )
 
-        # 2. 통합 검색창
         combined_stocks_db = get_combined_stock_db()
 
-        with tab1:
+        if st.session_state.selected_tab == "US Market Overview":
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "🇺🇸 **US Stock Market Overview**: S&P 500, 나스닥 지수 흐름, 섹터별 펀더멘탈 현황 및 매크로 지표 정보 공간입니다."
             )
 
-        with tab2:
+        elif st.session_state.selected_tab == "Korea Market Overview":
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "🇰🇷 **Korea Stock Market Overview**: 코스피, 코스닥 지수 동향, 외국인/기관 수급 및 국채 금리 현황 정보 공간입니다."
             )
 
-        with tab3:
+        elif st.session_state.selected_tab == "Live News":
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "📰 **Live News**: 글로벌 증시 속보 및 하락장 리스크 관리 뉴스를 실시간으로 모니터링하는 공간입니다."
             )
 
-        with tab4:
+        elif st.session_state.selected_tab == "Gem Screener":
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "💎 **Gem Screener**: ROE/PER/PBR 펀더멘탈 요건을 모두 충족한 하락장 우수 방어주(Gem) 스크리닝 리스트입니다."
             )
 
-        # --- [하단 트렌드 추천 카드] ---
+        # 하단 트렌드 추천 카드
         st.markdown(
             "<div class='bottom-cards-wrapper'>", unsafe_allow_html=True
         )
@@ -916,7 +929,9 @@ if not selected_code:
         )
 
 else:
-    # --- [상세 분석 리포트 페이지] ---
+    # =========================================================
+    # 💥 [완벽 복원] 종목 클릭 시 보여주는 '상세 분석 리포트 페이지'
+    # =========================================================
     if st.button("⬅️ 창 닫기 / 메인으로 돌아가기"):
         st.query_params.clear()
         st.rerun()
