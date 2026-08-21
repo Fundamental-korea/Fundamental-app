@@ -91,40 +91,48 @@ st.markdown(
         box-sizing: border-box;
     }
 
-    /* 탭 커스텀 스타일 (요청하신 넓은 상단 간격 분배 + 큰 글씨 + 볼드 적용) */
-    .stTabs [data-baseweb="tab-list"] {
+    /* ========================================================= */
+    /* 💥 탭 강력 스타일 재정의 (간격 60px+, 폰트 22px, Bold 900) */
+    /* ========================================================= */
+    div[data-baseweb="tab-list"] {
         display: flex !important;
-        justify-content: space-between !important; /* 상단 공간 전체에 균등 분배 */
-        gap: 20px !important;
-        margin-bottom: 20px !important;
-        border-bottom: none !important;
+        justify-content: space-around !important;
+        align-items: center !important;
+        gap: 50px !important;
         width: 100% !important;
+        margin-bottom: 25px !important;
+        border-bottom: 2px solid #E5E5E5 !important;
+        padding-bottom: 10px !important;
     }
-    .stTabs [data-baseweb="tab"] {
-        flex: 1 !important; /* 모든 탭을 똑같은 비율로 넓게 떨어뜨림 */
-        height: 60px !important;
-        padding: 0 15px !important;
-        background-color: #FAFAFA !important;
-        border-radius: 14px !important;
-        border: 2px solid #E5E5E5 !important;
-        justify-content: center !important;
-        min-width: 180px !important;
+
+    div[data-baseweb="tab"] {
+        height: 55px !important;
+        padding: 0 20px !important;
+        margin: 0 10px !important;
+        background-color: transparent !important;
+        border: none !important;
+        outline: none !important;
+        cursor: pointer !important;
     }
-    .stTabs [data-baseweb="tab"] p {
-        color: #333333 !important;
-        font-weight: 900 !important; /* 초강조 Bold */
-        font-size: 20px !important; /* 글자 크기 확대 */
-        text-align: center !important;
-        width: 100% !important;
+
+    div[data-baseweb="tab"] p {
+        font-size: 22px !important; /* 글자 크기 훨씬 더 크게 */
+        font-weight: 900 !important; /* 엄청 굵게 */
+        color: #555555 !important;
+        letter-spacing: -0.5px !important;
+        white-space: nowrap !important;
     }
-    .stTabs [aria-selected="true"] {
-        background-color: #FFFDF9 !important;
-        border: 2.5px solid #F4A261 !important;
-        box-shadow: 0 6px 16px rgba(244, 162, 97, 0.25) !important;
+
+    /* 선택된 탭 스타일 */
+    div[data-baseweb="tab"][aria-selected="true"] {
+        border-bottom: 4px solid #F4A261 !important;
     }
-    .stTabs [aria-selected="true"] p {
+
+    div[data-baseweb="tab"][aria-selected="true"] p {
         color: #D97706 !important;
         font-weight: 900 !important;
+        transform: scale(1.05); /* 선택된 탭 살짝 확대 */
+        transition: transform 0.2s ease;
     }
 
     /* 하단 트렌드 카드 */
@@ -762,7 +770,7 @@ if not selected_code:
         )
 
     with main_content:
-        # 1. 상단 탭 (화면 좌우 전체 균등 배치, 넓은 간격, 큰 글씨)
+        # 1. 상단 탭 (숫자 없이, 크게, 볼드로 넓게 떨어진 배치)
         tab1, tab2, tab3, tab4 = st.tabs(
             [
                 "US Market Overview",
@@ -772,7 +780,7 @@ if not selected_code:
             ]
         )
 
-        # 2. 통합 검색창 (탭 바로 밑에 위치)
+        # 2. 통합 검색창
         combined_stocks_db = get_combined_stock_db()
 
         with tab1:
