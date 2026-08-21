@@ -1,4 +1,5 @@
 import random
+import json
 import pandas as pd
 import FinanceDataReader as fdr
 import streamlit as st
@@ -94,7 +95,7 @@ st.markdown(
     .stTabs [data-baseweb="tab-list"] {
         gap: 20px !important;
         justify-content: center !important;
-        margin-bottom: 10px !important;
+        margin-bottom: 15px !important;
     }
     .stTabs [data-baseweb="tab"] {
         height: 46px !important;
@@ -120,7 +121,7 @@ st.markdown(
 
     /* 하단 트렌드 카드 */
     .bottom-cards-wrapper {
-        margin-top: 15px;
+        margin-top: 25px;
     }
     .sketch-card {
         background-color: #FAFAFA;
@@ -190,23 +191,115 @@ supabase = init_supabase()
 
 
 @st.cache_data
-def get_krx_stocks():
+def get_combined_stock_db():
+    # 1. 대표 미국 주식 모음
+    us_stocks = [
+        {
+            "ticker": "AAPL",
+            "name": "Apple Inc.",
+            "exch": "Equities - NASDAQ",
+            "flag": "🇺🇸",
+        },
+        {
+            "ticker": "NVDA",
+            "name": "NVIDIA Corporation",
+            "exch": "Equities - NASDAQ",
+            "flag": "🇺🇸",
+        },
+        {
+            "ticker": "TSLA",
+            "name": "Tesla Inc.",
+            "exch": "Equities - NASDAQ",
+            "flag": "🇺🇸",
+        },
+        {
+            "ticker": "MSFT",
+            "name": "Microsoft Corp.",
+            "exch": "Equities - NASDAQ",
+            "flag": "🇺🇸",
+        },
+        {
+            "ticker": "AMZN",
+            "name": "Amazon.com Inc.",
+            "exch": "Equities - NASDAQ",
+            "flag": "🇺🇸",
+        },
+        {
+            "ticker": "GOOGL",
+            "name": "Alphabet Inc.",
+            "exch": "Equities - NASDAQ",
+            "flag": "🇺🇸",
+        },
+        {
+            "ticker": "META",
+            "name": "Meta Platforms Inc.",
+            "exch": "Equities - NASDAQ",
+            "flag": "🇺🇸",
+        },
+        {
+            "ticker": "PLTR",
+            "name": "Palantir Technologies",
+            "exch": "Equities - NYSE",
+            "flag": "🇺🇸",
+        },
+        {
+            "ticker": "P",
+            "name": "Pure Storage Inc",
+            "exch": "Equities - NYSE",
+            "flag": "🇺🇸",
+        },
+    ]
+
+    # 2. 한국 주식 모음 (KRX)
+    kr_stocks = []
     try:
         df = fdr.StockListing("KRX")
-        stocks = {}
         for _, row in df.iterrows():
             market = row.get("Market", "KOSPI")
-            stocks[f"{row['Name']} ({row['Code']})"] = {
-                "code": str(row["Code"]),
-                "market": market,
-            }
-        return stocks
+            kr_stocks.append(
+                {
+                    "ticker": str(row["Code"]),
+                    "name": str(row["Name"]),
+                    "exch": f"Equities - {market}",
+                    "flag": "🇰🇷",
+                }
+            )
     except Exception:
-        return {
-            "삼성전자 (005930)": {"code": "005930", "market": "KOSPI"},
-            "SK하이닉스 (000660)": {"code": "000660", "market": "KOSPI"},
-            "현대차 (005380)": {"code": "005380", "market": "KOSPI"},
-        }
+        kr_stocks = [
+            {
+                "ticker": "005930",
+                "name": "삼성전자",
+                "exch": "Equities - KOSPI",
+                "flag": "🇰🇷",
+            },
+            {
+                "ticker": "000660",
+                "name": "SK하이닉스",
+                "exch": "Equities - KOSPI",
+                "flag": "🇰🇷",
+            },
+            {
+                "ticker": "005380",
+                "name": "현대차",
+                "exch": "Equities - KOSPI",
+                "flag": "🇰🇷",
+            },
+            {
+                "ticker": "035420",
+                "name": "NAVER",
+                "exch": "Equities - KOSPI",
+                "flag": "🇰🇷",
+            },
+            {
+                "ticker": "035720",
+                "name": "카카오",
+                "exch": "Equities - KOSPI",
+                "flag": "🇰🇷",
+            },
+        ]
+
+    # 통합 반환
+    return us_stocks + kr_stocks
 
 
 def get_stock_data(code):
@@ -300,11 +393,9 @@ def calculate_defense_score(data):
 
 
 # ==========================================
-# 3. 인베스팅닷컴 스타일 동적 검색 컴포넌트
+# 3. 미국/한국 주식 통합 실시간 검색 컴포넌트
 # ==========================================
-def render_investing_search_box(stock_db, placeholder_text, key_prefix):
-    import json
-
+def render_unified_search_box(stock_db):
     json_db = json.dumps(stock_db, ensure_ascii=False)
 
     custom_html = f"""
@@ -328,25 +419,26 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
             }}
             .input-box {{
                 width: 100%;
-                height: 48px;
-                padding: 0 45px 0 16px;
+                height: 52px;
+                padding: 0 50px 0 20px;
                 border: 2px solid #F4A261;
-                border-radius: 8px;
-                font-size: 15px;
+                border-radius: 12px;
+                font-size: 16px;
                 font-weight: 600;
                 outline: none;
                 background: #FFFDF9;
                 color: #1A1A1A;
+                box-shadow: 0 4px 12px rgba(244, 162, 97, 0.15);
             }}
             .input-box:focus {{
                 border-color: #D97706;
-                box-shadow: 0 0 8px rgba(217, 119, 6, 0.2);
+                box-shadow: 0 0 10px rgba(217, 119, 6, 0.25);
             }}
             .search-icon {{
                 position: absolute;
-                right: 15px;
-                top: 13px;
-                font-size: 18px;
+                right: 18px;
+                top: 14px;
+                font-size: 20px;
                 color: #D97706;
                 cursor: pointer;
             }}
@@ -355,27 +447,27 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 display: none;
                 flex-direction: column;
                 position: absolute;
-                top: 54px;
+                top: 58px;
                 left: 0;
                 width: 100%;
                 background: #FFFFFF;
                 border: 1px solid #E2E8F0;
-                border-radius: 8px;
-                box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+                border-radius: 12px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.15);
                 z-index: 9999;
                 overflow: hidden;
             }}
 
             .modal-content {{
                 display: flex;
-                min-height: 300px;
+                min-height: 320px;
             }}
 
             .left-pane {{
                 flex: 65;
                 border-right: 1px solid #F1F5F9;
                 padding: 10px 0;
-                max-height: 340px;
+                max-height: 360px;
                 overflow-y: auto;
             }}
             .pane-title {{
@@ -484,18 +576,18 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
         <div class="search-wrapper">
             <input 
                 type="text" 
-                id="{key_prefix}_input" 
+                id="unified_search_input" 
                 class="input-box" 
-                placeholder="{placeholder_text}"
+                placeholder="🔍 미국/한국 주식 종목명 또는 티커 입력 (예: NVDA, AAPL, 삼성전자, 005930)"
                 autocomplete="off"
             />
             <span class="search-icon" onclick="triggerSearch()">🔍</span>
 
-            <div id="{key_prefix}_modal" class="autocomplete-modal">
+            <div id="unified_search_modal" class="autocomplete-modal">
                 <div class="modal-content">
                     <div class="left-pane">
-                        <div id="{key_prefix}_title" class="pane-title">Matching Instruments</div>
-                        <div id="{key_prefix}_list"></div>
+                        <div id="unified_search_title" class="pane-title">Matching Instruments (US / KR)</div>
+                        <div id="unified_search_list"></div>
                     </div>
                     <div class="right-pane">
                         <div>
@@ -503,30 +595,30 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                                 <span>News</span>
                                 <a href="#" class="more-link">More</a>
                             </div>
-                            <div style="margin-top: 6px;" class="news-item">S&P 500 하락장 대비 안전자산 및 고배당 저평가 펀더멘탈 분석</div>
-                            <div style="margin-top: 8px;" class="news-item">금리 변동성에 따른 우량주 ROE/PBR 체력 점검</div>
+                            <div style="margin-top: 6px;" class="news-item">S&P 500 및 코스피 하락장 대비 방어주 펀더멘탈 분석</div>
+                            <div style="margin-top: 8px;" class="news-item">고금리 장기화에 따른 ROE/PBR 체력 점검</div>
                         </div>
                         <div>
                             <div class="section-header">
                                 <span>Analysis</span>
                                 <a href="#" class="more-link">More</a>
                             </div>
-                            <div style="margin-top: 6px;" class="news-item">2026 하락장 방어력이 가장 뛰어난 S등급 기업 리스트</div>
+                            <div style="margin-top: 6px;" class="news-item">하락장 청산가치 방어력이 우수한 S등급 기업 리스트</div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer" onclick="triggerSearch()">
-                    <span>🔍</span> Search website for: <span id="{key_prefix}_footer_query" style="font-weight:700;"></span>
+                    <span>🔍</span> Search for: <span id="unified_search_footer_query" style="font-weight:700;"></span>
                 </div>
             </div>
         </div>
 
         <script>
             const STOCKS = {json_db};
-            const inputEl = document.getElementById('{key_prefix}_input');
-            const modalEl = document.getElementById('{key_prefix}_modal');
-            const listEl = document.getElementById('{key_prefix}_list');
-            const footerQueryEl = document.getElementById('{key_prefix}_footer_query');
+            const inputEl = document.getElementById('unified_search_input');
+            const modalEl = document.getElementById('unified_search_modal');
+            const listEl = document.getElementById('unified_search_list');
+            const footerQueryEl = document.getElementById('unified_search_footer_query');
 
             function renderList(query) {{
                 const q = query.trim().toLowerCase();
@@ -550,7 +642,7 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 }}
 
                 let html = '';
-                filtered.forEach((item, idx) => {{
+                filtered.slice(0, 30).forEach((item, idx) => {{
                     const highlightTicker = highlightMatch(item.ticker, q);
                     const highlightName = highlightMatch(item.name, q);
                     html += `
@@ -665,156 +757,46 @@ if not selected_code:
         )
 
     with main_content:
+        # 1. 미국 / 한국 통합 검색창 (메인 상단 고정)
+        combined_stocks_db = get_combined_stock_db()
+        render_unified_search_box(stock_db=combined_stocks_db)
+
+        # 2. 하단 거시 정보 및 카테고리 탭 (독립 공간)
         tab1, tab2, tab3, tab4 = st.tabs(
-            ["1. Us stock", "2. Korea stock", "3. Live news", "4. Gem"]
+            [
+                "1. US Market Overview",
+                "2. Korea Market Overview",
+                "3. Live news",
+                "4. Gem Screener",
+            ]
         )
 
-        # 1. 미국 주식 실시간 검색
         with tab1:
-            us_stocks_db = [
-                {
-                    "ticker": "P",
-                    "name": "Pure Storage Inc",
-                    "exch": "Equities - NYSE",
-                    "flag": "🇺🇸",
-                },
-                {
-                    "ticker": "AMPH",
-                    "name": "Amphastar Pharmaceuticals",
-                    "exch": "Equities - NASDAQ",
-                    "flag": "🇺🇸",
-                },
-                {
-                    "ticker": "AAPL",
-                    "name": "Apple Inc.",
-                    "exch": "Equities - NASDAQ",
-                    "flag": "🇺🇸",
-                },
-                {
-                    "ticker": "NVDA",
-                    "name": "NVIDIA Corporation",
-                    "exch": "Equities - NASDAQ",
-                    "flag": "🇺🇸",
-                },
-                {
-                    "ticker": "TSLA",
-                    "name": "Tesla Inc.",
-                    "exch": "Equities - NASDAQ",
-                    "flag": "🇺🇸",
-                },
-                {
-                    "ticker": "MSFT",
-                    "name": "Microsoft Corp.",
-                    "exch": "Equities - NASDAQ",
-                    "flag": "🇺🇸",
-                },
-                {
-                    "ticker": "AMZN",
-                    "name": "Amazon.com Inc.",
-                    "exch": "Equities - NASDAQ",
-                    "flag": "🇺🇸",
-                },
-                {
-                    "ticker": "GOOGL",
-                    "name": "Alphabet Inc.",
-                    "exch": "Equities - NASDAQ",
-                    "flag": "🇺🇸",
-                },
-                {
-                    "ticker": "META",
-                    "name": "Meta Platforms Inc.",
-                    "exch": "Equities - NASDAQ",
-                    "flag": "🇺🇸",
-                },
-                {
-                    "ticker": "PLTR",
-                    "name": "Palantir Technologies",
-                    "exch": "Equities - NYSE",
-                    "flag": "🇺🇸",
-                },
-            ]
-            render_investing_search_box(
-                stock_db=us_stocks_db,
-                placeholder_text=(
-                    "🔍 미국 주식 Ticker 또는 종목명 입력 (예: P, AAPL, NVDA)"
-                ),
-                key_prefix="us_investing_search",
+            st.info(
+                "🇺🇸 **US Stock Market Overview**: S&P 500, 나스닥 지수 흐름, 섹터별 펀더멘탈 현황 및 매크로 지표 정보 공간입니다."
             )
 
-        # 2. 한국 주식 실시간 검색
         with tab2:
-            krx_dict = get_krx_stocks()
-            kr_stocks_db = []
-            if krx_dict:
-                for name_code, info in list(krx_dict.items())[:300]:
-                    name_only = name_code.split(" (")[0]
-                    kr_stocks_db.append(
-                        {
-                            "ticker": info["code"],
-                            "name": name_only,
-                            "exch": f"Equities - {info['market']}",
-                            "flag": "🇰🇷",
-                        }
-                    )
-            else:
-                kr_stocks_db = [
-                    {
-                        "ticker": "005930",
-                        "name": "삼성전자",
-                        "exch": "Equities - KOSPI",
-                        "flag": "🇰🇷",
-                    },
-                    {
-                        "ticker": "000660",
-                        "name": "SK하이닉스",
-                        "exch": "Equities - KOSPI",
-                        "flag": "🇰🇷",
-                    },
-                    {
-                        "ticker": "005380",
-                        "name": "현대차",
-                        "exch": "Equities - KOSPI",
-                        "flag": "🇰🇷",
-                    },
-                    {
-                        "ticker": "035420",
-                        "name": "NAVER",
-                        "exch": "Equities - KOSPI",
-                        "flag": "🇰🇷",
-                    },
-                    {
-                        "ticker": "035720",
-                        "name": "카카오",
-                        "exch": "Equities - KOSPI",
-                        "flag": "🇰🇷",
-                    },
-                ]
-
-            render_investing_search_box(
-                stock_db=kr_stocks_db,
-                placeholder_text=(
-                    "🔍 한국 주식명 또는 6자리 코드 입력 (예: 삼성전자, 005930)"
-                ),
-                key_prefix="kr_investing_search",
+            st.info(
+                "🇰🇷 **Korea Stock Market Overview**: 코스피, 코스닥 지수 동향, 외국인/기관 수급 및 국채 금리 현황 정보 공간입니다."
             )
 
         with tab3:
             st.info(
-                "📰 실시간 증시 속보 및 주요 뉴스 모니터링 준비 중입니다."
+                "📰 **Live News**: 글로벌 증시 속보 및 하락장 리스크 관리 뉴스를 실시간으로 모니터링하는 공간입니다."
             )
 
         with tab4:
             st.info(
-                "💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다."
+                "💎 **Gem Screener**: ROE/PER/PBR 펀더멘탈 요건을 모두 충족한 하락장 우수 방어주(Gem) 스크리닝 리스트입니다."
             )
 
-        # --- [개선된 하단 5개씩 구성 및 검색 수 표기 카드리스트] ---
+        # --- [하단 트렌드 추천 카드] ---
         st.markdown(
             "<div class='bottom-cards-wrapper'>", unsafe_allow_html=True
         )
         col_6, col_7, col_8 = st.columns(3)
 
-        # Card 1: Most searched Stocks (통합 검색 순위 top 5 + 검색 횟수)
         with col_6:
             st.markdown(
                 """
@@ -847,7 +829,6 @@ if not selected_code:
                 unsafe_allow_html=True,
             )
 
-        # Card 2: Trending Searches (US Top 5)
         with col_7:
             st.markdown(
                 """
@@ -880,7 +861,6 @@ if not selected_code:
                 unsafe_allow_html=True,
             )
 
-        # Card 3: Trending Searches (KOR Top 5)
         with col_8:
             st.markdown(
                 """
@@ -937,11 +917,11 @@ else:
         is_krx = selected_code.isdigit() and len(selected_code) == 6
 
         if is_krx:
-            krx_stocks = get_krx_stocks()
+            krx_stocks = get_combined_stock_db()
             market_type = "KOSPI"
-            for k, v in krx_stocks.items():
-                if v["code"] == selected_code:
-                    market_type = v["market"]
+            for v in krx_stocks:
+                if v["ticker"] == selected_code:
+                    market_type = v["exch"].replace("Equities - ", "")
                     break
             ticker_symbol = (
                 f"{selected_code}.KQ"
