@@ -117,7 +117,7 @@ st.markdown("""
         font-weight: bold !important;
     }
 
-    /* 하단 트렌드 카드 (높이 수정을 통해 5개 항목이 넉넉히 들어가도록 반응형 변경) */
+    /* 하단 트렌드 카드 */
     .bottom-cards-wrapper {
         margin-top: 15px;
     }
@@ -215,8 +215,8 @@ def get_stock_data(code):
     try:
         info = yf.Ticker(ticker_symbol).info
         return {
-            'stock_name': info.get('shortName', code),
-            'stock_price': info.get('currentPrice', 0),
+            'stock_name': info.get('shortName', info.get('longName', code)),
+            'stock_price': info.get('currentPrice', info.get('regularMarketPrice', 0)),
             'eps': info.get('trailingEps', 0),
             'bps': info.get('bookValue', 0),
             'roe': round(info.get('returnOnEquity', 0) * 100, 2) if info.get('returnOnEquity') else 0.0,
@@ -539,7 +539,7 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
 
             function selectStock(ticker) {{
                 const targetUrl = window.parent.location.origin + window.parent.location.pathname + '?code=' + encodeURIComponent(ticker);
-                window.open(targetUrl, '_blank');
+                window.parent.location.href = targetUrl;
             }}
 
             function triggerSearch() {{
@@ -674,7 +674,7 @@ if not selected_code:
         with tab4:
             st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
 
-        # --- [개선된 하단 5개씩 구성 및 검색 수 표기 카드리스트] ---
+        # --- [하단 5개씩 구성 및 검색 수 표기 카드리스트] ---
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
         
@@ -685,23 +685,23 @@ if not selected_code:
                     <b style='color: #1A1A1A; font-size: 15px;'>🔥 Most Searched Stocks</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=005930' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
+                            <a href='/?code=005930' target='_self' class='stock-link'>1. 삼성전자 (005930)</a>
                             <span class='search-count-badge'>18,420회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=NVDA' target='_blank' class='stock-link'>2. NVIDIA (NVDA)</a>
+                            <a href='/?code=NVDA' target='_self' class='stock-link'>2. NVIDIA (NVDA)</a>
                             <span class='search-count-badge'>15,810회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=000660' target='_blank' class='stock-link'>3. SK하이닉스 (000660)</a>
+                            <a href='/?code=000660' target='_self' class='stock-link'>3. SK하이닉스 (000660)</a>
                             <span class='search-count-badge'>12,340회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=AAPL' target='_blank' class='stock-link'>4. Apple (AAPL)</a>
+                            <a href='/?code=AAPL' target='_self' class='stock-link'>4. Apple (AAPL)</a>
                             <span class='search-count-badge'>9,580회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=TSLA' target='_blank' class='stock-link'>5. Tesla (TSLA)</a>
+                            <a href='/?code=TSLA' target='_self' class='stock-link'>5. Tesla (TSLA)</a>
                             <span class='search-count-badge'>8,210회</span>
                         </div>
                     </div>
@@ -715,23 +715,23 @@ if not selected_code:
                     <b style='color: #1A1A1A; font-size: 15px;'>🇺🇸 Trending Searches (US)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=NVDA' target='_blank' class='stock-link'>1. NVIDIA (NVDA)</a>
+                            <a href='/?code=NVDA' target='_self' class='stock-link'>1. NVIDIA (NVDA)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=AAPL' target='_blank' class='stock-link'>2. Apple (AAPL)</a>
+                            <a href='/?code=AAPL' target='_self' class='stock-link'>2. Apple (AAPL)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 2</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=TSLA' target='_blank' class='stock-link'>3. Tesla (TSLA)</a>
+                            <a href='/?code=TSLA' target='_self' class='stock-link'>3. Tesla (TSLA)</a>
                             <span style='font-size: 11px; color: #DC2626; font-weight: 700;'>▼ 1</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=PLTR' target='_blank' class='stock-link'>4. Palantir (PLTR)</a>
+                            <a href='/?code=PLTR' target='_self' class='stock-link'>4. Palantir (PLTR)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ NEW</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=MSFT' target='_blank' class='stock-link'>5. Microsoft (MSFT)</a>
+                            <a href='/?code=MSFT' target='_self' class='stock-link'>5. Microsoft (MSFT)</a>
                             <span style='font-size: 11px; color: #64748B; font-weight: 700;'>-</span>
                         </div>
                     </div>
@@ -745,23 +745,23 @@ if not selected_code:
                     <b style='color: #1A1A1A; font-size: 15px;'>🇰🇷 Trending Searches (KOR)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=005930' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
+                            <a href='/?code=005930' target='_self' class='stock-link'>1. 삼성전자 (005930)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=000660' target='_blank' class='stock-link'>2. SK하이닉스 (000660)</a>
+                            <a href='/?code=000660' target='_self' class='stock-link'>2. SK하이닉스 (000660)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 1</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=005380' target='_blank' class='stock-link'>3. 현대차 (005380)</a>
+                            <a href='/?code=005380' target='_self' class='stock-link'>3. 현대차 (005380)</a>
                             <span style='font-size: 11px; color: #64748B; font-weight: 700;'>-</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=035420' target='_blank' class='stock-link'>4. NAVER (035420)</a>
+                            <a href='/?code=035420' target='_self' class='stock-link'>4. NAVER (035420)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 3</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=035720' target='_blank' class='stock-link'>5. 카카오 (035720)</a>
+                            <a href='/?code=035720' target='_self' class='stock-link'>5. 카카오 (035720)</a>
                             <span style='font-size: 11px; color: #DC2626; font-weight: 700;'>▼ 2</span>
                         </div>
                     </div>
