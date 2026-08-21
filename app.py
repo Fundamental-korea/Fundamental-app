@@ -91,32 +91,34 @@ st.markdown(
         box-sizing: border-box;
     }
 
-    /* 탭 스타일 */
+    /* 탭 커스텀 스타일 (검색창 위 배치, 넓은 간격, 굵고 큰 글씨) */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 20px !important;
+        gap: 35px !important; /* 탭 간 간격 확대 */
         justify-content: center !important;
-        margin-bottom: 15px !important;
+        margin-bottom: 25px !important;
+        border-bottom: none !important;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 46px !important;
-        min-width: 140px !important;
+        height: 52px !important;
+        padding: 0 24px !important;
         background-color: #FAFAFA !important;
-        border-radius: 10px !important;
+        border-radius: 12px !important;
         border: 1.5px solid #E5E5E5 !important;
         justify-content: center !important;
     }
     .stTabs [data-baseweb="tab"] p {
-        color: #555555 !important;
-        font-weight: 600 !important;
-        font-size: 15px !important;
+        color: #444444 !important;
+        font-weight: 800 !important; /* Bold 강조 */
+        font-size: 17px !important; /* 글자 크기 확대 */
     }
     .stTabs [aria-selected="true"] {
         background-color: #FFFDF9 !important;
         border: 2px solid #F4A261 !important;
+        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.2) !important;
     }
     .stTabs [aria-selected="true"] p {
         color: #D97706 !important;
-        font-weight: bold !important;
+        font-weight: 900 !important;
     }
 
     /* 하단 트렌드 카드 */
@@ -192,7 +194,6 @@ supabase = init_supabase()
 
 @st.cache_data
 def get_combined_stock_db():
-    # 1. 대표 미국 주식 모음
     us_stocks = [
         {
             "ticker": "AAPL",
@@ -250,7 +251,6 @@ def get_combined_stock_db():
         },
     ]
 
-    # 2. 한국 주식 모음 (KRX)
     kr_stocks = []
     try:
         df = fdr.StockListing("KRX")
@@ -298,7 +298,6 @@ def get_combined_stock_db():
             },
         ]
 
-    # 통합 반환
     return us_stocks + kr_stocks
 
 
@@ -419,7 +418,7 @@ def render_unified_search_box(stock_db):
             }}
             .input-box {{
                 width: 100%;
-                height: 52px;
+                height: 54px;
                 padding: 0 50px 0 20px;
                 border: 2px solid #F4A261;
                 border-radius: 12px;
@@ -437,7 +436,7 @@ def render_unified_search_box(stock_db):
             .search-icon {{
                 position: absolute;
                 right: 18px;
-                top: 14px;
+                top: 15px;
                 font-size: 20px;
                 color: #D97706;
                 cursor: pointer;
@@ -447,7 +446,7 @@ def render_unified_search_box(stock_db):
                 display: none;
                 flex-direction: column;
                 position: absolute;
-                top: 58px;
+                top: 60px;
                 left: 0;
                 width: 100%;
                 background: #FFFFFF;
@@ -701,7 +700,7 @@ def render_unified_search_box(stock_db):
     </body>
     </html>
     """
-    components.html(custom_html, height=450)
+    components.html(custom_html, height=420)
 
 
 # ==========================================
@@ -757,36 +756,39 @@ if not selected_code:
         )
 
     with main_content:
-        # 1. 미국 / 한국 통합 검색창 (메인 상단 고정)
-        combined_stocks_db = get_combined_stock_db()
-        render_unified_search_box(stock_db=combined_stocks_db)
-
-        # 2. 하단 거시 정보 및 카테고리 탭 (독립 공간)
+        # 1. 상단 탭 (번호 제거, Bold 강조, 간격 확대)
         tab1, tab2, tab3, tab4 = st.tabs(
             [
-                "1. US Market Overview",
-                "2. Korea Market Overview",
-                "3. Live news",
-                "4. Gem Screener",
+                "US Market Overview",
+                "Korea Market Overview",
+                "Live News",
+                "Gem Screener",
             ]
         )
 
+        # 2. 통합 검색창 (탭 바로 밑에 위치)
+        combined_stocks_db = get_combined_stock_db()
+
         with tab1:
+            render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "🇺🇸 **US Stock Market Overview**: S&P 500, 나스닥 지수 흐름, 섹터별 펀더멘탈 현황 및 매크로 지표 정보 공간입니다."
             )
 
         with tab2:
+            render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "🇰🇷 **Korea Stock Market Overview**: 코스피, 코스닥 지수 동향, 외국인/기관 수급 및 국채 금리 현황 정보 공간입니다."
             )
 
         with tab3:
+            render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "📰 **Live News**: 글로벌 증시 속보 및 하락장 리스크 관리 뉴스를 실시간으로 모니터링하는 공간입니다."
             )
 
         with tab4:
+            render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "💎 **Gem Screener**: ROE/PER/PBR 펀더멘탈 요건을 모두 충족한 하락장 우수 방어주(Gem) 스크리닝 리스트입니다."
             )
