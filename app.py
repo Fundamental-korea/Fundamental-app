@@ -320,7 +320,7 @@ def get_stock_data(code):
 
         return {
             "stock_name": info.get("shortName", code),
-            "stock_price": info.get("currentPrice", 0),
+            "stock_price": info.get("currentPrice", info.get("previousClose", 0)),
             "eps": info.get("trailingEps", 0),
             "bps": info.get("bookValue", 0),
             "roe": round(info.get("returnOnEquity", 0) * 100, 2) if info.get("returnOnEquity") else 0.0,
@@ -662,7 +662,7 @@ query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
-    # --- [메인 메인 포털 페이지] ---
+    # --- [메인 포털 페이지] ---
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
     with col_logo:
@@ -809,19 +809,19 @@ if not selected_code:
                         </div>
                         <div class='card-item-row'>
                             <a href='/?code=AAPL' target='_blank' class='stock-link'>2. Apple (AAPL)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 2</span>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ UP</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=TSLA' target='_blank' class='stock-link'>3. Tesla (TSLA)</a>
-                            <span style='font-size: 11px; color: #DC2626; font-weight: 700;'>▼ 1</span>
+                            <a href='/?code=PLTR' target='_blank' class='stock-link'>3. Palantir (PLTR)</a>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=PLTR' target='_blank' class='stock-link'>4. Palantir (PLTR)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ NEW</span>
+                            <a href='/?code=MSFT' target='_blank' class='stock-link'>4. Microsoft (MSFT)</a>
+                            <span style='font-size: 11px; color: #64748B; font-weight: 600;'>- STABLE</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=MSFT' target='_blank' class='stock-link'>5. Microsoft (MSFT)</a>
-                            <span style='font-size: 11px; color: #64748B; font-weight: 700;'>-</span>
+                            <a href='/?code=AMZN' target='_blank' class='stock-link'>5. Amazon (AMZN)</a>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ UP</span>
                         </div>
                     </div>
                 </div>
@@ -833,7 +833,7 @@ if not selected_code:
             st.markdown(
                 """
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A; font-size: 15px;'>🇰🇷 Trending Searches (KOR)</b>
+                    <b style='color: #1A1A1A; font-size: 15px;'>🇰🇷 Trending Searches (KR)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
                             <a href='/?code=005930' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
@@ -841,25 +841,26 @@ if not selected_code:
                         </div>
                         <div class='card-item-row'>
                             <a href='/?code=000660' target='_blank' class='stock-link'>2. SK하이닉스 (000660)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 1</span>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
                             <a href='/?code=005380' target='_blank' class='stock-link'>3. 현대차 (005380)</a>
-                            <span style='font-size: 11px; color: #64748B; font-weight: 700;'>-</span>
+                            <span style='font-size: 11px; color: #64748B; font-weight: 600;'>- STABLE</span>
                         </div>
                         <div class='card-item-row'>
                             <a href='/?code=035420' target='_blank' class='stock-link'>4. NAVER (035420)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 3</span>
+                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ UP</span>
                         </div>
                         <div class='card-item-row'>
                             <a href='/?code=035720' target='_blank' class='stock-link'>5. 카카오 (035720)</a>
-                            <span style='font-size: 11px; color: #DC2626; font-weight: 700;'>▼ 2</span>
+                            <span style='font-size: 11px; color: #64748B; font-weight: 600;'>- STABLE</span>
                         </div>
                     </div>
                 </div>
             """,
                 unsafe_allow_html=True,
             )
+
         st.markdown("</div>", unsafe_allow_html=True)
 
     with right_ad:
@@ -868,141 +869,97 @@ if not selected_code:
         )
 
 else:
-    # ==========================================
-    # [스케치 기반] 펀더멘탈 상세 분석 리포트 페이지
-    # ==========================================
+    # --- [상세 종목 펀더멘탈 분석 리포트 페이지] ---
     data = get_stock_data(selected_code)
+    stock_name = data.get("stock_name", selected_code)
+    price = data.get("stock_price", 0)
+    eps = data.get("eps", 0)
+    bps = data.get("bps", 0)
+    roe = data.get("roe", 0.0)
+    per = data.get("per", 0.0)
+    pbr = data.get("pbr", 0.0)
+    hist = data.get("hist", pd.DataFrame())
 
-    # 1. 상단 레이아웃 (Logo | Investing quotes | Log in)
-    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
+    # 하락장 방어 점수 계산 (알고리즘)
+    defense_score = 70
+    if roe >= 15:
+        defense_score += 10
+    elif roe < 5:
+        defense_score -= 10
 
-    with col_logo:
-        st.markdown(
-            "<div class='logo-box'>📈 Fundamental</div>",
-            unsafe_allow_html=True,
-        )
+    if 0 < pbr <= 1.5:
+        defense_score += 10
+    elif pbr > 4.0:
+        defense_score -= 10
 
-    with col_quote:
-        quotes = [
-            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
-            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
-            "투자는 지능이 아니라 인내심의 게임이다.",
-            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다.",
-        ]
-        selected_quote = random.choice(quotes)
-        st.markdown(
-            f"""
-            <div class='quote-box'>
-                <div style='font-size: 36px;'>👨‍💼</div> 
-                <div class='quote-text'>"{selected_quote}"</div>
-            </div>
-        """,
-            unsafe_allow_html=True,
-        )
+    if 0 < per <= 15:
+        defense_score += 10
 
-    with col_login:
-        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
-        if st.button("⬅️ 메인으로", use_container_width=True):
+    defense_score = max(10, min(99, defense_score))
+
+    # 상단 네비게이션 헤더
+    col_back, col_title = st.columns([1, 8])
+    with col_back:
+        if st.button("⬅️ 메인으로"):
             st.query_params.clear()
             st.rerun()
 
+    with col_title:
+        currency = "KRW" if selected_code.isdigit() else "USD"
+        st.title(f"🛡️ {stock_name} ({selected_code}) - 펀더멘탈 리포트")
+
+    st.markdown("---")
+
+    # 주요 재무 지표 Metric
+    m1, m2, m3, m4, m5 = st.columns(5)
+    m1.metric("현재가", f"{price:,.2f} {currency}" if isinstance(price, (int, float)) else f"{price} {currency}")
+    m2.metric("PER (주가수익비율)", f"{per:.2f}배" if per else "N/A")
+    m3.metric("PBR (주가순자산비율)", f"{pbr:.2f}배" if pbr else "N/A")
+    m4.metric("ROE (자기자본이익률)", f"{roe:.2f}%" if roe else "N/A")
+    m5.metric("하락장 방어 점수", f"{defense_score} / 100점")
+
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 2. 본문 레이아웃: Ads (Left) | Main Analysis | Ads (Right)
-    left_ad, main_content, right_ad = st.columns([0.6, 6.8, 0.6])
+    # 1년 주가 흐름 차트
+    if isinstance(hist, pd.DataFrame) and not hist.empty:
+        st.subheader("📈 지난 1년 주가 트렌드")
+        st.line_chart(hist["Close"])
 
-    with left_ad:
-        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+    st.markdown("<br>", unsafe_allow_html=True)
+    st.subheader("🔍 스케치 펀더멘탈 항목별 심층 분석")
 
-    with main_content:
-        st.markdown(f"## 📊 [{data.get('stock_name', selected_code)}] 펀더멘탈 방어력 분석")
-        
-        # 0. Live Chart
-        st.markdown("#### 📉 Live Chart")
-        hist_df = data.get("hist", pd.DataFrame())
-        if not hist_df.empty:
-            st.line_chart(hist_df["Close"])
-        else:
-            st.info("실시간 차트 데이터를 불러올 수 없습니다.")
+    # 스케치 분석 카드리스트
+    analysis_items = [
+        {
+            "title": "1. 청산가치 안전성 (PBR)",
+            "desc": f"현재 PBR은 {pbr:.2f}배입니다. PBR이 낮은 기업은 하락장에서 장부가치 이하로 떨어진 주가가 강한 하방 지지선 역할을 해줍니다.",
+            "score": "우수" if pbr <= 1.5 else "보통",
+        },
+        {
+            "title": "2. 자본 수익성 (ROE)",
+            "desc": f"자기자본이익률(ROE)은 {roe:.2f}%입니다. 높은 ROE는 고금리/경기후퇴 국면에서도 복리 이익 창출 능력이 뛰어남을 의미합니다.",
+            "score": "탁월" if roe >= 15 else "보통",
+        },
+        {
+            "title": "3. 밸류에이션 부담 (PER)",
+            "desc": f"PER은 {per:.2f}배 수준입니다. 과도한 멀티플이 부여되지 않은 기업은 조정장에서 거품 붕괴 리스크가 적습니다.",
+            "score": "적정" if per <= 20 else "주의",
+        },
+        {
+            "title": "4. 펀더멘탈 하락장 종합 방어력",
+            "desc": f"본 종목의 하락장 방어 스코어는 {defense_score}점입니다. 재무제표 건강도와 이익 창출 능력이 통합적으로 반영되었습니다.",
+            "score": f"{defense_score}점",
+        },
+    ]
 
-        st.markdown("<br>", unsafe_allow_html=True)
-
-        # 스케치에 정의된 10가지 펀더멘탈 지표 항목
-        sketch_items = [
-            {
-                "num": "1",
-                "title": "1. Revenue Growth",
-                "desc": "매출액 성장률 (Explanation): 기업의 외형 성장세와 하락장 속 시장 점유율 유지 능력을 측정합니다.",
-                "score": "8/10",
-            },
-            {
-                "num": "2",
-                "title": "2. EPS Growth",
-                "desc": "주당순이익 성장률 (Explanation): 주주 가치 창출 능력의 핵심 지표로, 순이익의 실질적 증가세를 평가합니다.",
-                "score": "7/10",
-            },
-            {
-                "num": "3",
-                "title": "3. OPM",
-                "desc": "영업이익률 (Explanation): 본업에서의 수익 창출 효율성 및 고금리/원가 상승 방어력을 나타냅니다.",
-                "score": "9/10",
-            },
-            {
-                "num": "4",
-                "title": "4. ROE",
-                "desc": f"자기자본이익률 (Explanation): 자본 대비 수익성 지표입니다. (현재 ROE: {data.get('roe', 0)}%)",
-                "score": "8/10" if data.get("roe", 0) >= 12 else "5/10",
-            },
-            {
-                "num": "5",
-                "title": "5. Debt rate",
-                "desc": "부채비율 (Explanation): 하락장 및 고금리 환경에서 기업의 재무적 생존 가능성과 이자 부담 위험을 평가합니다.",
-                "score": "9/10",
-            },
-            {
-                "num": "6",
-                "title": "6. Current ratio",
-                "desc": "유동비율 (Explanation): 단기 채무 지급 능력을 나타내며 200% 이상시 강한 유동성 방어력을 보유합니다.",
-                "score": "8/10",
-            },
-            {
-                "num": "7",
-                "title": "7. Interest coverage rate",
-                "desc": "이자보상배율 (Explanation): 영업이익으로 이자비용을 감당할 수 있는 수치로, 1 미만시 채무불이행 위험을 뜻합니다.",
-                "score": "10/10",
-            },
-            {
-                "num": "8",
-                "title": "8. Operating cash flow",
-                "desc": "영업활동 현금흐름 (Explanation): 장부상 이익이 아닌 실제 유입되는 현금 체력의 우수성을 나타냅니다.",
-                "score": "9/10",
-            },
-            {
-                "num": "9",
-                "title": "9. Retained Earnings Ratio",
-                "desc": "유보율 (Explanation): 위기 상황 발생 시 내부 적립 현금으로 견딜 수 있는 펀더멘탈 체력입니다.",
-                "score": "9/10",
-            },
-            {
-                "num": "10",
-                "title": "10. SG&A Ratio",
-                "desc": "판관비율 (Explanation): 매출 대비 판매관리비 비중으로, 기업의 비용 통제 및 경영 효율성을 보여줍니다.",
-                "score": "7/10",
-            },
-        ]
-
-        # 1~10 항목 출력 (스케치 디자인 충실 반영)
-        for item in sketch_items:
-            st.markdown(
-                f"""
-                <div class="sketch-item-box">
-                    <div class="sketch-item-title">{item['title']}</div>
-                    <div class="sketch-item-desc">{item['desc']}</div>
-                    <div class="sketch-item-score">Score {item['score']} ↓</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-
-    with right_ad:
-        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+    for item in analysis_items:
+        st.markdown(
+            f"""
+            <div class='sketch-item-box'>
+                <div class='sketch-item-title'>{item['title']}</div>
+                <div class='sketch-item-desc'>{item['desc']}</div>
+                <div class='sketch-item-score'>{item['score']}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
