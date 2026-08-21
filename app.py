@@ -8,11 +8,11 @@ from supabase import create_client
 import yfinance as yf
 
 # ==========================================
-# 1. 페이지 및 커스텀 디자인 설정 (기존 레이아웃 원복)
+# 1. 페이지 및 주황색 커스텀 디자인 설정
 # ==========================================
 st.set_page_config(
     page_title="Fundamental Analyzer - 하락장 방어 플랫폼",
-    page_icon="🛡️",
+    page_icon="🍊",
     layout="wide",
 )
 
@@ -29,12 +29,12 @@ st.markdown(
         color: #F8FAFC !important;
     }
 
-    /* 상단 브랜드 로고 박스 */
+    /* 상단 주황색 브랜드 로고 박스 */
     .logo-box {
-        border: 2px solid #38BDF8;
+        border: 2px solid #FF6B00;
         border-radius: 12px;
         background-color: #1E293B;
-        color: #38BDF8 !important;
+        color: #FF6B00 !important;
         font-weight: 800;
         font-size: 20px;
         height: 100px !important;
@@ -43,7 +43,7 @@ st.markdown(
         align-items: center;
         justify-content: center;
         text-align: center;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        box-shadow: 0 4px 12px rgba(255, 107, 0, 0.15);
     }
 
     /* 상단 명언 박스 */
@@ -85,11 +85,11 @@ st.markdown(
         box-sizing: border-box;
     }
 
-    /* 버튼 스타일 */
+    /* 주황색 포인트 버튼 스타일 */
     div[data-testid="stButton"] > button, div.stButton > button {
         background-color: #1E293B !important;
         color: #F8FAFC !important;
-        border: 1.5px solid #38BDF8 !important;
+        border: 1.5px solid #FF6B00 !important;
         border-radius: 10px !important;
         font-size: 15px !important;
         font-weight: 700 !important;
@@ -97,11 +97,11 @@ st.markdown(
     }
 
     div[data-testid="stButton"] > button:hover, div.stButton > button:hover {
-        background-color: #38BDF8 !important;
+        background-color: #FF6B00 !important;
         color: #0F172A !important;
     }
 
-    /* Streamlit 네이티브 탭 스타일 */
+    /* Streamlit 네이티브 탭 주황색 포인트 스타일 */
     div[data-testid="stTabs"] [data-baseweb="tab-list"] {
         gap: 20px !important;
         border-bottom: 2px solid #334155 !important;
@@ -124,12 +124,12 @@ st.markdown(
     }
 
     div[data-testid="stTabs"] [aria-selected="true"] {
-        border-bottom: 4px solid #38BDF8 !important;
+        border-bottom: 4px solid #FF6B00 !important;
     }
 
     div[data-testid="stTabs"] [aria-selected="true"] p,
     div[data-testid="stTabs"] [aria-selected="true"] span {
-        color: #38BDF8 !important;
+        color: #FF6B00 !important;
         font-size: 19px !important;
     }
 
@@ -156,7 +156,7 @@ st.markdown(
         border-bottom: none;
     }
     .stock-link {
-        color: #38BDF8 !important;
+        color: #FF8C00 !important;
         text-decoration: none !important;
         font-weight: 600;
         font-size: 14px;
@@ -371,7 +371,7 @@ def calculate_10_scores(data):
 
 
 # ==========================================
-# 3. 미국/한국 통합 실시간 검색 컴포넌트
+# 3. 미국/한국 통합 실시간 검색 컴포넌트 (주황색 테마)
 # ==========================================
 def render_unified_search_box(stock_db):
     json_db = json.dumps(stock_db, ensure_ascii=False)
@@ -399,25 +399,25 @@ def render_unified_search_box(stock_db):
                 width: 100%;
                 height: 54px;
                 padding: 0 50px 0 20px;
-                border: 2px solid #38BDF8;
+                border: 2px solid #FF6B00;
                 border-radius: 12px;
                 font-size: 16px;
                 font-weight: 600;
                 outline: none;
                 background: #1E293B;
                 color: #F8FAFC;
-                box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+                box-shadow: 0 4px 12px rgba(255, 107, 0, 0.2);
             }}
             .input-box:focus {{
-                border-color: #0284C7;
-                box-shadow: 0 0 10px rgba(56, 189, 248, 0.4);
+                border-color: #FF8C00;
+                box-shadow: 0 0 12px rgba(255, 107, 0, 0.4);
             }}
             .search-icon {{
                 position: absolute;
                 right: 18px;
                 top: 15px;
                 font-size: 20px;
-                color: #38BDF8;
+                color: #FF6B00;
                 cursor: pointer;
             }}
 
@@ -493,7 +493,7 @@ def render_unified_search_box(stock_db):
                 white-space: nowrap;
             }}
             .highlight {{
-                color: #38BDF8;
+                color: #FF6B00;
                 font-weight: 800;
                 background-color: #0F172A;
                 padding: 0 2px;
@@ -517,7 +517,7 @@ def render_unified_search_box(stock_db):
             }}
             .more-link {{
                 font-size: 11px;
-                color: #38BDF8;
+                color: #FF6B00;
                 text-decoration: none;
             }}
             .news-item {{
@@ -529,7 +529,7 @@ def render_unified_search_box(stock_db):
             }}
             .news-item:hover {{
                 text-decoration: underline;
-                color: #38BDF8;
+                color: #FF6B00;
             }}
 
             .modal-footer {{
@@ -537,7 +537,7 @@ def render_unified_search_box(stock_db):
                 padding: 10px 16px;
                 background: #0F172A;
                 font-size: 13px;
-                color: #38BDF8;
+                color: #FF6B00;
                 font-weight: 600;
                 cursor: pointer;
                 display: flex;
@@ -688,12 +688,12 @@ selected_code = query_params.get("code", None)
 
 if not selected_code:
     # ------------------------------------------------------------------
-    # [화면 1: 기존 메인 포털 홈 화면 원복]
+    # [화면 1: 주황색 메인 포털 홈 화면]
     # ------------------------------------------------------------------
     col_logo, col_quote, col_login = st.columns([1.5, 7, 1.5])
 
     with col_logo:
-        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
+        st.markdown("<div class='logo-box'>🍊 Fundamental</div>", unsafe_allow_html=True)
 
     with col_quote:
         quotes = [
@@ -702,7 +702,6 @@ if not selected_code:
             "투자는 지능이 아니라 인내심의 게임이다. - 피터 린치",
             "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다. - 워런 버핏",
         ]
-        # 에러 원인이었던 f-string 중첩 따옴표 수정 완료
         selected_quote = random.choice(quotes)
         st.markdown(
             f"<div class='quote-box'><div class='quote-text'>{selected_quote}</div></div>",
@@ -753,7 +752,7 @@ if not selected_code:
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info("💎 **Gem Screener**: ROE/PER/PBR 요건을 충족한 하락장 우수 방어주(Gem) 스크리닝 공간입니다.")
 
-        # 하단 트렌드 카드 스케치 영역 원복
+        # 하단 트렌드 카드 스케치 영역 (주황색 링크 복원)
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
 
@@ -761,7 +760,7 @@ if not selected_code:
             st.markdown(
                 """
                 <div class='sketch-card'>
-                    <b style='color: #38BDF8; font-size: 15px;'>🔥 Most Searched Stocks</b>
+                    <b style='color: #FF6B00; font-size: 15px;'>🔥 Most Searched Stocks</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
                             <a href='/?code=005930' class='stock-link'>1. 삼성전자 (005930)</a>
@@ -793,7 +792,7 @@ if not selected_code:
             st.markdown(
                 """
                 <div class='sketch-card'>
-                    <b style='color: #38BDF8; font-size: 15px;'>🇺🇸 Trending Searches (US)</b>
+                    <b style='color: #FF6B00; font-size: 15px;'>🇺🇸 Trending Searches (US)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
                             <a href='/?code=NVDA' class='stock-link'>1. NVIDIA (NVDA)</a>
@@ -825,7 +824,7 @@ if not selected_code:
             st.markdown(
                 """
                 <div class='sketch-card'>
-                    <b style='color: #38BDF8; font-size: 15px;'>🇰🇷 Trending Searches (KR)</b>
+                    <b style='color: #FF6B00; font-size: 15px;'>🇰🇷 Trending Searches (KR)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
                             <a href='/?code=005930' class='stock-link'>1. 삼성전자 (005930)</a>
@@ -860,7 +859,7 @@ if not selected_code:
 
 else:
     # ------------------------------------------------------------------
-    # [화면 2: Slide 5 스케치 레이아웃 상세 화면 추가]
+    # [화면 2: Slide 5 스케치 레이아웃 상세 화면]
     # ------------------------------------------------------------------
     stock_data = get_stock_data(selected_code)
     score_dict = calculate_10_scores(stock_data)
