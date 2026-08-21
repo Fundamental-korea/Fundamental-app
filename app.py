@@ -91,30 +91,36 @@ st.markdown(
         box-sizing: border-box;
     }
 
-    /* 탭 커스텀 스타일 (검색창 위 배치, 넓은 간격, 굵고 큰 글씨) */
+    /* 탭 커스텀 스타일 (요청하신 넓은 상단 간격 분배 + 큰 글씨 + 볼드 적용) */
     .stTabs [data-baseweb="tab-list"] {
-        gap: 35px !important; /* 탭 간 간격 확대 */
-        justify-content: center !important;
-        margin-bottom: 25px !important;
+        display: flex !important;
+        justify-content: space-between !important; /* 상단 공간 전체에 균등 분배 */
+        gap: 20px !important;
+        margin-bottom: 20px !important;
         border-bottom: none !important;
+        width: 100% !important;
     }
     .stTabs [data-baseweb="tab"] {
-        height: 52px !important;
-        padding: 0 24px !important;
+        flex: 1 !important; /* 모든 탭을 똑같은 비율로 넓게 떨어뜨림 */
+        height: 60px !important;
+        padding: 0 15px !important;
         background-color: #FAFAFA !important;
-        border-radius: 12px !important;
-        border: 1.5px solid #E5E5E5 !important;
+        border-radius: 14px !important;
+        border: 2px solid #E5E5E5 !important;
         justify-content: center !important;
+        min-width: 180px !important;
     }
     .stTabs [data-baseweb="tab"] p {
-        color: #444444 !important;
-        font-weight: 800 !important; /* Bold 강조 */
-        font-size: 17px !important; /* 글자 크기 확대 */
+        color: #333333 !important;
+        font-weight: 900 !important; /* 초강조 Bold */
+        font-size: 20px !important; /* 글자 크기 확대 */
+        text-align: center !important;
+        width: 100% !important;
     }
     .stTabs [aria-selected="true"] {
         background-color: #FFFDF9 !important;
-        border: 2px solid #F4A261 !important;
-        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.2) !important;
+        border: 2.5px solid #F4A261 !important;
+        box-shadow: 0 6px 16px rgba(244, 162, 97, 0.25) !important;
     }
     .stTabs [aria-selected="true"] p {
         color: #D97706 !important;
@@ -756,7 +762,7 @@ if not selected_code:
         )
 
     with main_content:
-        # 1. 상단 탭 (번호 제거, Bold 강조, 간격 확대)
+        # 1. 상단 탭 (화면 좌우 전체 균등 배치, 넓은 간격, 큰 글씨)
         tab1, tab2, tab3, tab4 = st.tabs(
             [
                 "US Market Overview",
