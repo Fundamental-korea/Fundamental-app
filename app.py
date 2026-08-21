@@ -8,7 +8,7 @@ from supabase import create_client
 import yfinance as yf
 
 # ==========================================
-# 1. 페이지 및 커스텀 디자인 설정 (다크/라이트 통합 대응)
+# 1. 페이지 및 커스텀 디자인 설정 (기존 레이아웃 원복)
 # ==========================================
 st.set_page_config(
     page_title="Fundamental Analyzer - 하락장 방어 플랫폼",
@@ -19,7 +19,7 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* 전체 배경 스타일 */
+    /* 전체 배경 및 기본 폰트 색상 */
     html, body, [data-testid="stAppViewContainer"], .stApp {
         background-color: #0F172A !important;
         color: #F8FAFC !important;
@@ -29,7 +29,7 @@ st.markdown(
         color: #F8FAFC !important;
     }
 
-    /* 상단 로고 박스 */
+    /* 상단 브랜드 로고 박스 */
     .logo-box {
         border: 2px solid #38BDF8;
         border-radius: 12px;
@@ -63,7 +63,7 @@ st.markdown(
     }
 
     .quote-text {
-        font-size: 16px;
+        font-size: 15px;
         font-weight: 600;
         color: #E2E8F0 !important;
     }
@@ -85,7 +85,7 @@ st.markdown(
         box-sizing: border-box;
     }
 
-    /* Streamlit 일반 버튼 스타일 */
+    /* 버튼 스타일 */
     div[data-testid="stButton"] > button, div.stButton > button {
         background-color: #1E293B !important;
         color: #F8FAFC !important;
@@ -101,7 +101,7 @@ st.markdown(
         color: #0F172A !important;
     }
 
-    /* Streamlit 네이티브 st.tabs 디자인 강제 덮어쓰기 */
+    /* Streamlit 네이티브 탭 스타일 */
     div[data-testid="stTabs"] [data-baseweb="tab-list"] {
         gap: 20px !important;
         border-bottom: 2px solid #334155 !important;
@@ -133,7 +133,7 @@ st.markdown(
         font-size: 19px !important;
     }
 
-    /* 하단 트렌드 카드 */
+    /* 하단 트렌드 카드 스케치 영역 */
     .bottom-cards-wrapper {
         margin-top: 25px;
     }
@@ -173,7 +173,7 @@ st.markdown(
         font-weight: 600;
     }
 
-    /* Slide 5 Expander 드롭다운 스타일 */
+    /* Slide 5 Expander 커스텀 */
     div[data-testid="stExpander"] {
         background-color: #1E293B !important;
         border: 1.5px solid #334155 !important;
@@ -189,7 +189,7 @@ st.markdown(
 )
 
 # ==========================================
-# 2. 데이터 및 세션 상태 초기화 (Supabase & yfinance & FDR)
+# 2. 데이터 연동 및 Slide 5 Scoring 엔진
 # ==========================================
 SUPABASE_URL = st.secrets.get("SUPABASE_URL", "YOUR_SUPABASE_URL")
 SUPABASE_KEY = st.secrets.get("SUPABASE_KEY", "YOUR_SUPABASE_KEY")
@@ -285,10 +285,8 @@ def get_stock_data(code):
 
 
 def calculate_10_scores(data):
-    """Slide 5 스케치 와이어프레임용 10가지 재무지표 Scoring 엔진"""
     scores = {}
 
-    # 1. Revenue Growth
     rg = data["revenue_growth"]
     scores["1. Revenue Growth"] = {
         "val": f"{rg:.1f}%",
@@ -297,7 +295,6 @@ def calculate_10_scores(data):
         "importance": "High: 하락장에서도 매출이 성장하는 기업은 시장 점유율을 늘리고 있다는 증거입니다.",
     }
 
-    # 2. EPS Growth
     eg = data["eps_growth"]
     scores["2. EPS Growth"] = {
         "val": f"{eg:.1f}%",
@@ -306,7 +303,6 @@ def calculate_10_scores(data):
         "importance": "High: 주당 이익이 늘어나는 기업은 조정장 이후 주가 회복 속도가 가장 빠릅니다.",
     }
 
-    # 3. OPM
     opm = data["opm"]
     scores["3. OPM"] = {
         "val": f"{opm:.1f}%",
@@ -315,7 +311,6 @@ def calculate_10_scores(data):
         "importance": "Critical: 높은 이익률은 인플레이션 및 원가 상승 압박을 견디는 가격 결정력을 의미합니다.",
     }
 
-    # 4. ROE
     roe = data["roe"]
     scores["4. ROE"] = {
         "val": f"{roe:.1f}%",
@@ -324,7 +319,6 @@ def calculate_10_scores(data):
         "importance": "Critical: 워런 버핏이 가장 강조하는 지표로, 장기 복리 수익의 핵심 구동축입니다.",
     }
 
-    # 5. Debt rate
     dr = data["debt_rate"]
     scores["5. Debt rate"] = {
         "val": f"{dr:.1f}%",
@@ -333,7 +327,6 @@ def calculate_10_scores(data):
         "importance": "Fatal in Bear Market: 고금리 하락장에서 부채 비율이 높은 기업은 유동성 위기를 맞습니다.",
     }
 
-    # 6. Current ratio
     cr = data["current_ratio"]
     scores["6. Current ratio"] = {
         "val": f"{cr:.2f}배",
@@ -342,7 +335,6 @@ def calculate_10_scores(data):
         "importance": "High: 단기 채무 대응 능력을 나타내며 1.5배 이상이어야 신용 위기를 방어합니다.",
     }
 
-    # 7. Interest coverage rate
     icr = max(1.0, opm / 2.0)
     scores["7. Interest coverage rate"] = {
         "val": f"{icr:.1f}배",
@@ -351,7 +343,6 @@ def calculate_10_scores(data):
         "importance": "Critical: 1배 미만인 한계기업은 금리 상승기 및 경기 후퇴기에 도산 위험에 노출됩니다.",
     }
 
-    # 8. Operating cash flow
     ocf = data["operating_cf"]
     scores["8. Operating cash flow"] = {
         "val": "양수 (+)" if ocf > 0 else "음수 (-)",
@@ -360,7 +351,6 @@ def calculate_10_scores(data):
         "importance": "Critical: 영업현금흐름이 음수인 기업은 장부상 흑자라도 흑자도산 가능성이 존재합니다.",
     }
 
-    # 9. Retained Earnings Ratio
     rer = 1100.0 if data["pbr"] > 1.0 else 450.0
     scores["9. Retained Earnings Ratio"] = {
         "val": f"{rer:.0f}%",
@@ -369,7 +359,6 @@ def calculate_10_scores(data):
         "importance": "Medium: 풍부한 유보금은 약세장에서 무상증자나 자사주 매입/소각의 재원이 됩니다.",
     }
 
-    # 10. SG&A Ratio
     sga = 14.5
     scores["10. SG&A Ratio"] = {
         "val": f"{sga:.1f}%",
@@ -382,7 +371,7 @@ def calculate_10_scores(data):
 
 
 # ==========================================
-# 3. 미국/한국 주식 통합 실시간 검색 컴포넌트
+# 3. 미국/한국 통합 실시간 검색 컴포넌트
 # ==========================================
 def render_unified_search_box(stock_db):
     json_db = json.dumps(stock_db, ensure_ascii=False)
@@ -692,14 +681,14 @@ def render_unified_search_box(stock_db):
 
 
 # ==========================================
-# 4. 라우팅 및 화면 전환 제어 (메인 홈 vs Slide 5 검색 화면)
+# 4. 라우팅 및 화면 제어
 # ==========================================
 query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
     # ------------------------------------------------------------------
-    # [화면 1: 메인 포털 홈 화면]
+    # [화면 1: 기존 메인 포털 홈 화면 원복]
     # ------------------------------------------------------------------
     col_logo, col_quote, col_login = st.columns([1.5, 7, 1.5])
 
@@ -713,9 +702,11 @@ if not selected_code:
             "투자는 지능이 아니라 인내심의 게임이다. - 피터 린치",
             "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다. - 워런 버핏",
         ]
+        # 에러 원인이었던 f-string 중첩 따옴표 수정 완료
+        selected_quote = random.choice(quotes)
         st.markdown(
-           # ✅ 올바른 코드: 내부의 큰따옴표를 홑따옴표(')로 변경
-f"<div class='quote-box'><div class='quote-text'>{random.choice(quotes)}</div></div>",
+            f"<div class='quote-box'><div class='quote-text'>{selected_quote}</div></div>",
+            unsafe_allow_html=True,
         )
 
     with col_login:
@@ -725,7 +716,6 @@ f"<div class='quote-box'><div class='quote-text'>{random.choice(quotes)}</div></
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 메인 포털 3단 컬럼: Ads (Left) | Main Content | Ads (Right)
     left_ad, main_content, right_ad = st.columns([1.2, 7.6, 1.2])
 
     with left_ad:
@@ -746,7 +736,7 @@ f"<div class='quote-box'><div class='quote-text'>{random.choice(quotes)}</div></
         with tab1:
             st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
             render_unified_search_box(stock_db=combined_stocks_db)
-            st.info("🇺🇸 **US Stock Market Overview**: S&P 500, 나스닥 지수 흐름 및 미국 기업 펀더멘탈 검색 공간입니다.")
+            st.info("🇺🇸 **US Stock Market Overview**: S&P 500, 나스닥 지수 및 미국 기업 펀더멘탈 검색 공간입니다.")
 
         with tab2:
             st.markdown("<div style='margin-bottom: 15px;'></div>", unsafe_allow_html=True)
@@ -763,7 +753,7 @@ f"<div class='quote-box'><div class='quote-text'>{random.choice(quotes)}</div></
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info("💎 **Gem Screener**: ROE/PER/PBR 요건을 충족한 하락장 우수 방어주(Gem) 스크리닝 공간입니다.")
 
-        # 하단 트렌드 추천 카드 3개
+        # 하단 트렌드 카드 스케치 영역 원복
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
 
@@ -870,12 +860,11 @@ f"<div class='quote-box'><div class='quote-text'>{random.choice(quotes)}</div></
 
 else:
     # ------------------------------------------------------------------
-    # [화면 2: 검색 후 Slide 5 스케치 레이아웃 상세 화면]
+    # [화면 2: Slide 5 스케치 레이아웃 상세 화면 추가]
     # ------------------------------------------------------------------
     stock_data = get_stock_data(selected_code)
     score_dict = calculate_10_scores(stock_data)
 
-    # Top Header Area
     col_logo, col_quote, col_login = st.columns([1.5, 7, 1.5])
 
     with col_logo:
@@ -889,8 +878,9 @@ else:
             "Investing quotes (Randomly): 'In the short run, the market is a voting machine, but in the long run, it is a weighing machine.' - Benjamin Graham",
             "Investing quotes (Randomly): 'The time of maximum pessimism is the best time to buy.' - John Templeton",
         ]
+        selected_quote = random.choice(quotes)
         st.markdown(
-            f"<div class='quote-box'><div class='quote-text'>{random.choice(quotes)}</div></div>",
+            f"<div class='quote-box'><div class='quote-text'>{selected_quote}</div></div>",
             unsafe_allow_html=True,
         )
 
@@ -900,7 +890,6 @@ else:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # Slide 5 3단 레이아웃: Ads (Left) | Main Section | Ads (Right)
     left_ad, main_sec, right_ad = st.columns([1.2, 7.6, 1.2])
 
     with left_ad:
