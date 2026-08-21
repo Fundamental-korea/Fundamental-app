@@ -15,6 +15,31 @@ METRIC_KEYS = [
     "sga_ratio",
 ]
 
+# 다년간 데이터를 집계할 때 "최악의 해"가 어느 쪽인지 판별하기 위한 방향성
+# higher = 클수록 좋음 (최악값 = 최소값) / lower = 작을수록 좋음 (최악값 = 최대값)
+METRIC_DIRECTION = {
+    "revenue_growth": "higher",
+    "eps_growth": "higher",
+    "opm": "higher",
+    "roe": "higher",
+    "debt_rate": "lower",
+    "current_ratio": "higher",
+    "interest_coverage": "higher",
+    "ocf_ratio": "higher",
+    "retained_earnings": "higher",
+    "sga_ratio": "lower",
+}
+
+
+def worst_value(metric_name, values):
+    """연도별 수치 리스트에서 해당 지표 기준 '가장 나빴던 값'을 반환 (None은 제외)"""
+    clean = [v for v in values if v is not None]
+    if not clean:
+        return None
+    if METRIC_DIRECTION.get(metric_name) == "lower":
+        return max(clean)  # 낮을수록 좋은 지표 -> 가장 큰 값이 최악
+    return min(clean)  # 높을수록 좋은 지표 -> 가장 작은 값이 최악
+
 
 def calculate_metric_score(metric_name, value, is_financial_sector=False):
     """각 재무 지표 수치(value)를 입력받아 0~10점 사이의 점수를 반환"""
