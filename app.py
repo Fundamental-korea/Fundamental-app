@@ -5,12 +5,14 @@ import pandas as pd
 import random
 import yfinance as yf
 import streamlit.components.v1 as components
+import os
+from PIL import Image
 
 # ==========================================
 # 1. 페이지 및 커스텀 디자인 설정
 # ==========================================
 st.set_page_config(
-    page_title="Fundamental Analyzer - 하락장 방어 플랫폼", 
+    page_title="펀더멘탈 (Fundamental) - 하락장 방어 재무제표 분석", 
     page_icon="🛡️", 
     layout="wide"
 )
@@ -39,9 +41,6 @@ st.markdown("""
         border: 2px solid #F4A261;
         border-radius: 14px;
         background-color: #FFFDF9;
-        color: #D97706 !important;
-        font-weight: bold;
-        font-size: 18px;
         height: 130px !important;
         min-height: 130px !important;
         display: flex;
@@ -49,9 +48,17 @@ st.markdown("""
         justify-content: center;
         text-align: center;
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
+        padding: 10px;
+        overflow: hidden;
     }
 
-    .quote-box {
+    .logo-box img {
+        max-height: 100px;
+        max-width: 100%;
+        object-fit: contain;
+    }
+
+    .intro-box {
         background-color: #FAFAFA;
         border: 1.5px solid #E5E5E5;
         border-radius: 14px;
@@ -60,16 +67,16 @@ st.markdown("""
         display: flex;
         flex-direction: row;
         align-items: center;
-        justify-content: center;
-        gap: 20px;
-        padding: 0 30px;
+        justify-content: space-between;
+        padding: 15px 25px;
         box-shadow: 0 3px 10px rgba(0,0,0,0.02);
     }
 
     .quote-text {
-        font-size: 18px;
+        font-size: 16px;
         font-weight: 600;
         color: #333333 !important;
+        line-height: 1.4;
     }
 
     /* 좌우 Ads */
@@ -236,23 +243,23 @@ def calculate_defense_score(data):
     
     if roe >= 15:
         score += 20
-        reasons.append("• ROE가 15% 이상으로 높은 수익성을 유지하고 있습니다.")
+        reasons.append("• ROE가 15% 이상으로 높은 수익성과 자본 효율성을 유지하고 있습니다.")
     elif roe >= 8:
         score += 10
         reasons.append("• ROE가 준수한 수준을 유지하고 있습니다.")
     else:
-        reasons.append("• ROE 수익성 개선이 필요합니다.")
+        reasons.append("• ROE 수익성 개선이 요구됩니다.")
         
     if 0 < per <= 12:
         score += 15
-        reasons.append("• PER이 낮아 밸류에이션 저평가 구간입니다.")
+        reasons.append("• PER이 저평가 구간으로 하락장에서 가격 부담이 적습니다.")
     elif per > 30:
         score -= 10
-        reasons.append("• PER이 높아 시장 기대감이 과도하게 반영되었을 수 있습니다.")
+        reasons.append("• PER이 높아 시장의 과도한 기대감이 반영되어 있을 수 있습니다.")
         
     if 0 < pbr <= 1.2:
         score += 15
-        reasons.append("• PBR 1.2배 이하로 하락장 청산가치 방어력이 우수합니다.")
+        reasons.append("• PBR 1.2배 이하로 하락장 청산가치 방어력이 매우 높습니다.")
         
     score = max(0, min(100, score))
     
@@ -265,7 +272,7 @@ def calculate_defense_score(data):
     return score, grade, reasons
 
 # ==========================================
-# 3. 인베스팅닷컴 스타일 동적 검색 컴포넌트
+# 3. 동적 검색 컴포넌트 (MVP 도메인 독립)
 # ==========================================
 def render_investing_search_box(stock_db, placeholder_text, key_prefix):
     import json
@@ -332,14 +339,14 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
 
             .modal-content {{
                 display: flex;
-                min-height: 300px;
+                min-height: 280px;
             }}
 
             .left-pane {{
                 flex: 65;
                 border-right: 1px solid #F1F5F9;
                 padding: 10px 0;
-                max-height: 340px;
+                max-height: 320px;
                 overflow-y: auto;
             }}
             .pane-title {{
@@ -410,21 +417,11 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 font-weight: 700;
                 color: #334155;
             }}
-            .more-link {{
-                font-size: 11px;
-                color: #2563EB;
-                text-decoration: none;
-            }}
             .news-item {{
                 font-size: 12px;
                 color: #334155;
                 line-height: 1.4;
                 font-weight: 500;
-                cursor: pointer;
-            }}
-            .news-item:hover {{
-                text-decoration: underline;
-                color: #D97706;
             }}
 
             .modal-footer {{
@@ -432,7 +429,7 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                 padding: 10px 16px;
                 background: #F8FAFC;
                 font-size: 13px;
-                color: #2563EB;
+                color: #D97706;
                 font-weight: 600;
                 cursor: pointer;
                 display: flex;
@@ -464,23 +461,15 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
                     <div class="right-pane">
                         <div>
                             <div class="section-header">
-                                <span>News</span>
-                                <a href="#" class="more-link">More</a>
+                                <span>Fundamental Analysis</span>
                             </div>
-                            <div style="margin-top: 6px;" class="news-item">S&P 500 하락장 대비 안전자산 및 고배당 저평가 펀더멘탈 분석</div>
-                            <div style="margin-top: 8px;" class="news-item">금리 변동성에 따른 우량주 ROE/PBR 체력 점검</div>
-                        </div>
-                        <div>
-                            <div class="section-header">
-                                <span>Analysis</span>
-                                <a href="#" class="more-link">More</a>
-                            </div>
-                            <div style="margin-top: 6px;" class="news-item">2026 하락장 방어력이 가장 뛰어난 S등급 기업 리스트</div>
+                            <div style="margin-top: 6px;" class="news-item">미국/한국 주요 우량주 펀더멘탈 실시간 채점 시스템</div>
+                            <div style="margin-top: 8px;" class="news-item">하락장 대비 ROE, PER, PBR 리스크 평가</div>
                         </div>
                     </div>
                 </div>
                 <div class="modal-footer" onclick="triggerSearch()">
-                    <span>🔍</span> Search website for: <span id="{key_prefix}_footer_query" style="font-weight:700;"></span>
+                    <span>🔍</span> Search for: <span id="{key_prefix}_footer_query" style="font-weight:700;"></span>
                 </div>
             </div>
         </div>
@@ -538,7 +527,8 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
             }}
 
             function selectStock(ticker) {{
-                const targetUrl = window.parent.location.origin + window.parent.location.pathname + '?code=' + encodeURIComponent(ticker);
+                // MVP 호환: 현재 접속 URL 기준 이동
+                const targetUrl = window.parent.location.protocol + '//' + window.parent.location.host + window.parent.location.pathname + '?code=' + encodeURIComponent(ticker);
                 window.parent.location.href = targetUrl;
             }}
 
@@ -573,7 +563,7 @@ def render_investing_search_box(stock_db, placeholder_text, key_prefix):
     </body>
     </html>
     """
-    components.html(custom_html, height=450)
+    components.html(custom_html, height=430)
 
 # ==========================================
 # 4. 메인 포털 UI
@@ -582,27 +572,36 @@ query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
-    # --- [상단 헤더]: Logo | Investor Quote | Log in ---
-    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
+    # --- [상단 헤더]: Logo (PNG) | Intro / PNG | Log in ---
+    col_logo, col_quote, col_login = st.columns([1.5, 6.3, 1.0])
     
     with col_logo:
-        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
+        # 로고 PNG 이미지 연동
+        if os.path.exists("logo.png"):
+            st.image("logo.png", use_container_width=True)
+        else:
+            st.markdown("<div class='logo-box'><b style='font-size: 20px; color: #D97706;'>🛡️ Fundamental</b></div>", unsafe_allow_html=True)
         
     with col_quote:
-        quotes = [
-            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
-            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
-            "투자는 지능이 아니라 인내심의 게임이다.",
-            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다."
-        ]
-        selected_quote = random.choice(quotes)
-        
-        st.markdown(f"""
-            <div class='quote-box'>
-                <div style='font-size: 36px;'>👨‍💼</div> 
-                <div class='quote-text'>"{selected_quote}"</div>
-            </div>
-        """, unsafe_allow_html=True)
+        # intro.png 이미지 또는 하락장 방어 서비스 안내문구 표시
+        if os.path.exists("intro.png"):
+            st.image("intro.png", use_container_width=True)
+        else:
+            quotes = [
+                "하락장은 우량한 기업을 헐값에 살 수 있는 기회다 - 재무제표 방어력 완벽 분석",
+                "시장이 공포에 질려 있을 때, 기업의 진짜 가치(Fundamental)에 집중하세요.",
+                "미국/한국 주식 하락장 속 펀더멘탈 체력 지수 및 ROE/PBR/PER 실시간 분석"
+            ]
+            selected_quote = random.choice(quotes)
+            st.markdown(f"""
+                <div class='intro-box'>
+                    <div>
+                        <div style='font-size: 13px; color: #D97706; font-weight: bold;'>🛡️ Fundamental Analyzer MVP</div>
+                        <div class='quote-text'>"{selected_quote}"</div>
+                    </div>
+                    <div style='font-size: 32px;'>📊</div>
+                </div>
+            """, unsafe_allow_html=True)
         
     with col_login:
         st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
@@ -669,99 +668,99 @@ if not selected_code:
             )
             
         with tab3:
-            st.info("📰 실시간 증시 속보 및 주요 뉴스 모니터링 준비 중입니다.")
+            st.info("📰 실시간 증시 속보 및 재무 뉴스 모니터링 준비 중입니다.")
             
         with tab4:
-            st.info("💎 하락장 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
+            st.info("💎 하락장 방어 우수 저평가 종목(Gem) 스크리너 준비 중입니다.")
 
-        # --- [하단 5개씩 구성 및 검색 수 표기 카드리스트] ---
+        # --- [하단 5개 항목 구성 카드리스트] ---
         st.markdown("<div class='bottom-cards-wrapper'>", unsafe_allow_html=True)
         col_6, col_7, col_8 = st.columns(3)
         
-        # Card 1: Most searched Stocks (통합 검색 순위 top 5 + 검색 횟수)
+        # Card 1: Most searched Stocks
         with col_6:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A; font-size: 15px;'>🔥 Most Searched Stocks</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=005930' target='_self' class='stock-link'>1. 삼성전자 (005930)</a>
+                            <a href='?code=005930' target='_self' class='stock-link'>1. 삼성전자 (005930)</a>
                             <span class='search-count-badge'>18,420회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=NVDA' target='_self' class='stock-link'>2. NVIDIA (NVDA)</a>
+                            <a href='?code=NVDA' target='_self' class='stock-link'>2. NVIDIA (NVDA)</a>
                             <span class='search-count-badge'>15,810회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=000660' target='_self' class='stock-link'>3. SK하이닉스 (000660)</a>
+                            <a href='?code=000660' target='_self' class='stock-link'>3. SK하이닉스 (000660)</a>
                             <span class='search-count-badge'>12,340회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=AAPL' target='_self' class='stock-link'>4. Apple (AAPL)</a>
+                            <a href='?code=AAPL' target='_self' class='stock-link'>4. Apple (AAPL)</a>
                             <span class='search-count-badge'>9,580회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=TSLA' target='_self' class='stock-link'>5. Tesla (TSLA)</a>
+                            <a href='?code=TSLA' target='_self' class='stock-link'>5. Tesla (TSLA)</a>
                             <span class='search-count-badge'>8,210회</span>
                         </div>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
             
-        # Card 2: Trending Searches (US Top 5)
+        # Card 2: Trending Searches (US)
         with col_7:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A; font-size: 15px;'>🇺🇸 Trending Searches (US)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=NVDA' target='_self' class='stock-link'>1. NVIDIA (NVDA)</a>
+                            <a href='?code=NVDA' target='_self' class='stock-link'>1. NVIDIA (NVDA)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=AAPL' target='_self' class='stock-link'>2. Apple (AAPL)</a>
+                            <a href='?code=AAPL' target='_self' class='stock-link'>2. Apple (AAPL)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 2</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=TSLA' target='_self' class='stock-link'>3. Tesla (TSLA)</a>
+                            <a href='?code=TSLA' target='_self' class='stock-link'>3. Tesla (TSLA)</a>
                             <span style='font-size: 11px; color: #DC2626; font-weight: 700;'>▼ 1</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=PLTR' target='_self' class='stock-link'>4. Palantir (PLTR)</a>
+                            <a href='?code=PLTR' target='_self' class='stock-link'>4. Palantir (PLTR)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ NEW</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=MSFT' target='_self' class='stock-link'>5. Microsoft (MSFT)</a>
+                            <a href='?code=MSFT' target='_self' class='stock-link'>5. Microsoft (MSFT)</a>
                             <span style='font-size: 11px; color: #64748B; font-weight: 700;'>-</span>
                         </div>
                     </div>
                 </div>
             """, unsafe_allow_html=True)
             
-        # Card 3: Trending Searches (KOR Top 5)
+        # Card 3: Trending Searches (KOR)
         with col_8:
             st.markdown("""
                 <div class='sketch-card'>
                     <b style='color: #1A1A1A; font-size: 15px;'>🇰🇷 Trending Searches (KOR)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=005930' target='_self' class='stock-link'>1. 삼성전자 (005930)</a>
+                            <a href='?code=005930' target='_self' class='stock-link'>1. 삼성전자 (005930)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=000660' target='_self' class='stock-link'>2. SK하이닉스 (000660)</a>
+                            <a href='?code=000660' target='_self' class='stock-link'>2. SK하이닉스 (000660)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 1</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=005380' target='_self' class='stock-link'>3. 현대차 (005380)</a>
+                            <a href='?code=005380' target='_self' class='stock-link'>3. 현대차 (005380)</a>
                             <span style='font-size: 11px; color: #64748B; font-weight: 700;'>-</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=035420' target='_self' class='stock-link'>4. NAVER (035420)</a>
+                            <a href='?code=035420' target='_self' class='stock-link'>4. NAVER (035420)</a>
                             <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 3</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=035720' target='_self' class='stock-link'>5. 카카오 (035720)</a>
+                            <a href='?code=035720' target='_self' class='stock-link'>5. 카카오 (035720)</a>
                             <span style='font-size: 11px; color: #DC2626; font-weight: 700;'>▼ 2</span>
                         </div>
                     </div>
@@ -773,7 +772,7 @@ if not selected_code:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
 else:
-    # --- [상세 분석 리포트 페이지] ---
+    # --- [상세 펀더멘탈 분석 리포트 페이지] ---
     if st.button("⬅️ 창 닫기 / 메인으로 돌아가기"):
         st.query_params.clear()
         st.rerun()
@@ -812,10 +811,10 @@ else:
         live_pbr = round(live_price / db_bps, 2) if db_bps and db_bps > 0 else data.get('pbr')
 
         currency_unit = "원" if is_krx else "$"
-        st.subheader(f"📊 [{stock_name}] ({selected_code}) 실시간 지표 분석")
+        st.subheader(f"📊 [{stock_name}] ({selected_code}) 재무 지표 체력 측정")
         
         col1, col2, col3, col4 = st.columns(4)
-        col1.metric("현재 실시간 주가", f"{live_price:,} {currency_unit}")
+        col1.metric("실시간 주가", f"{live_price:,} {currency_unit}")
         col2.metric("PER", f"{live_per} 배" if live_per else "N/A")
         col3.metric("PBR", f"{live_pbr} 배" if live_pbr else "N/A")
         col4.metric("ROE", f"{data.get('roe')}%" if data.get("roe") else "N/A")
@@ -839,8 +838,8 @@ else:
             else: st.warning("🔴 **D등급 (하락장 취약 위험주)**")
             
         with col_detail:
-            st.markdown("### 📋 핵심 지표 평가 내역")
+            st.markdown("### 📋 재무제표 기반 방어력 평가")
             for r in reasons: 
                 st.write(r)
     else:
-        st.error("선택한 종목의 데이터를 찾을 수 없습니다.")
+        st.error("선택한 종목의 데이터(재무제표)를 찾을 수 없습니다.")
