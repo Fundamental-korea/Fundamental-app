@@ -93,7 +93,7 @@ st.markdown(
     }
 
     /* ========================================================= */
-    /* Streamlit 일반 버튼(로그인 버튼 등) 검은 박스 제거 및 스타일 적용 */
+    /* Streamlit 일반 버튼 스타일 적용 */
     /* ========================================================= */
     div[data-testid="stButton"] > button, div.stButton > button {
         background-color: #FFFFFF !important;
@@ -113,7 +113,7 @@ st.markdown(
     }
 
     /* ========================================================= */
-    /* Streamlit 네이티브 st.tabs 디자인 강제 덮어쓰기 (검은 박스 완벽 제거) */
+    /* Streamlit 네이티브 st.tabs 디자인 강제 덮어쓰기 */
     /* ========================================================= */
     div[data-testid="stTabs"] [data-baseweb="tab-list"] {
         gap: 20px !important;
@@ -132,17 +132,15 @@ st.markdown(
         box-shadow: none !important;
     }
 
-    /* 탭 내부 글자 크기 및 굵기 설정 */
     div[data-testid="stTabs"] [data-baseweb="tab"] p,
     div[data-testid="stTabs"] [data-baseweb="tab"] span,
     div[data-testid="stTabs"] [data-baseweb="tab"] div {
         font-size: 19px !important;
-        font-weight: 900 !important; /* 초강력 Bold */
+        font-weight: 900 !important;
         color: #4B5563 !important;
         letter-spacing: -0.3px !important;
     }
 
-    /* 선택된 활성 탭 스타일 */
     div[data-testid="stTabs"] [aria-selected="true"] {
         background-color: transparent !important;
         border-bottom: 4px solid #F4A261 !important;
@@ -195,6 +193,49 @@ st.markdown(
         border-radius: 12px;
         font-weight: 600;
     }
+
+    /* ========================================================= */
+    /* 스케치용 분석 항목 리스트 카드 커스텀 디자인 */
+    /* ========================================================= */
+    .sketch-item-box {
+        background-color: #FFFFFF;
+        border: 1.5px solid #E5E7EB;
+        border-radius: 12px;
+        padding: 16px 20px;
+        margin-bottom: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        box-shadow: 0 2px 6px rgba(0, 0, 0, 0.02);
+        transition: transform 0.15s ease, border-color 0.15s ease;
+    }
+    .sketch-item-box:hover {
+        border-color: #F4A261;
+        transform: translateY(-2px);
+    }
+    .sketch-item-title {
+        font-size: 17px;
+        font-weight: 800;
+        color: #111827 !important;
+        min-width: 210px;
+    }
+    .sketch-item-desc {
+        font-size: 14px;
+        color: #4B5563 !important;
+        flex: 1;
+        padding: 0 20px;
+        line-height: 1.4;
+    }
+    .sketch-item-score {
+        font-size: 18px;
+        font-weight: 900;
+        color: #D97706 !important;
+        background-color: #FFFBEB;
+        border: 1px solid #FCD34D;
+        padding: 6px 14px;
+        border-radius: 8px;
+        white-space: nowrap;
+    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -221,60 +262,15 @@ supabase = init_supabase()
 @st.cache_data
 def get_combined_stock_db():
     us_stocks = [
-        {
-            "ticker": "AAPL",
-            "name": "Apple Inc.",
-            "exch": "Equities - NASDAQ",
-            "flag": "🇺🇸",
-        },
-        {
-            "ticker": "NVDA",
-            "name": "NVIDIA Corporation",
-            "exch": "Equities - NASDAQ",
-            "flag": "🇺🇸",
-        },
-        {
-            "ticker": "TSLA",
-            "name": "Tesla Inc.",
-            "exch": "Equities - NASDAQ",
-            "flag": "🇺🇸",
-        },
-        {
-            "ticker": "MSFT",
-            "name": "Microsoft Corp.",
-            "exch": "Equities - NASDAQ",
-            "flag": "🇺🇸",
-        },
-        {
-            "ticker": "AMZN",
-            "name": "Amazon.com Inc.",
-            "exch": "Equities - NASDAQ",
-            "flag": "🇺🇸",
-        },
-        {
-            "ticker": "GOOGL",
-            "name": "Alphabet Inc.",
-            "exch": "Equities - NASDAQ",
-            "flag": "🇺🇸",
-        },
-        {
-            "ticker": "META",
-            "name": "Meta Platforms Inc.",
-            "exch": "Equities - NASDAQ",
-            "flag": "🇺🇸",
-        },
-        {
-            "ticker": "PLTR",
-            "name": "Palantir Technologies",
-            "exch": "Equities - NYSE",
-            "flag": "🇺🇸",
-        },
-        {
-            "ticker": "P",
-            "name": "Pure Storage Inc",
-            "exch": "Equities - NYSE",
-            "flag": "🇺🇸",
-        },
+        {"ticker": "AAPL", "name": "Apple Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+        {"ticker": "NVDA", "name": "NVIDIA Corporation", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+        {"ticker": "TSLA", "name": "Tesla Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+        {"ticker": "MSFT", "name": "Microsoft Corp.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+        {"ticker": "AMZN", "name": "Amazon.com Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+        {"ticker": "GOOGL", "name": "Alphabet Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+        {"ticker": "META", "name": "Meta Platforms Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+        {"ticker": "PLTR", "name": "Palantir Technologies", "exch": "Equities - NYSE", "flag": "🇺🇸"},
+        {"ticker": "P", "name": "Pure Storage Inc", "exch": "Equities - NYSE", "flag": "🇺🇸"},
     ]
 
     kr_stocks = []
@@ -292,36 +288,11 @@ def get_combined_stock_db():
             )
     except Exception:
         kr_stocks = [
-            {
-                "ticker": "005930",
-                "name": "삼성전자",
-                "exch": "Equities - KOSPI",
-                "flag": "🇰🇷",
-            },
-            {
-                "ticker": "000660",
-                "name": "SK하이닉스",
-                "exch": "Equities - KOSPI",
-                "flag": "🇰🇷",
-            },
-            {
-                "ticker": "005380",
-                "name": "현대차",
-                "exch": "Equities - KOSPI",
-                "flag": "🇰🇷",
-            },
-            {
-                "ticker": "035420",
-                "name": "NAVER",
-                "exch": "Equities - KOSPI",
-                "flag": "🇰🇷",
-            },
-            {
-                "ticker": "035720",
-                "name": "카카오",
-                "exch": "Equities - KOSPI",
-                "flag": "🇰🇷",
-            },
+            {"ticker": "005930", "name": "삼성전자", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+            {"ticker": "000660", "name": "SK하이닉스", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+            {"ticker": "005380", "name": "현대차", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+            {"ticker": "035420", "name": "NAVER", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+            {"ticker": "035720", "name": "카카오", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
         ]
 
     return us_stocks + kr_stocks
@@ -343,19 +314,20 @@ def get_stock_data(code):
 
     ticker_symbol = f"{code}.KS" if code.isdigit() else code
     try:
-        info = yf.Ticker(ticker_symbol).info
+        ticker = yf.Ticker(ticker_symbol)
+        info = ticker.info
+        hist = ticker.history(period="1y")
+
         return {
             "stock_name": info.get("shortName", code),
             "stock_price": info.get("currentPrice", 0),
             "eps": info.get("trailingEps", 0),
             "bps": info.get("bookValue", 0),
-            "roe": (
-                round(info.get("returnOnEquity", 0) * 100, 2)
-                if info.get("returnOnEquity")
-                else 0.0
-            ),
+            "roe": round(info.get("returnOnEquity", 0) * 100, 2) if info.get("returnOnEquity") else 0.0,
             "per": info.get("trailingPE", 0.0),
             "pbr": info.get("priceToBook", 0.0),
+            "hist": hist,
+            "info": info,
         }
     except Exception:
         return {
@@ -366,55 +338,9 @@ def get_stock_data(code):
             "roe": 0.0,
             "per": 0.0,
             "pbr": 0.0,
+            "hist": pd.DataFrame(),
+            "info": {},
         }
-
-
-def calculate_defense_score(data):
-    score = 50
-    reasons = []
-
-    roe = data.get("roe", 0) or 0
-    per = data.get("per", 0) or 0
-    pbr = data.get("pbr", 0) or 0
-
-    if roe >= 15:
-        score += 20
-        reasons.append("• ROE가 15% 이상으로 높은 수익성을 유지하고 있습니다.")
-    elif roe >= 8:
-        score += 10
-        reasons.append("• ROE가 준수한 수준을 유지하고 있습니다.")
-    else:
-        reasons.append("• ROE 수익성 개선이 필요합니다.")
-
-    if 0 < per <= 12:
-        score += 15
-        reasons.append("• PER이 낮아 밸류에이션 저평가 구간입니다.")
-    elif per > 30:
-        score -= 10
-        reasons.append(
-            "• PER이 높아 시장 기대감이 과도하게 반영되었을 수 있습니다."
-        )
-
-    if 0 < pbr <= 1.2:
-        score += 15
-        reasons.append(
-            "• PBR 1.2배 이하로 하락장 청산가치 방어력이 우수합니다."
-        )
-
-    score = max(0, min(100, score))
-
-    if score >= 85:
-        grade = "S"
-    elif score >= 70:
-        grade = "A"
-    elif score >= 55:
-        grade = "B"
-    elif score >= 40:
-        grade = "C"
-    else:
-        grade = "D"
-
-    return score, grade, reasons
 
 
 # ==========================================
@@ -730,7 +656,7 @@ def render_unified_search_box(stock_db):
 
 
 # ==========================================
-# 4. 메인 포털 UI & 상세 분석 리포트 분기 처리
+# 4. 메인 포털 UI & 스케치 기반 상세 분석 리포트
 # ==========================================
 query_params = st.query_params
 selected_code = query_params.get("code", None)
@@ -782,7 +708,6 @@ if not selected_code:
         )
 
     with main_content:
-        # Streamlit st.tabs 사용
         tab1, tab2, tab3, tab4 = st.tabs(
             [
                 "US Market Overview",
@@ -943,103 +868,141 @@ if not selected_code:
         )
 
 else:
-    # 상세 분석 리포트 페이지
-    if st.button("⬅️ 창 닫기 / 메인으로 돌아가기"):
-        st.query_params.clear()
-        st.rerun()
-
-    st.markdown("### 🛡️ 펀더멘탈 방어력 상세 분석 리포트")
-    st.markdown(
-        "<hr style='border: 1px solid #F4A261;'>", unsafe_allow_html=True
-    )
-
+    # ==========================================
+    # [스케치 기반] 펀더멘탈 상세 분석 리포트 페이지
+    # ==========================================
     data = get_stock_data(selected_code)
 
-    if data:
-        stock_name = data.get("stock_name", selected_code)
-        is_krx = selected_code.isdigit() and len(selected_code) == 6
+    # 1. 상단 레이아웃 (Logo | Investing quotes | Log in)
+    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
-        if is_krx:
-            krx_stocks = get_combined_stock_db()
-            market_type = "KOSPI"
-            for v in krx_stocks:
-                if v["ticker"] == selected_code:
-                    market_type = v["exch"].replace("Equities - ", "")
-                    break
-            ticker_symbol = (
-                f"{selected_code}.KQ"
-                if market_type == "KOSDAQ"
-                else f"{selected_code}.KS"
-            )
+    with col_logo:
+        st.markdown(
+            "<div class='logo-box'>📈 Fundamental</div>",
+            unsafe_allow_html=True,
+        )
+
+    with col_quote:
+        quotes = [
+            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
+            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
+            "투자는 지능이 아니라 인내심의 게임이다.",
+            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다.",
+        ]
+        selected_quote = random.choice(quotes)
+        st.markdown(
+            f"""
+            <div class='quote-box'>
+                <div style='font-size: 36px;'>👨‍💼</div> 
+                <div class='quote-text'>"{selected_quote}"</div>
+            </div>
+        """,
+            unsafe_allow_html=True,
+        )
+
+    with col_login:
+        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+        if st.button("⬅️ 메인으로", use_container_width=True):
+            st.query_params.clear()
+            st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # 2. 본문 레이아웃: Ads (Left) | Main Analysis | Ads (Right)
+    left_ad, main_content, right_ad = st.columns([0.6, 6.8, 0.6])
+
+    with left_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
+    with main_content:
+        st.markdown(f"## 📊 [{data.get('stock_name', selected_code)}] 펀더멘탈 방어력 분석")
+        
+        # 0. Live Chart
+        st.markdown("#### 📉 Live Chart")
+        hist_df = data.get("hist", pd.DataFrame())
+        if not hist_df.empty:
+            st.line_chart(hist_df["Close"])
         else:
-            ticker_symbol = selected_code.upper()
+            st.info("실시간 차트 데이터를 불러올 수 없습니다.")
 
-        try:
-            yticker = yf.Ticker(ticker_symbol)
-            fast_info = yticker.fast_info
-            live_price = (
-                int(fast_info.last_price)
-                if fast_info
-                and hasattr(fast_info, "last_price")
-                and fast_info.last_price
-                else data.get("stock_price", 0)
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # 스케치에 정의된 10가지 펀더멘탈 지표 항목
+        sketch_items = [
+            {
+                "num": "1",
+                "title": "1. Revenue Growth",
+                "desc": "매출액 성장률 (Explanation): 기업의 외형 성장세와 하락장 속 시장 점유율 유지 능력을 측정합니다.",
+                "score": "8/10",
+            },
+            {
+                "num": "2",
+                "title": "2. EPS Growth",
+                "desc": "주당순이익 성장률 (Explanation): 주주 가치 창출 능력의 핵심 지표로, 순이익의 실질적 증가세를 평가합니다.",
+                "score": "7/10",
+            },
+            {
+                "num": "3",
+                "title": "3. OPM",
+                "desc": "영업이익률 (Explanation): 본업에서의 수익 창출 효율성 및 고금리/원가 상승 방어력을 나타냅니다.",
+                "score": "9/10",
+            },
+            {
+                "num": "4",
+                "title": "4. ROE",
+                "desc": f"자기자본이익률 (Explanation): 자본 대비 수익성 지표입니다. (현재 ROE: {data.get('roe', 0)}%)",
+                "score": "8/10" if data.get("roe", 0) >= 12 else "5/10",
+            },
+            {
+                "num": "5",
+                "title": "5. Debt rate",
+                "desc": "부채비율 (Explanation): 하락장 및 고금리 환경에서 기업의 재무적 생존 가능성과 이자 부담 위험을 평가합니다.",
+                "score": "9/10",
+            },
+            {
+                "num": "6",
+                "title": "6. Current ratio",
+                "desc": "유동비율 (Explanation): 단기 채무 지급 능력을 나타내며 200% 이상시 강한 유동성 방어력을 보유합니다.",
+                "score": "8/10",
+            },
+            {
+                "num": "7",
+                "title": "7. Interest coverage rate",
+                "desc": "이자보상배율 (Explanation): 영업이익으로 이자비용을 감당할 수 있는 수치로, 1 미만시 채무불이행 위험을 뜻합니다.",
+                "score": "10/10",
+            },
+            {
+                "num": "8",
+                "title": "8. Operating cash flow",
+                "desc": "영업활동 현금흐름 (Explanation): 장부상 이익이 아닌 실제 유입되는 현금 체력의 우수성을 나타냅니다.",
+                "score": "9/10",
+            },
+            {
+                "num": "9",
+                "title": "9. Retained Earnings Ratio",
+                "desc": "유보율 (Explanation): 위기 상황 발생 시 내부 적립 현금으로 견딜 수 있는 펀더멘탈 체력입니다.",
+                "score": "9/10",
+            },
+            {
+                "num": "10",
+                "title": "10. SG&A Ratio",
+                "desc": "판관비율 (Explanation): 매출 대비 판매관리비 비중으로, 기업의 비용 통제 및 경영 효율성을 보여줍니다.",
+                "score": "7/10",
+            },
+        ]
+
+        # 1~10 항목 출력 (스케치 디자인 충실 반영)
+        for item in sketch_items:
+            st.markdown(
+                f"""
+                <div class="sketch-item-box">
+                    <div class="sketch-item-title">{item['title']}</div>
+                    <div class="sketch-item-desc">{item['desc']}</div>
+                    <div class="sketch-item-score">Score {item['score']} ↓</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
             )
-        except Exception:
-            live_price = data.get("stock_price", 0)
 
-        db_eps = data.get("eps")
-        live_per = (
-            round(live_price / db_eps, 2)
-            if db_eps and db_eps > 0
-            else data.get("per")
-        )
-
-        db_bps = data.get("bps")
-        live_pbr = (
-            round(live_price / db_bps, 2)
-            if db_bps and db_bps > 0
-            else data.get("pbr")
-        )
-
-        currency_unit = "원" if is_krx else "$"
-        st.subheader(
-            f"📊 [{stock_name}] ({selected_code}) 실시간 지표 분석"
-        )
-
-        col1, col2, col3, col4 = st.columns(4)
-        col1.metric("현재 실시간 주가", f"{live_price:,} {currency_unit}")
-        col2.metric("PER", f"{live_per} 배" if live_per else "N/A")
-        col3.metric("PBR", f"{live_pbr} 배" if live_pbr else "N/A")
-        col4.metric(
-            "ROE", f"{data.get('roe')}%" if data.get("roe") else "N/A"
-        )
-
-        st.divider()
-
-        eval_data = data.copy()
-        eval_data["per"] = live_per
-        eval_data["pbr"] = live_pbr
-
-        total_score, grade, reasons = calculate_defense_score(eval_data)
-
-        col_score, col_detail = st.columns([1, 2])
-        with col_score:
-            st.markdown("### 🛡️ 하락장 방어 종합 등급")
-            st.title(f"**{total_score}**점 / [{grade}] 등급")
-            if grade == "S":
-                st.success("🟢 **S등급 (요새형 최우수 방어주)**")
-            elif grade == "A":
-                st.success("🟢 **A등급 (우수한 재무 체력)**")
-            elif grade == "B":
-                st.info("🟡 **B등급 (평균적 방어력)**")
-            elif grade == "C":
-                st.warning("🟠 **C등급 (하락장 주의 필요)**")
-            else:
-                st.warning("🔴 **D등급 (하락장 취약 위험주)**")
-
-        with col_detail:
-            st.markdown("### 📋 핵심 지표 평가 내역")
-            for r in reasons:
-                st.write(r)
-    else:
-        st.error("선택한 종목의 데이터를 찾을 수 없습니다.")
+    with right_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
