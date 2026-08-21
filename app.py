@@ -19,7 +19,6 @@ st.set_page_config(
 st.markdown(
     """
     <style>
-    /* 전체 배경 강제 라이트 모드 고정 */
     html, body, [data-testid="stAppViewContainer"], .stApp {
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
@@ -36,7 +35,6 @@ st.markdown(
         color: #1A1A1A !important;
     }
 
-    /* 상단 로고 박스 */
     .logo-box {
         border: 2px solid #F4A261;
         border-radius: 14px;
@@ -53,7 +51,6 @@ st.markdown(
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
     }
 
-    /* 상단 명언 박스 */
     .quote-box {
         background-color: #FAFAFA;
         border: 1.5px solid #E5E5E5;
@@ -75,7 +72,6 @@ st.markdown(
         color: #333333 !important;
     }
 
-    /* 좌우 Ads */
     .ad-box-tall {
         background-color: #F8F9FA;
         border: 2px dashed #D0D0D0;
@@ -92,9 +88,6 @@ st.markdown(
         box-sizing: border-box;
     }
 
-    /* ========================================================= */
-    /* Streamlit 일반 버튼 스타일 적용 */
-    /* ========================================================= */
     div[data-testid="stButton"] > button, div.stButton > button {
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
@@ -112,9 +105,6 @@ st.markdown(
         background-color: #FFFDF9 !important;
     }
 
-    /* ========================================================= */
-    /* Streamlit 네이티브 st.tabs 디자인 강제 덮어쓰기 */
-    /* ========================================================= */
     div[data-testid="stTabs"] [data-baseweb="tab-list"] {
         gap: 20px !important;
         border-bottom: 2px solid #E5E7EB !important;
@@ -154,7 +144,6 @@ st.markdown(
         font-weight: 900 !important;
     }
 
-    /* 하단 트렌드 카드 */
     .bottom-cards-wrapper {
         margin-top: 25px;
     }
@@ -194,9 +183,6 @@ st.markdown(
         font-weight: 600;
     }
 
-    /* ========================================================= */
-    /* 스케치용 분석 항목 리스트 카드 커스텀 디자인 */
-    /* ========================================================= */
     .sketch-item-box {
         background-color: #FFFFFF;
         border: 1.5px solid #E5E7EB;
@@ -235,6 +221,31 @@ st.markdown(
         padding: 6px 14px;
         border-radius: 8px;
         white-space: nowrap;
+    }
+
+    .grade-hero-box {
+        background-color: #FFFDF9;
+        border: 2px solid #F4A261;
+        border-radius: 16px;
+        padding: 24px 28px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 20px;
+        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12);
+    }
+    .grade-hero-score {
+        font-size: 42px;
+        font-weight: 900;
+        color: #D97706 !important;
+    }
+    .grade-hero-badge {
+        font-size: 26px;
+        font-weight: 900;
+        padding: 8px 20px;
+        border-radius: 10px;
+        background-color: #D97706;
+        color: #FFFFFF !important;
     }
     </style>
 """,
@@ -299,6 +310,8 @@ def get_combined_stock_db():
 
 
 def get_stock_data(code):
+    """Supabase에 펀더멘탈 스코어 데이터가 있으면 그걸 우선 사용, 없으면 yfinance로 가격 정보만 폴백"""
+    supabase_data = None
     if supabase:
         try:
             res = (
@@ -308,7 +321,7 @@ def get_stock_data(code):
                 .execute()
             )
             if res.data and len(res.data) > 0:
-                return res.data[0]
+                supabase_data = res.data[0]
         except Exception:
             pass
 
@@ -317,30 +330,17 @@ def get_stock_data(code):
         ticker = yf.Ticker(ticker_symbol)
         info = ticker.info
         hist = ticker.history(period="1y")
-
-        return {
-            "stock_name": info.get("shortName", code),
-            "stock_price": info.get("currentPrice", 0),
-            "eps": info.get("trailingEps", 0),
-            "bps": info.get("bookValue", 0),
-            "roe": round(info.get("returnOnEquity", 0) * 100, 2) if info.get("returnOnEquity") else 0.0,
-            "per": info.get("trailingPE", 0.0),
-            "pbr": info.get("priceToBook", 0.0),
-            "hist": hist,
-            "info": info,
-        }
     except Exception:
-        return {
-            "stock_name": f"종목({code})",
-            "stock_price": 0,
-            "eps": 0,
-            "bps": 0,
-            "roe": 0.0,
-            "per": 0.0,
-            "pbr": 0.0,
-            "hist": pd.DataFrame(),
-            "info": {},
-        }
+        info, hist = {}, pd.DataFrame()
+
+    result = {
+        "stock_name": (supabase_data or {}).get("stock_name") or info.get("shortName", code),
+        "stock_price": (supabase_data or {}).get("stock_price") or info.get("currentPrice", 0),
+        "hist": hist,
+        "info": info,
+        "supabase_data": supabase_data,
+    }
+    return result
 
 
 # ==========================================
@@ -662,7 +662,6 @@ query_params = st.query_params
 selected_code = query_params.get("code", None)
 
 if not selected_code:
-    # --- [메인 메인 포털 페이지] ---
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
     with col_logo:
@@ -699,7 +698,6 @@ if not selected_code:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # --- [본문 레이아웃]: Ads (Left) | Center Main | Ads (Right) ---
     left_ad, main_content, right_ad = st.columns([0.6, 6.8, 0.6])
 
     with left_ad:
@@ -759,7 +757,6 @@ if not selected_code:
                 "💎 **Gem Screener**: ROE/PER/PBR 펀더멘탈 요건을 모두 충족한 하락장 우수 방어주(Gem) 스크리닝 리스트입니다."
             )
 
-        # 하단 트렌드 추천 카드
         st.markdown(
             "<div class='bottom-cards-wrapper'>", unsafe_allow_html=True
         )
@@ -873,7 +870,6 @@ else:
     # ==========================================
     data = get_stock_data(selected_code)
 
-    # 1. 상단 레이아웃 (Logo | Investing quotes | Log in)
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
     with col_logo:
@@ -908,7 +904,6 @@ else:
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # 2. 본문 레이아웃: Ads (Left) | Main Analysis | Ads (Right)
     left_ad, main_content, right_ad = st.columns([0.6, 6.8, 0.6])
 
     with left_ad:
@@ -916,8 +911,7 @@ else:
 
     with main_content:
         st.markdown(f"## 📊 [{data.get('stock_name', selected_code)}] 펀더멘탈 방어력 분석")
-        
-        # 0. Live Chart
+
         st.markdown("#### 📉 Live Chart")
         hist_df = data.get("hist", pd.DataFrame())
         if not hist_df.empty:
@@ -927,82 +921,90 @@ else:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # 스케치에 정의된 10가지 펀더멘탈 지표 항목
-        sketch_items = [
-            {
-                "num": "1",
-                "title": "1. Revenue Growth",
-                "desc": "매출액 성장률 (Explanation): 기업의 외형 성장세와 하락장 속 시장 점유율 유지 능력을 측정합니다.",
-                "score": "8/10",
-            },
-            {
-                "num": "2",
-                "title": "2. EPS Growth",
-                "desc": "주당순이익 성장률 (Explanation): 주주 가치 창출 능력의 핵심 지표로, 순이익의 실질적 증가세를 평가합니다.",
-                "score": "7/10",
-            },
-            {
-                "num": "3",
-                "title": "3. OPM",
-                "desc": "영업이익률 (Explanation): 본업에서의 수익 창출 효율성 및 고금리/원가 상승 방어력을 나타냅니다.",
-                "score": "9/10",
-            },
-            {
-                "num": "4",
-                "title": "4. ROE",
-                "desc": f"자기자본이익률 (Explanation): 자본 대비 수익성 지표입니다. (현재 ROE: {data.get('roe', 0)}%)",
-                "score": "8/10" if data.get("roe", 0) >= 12 else "5/10",
-            },
-            {
-                "num": "5",
-                "title": "5. Debt rate",
-                "desc": "부채비율 (Explanation): 하락장 및 고금리 환경에서 기업의 재무적 생존 가능성과 이자 부담 위험을 평가합니다.",
-                "score": "9/10",
-            },
-            {
-                "num": "6",
-                "title": "6. Current ratio",
-                "desc": "유동비율 (Explanation): 단기 채무 지급 능력을 나타내며 200% 이상시 강한 유동성 방어력을 보유합니다.",
-                "score": "8/10",
-            },
-            {
-                "num": "7",
-                "title": "7. Interest coverage rate",
-                "desc": "이자보상배율 (Explanation): 영업이익으로 이자비용을 감당할 수 있는 수치로, 1 미만시 채무불이행 위험을 뜻합니다.",
-                "score": "10/10",
-            },
-            {
-                "num": "8",
-                "title": "8. Operating cash flow",
-                "desc": "영업활동 현금흐름 (Explanation): 장부상 이익이 아닌 실제 유입되는 현금 체력의 우수성을 나타냅니다.",
-                "score": "9/10",
-            },
-            {
-                "num": "9",
-                "title": "9. Retained Earnings Ratio",
-                "desc": "유보율 (Explanation): 위기 상황 발생 시 내부 적립 현금으로 견딜 수 있는 펀더멘탈 체력입니다.",
-                "score": "9/10",
-            },
-            {
-                "num": "10",
-                "title": "10. SG&A Ratio",
-                "desc": "판관비율 (Explanation): 매출 대비 판매관리비 비중으로, 기업의 비용 통제 및 경영 효율성을 보여줍니다.",
-                "score": "7/10",
-            },
-        ]
+        # 지표별 표시용 메타데이터 (제목/설명) - scoring.py의 METRIC_KEYS와 이름 일치
+        METRIC_DISPLAY = {
+            "revenue_growth": ("1. Revenue Growth", "매출액 성장률: 기업의 외형 성장세와 하락장 속 시장 점유율 유지 능력을 측정합니다."),
+            "eps_growth": ("2. EPS Growth", "순이익 성장률: 주주 가치 창출 능력의 핵심 지표로, 순이익의 실질적 증가세를 평가합니다."),
+            "opm": ("3. OPM", "영업이익률: 본업에서의 수익 창출 효율성 및 고금리/원가 상승 방어력을 나타냅니다."),
+            "roe": ("4. ROE", "자기자본이익률: 자본 대비 수익성 지표입니다."),
+            "debt_rate": ("5. Debt rate", "부채비율: 하락장 및 고금리 환경에서 기업의 재무적 생존 가능성과 이자 부담 위험을 평가합니다."),
+            "current_ratio": ("6. Current ratio", "유동비율: 단기 채무 지급 능력을 나타내며 200% 이상시 강한 유동성 방어력을 보유합니다."),
+            "interest_coverage": ("7. Interest coverage rate", "이자보상배율: 영업이익으로 이자비용을 감당할 수 있는 수치로, 1 미만시 채무불이행 위험을 뜻합니다."),
+            "ocf_ratio": ("8. Operating Cash Flow Ratio", "영업활동현금흐름/순이익 비율: 장부상 이익이 아닌 실제 유입되는 현금 체력의 우수성을 나타냅니다."),
+            "retained_earnings": ("9. Retained Earnings Ratio", "유보율: 위기 상황 발생 시 내부 적립 현금으로 견딜 수 있는 펀더멘탈 체력입니다."),
+            "sga_ratio": ("10. SG&A Ratio", "판관비율: 매출 대비 판매관리비 비중으로, 기업의 비용 통제 및 경영 효율성을 보여줍니다."),
+        }
+        METRIC_ORDER = list(METRIC_DISPLAY.keys())
 
-        # 1~10 항목 출력 (스케치 디자인 충실 반영)
-        for item in sketch_items:
-            st.markdown(
-                f"""
-                <div class="sketch-item-box">
-                    <div class="sketch-item-title">{item['title']}</div>
-                    <div class="sketch-item-desc">{item['desc']}</div>
-                    <div class="sketch-item-score">Score {item['score']} ↓</div>
-                </div>
-                """,
-                unsafe_allow_html=True,
+        supabase_data = data.get("supabase_data")
+        period_scores = (supabase_data or {}).get("period_scores") or {}
+
+        if not period_scores:
+            st.warning(
+                "⚠️ 아직 이 종목의 펀더멘탈 스코어 데이터가 없습니다. "
+                "collector.py로 이 종목을 먼저 수집해야 점수가 표시됩니다. "
+                "(국내(KR) 종목만 DART 기반 스코어링을 지원합니다)"
             )
+        else:
+            # 1/3/5/10년 기간 탭
+            available_periods = [p for p in ["1y", "3y", "5y", "10y"] if p in period_scores]
+            period_labels = {"1y": "📅 1년 (단기)", "3y": "📆 3년 (중기)", "5y": "🗓️ 5년 (중장기)", "10y": "📈 10년 (장기)"}
+
+            period_tabs = st.tabs([period_labels[p] for p in available_periods])
+
+            for period_key, tab in zip(available_periods, period_tabs):
+                with tab:
+                    pdata = period_scores[period_key]
+                    years_used = pdata.get("years_used", [])
+                    if years_used:
+                        st.caption(f"사용된 회계연도: {years_used[0]} ~ {years_used[-1]}")
+
+                    view_mode = st.radio(
+                        "채점 기준",
+                        options=["avg", "worst"],
+                        format_func=lambda v: "📊 평균 기준 (꾸준함)" if v == "avg" else "🛡️ 최악 기준 (위기 대응력)",
+                        horizontal=True,
+                        key=f"view_mode_{period_key}",
+                    )
+
+                    view_data = pdata.get(view_mode) or {}
+                    total_score = view_data.get("total_score")
+                    grade = view_data.get("grade", "N/A")
+                    metric_scores = view_data.get("metric_scores", {})
+
+                    st.markdown(
+                        f"""
+                        <div class="grade-hero-box">
+                            <div>
+                                <div style="font-size:14px; color:#92400E; font-weight:700;">
+                                    {period_labels[period_key]} · {'평균' if view_mode == 'avg' else '최악(위기)'} 기준 종합 점수
+                                </div>
+                                <div class="grade-hero-score">{total_score if total_score is not None else 'N/A'} / 100</div>
+                            </div>
+                            <div class="grade-hero-badge">{grade}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                    for metric_key in METRIC_ORDER:
+                        title, desc = METRIC_DISPLAY[metric_key]
+                        entry = metric_scores.get(metric_key, {})
+                        value = entry.get("value")
+                        score = entry.get("score")
+                        value_display = f"{value}" if value is not None else "N/A"
+                        score_display = f"{score}/10" if score is not None else "N/A"
+
+                        st.markdown(
+                            f"""
+                            <div class="sketch-item-box">
+                                <div class="sketch-item-title">{title}</div>
+                                <div class="sketch-item-desc">{desc}<br><b>실측값: {value_display}</b></div>
+                                <div class="sketch-item-score">Score {score_display}</div>
+                            </div>
+                            """,
+                            unsafe_allow_html=True,
+                        )
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
