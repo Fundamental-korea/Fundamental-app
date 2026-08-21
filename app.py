@@ -36,7 +36,7 @@ st.markdown(
         color: #1A1A1A !important;
     }
 
-    /* 상단 헤더 */
+    /* 상단 로고 박스 */
     .logo-box {
         border: 2px solid #F4A261;
         border-radius: 14px;
@@ -53,6 +53,7 @@ st.markdown(
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
     }
 
+    /* 상단 명언 박스 */
     .quote-box {
         background-color: #FAFAFA;
         border: 1.5px solid #E5E5E5;
@@ -92,50 +93,67 @@ st.markdown(
     }
 
     /* ========================================================= */
-    /* Streamlit 기본 버튼 & 로그인 버튼 스타일 강제 교체 */
+    /* Streamlit 일반 버튼(로그인 버튼 등) 검은 박스 제거 및 스타일 적용 */
     /* ========================================================= */
-    div.stButton > button {
+    div[data-testid="stButton"] > button, div.stButton > button {
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
-        border: 1.5px solid #E5E5E5 !important;
+        border: 1.5px solid #D1D5DB !important;
         border-radius: 10px !important;
         font-size: 16px !important;
-        font-weight: 700 !important;
+        font-weight: 800 !important;
         box-shadow: 0 2px 5px rgba(0,0,0,0.04) !important;
         transition: all 0.2s ease !important;
     }
 
-    div.stButton > button:hover {
+    div[data-testid="stButton"] > button:hover, div.stButton > button:hover {
         border-color: #F4A261 !important;
         color: #D97706 !important;
         background-color: #FFFDF9 !important;
     }
 
     /* ========================================================= */
-    /* Streamlit 네이티브 st.tabs 디자인 커스텀 (확실한 볼드/크기 적용) */
+    /* Streamlit 네이티브 st.tabs 디자인 강제 덮어쓰기 (검은 박스 완벽 제거) */
     /* ========================================================= */
-    .stTabs [data-baseweb="tab-list"] {
-        gap: 24px !important;
-        border-bottom: 2px solid #E5E5E5 !important;
-        padding-bottom: 4px !important;
+    div[data-testid="stTabs"] [data-baseweb="tab-list"] {
+        gap: 20px !important;
+        border-bottom: 2px solid #E5E7EB !important;
+        padding-bottom: 2px !important;
+        background-color: transparent !important;
     }
 
-    .stTabs [data-baseweb="tab"] {
-        height: 55px !important;
-        white-space: pre !important;
-        font-size: 22px !important;
-        font-weight: 900 !important;
-        color: #666666 !important;
+    div[data-testid="stTabs"] [data-baseweb="tab"] {
+        height: 50px !important;
         background-color: transparent !important;
         border: none !important;
-        padding: 0px 10px !important;
+        border-radius: 0px !important;
+        padding: 0px 8px !important;
+        margin: 0px !important;
+        box-shadow: none !important;
     }
 
-    .stTabs [aria-selected="true"] {
-        color: #D97706 !important;
-        font-size: 23px !important;
-        font-weight: 900 !important;
+    /* 탭 내부 글자 크기 및 굵기 설정 */
+    div[data-testid="stTabs"] [data-baseweb="tab"] p,
+    div[data-testid="stTabs"] [data-baseweb="tab"] span,
+    div[data-testid="stTabs"] [data-baseweb="tab"] div {
+        font-size: 19px !important;
+        font-weight: 900 !important; /* 초강력 Bold */
+        color: #4B5563 !important;
+        letter-spacing: -0.3px !important;
+    }
+
+    /* 선택된 활성 탭 스타일 */
+    div[data-testid="stTabs"] [aria-selected="true"] {
+        background-color: transparent !important;
         border-bottom: 4px solid #F4A261 !important;
+    }
+
+    div[data-testid="stTabs"] [aria-selected="true"] p,
+    div[data-testid="stTabs"] [aria-selected="true"] span,
+    div[data-testid="stTabs"] [aria-selected="true"] div {
+        color: #D97706 !important;
+        font-size: 20px !important;
+        font-weight: 900 !important;
     }
 
     /* 하단 트렌드 카드 */
@@ -764,7 +782,7 @@ if not selected_code:
         )
 
     with main_content:
-        # Streamlit 내장 st.tabs 사용하여 렌더링 (CSS로 스타일링 제어)
+        # Streamlit st.tabs 사용
         tab1, tab2, tab3, tab4 = st.tabs(
             [
                 "US Market Overview",
