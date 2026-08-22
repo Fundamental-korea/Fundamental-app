@@ -1,5 +1,6 @@
 import os
 from datetime import datetime
+import math
 
 import FinanceDataReader as fdr
 from opendartreader import OpenDartReader
@@ -51,6 +52,19 @@ def get_latest_annual_year():
     """사업보고서(연간)는 통상 익년 3월 말 공시되므로, 4월 이전엔 전전년도까지만 확정치로 간주"""
     now = datetime.now()
     return now.year - 2 if now.month < 4 else now.year - 1
+
+
+def _sanitize_json(obj):
+    """NaN/Infinity 같은 JSON 비호환 float 값을 None으로 치환 (dict/list 재귀 순회)"""
+    if isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    if isinstance(obj, dict):
+        return {k: _sanitize_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [_sanitize_json(v) for v in obj]
+    return obj
 
 
 def _parse_year_financials(df):
@@ -264,6 +278,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "period_scores": period_scores,  # Supabase jsonb 컬럼 저장 추천
         }
 
+        payload = _sanitize_json(payload)
         supabase.table("Fundamental").upsert(payload, on_conflict="stock_code").execute()
 
         print(f"✅ [{stock_name}] 완료! (주가: {current_price:,}원, 기준연도: {base_year})")
