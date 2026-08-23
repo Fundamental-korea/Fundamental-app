@@ -1,6 +1,7 @@
 import os
 from datetime import datetime
 import math
+import time
 
 import FinanceDataReader as fdr
 from opendartreader import OpenDartReader
@@ -52,6 +53,27 @@ def get_latest_annual_year():
     """사업보고서(연간)는 통상 익년 3월 말 공시되므로, 4월 이전엔 전전년도까지만 확정치로 간주"""
     now = datetime.now()
     return now.year - 2 if now.month < 4 else now.year - 1
+
+
+def get_latest_available_report():
+    """
+    분기/반기 보고서까지 포함해 '지금 시점 기준 가장 최근에 확정 공시됐을' 보고서의 (연도, reprt_code) 추적.
+    DART 실제 제출기한 기준(사업보고서 3/31, 분기·반기 보고서는 결산일 후 45일)으로 일(day) 단위까지 반영.
+    1년(단기) 기간의 최신성을 위해 사용 - 연간 사업보고서만 쓰는 3/5/10년과는 별도 로직.
+    """
+    now = datetime.now()
+    md = (now.month, now.day)
+    year = now.year
+    if md < (4, 1):
+        return year - 1, "11014"   # 전년도 3분기보고서 (전년도 사업보고서는 아직 미공시)
+    elif md < (5, 15):
+        return year - 1, "11011"   # 전년도 사업보고서 (제출기한 3/31)
+    elif md < (8, 15):
+        return year, "11013"       # 올해 1분기보고서 (제출기한 5/15경)
+    elif md < (11, 15):
+        return year, "11012"       # 올해 반기보고서 (제출기한 8/14경)
+    else:
+        return year, "11014"       # 올해 3분기보고서 (제출기한 11/14경)
 
 
 def _sanitize_json(obj):
@@ -112,6 +134,106 @@ def _parse_year_financials(df):
     }
 
     return {**ratios, **raw}
+
+
+def _parse_report_financials(df):
+    """
+    단일 보고서 df에서 주요 계정, 비율 지표, 그리고 당기(thstrm) vs 전년동기(frmtrm) 성장률까지 파싱.
+    분기/반기 누적보고서도 frmtrm_amount가 '작년 동기간 누적'이라 그대로 동기간 성장률로 쓸 수 있음.
+    """
+
+    def get_value(keywords, field="thstrm_amount"):
+        for kw in keywords:
+            row = df[df["account_nm"].str.contains(kw, na=False)]
+            if not row.empty:
+                val_str = str(row.iloc[0][field]).replace(",", "")
+                if val_str and val_str != "-":
+                    return float(val_str)
+        return 0.0
+
+    revenue = get_value(["매출액", "수익(매출액)", "영업수익"])
+    op_profit = get_value(["영업이익", "영업이익(손실)"])
+    net_income = get_value(["당기순이익", "당기순이익(손실)"])
+    current_assets = get_value(["유동자산"])
+    current_liab = get_value(["유동부채"])
+    total_liab = get_value(["부채총계"])
+    total_equity = get_value(["자본총계"])
+    capital_stock = get_value(["자본금"])
+    sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"])
+    operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"])
+    interest_exp = get_value(["이자비용", "금융원가"])
+
+    prev_revenue = get_value(["매출액", "수익(매출액)", "영업수익"], field="frmtrm_amount")
+    prev_net_income = get_value(["당기순이익", "당기순이익(손실)"], field="frmtrm_amount")
+
+    ratios = {
+        "opm": round(op_profit / revenue * 100, 2) if revenue > 0 else None,
+        "roe": round(net_income / total_equity * 100, 2) if total_equity > 0 else None,
+        "debt_rate": round(total_liab / total_equity * 100, 2) if total_equity > 0 else None,
+        "current_ratio": round(current_assets / current_liab * 100, 2) if current_liab > 0 else None,
+        "interest_coverage": round(op_profit / interest_exp, 2) if interest_exp > 0 else 25.0,
+        "ocf_ratio": round(operating_cf / net_income, 2) if net_income > 0 else None,
+        "retained_earnings": round((total_equity - capital_stock) / capital_stock * 100, 2) if capital_stock > 0 else None,
+        "sga_ratio": round(sga_costs / revenue * 100, 2) if revenue > 0 else None,
+    }
+
+    revenue_growth = (
+        round((revenue - prev_revenue) / abs(prev_revenue) * 100, 2)
+        if prev_revenue not in (0, None) else None
+    )
+    # EPS 성장률은 발행주식수가 안정적이라는 가정 하에 순이익 증가율로 근사
+    eps_growth = (
+        round((net_income - prev_net_income) / abs(prev_net_income) * 100, 2)
+        if prev_net_income not in (0, None) else None
+    )
+
+    raw = {
+        "revenue": revenue,
+        "operating_income": op_profit,
+        "net_income": net_income,
+        "total_liabilities": total_liab,
+        "total_equity": total_equity,
+    }
+
+    return {**ratios, "revenue_growth": revenue_growth, "eps_growth": eps_growth, **raw}
+
+
+def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True):
+    """
+    1년(단기) 기간 전용: 연간 사업보고서가 아니라 '지금 시점 가장 최신' 분기/반기 보고서 기준으로
+    지표와 전년동기 대비 성장률을 계산 (최신성 우선).
+    """
+    year, reprt_code = get_latest_available_report()
+    try:
+        fin_data = dart.finstate(stock_code, year, reprt_code=reprt_code)
+    except Exception as e:
+        print(f"  ⚠️ 최신 보고서({year}년 {reprt_code}) 조회 실패: {e}")
+        return None
+
+    if fin_data is None or fin_data.empty:
+        return None
+
+    cfs = fin_data[fin_data["fs_div"] == "CFS"]
+    ofs = fin_data[fin_data["fs_div"] == "OFS"]
+    if use_ofs_for_manufacturing and not ofs.empty:
+        df = ofs
+    else:
+        df = cfs if not cfs.empty else ofs
+    if df.empty:
+        return None
+
+    result = _parse_report_financials(df)
+    result["_report_year"] = year
+    result["_report_code"] = reprt_code
+    return result
+
+
+REPORT_CODE_LABEL = {
+    "11011": "사업보고서(연간)",
+    "11012": "반기보고서",
+    "11013": "1분기보고서",
+    "11014": "3분기보고서",
+}
 
 
 def fetch_year_data(stock_code, year, use_ofs_for_manufacturing=True):
@@ -199,6 +321,27 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
             "worst_metrics": worst_metrics,
         }
 
+    # 1년(단기) 기간은 연간 사업보고서 대신 '지금 시점 가장 최신' 분기/반기 보고서로 대체 (최신성 우선)
+    if 1 in periods:
+        latest_report = fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=use_ofs_for_manufacturing)
+        if latest_report:
+            report_year = latest_report["_report_year"]
+            report_code = latest_report["_report_code"]
+            report_label = REPORT_CODE_LABEL.get(report_code, report_code)
+
+            metrics_1y = {"revenue_growth": latest_report["revenue_growth"], "eps_growth": latest_report["eps_growth"]}
+            for metric in RATIO_METRICS:
+                metrics_1y[metric] = latest_report.get(metric)
+
+            period_results[1] = {
+                "years_used": [f"{report_year} {report_label}"],
+                "avg_metrics": metrics_1y,
+                "worst_metrics": metrics_1y,  # 데이터가 보고서 1개뿐이므로 평균=최악
+            }
+            print(f"  🕐 1년 기간: {report_year}년 {report_label} 기준으로 최신화")
+        else:
+            print("  ⚠️ 1년 기간: 최신 분기/반기 보고서를 가져오지 못해 연간 사업보고서 기준으로 대체합니다.")
+
     return {"base_year": base_year, "yearly_data": yearly_data, "period_results": period_results}
 
 
@@ -285,6 +428,60 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
 
     except Exception as e:
         print(f"❌ [{stock_name}] 업데이트 에러: {e}")
+
+
+def get_already_synced_codes():
+    """Supabase Fundamental 테이블에 이미 저장된 stock_code 목록 조회 (재시작 시 중복 방지용)"""
+    try:
+        res = supabase.table("Fundamental").select("stock_code").execute()
+        return {row["stock_code"] for row in res.data}
+    except Exception as e:
+        print(f"⚠️ 기존 저장 목록 조회 실패, 처음부터 진행합니다: {e}")
+        return set()
+
+
+def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manufacturing=True):
+    """
+    KRX 상장 전체 종목을 순회하며 sync_kor_stock_fundamental 실행.
+    - limit: 테스트용 개수 제한 (None이면 전체)
+    - sleep_sec: DART 서버 부담을 줄이기 위한 종목 간 대기시간(초)
+    - resume: True면 Supabase에 이미 저장된 종목은 자동으로 건너뜀 (중간에 끊겨도 이어서 실행 가능)
+    실패한 종목은 건너뛰고 계속 진행하며, 마지막에 성공/실패 목록을 출력.
+    """
+    df_krx = fdr.StockListing("KRX")
+    sector_map = get_sector_map()
+
+    already_synced = get_already_synced_codes() if resume else set()
+    if already_synced:
+        print(f"⏭️  이미 처리된 {len(already_synced)}개 종목은 건너뜁니다.")
+
+    targets = df_krx[~df_krx["Code"].isin(already_synced)]
+    if limit:
+        targets = targets.head(limit)
+
+    total = len(targets)
+    est_calls = total * 12  # 종목당 대략 연간 11회 + 최신 분기/반기 1회
+    print(f"📋 대상 종목 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건)")
+
+    succeeded, failed = [], []
+    for i, row in enumerate(targets.itertuples(), 1):
+        code, name = row.Code, row.Name
+        print(f"\n[{i}/{total}] ", end="")
+        try:
+            sync_kor_stock_fundamental(
+                code, name, df_krx=df_krx, sector_map=sector_map,
+                use_ofs_for_manufacturing=use_ofs_for_manufacturing,
+            )
+            succeeded.append(code)
+        except Exception as e:
+            print(f"❌ [{name}({code})] 처리 중 예외 발생, 건너뜁니다: {e}")
+            failed.append(code)
+        time.sleep(sleep_sec)
+
+    print(f"\n\n=== 배치 완료: 성공 {len(succeeded)} / 실패 {len(failed)} / 전체 {total} ===")
+    if failed:
+        print("실패한 종목코드:", failed)
+    return succeeded, failed
 
 
 if __name__ == "__main__":
