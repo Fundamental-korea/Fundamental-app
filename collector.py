@@ -367,7 +367,10 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         financial_sector = is_financial_sector(sector)
         print(f"🏷️ [{stock_name}] 업종: {sector or '미상'} (금융업 여부: {financial_sector})")
 
-        multi = fetch_multi_year_metrics(stock_code, use_ofs_for_manufacturing=use_ofs_for_manufacturing)
+        # 금융지주/보험/은행 등은 별도재무제표(OFS)가 사실상 빈 껍데기라, 연결재무제표(CFS)를 써야 실질적인 사업이 보임
+        effective_use_ofs = use_ofs_for_manufacturing and not financial_sector
+
+        multi = fetch_multi_year_metrics(stock_code, use_ofs_for_manufacturing=effective_use_ofs)
         if multi is None:
             # 데이터를 못 찾은 종목도 최소 기록을 남겨야 resume 시 매번 재조회하지 않음
             # (우선주처럼 DART에 별도 재무제표가 없는 종목 등)
