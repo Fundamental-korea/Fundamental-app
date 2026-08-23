@@ -20,7 +20,8 @@ try:
 except Exception as e:
     print(f"❌ 초기 설정 에러: {e}")
 
-# fdr.StockListing('KRX')에는 Sector가 없고, 'KRX-DESC'에만 있음 (Code 기준으로 별도 조회 후 병합 필요)
+# fdr.StockListing('KRX')에는 업종 정보가 없음. 'KRX-DESC'의 'Sector' 컬럼은 코스닥 시장구분(벤처기업부 등)일 뿐이라
+# 실제 업종 분류가 아니므로 'Industry' 컬럼(KSIC 기준, 예: "기타 금융업", "통신 및 방송 장비 제조업")을 사용
 FINANCIAL_SECTOR_KEYWORDS = ["금융", "보험", "은행", "캐피탈", "카드", "증권", "저축", "리스"]
 
 # 평균/최악 집계 대상 비율 지표 (성장률 2개는 CAGR로 별도 계산하므로 제외)
@@ -33,12 +34,12 @@ DEFAULT_PERIODS = (1, 3, 5, 10)  # 단기/중기/중장기/장기
 
 
 def get_sector_map():
-    """{종목코드: Sector 문자열} 딕셔너리 반환. KRX-DESC 조회 실패 시 빈 dict."""
+    """{종목코드: 업종(Industry) 문자열} 딕셔너리 반환. KRX-DESC 조회 실패 시 빈 dict."""
     try:
         df_desc = fdr.StockListing("KRX-DESC")
-        return dict(zip(df_desc["Code"], df_desc["Sector"]))
+        return dict(zip(df_desc["Code"], df_desc["Industry"]))
     except Exception as e:
-        print(f"⚠️ KRX-DESC(Sector) 조회 실패, 업종 판별 없이 진행: {e}")
+        print(f"⚠️ KRX-DESC(Industry) 조회 실패, 업종 판별 없이 진행: {e}")
         return {}
 
 
@@ -94,7 +95,7 @@ def _parse_year_financials(df):
 
     def get_value(keywords):
         for kw in keywords:
-            row = df[df["account_nm"].str.contains(kw, na=False)]
+            row = df[df["account_nm"].str.contains(kw, na=False, regex=False)]
             if not row.empty:
                 val_str = str(row.iloc[0]["thstrm_amount"]).replace(",", "")
                 if val_str and val_str != "-":
@@ -144,7 +145,7 @@ def _parse_report_financials(df):
 
     def get_value(keywords, field="thstrm_amount"):
         for kw in keywords:
-            row = df[df["account_nm"].str.contains(kw, na=False)]
+            row = df[df["account_nm"].str.contains(kw, na=False, regex=False)]
             if not row.empty:
                 val_str = str(row.iloc[0][field]).replace(",", "")
                 if val_str and val_str != "-":
@@ -368,6 +369,20 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
 
         multi = fetch_multi_year_metrics(stock_code, use_ofs_for_manufacturing=use_ofs_for_manufacturing)
         if multi is None:
+            # 데이터를 못 찾은 종목도 최소 기록을 남겨야 resume 시 매번 재조회하지 않음
+            # (우선주처럼 DART에 별도 재무제표가 없는 종목 등)
+            fail_payload = _sanitize_json({
+                "stock_code": stock_code,
+                "stock_name": stock_name,
+                "market": "KOR",
+                "sector": sector if isinstance(sector, str) else None,
+                "period_scores": None,
+                "data_unavailable": True,
+            })
+            try:
+                supabase.table("Fundamental").upsert(fail_payload, on_conflict="stock_code").execute()
+            except Exception as e:
+                print(f"  ⚠️ 실패 기록 저장도 안 됨: {e}")
             return
 
         base_year = multi["base_year"]
