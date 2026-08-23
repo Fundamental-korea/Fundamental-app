@@ -956,7 +956,9 @@ else:
                 with tab:
                     pdata = period_scores[period_key]
                     years_used = pdata.get("years_used", [])
-                    if years_used:
+                    if len(years_used) == 1:
+                        st.caption(f"기준 데이터: {years_used[0]}")
+                    elif years_used:
                         st.caption(f"사용된 회계연도: {years_used[0]} ~ {years_used[-1]}")
 
                     view_mode = st.radio(
