@@ -1,9 +1,10 @@
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 import math
 import time
 
 import FinanceDataReader as fdr
+import requests
 from opendartreader import OpenDartReader
 from supabase import create_client
 
@@ -21,8 +22,23 @@ except Exception as e:
     print(f"❌ 초기 설정 에러: {e}")
 
 # fdr.StockListing('KRX')에는 업종 정보가 없음. 'KRX-DESC'의 'Sector' 컬럼은 코스닥 시장구분(벤처기업부 등)일 뿐이라
-# 실제 업종 분류가 아니므로 'Industry' 컬럼(KSIC 기준, 예: "기타 금융업", "통신 및 방송 장비 제조업")을 사용
+# 실제 업종 분류가 아니므로 'Industry' 컬럼(KSIC 기준, 예: "기타 금융업", "통신 및 방송 장비 제조업")을 사용.
+# 이건 상세 업종 표시용으로 유지하고, 동종업계 비교/그룹핑에는 아래 WICS 대분류를 사용.
 FINANCIAL_SECTOR_KEYWORDS = ["금융", "보험", "은행", "캐피탈", "카드", "증권", "저축", "리스"]
+
+# WICS(FnGuide Wise Industry Classification Standard) 10개 대분류 - 네이버/다음 증권이 쓰는 것과 동일한 기준
+WICS_SECTOR_CODES = {
+    "G10": "에너지",
+    "G15": "소재",
+    "G20": "산업재",
+    "G25": "경기소비재",
+    "G30": "필수소비재",
+    "G35": "건강관리",
+    "G40": "금융",
+    "G45": "IT",
+    "G50": "통신서비스",
+    "G55": "유틸리티",
+}
 
 # 평균/최악 집계 대상 비율 지표 (성장률 2개는 CAGR로 별도 계산하므로 제외)
 RATIO_METRICS = [
@@ -34,7 +50,7 @@ DEFAULT_PERIODS = (1, 3, 5, 10)  # 단기/중기/중장기/장기
 
 
 def get_sector_map():
-    """{종목코드: 업종(Industry) 문자열} 딕셔너리 반환. KRX-DESC 조회 실패 시 빈 dict."""
+    """{종목코드: 업종(Industry) 문자열} 딕셔너리 반환 (상세 업종, 표시용). KRX-DESC 조회 실패 시 빈 dict."""
     try:
         df_desc = fdr.StockListing("KRX-DESC")
         return dict(zip(df_desc["Code"], df_desc["Industry"]))
@@ -43,8 +59,54 @@ def get_sector_map():
         return {}
 
 
-def is_financial_sector(sector_str):
-    """Sector 문자열에 금융 관련 키워드가 포함되면 금융업으로 간주 (휴리스틱 - 오분류 가능성 있음)"""
+def get_wics_sector_map(target_date=None, max_lookback_days=10):
+    """
+    WiseIndex(FnGuide)의 비공식 API로 WICS 10개 대분류 기준 {종목코드: 섹터명} 매핑을 가져옴.
+    네이버/다음 증권이 쓰는 것과 동일한 업종 분류 - 동종업계 비교/그룹핑용.
+    target_date가 None이면 오늘부터 거슬러 올라가며 데이터가 있는 가장 최근 영업일을 찾음(주말/공휴일 대응).
+    """
+    if target_date is None:
+        target_date = datetime.now()
+
+    for i in range(max_lookback_days):
+        dt_str = (target_date - timedelta(days=i)).strftime("%Y%m%d")
+        sector_map = {}
+        any_data = False
+
+        for sec_cd, sec_name in WICS_SECTOR_CODES.items():
+            url = "https://www.wiseindex.com/Index/GetIndexComponets"
+            try:
+                res = requests.get(url, params={"ceil_yn": 0, "dt": dt_str, "sec_cd": sec_cd}, timeout=15)
+                data = res.json()
+                items = data.get("list", [])
+            except Exception as e:
+                print(f"  ⚠️ WICS {sec_name}({sec_cd}) 조회 실패({dt_str}): {e}")
+                continue
+
+            if items:
+                any_data = True
+            for item in items:
+                # 필드명이 바뀌었을 가능성 대비 몇 가지 후보를 시도
+                code = item.get("CMP_CD") or item.get("cmp_cd") or item.get("code")
+                if code:
+                    sector_map[code] = sec_name
+
+        if any_data and sector_map:
+            print(f"✅ WICS 업종 매핑 확보 (기준일: {dt_str}, {len(sector_map)}개 종목)")
+            return sector_map
+
+    print("⚠️ WICS 업종 매핑을 가져오지 못했습니다 (최근 영업일 탐색 실패). 빈 매핑으로 진행합니다.")
+    return {}
+
+
+def is_financial_sector(sector_str, wics_sector=None):
+    """
+    금융업 여부 판별. WICS 분류가 있으면 그걸 우선 사용(정확), 없으면 KSIC Industry 키워드로 추정(휴리스틱).
+    """
+    if wics_sector == "금융":
+        return True
+    if wics_sector is not None and wics_sector != "금융":
+        return False
     if not sector_str or not isinstance(sector_str, str):
         return False
     return any(kw in sector_str for kw in FINANCIAL_SECTOR_KEYWORDS)
@@ -346,7 +408,7 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
     return {"base_year": base_year, "yearly_data": yearly_data, "period_results": period_results}
 
 
-def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=None, use_ofs_for_manufacturing=True):
+def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=None, wics_sector_map=None, use_ofs_for_manufacturing=True):
     try:
         print(f"🔄 [{stock_name} ({stock_code})] 데이터 수집 및 분석 시작...")
 
@@ -354,6 +416,8 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             df_krx = fdr.StockListing("KRX")
         if sector_map is None:
             sector_map = get_sector_map()
+        if wics_sector_map is None:
+            wics_sector_map = get_wics_sector_map()
 
         target_stock = df_krx[df_krx["Code"] == stock_code]
         if target_stock.empty:
@@ -364,8 +428,9 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         issued_shares = int(target_stock.iloc[0]["Stocks"])
 
         sector = sector_map.get(stock_code)
-        financial_sector = is_financial_sector(sector)
-        print(f"🏷️ [{stock_name}] 업종: {sector or '미상'} (금융업 여부: {financial_sector})")
+        wics_sector = wics_sector_map.get(stock_code)
+        financial_sector = is_financial_sector(sector, wics_sector=wics_sector)
+        print(f"🏷️ [{stock_name}] 업종(상세): {sector or '미상'} / WICS: {wics_sector or '미상'} (금융업 여부: {financial_sector})")
 
         # 금융지주/보험/은행 등은 별도재무제표(OFS)가 사실상 빈 껍데기라, 연결재무제표(CFS)를 써야 실질적인 사업이 보임
         effective_use_ofs = use_ofs_for_manufacturing and not financial_sector
@@ -379,6 +444,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
                 "stock_name": stock_name,
                 "market": "KOR",
                 "sector": sector if isinstance(sector, str) else None,
+                "wics_sector": wics_sector,
                 "period_scores": None,
                 "data_unavailable": True,
             })
@@ -427,6 +493,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "stock_name": stock_name,
             "market": "KOR",
             "sector": sector,
+            "wics_sector": wics_sector,
             "base_year": base_year,
             "stock_price": current_price,
             "per": per,
@@ -468,6 +535,7 @@ def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manu
     """
     df_krx = fdr.StockListing("KRX")
     sector_map = get_sector_map()
+    wics_sector_map = get_wics_sector_map()
 
     already_synced = get_already_synced_codes() if resume else set()
     if already_synced:
@@ -487,7 +555,7 @@ def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manu
         print(f"\n[{i}/{total}] ", end="")
         try:
             sync_kor_stock_fundamental(
-                code, name, df_krx=df_krx, sector_map=sector_map,
+                code, name, df_krx=df_krx, sector_map=sector_map, wics_sector_map=wics_sector_map,
                 use_ofs_for_manufacturing=use_ofs_for_manufacturing,
             )
             succeeded.append(code)
