@@ -42,11 +42,19 @@ WICS_SECTOR_CODES = {
 
 # 평균/최악 집계 대상 비율 지표 (성장률 2개는 CAGR로 별도 계산하므로 제외)
 RATIO_METRICS = [
-    "opm", "roe", "debt_rate", "current_ratio",
-    "interest_coverage", "ocf_ratio", "retained_earnings", "sga_ratio",
+    "opm", "roic", "debt_rate", "quick_ratio",
+    "interest_coverage", "ocf_ratio", "sga_ratio",
 ]
 
 DEFAULT_PERIODS = (1, 3, 5, 10)  # 단기/중기/중장기/장기
+
+CORP_TAX_RATE = 0.22  # ROIC의 NOPAT 계산용 근사 법인세율
+
+# '하락장 실제 방어력' 지표 계산에 쓰는 과거 주요 하락장 구간 (코스피 대비 종목의 실제 낙폭 비교)
+DOWNTURN_WINDOWS = [
+    ("코로나 폭락", "2020-01-20", "2020-03-19"),
+    ("2022년 긴축 하락장", "2021-12-01", "2022-09-30"),
+]
 
 
 def get_sector_map():
@@ -97,6 +105,56 @@ def get_wics_sector_map(target_date=None, max_lookback_days=10):
 
     print("⚠️ WICS 업종 매핑을 가져오지 못했습니다 (최근 영업일 탐색 실패). 빈 매핑으로 진행합니다.")
     return {}
+
+
+def _max_drawdown(price_series):
+    """가격 시계열에서 최대낙폭(MDD, %)을 계산. 결과는 0 또는 음수."""
+    if price_series is None or len(price_series) < 2:
+        return None
+    roll_max = price_series.cummax()
+    drawdown = (price_series - roll_max) / roll_max * 100
+    return float(drawdown.min())
+
+
+def get_kospi_mdd_cache():
+    """코스피 지수의 하락장 구간별 MDD를 미리 계산해 캐싱 (전 종목 공통이라 배치당 한 번만 계산)"""
+    cache = {}
+    for label, start, end in DOWNTURN_WINDOWS:
+        try:
+            df = fdr.DataReader("KS11", start, end)
+            cache[label] = _max_drawdown(df["Close"])
+        except Exception as e:
+            print(f"⚠️ 코스피 [{label}] 구간 MDD 계산 실패: {e}")
+            cache[label] = None
+    print(f"📉 코스피 하락장 구간 MDD 기준값: {cache}")
+    return cache
+
+
+def calculate_downturn_defense(stock_code, kospi_mdd_cache):
+    """
+    과거 주요 하락장 구간에서 이 종목이 코스피 대비 얼마나 덜/더 빠졌는지 계산.
+    반환값(%p) = 평균(종목 MDD - 코스피 MDD). 양수=코스피보다 덜 빠짐(방어적), 음수=더 빠짐(취약).
+    해당 구간에 상장 전이었던 등 데이터 없는 구간은 자동 제외. 전부 없으면 None.
+    """
+    relative_defenses = []
+    for label, start, end in DOWNTURN_WINDOWS:
+        kospi_mdd = kospi_mdd_cache.get(label)
+        if kospi_mdd is None:
+            continue
+        try:
+            df = fdr.DataReader(stock_code, start, end)
+            if df is None or df.empty or len(df) < 5:
+                continue
+            stock_mdd = _max_drawdown(df["Close"])
+            if stock_mdd is None:
+                continue
+            relative_defenses.append(stock_mdd - kospi_mdd)
+        except Exception:
+            continue
+
+    if not relative_defenses:
+        return None
+    return round(sum(relative_defenses) / len(relative_defenses), 2)
 
 
 def is_financial_sector(sector_str, wics_sector=None):
@@ -167,24 +225,28 @@ def _parse_year_financials(df):
     revenue = get_value(["매출액", "수익(매출액)", "영업수익"])
     op_profit = get_value(["영업이익", "영업이익(손실)"])
     net_income = get_value(["당기순이익", "당기순이익(손실)"])
+    total_assets = get_value(["자산총계"])
     current_assets = get_value(["유동자산"])
     current_liab = get_value(["유동부채"])
+    inventory = get_value(["재고자산"])
     total_liab = get_value(["부채총계"])
     total_equity = get_value(["자본총계"])
-    capital_stock = get_value(["자본금"])
     sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"])
     operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"])
     interest_exp = get_value(["이자비용", "금융원가"])
 
+    # 투하자본 근사치: 자산총계 - 유동부채 (이자부채만 정확히 구분하기 어려워 유동부채 전체를 차감하는 간이 추정)
+    invested_capital = total_assets - current_liab
+    nopat = op_profit * (1 - CORP_TAX_RATE)
+
     ratios = {
         "opm": round(op_profit / revenue * 100, 2) if revenue > 0 else None,
-        "roe": round(net_income / total_equity * 100, 2) if total_equity > 0 else None,
+        "roic": round(nopat / invested_capital * 100, 2) if invested_capital > 0 else None,
         "debt_rate": round(total_liab / total_equity * 100, 2) if total_equity > 0 else None,
-        "current_ratio": round(current_assets / current_liab * 100, 2) if current_liab > 0 else None,
+        "quick_ratio": round((current_assets - inventory) / current_liab * 100, 2) if current_liab > 0 else None,
         # 이자비용이 0이거나 거의 없으면 최고점 수준으로 처리
         "interest_coverage": round(op_profit / interest_exp, 2) if interest_exp > 0 else 25.0,
         "ocf_ratio": round(operating_cf / net_income, 2) if net_income > 0 else None,
-        "retained_earnings": round((total_equity - capital_stock) / capital_stock * 100, 2) if capital_stock > 0 else None,
         "sga_ratio": round(sga_costs / revenue * 100, 2) if revenue > 0 else None,
     }
 
@@ -217,11 +279,12 @@ def _parse_report_financials(df):
     revenue = get_value(["매출액", "수익(매출액)", "영업수익"])
     op_profit = get_value(["영업이익", "영업이익(손실)"])
     net_income = get_value(["당기순이익", "당기순이익(손실)"])
+    total_assets = get_value(["자산총계"])
     current_assets = get_value(["유동자산"])
     current_liab = get_value(["유동부채"])
+    inventory = get_value(["재고자산"])
     total_liab = get_value(["부채총계"])
     total_equity = get_value(["자본총계"])
-    capital_stock = get_value(["자본금"])
     sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"])
     operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"])
     interest_exp = get_value(["이자비용", "금융원가"])
@@ -229,14 +292,16 @@ def _parse_report_financials(df):
     prev_revenue = get_value(["매출액", "수익(매출액)", "영업수익"], field="frmtrm_amount")
     prev_net_income = get_value(["당기순이익", "당기순이익(손실)"], field="frmtrm_amount")
 
+    invested_capital = total_assets - current_liab
+    nopat = op_profit * (1 - CORP_TAX_RATE)
+
     ratios = {
         "opm": round(op_profit / revenue * 100, 2) if revenue > 0 else None,
-        "roe": round(net_income / total_equity * 100, 2) if total_equity > 0 else None,
+        "roic": round(nopat / invested_capital * 100, 2) if invested_capital > 0 else None,
         "debt_rate": round(total_liab / total_equity * 100, 2) if total_equity > 0 else None,
-        "current_ratio": round(current_assets / current_liab * 100, 2) if current_liab > 0 else None,
+        "quick_ratio": round((current_assets - inventory) / current_liab * 100, 2) if current_liab > 0 else None,
         "interest_coverage": round(op_profit / interest_exp, 2) if interest_exp > 0 else 25.0,
         "ocf_ratio": round(operating_cf / net_income, 2) if net_income > 0 else None,
-        "retained_earnings": round((total_equity - capital_stock) / capital_stock * 100, 2) if capital_stock > 0 else None,
         "sga_ratio": round(sga_costs / revenue * 100, 2) if revenue > 0 else None,
     }
 
@@ -322,11 +387,12 @@ def fetch_year_data(stock_code, year, use_ofs_for_manufacturing=True):
     return _parse_year_financials(df)
 
 
-def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_manufacturing=True):
+def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_manufacturing=True, kospi_mdd_cache=None):
     """
     periods(예: 1/3/5/10년)별로 '평균 기준'과 '최악 기준' 지표 세트를 각각 계산.
-    - 비율 지표(opm, roe, debt_rate 등): 기간 내 연도별 값의 평균 / 최악값
+    - 비율 지표(opm, roic, debt_rate 등): 기간 내 연도별 값의 평균 / 최악값
     - 성장률 지표(revenue_growth, eps_growth): 기간 시작~종료 연도 CAGR (평균/최악 공통)
+    - downturn_defense: 과거 특정 하락장 구간 기준 고정값이라 기간과 무관하게 모든 period에 동일 주입
     각 period는 CAGR 계산을 위해 (period + 1)개 연도 데이터가 필요.
     """
     base_year = get_latest_annual_year()
@@ -343,6 +409,12 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
     if yearly_data.get(base_year) is None:
         print(f"❌ [{stock_code}] 최신 확정연도({base_year}) 데이터가 없어 분석할 수 없습니다.")
         return None
+
+    # 하락장 실제 방어력 - 기간(1/3/5/10년)과 무관한 고정값이므로 한 번만 계산
+    downturn_defense = None
+    if kospi_mdd_cache:
+        downturn_defense = calculate_downturn_defense(stock_code, kospi_mdd_cache)
+        print(f"  📉 하락장 실제 방어력(코스피 대비): {downturn_defense}%p" if downturn_defense is not None else "  📉 하락장 방어력: 데이터 부족으로 계산 불가")
 
     period_results = {}
     for period in periods:
@@ -370,8 +442,8 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
         # 평균/최악 집계는 경계연도(가장 오래된 해)를 제외한 최근 period개 연도만 사용
         recent_years = window_years[1:] if len(window_years) > 1 else window_years
 
-        avg_metrics = {"revenue_growth": revenue_cagr, "eps_growth": eps_cagr}
-        worst_metrics = {"revenue_growth": revenue_cagr, "eps_growth": eps_cagr}
+        avg_metrics = {"revenue_growth": revenue_cagr, "eps_growth": eps_cagr, "downturn_defense": downturn_defense}
+        worst_metrics = {"revenue_growth": revenue_cagr, "eps_growth": eps_cagr, "downturn_defense": downturn_defense}
 
         for metric in RATIO_METRICS:
             series = [yearly_data[y][metric] for y in recent_years if yearly_data[y].get(metric) is not None]
@@ -392,7 +464,11 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
             report_code = latest_report["_report_code"]
             report_label = REPORT_CODE_LABEL.get(report_code, report_code)
 
-            metrics_1y = {"revenue_growth": latest_report["revenue_growth"], "eps_growth": latest_report["eps_growth"]}
+            metrics_1y = {
+                "revenue_growth": latest_report["revenue_growth"],
+                "eps_growth": latest_report["eps_growth"],
+                "downturn_defense": downturn_defense,
+            }
             for metric in RATIO_METRICS:
                 metrics_1y[metric] = latest_report.get(metric)
 
@@ -408,7 +484,7 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
     return {"base_year": base_year, "yearly_data": yearly_data, "period_results": period_results}
 
 
-def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=None, wics_sector_map=None, use_ofs_for_manufacturing=True):
+def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=None, wics_sector_map=None, kospi_mdd_cache=None, use_ofs_for_manufacturing=True):
     try:
         print(f"🔄 [{stock_name} ({stock_code})] 데이터 수집 및 분석 시작...")
 
@@ -418,6 +494,8 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             sector_map = get_sector_map()
         if wics_sector_map is None:
             wics_sector_map = get_wics_sector_map()
+        if kospi_mdd_cache is None:
+            kospi_mdd_cache = get_kospi_mdd_cache()
 
         target_stock = df_krx[df_krx["Code"] == stock_code]
         if target_stock.empty:
@@ -435,7 +513,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         # 금융지주/보험/은행 등은 별도재무제표(OFS)가 사실상 빈 껍데기라, 연결재무제표(CFS)를 써야 실질적인 사업이 보임
         effective_use_ofs = use_ofs_for_manufacturing and not financial_sector
 
-        multi = fetch_multi_year_metrics(stock_code, use_ofs_for_manufacturing=effective_use_ofs)
+        multi = fetch_multi_year_metrics(stock_code, use_ofs_for_manufacturing=effective_use_ofs, kospi_mdd_cache=kospi_mdd_cache)
         if multi is None:
             # 데이터를 못 찾은 종목도 최소 기록을 남겨야 resume 시 매번 재조회하지 않음
             # (우선주처럼 DART에 별도 재무제표가 없는 종목 등)
@@ -536,6 +614,7 @@ def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manu
     df_krx = fdr.StockListing("KRX")
     sector_map = get_sector_map()
     wics_sector_map = get_wics_sector_map()
+    kospi_mdd_cache = get_kospi_mdd_cache()
 
     already_synced = get_already_synced_codes() if resume else set()
     if already_synced:
@@ -556,6 +635,7 @@ def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manu
         try:
             sync_kor_stock_fundamental(
                 code, name, df_krx=df_krx, sector_map=sector_map, wics_sector_map=wics_sector_map,
+                kospi_mdd_cache=kospi_mdd_cache,
                 use_ofs_for_manufacturing=use_ofs_for_manufacturing,
             )
             succeeded.append(code)
