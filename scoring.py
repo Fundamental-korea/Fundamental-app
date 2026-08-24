@@ -1,18 +1,18 @@
 # scoring.py
-# 콜랩 노트북("Fundamental code")의 calculate_metric_score / evaluate_defense_grade /
-# run_fundamental_analysis 로직을 그대로 이식한 버전.
+# v2: ROE→ROIC(레버리지 배제), 유동비율→당좌비율(재고 제외), 유보율 제거 후
+#     실제 주가 기반 '하락장 방어력' 지표를 새로 추가한 10개 지표 채점 로직.
 
 METRIC_KEYS = [
     "revenue_growth",
     "eps_growth",
     "opm",
-    "roe",
+    "roic",
     "debt_rate",
-    "current_ratio",
+    "quick_ratio",
     "interest_coverage",
     "ocf_ratio",
-    "retained_earnings",
     "sga_ratio",
+    "downturn_defense",
 ]
 
 # 다년간 데이터를 집계할 때 "최악의 해"가 어느 쪽인지 판별하기 위한 방향성
@@ -21,13 +21,13 @@ METRIC_DIRECTION = {
     "revenue_growth": "higher",
     "eps_growth": "higher",
     "opm": "higher",
-    "roe": "higher",
+    "roic": "higher",
     "debt_rate": "lower",
-    "current_ratio": "higher",
+    "quick_ratio": "higher",
     "interest_coverage": "higher",
     "ocf_ratio": "higher",
-    "retained_earnings": "higher",
     "sga_ratio": "lower",
+    "downturn_defense": "higher",
 }
 
 
@@ -85,17 +85,18 @@ def calculate_metric_score(metric_name, value, is_financial_sector=False):
         elif value >= 0:  return 1
         else: return 0
 
-    elif metric_name == "roe":
-        if value >= 20: return 10
-        elif value >= 17: return 9
-        elif value >= 14: return 8
-        elif value >= 11: return 7
-        elif value >= 9:  return 6
-        elif value >= 7:  return 5
-        elif value >= 5:  return 4
-        elif value >= 3:  return 3
-        elif value >= 1:  return 2
-        elif value >= 0:  return 1
+    elif metric_name == "roic":
+        # ROE보다 낮게 나오는 게 정상(레버리지 효과 없음)이라 구간을 ROE 대비 낮춰 잡음
+        if value >= 15: return 10
+        elif value >= 12: return 9
+        elif value >= 9:  return 8
+        elif value >= 7:  return 7
+        elif value >= 5:  return 6
+        elif value >= 3:  return 5
+        elif value >= 1:  return 4
+        elif value >= 0:  return 3
+        elif value >= -5: return 2
+        elif value >= -15: return 1
         else: return 0
 
     elif metric_name == "debt_rate":
@@ -112,18 +113,19 @@ def calculate_metric_score(metric_name, value, is_financial_sector=False):
         elif value <= 300: return 1
         else: return 0
 
-    elif metric_name == "current_ratio":
-        if is_financial_sector: return 10  # 금융업은 유동비율 예외
-        if value >= 250: return 10
-        elif value >= 220: return 9
-        elif value >= 190: return 8
-        elif value >= 160: return 7
-        elif value >= 140: return 6
-        elif value >= 120: return 5
-        elif value >= 100: return 4
-        elif value >= 85:  return 3
-        elif value >= 70:  return 2
-        elif value >= 50:  return 1
+    elif metric_name == "quick_ratio":
+        # 정의: (유동자산 - 재고자산) / 유동부채 x 100 - 유동비율보다 낮게 나오는 게 정상
+        if is_financial_sector: return 10  # 금융업은 당좌비율 예외
+        if value >= 180: return 10
+        elif value >= 150: return 9
+        elif value >= 120: return 8
+        elif value >= 100: return 7
+        elif value >= 80:  return 6
+        elif value >= 60:  return 5
+        elif value >= 40:  return 4
+        elif value >= 25:  return 3
+        elif value >= 15:  return 2
+        elif value >= 5:   return 1
         else: return 0
 
     elif metric_name == "interest_coverage":
@@ -154,20 +156,6 @@ def calculate_metric_score(metric_name, value, is_financial_sector=False):
         elif value == 0:   return 1
         else: return 0
 
-    elif metric_name == "retained_earnings":
-        # 정의: (자본총계 - 자본금) / 자본금 x 100
-        if value >= 2000: return 10
-        elif value >= 1500: return 9
-        elif value >= 1200: return 8
-        elif value >= 900:  return 7
-        elif value >= 600:  return 6
-        elif value >= 400:  return 5
-        elif value >= 250:  return 4
-        elif value >= 150:  return 3
-        elif value >= 100:  return 2
-        elif value >= 50:   return 1
-        else: return 0
-
     elif metric_name == "sga_ratio":
         if value <= 8: return 10
         elif value <= 12: return 9
@@ -179,6 +167,21 @@ def calculate_metric_score(metric_name, value, is_financial_sector=False):
         elif value <= 40: return 3
         elif value <= 50: return 2
         elif value <= 65: return 1
+        else: return 0
+
+    elif metric_name == "downturn_defense":
+        # 정의: (종목 MDD - 코스피 MDD), 과거 하락장 구간(코로나/2022년 긴축) 평균, 단위 %p
+        # 양수 = 코스피보다 덜 빠짐(방어적) / 음수 = 코스피보다 더 빠짐(취약)
+        if value >= 20: return 10
+        elif value >= 15: return 9
+        elif value >= 10: return 8
+        elif value >= 5:  return 7
+        elif value >= 0:  return 6
+        elif value >= -5: return 5
+        elif value >= -10: return 4
+        elif value >= -15: return 3
+        elif value >= -25: return 2
+        elif value >= -40: return 1
         else: return 0
 
     return 0
@@ -196,8 +199,7 @@ def evaluate_defense_grade(total_score):
 def calculate_fundamental_score(metrics: dict, is_financial_sector: bool = False) -> dict:
     """
     metrics 딕셔너리(METRIC_KEYS 10개 키)를 받아 지표별 점수, 총점(0~100), 등급을 반환.
-    콜랩의 run_fundamental_analysis와 동일한 방식 - 값이 없는 지표는 0점 처리되므로
-    collector.py에서 10개 지표를 모두 채워서 넘기는 것을 전제로 함.
+    값이 없는 지표는 0점 처리되므로 collector.py에서 10개 지표를 모두 채워서 넘기는 것을 전제로 함.
     """
     scores = {}
     total_score = 0
