@@ -41,7 +41,7 @@ def worst_value(metric_name, values):
     return min(clean)  # 높을수록 좋은 지표 -> 가장 작은 값이 최악
 
 
-def calculate_metric_score(metric_name, value, is_financial_sector=False):
+def calculate_metric_score(metric_name, value, leverage_exempt=False):
     """각 재무 지표 수치(value)를 입력받아 0~10점 사이의 점수를 반환"""
     if value is None:
         return 0  # 데이터 부재 시 기본값
@@ -100,7 +100,7 @@ def calculate_metric_score(metric_name, value, is_financial_sector=False):
         else: return 0
 
     elif metric_name == "debt_rate":
-        if is_financial_sector: return 10  # 금융업은 부채비율 예외
+        if leverage_exempt: return 10  # 금융/유틸리티 등 레버리지 구조가 다른 업종 예외
         if value <= 20: return 10
         elif value <= 40: return 9
         elif value <= 60: return 8
@@ -115,7 +115,7 @@ def calculate_metric_score(metric_name, value, is_financial_sector=False):
 
     elif metric_name == "quick_ratio":
         # 정의: (유동자산 - 재고자산) / 유동부채 x 100 - 유동비율보다 낮게 나오는 게 정상
-        if is_financial_sector: return 10  # 금융업은 당좌비율 예외
+        if leverage_exempt: return 10  # 금융/유틸리티 등 레버리지 구조가 다른 업종 예외
         if value >= 180: return 10
         elif value >= 150: return 9
         elif value >= 120: return 8
@@ -129,7 +129,7 @@ def calculate_metric_score(metric_name, value, is_financial_sector=False):
         else: return 0
 
     elif metric_name == "interest_coverage":
-        if is_financial_sector: return 10  # 금융업 예외
+        if leverage_exempt: return 10  # 금융/유틸리티 등 레버리지 구조가 다른 업종 예외
         if value >= 20: return 10
         elif value >= 15: return 9
         elif value >= 11: return 8
@@ -196,7 +196,7 @@ def evaluate_defense_grade(total_score):
     else: return "D", "위험"
 
 
-def calculate_fundamental_score(metrics: dict, is_financial_sector: bool = False) -> dict:
+def calculate_fundamental_score(metrics: dict, leverage_exempt: bool = False) -> dict:
     """
     metrics 딕셔너리(METRIC_KEYS 10개 키)를 받아 지표별 점수, 총점(0~100), 등급을 반환.
     값이 없는 지표는 0점 처리되므로 collector.py에서 10개 지표를 모두 채워서 넘기는 것을 전제로 함.
@@ -206,7 +206,7 @@ def calculate_fundamental_score(metrics: dict, is_financial_sector: bool = False
 
     for key in METRIC_KEYS:
         value = metrics.get(key)
-        score = calculate_metric_score(key, value, is_financial_sector)
+        score = calculate_metric_score(key, value, leverage_exempt)
         scores[key] = {"value": value, "score": score}
         total_score += score
 
