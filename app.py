@@ -547,7 +547,7 @@ def render_unified_search_box(stock_db):
                                 <a href="#" class="more-link">More</a>
                             </div>
                             <div style="margin-top: 6px;" class="news-item">S&P 500 및 코스피 하락장 대비 방어주 펀더멘탈 분석</div>
-                            <div style="margin-top: 8px;" class="news-item">고금리 장기화에 따른 ROE/PBR 체력 점검</div>
+                            <div style="margin-top: 8px;" class="news-item">고금리 장기화에 따른 ROIC/부채비율 체력 점검</div>
                         </div>
                         <div>
                             <div class="section-header">
@@ -754,7 +754,7 @@ if not selected_code:
             )
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
-                "💎 **Gem Screener**: ROE/PER/PBR 펀더멘탈 요건을 모두 충족한 하락장 우수 방어주(Gem) 스크리닝 리스트입니다."
+                "💎 **Gem Screener**: ROIC/PER/PBR 펀더멘탈 요건을 모두 충족한 하락장 우수 방어주(Gem) 스크리닝 리스트입니다."
             )
 
         st.markdown(
@@ -921,18 +921,18 @@ else:
 
         st.markdown("<br>", unsafe_allow_html=True)
 
-        # 지표별 표시용 메타데이터 (제목/설명) - scoring.py의 METRIC_KEYS와 이름 일치
+        # 10개 지표별 표시용 메타데이터 (scoring.py의 METRIC_KEYS와 정확히 일치)
         METRIC_DISPLAY = {
             "revenue_growth": ("1. Revenue Growth", "매출액 성장률: 기업의 외형 성장세와 하락장 속 시장 점유율 유지 능력을 측정합니다."),
             "eps_growth": ("2. EPS Growth", "순이익 성장률: 주주 가치 창출 능력의 핵심 지표로, 순이익의 실질적 증가세를 평가합니다."),
             "opm": ("3. OPM", "영업이익률: 본업에서의 수익 창출 효율성 및 고금리/원가 상승 방어력을 나타냅니다."),
-            "roe": ("4. ROE", "자기자본이익률: 자본 대비 수익성 지표입니다."),
-            "debt_rate": ("5. Debt rate", "부채비율: 하락장 및 고금리 환경에서 기업의 재무적 생존 가능성과 이자 부담 위험을 평가합니다."),
-            "current_ratio": ("6. Current ratio", "유동비율: 단기 채무 지급 능력을 나타내며 200% 이상시 강한 유동성 방어력을 보유합니다."),
-            "interest_coverage": ("7. Interest coverage rate", "이자보상배율: 영업이익으로 이자비용을 감당할 수 있는 수치로, 1 미만시 채무불이행 위험을 뜻합니다."),
-            "ocf_ratio": ("8. Operating Cash Flow Ratio", "영업활동현금흐름/순이익 비율: 장부상 이익이 아닌 실제 유입되는 현금 체력의 우수성을 나타냅니다."),
-            "retained_earnings": ("9. Retained Earnings Ratio", "유보율: 위기 상황 발생 시 내부 적립 현금으로 견딜 수 있는 펀더멘탈 체력입니다."),
-            "sga_ratio": ("10. SG&A Ratio", "판관비율: 매출 대비 판매관리비 비중으로, 기업의 비용 통제 및 경영 효율성을 보여줍니다."),
+            "roic": ("4. ROIC", "투하자본이익률: 차입금 레버리지를 배제하고 실제 영업투하자본 대비 순수익 창출력을 평가합니다."),
+            "debt_rate": ("5. Debt Rate", "부채비율: 하락장 및 고금리 환경에서 기업의 재무적 생존 가능성과 이자 부담 위험을 평가합니다."),
+            "quick_ratio": ("6. Quick Ratio", "당좌비율: 재고자산을 제외한 단기 채무 지급 능력을 측정하여 위기 시 유동성 방어력을 평가합니다."),
+            "interest_coverage": ("7. Interest Coverage", "이자보상배율: 영업이익으로 이자비용을 감당할 수 있는 수치로, 채무불이행 위험을 방어합니다."),
+            "ocf_ratio": ("8. OCF Ratio", "영업활동현금흐름/순이익 비율: 장부상 이익이 아닌 실제 유입되는 현금 체력의 우수성을 나타냅니다."),
+            "sga_ratio": ("9. SG&A Ratio", "판관비율: 매출 대비 판매관리비 비중으로, 기업의 비용 통제 및 경영 효율성을 보여줍니다."),
+            "downturn_defense": ("10. Downturn Defense", "하락장 실제 방어력: 과거 주요 하락장(코로나, 2022년 긴축 등)에서 코스피 지수 대비 덜 하락한 정도(%p)를 반영합니다."),
         }
         METRIC_ORDER = list(METRIC_DISPLAY.keys())
 
@@ -994,7 +994,18 @@ else:
                         entry = metric_scores.get(metric_key, {})
                         value = entry.get("value")
                         score = entry.get("score")
-                        value_display = f"{value}" if value is not None else "N/A"
+                        
+                        # 값 포맷팅 조정 (성장률이나 비율 지표는 뒤에 % 또는 %p 추가)
+                        if value is not None:
+                            if metric_key in ["revenue_growth", "eps_growth", "opm", "roic", "debt_rate", "quick_ratio", "sga_ratio"]:
+                                value_display = f"{value}%"
+                            elif metric_key == "downturn_defense":
+                                value_display = f"{value}%p"
+                            else:
+                                value_display = f"{value}"
+                        else:
+                            value_display = "N/A"
+
                         score_display = f"{score}/10" if score is not None else "N/A"
 
                         st.markdown(
