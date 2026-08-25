@@ -170,6 +170,27 @@ def is_financial_sector(sector_str, wics_sector=None):
     return any(kw in sector_str for kw in FINANCIAL_SECTOR_KEYWORDS)
 
 
+def _fetch_full_statement_df(stock_code, year, reprt_code="11011", use_ofs_for_manufacturing=True):
+    """
+    dart.finstate()의 '주요계정'(13개 표준항목)에는 재고자산/판관비/이자비용/영업활동현금흐름이
+    아예 없어서, 전체 재무제표(finstate_all)를 별도로 조회해 이 계정들을 찾기 위한 함수.
+    """
+    try:
+        fin_data = dart.finstate_all(stock_code, year, reprt_code=reprt_code)
+    except Exception as e:
+        print(f"  ⚠️ 전체 재무제표 조회 실패({year}년 {reprt_code}): {e}")
+        return None
+
+    if fin_data is None or fin_data.empty:
+        return None
+
+    cfs = fin_data[fin_data["fs_div"] == "CFS"]
+    ofs = fin_data[fin_data["fs_div"] == "OFS"]
+    if use_ofs_for_manufacturing and not ofs.empty:
+        return ofs
+    return cfs if not cfs.empty else ofs
+
+
 def get_latest_annual_year():
     """사업보고서(연간)는 통상 익년 3월 말 공시되므로, 4월 이전엔 전전년도까지만 확정치로 간주"""
     now = datetime.now()
@@ -210,30 +231,34 @@ def _sanitize_json(obj):
     return obj
 
 
-def _parse_year_financials(df):
-    """단일 연도 재무제표 df에서 주요 계정과 비율 지표를 파싱 (계정명 다중 키워드 매핑)"""
+def _parse_year_financials(df, df_full=None):
+    """단일 연도 재무제표 df에서 주요 계정과 비율 지표를 파싱 (계정명 다중 키워드 매핑).
+    df_full(전체 재무제표)이 주어지면 재고자산/판관비/이자비용/영업현금흐름은 거기서 찾음
+    (dart.finstate()의 표준 주요계정엔 이 4개가 없어서)."""
 
-    def get_value(keywords):
+    def get_value(keywords, source_df):
         for kw in keywords:
-            row = df[df["account_nm"].str.contains(kw, na=False, regex=False)]
+            row = source_df[source_df["account_nm"].str.contains(kw, na=False, regex=False)]
             if not row.empty:
                 val_str = str(row.iloc[0]["thstrm_amount"]).replace(",", "")
                 if val_str and val_str != "-":
                     return float(val_str)
         return 0.0
 
-    revenue = get_value(["매출액", "수익(매출액)", "영업수익"])
-    op_profit = get_value(["영업이익", "영업이익(손실)"])
-    net_income = get_value(["당기순이익", "당기순이익(손실)"])
-    total_assets = get_value(["자산총계"])
-    current_assets = get_value(["유동자산"])
-    current_liab = get_value(["유동부채"])
-    inventory = get_value(["재고자산"])
-    total_liab = get_value(["부채총계"])
-    total_equity = get_value(["자본총계"])
-    sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"])
-    operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"])
-    interest_exp = get_value(["이자비용", "금융원가"])
+    revenue = get_value(["매출액", "수익(매출액)", "영업수익"], df)
+    op_profit = get_value(["영업이익", "영업이익(손실)"], df)
+    net_income = get_value(["당기순이익", "당기순이익(손실)"], df)
+    total_assets = get_value(["자산총계"], df)
+    current_assets = get_value(["유동자산"], df)
+    current_liab = get_value(["유동부채"], df)
+    total_liab = get_value(["부채총계"], df)
+    total_equity = get_value(["자본총계"], df)
+
+    detail_df = df_full if df_full is not None else df
+    inventory = get_value(["재고자산"], detail_df)
+    sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"], detail_df)
+    operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"], detail_df)
+    interest_exp = get_value(["이자비용", "금융원가"], detail_df)
 
     # 투하자본 근사치: 자산총계 - 유동부채 (이자부채만 정확히 구분하기 어려워 유동부채 전체를 차감하는 간이 추정)
     invested_capital = total_assets - current_liab
@@ -261,36 +286,39 @@ def _parse_year_financials(df):
     return {**ratios, **raw}
 
 
-def _parse_report_financials(df):
+def _parse_report_financials(df, df_full=None):
     """
     단일 보고서 df에서 주요 계정, 비율 지표, 그리고 당기(thstrm) vs 전년동기(frmtrm) 성장률까지 파싱.
     분기/반기 누적보고서도 frmtrm_amount가 '작년 동기간 누적'이라 그대로 동기간 성장률로 쓸 수 있음.
+    df_full(전체 재무제표)이 주어지면 재고자산/판관비/이자비용/영업현금흐름은 거기서 찾음.
     """
 
-    def get_value(keywords, field="thstrm_amount"):
+    def get_value(keywords, source_df, field="thstrm_amount"):
         for kw in keywords:
-            row = df[df["account_nm"].str.contains(kw, na=False, regex=False)]
+            row = source_df[source_df["account_nm"].str.contains(kw, na=False, regex=False)]
             if not row.empty:
                 val_str = str(row.iloc[0][field]).replace(",", "")
                 if val_str and val_str != "-":
                     return float(val_str)
         return 0.0
 
-    revenue = get_value(["매출액", "수익(매출액)", "영업수익"])
-    op_profit = get_value(["영업이익", "영업이익(손실)"])
-    net_income = get_value(["당기순이익", "당기순이익(손실)"])
-    total_assets = get_value(["자산총계"])
-    current_assets = get_value(["유동자산"])
-    current_liab = get_value(["유동부채"])
-    inventory = get_value(["재고자산"])
-    total_liab = get_value(["부채총계"])
-    total_equity = get_value(["자본총계"])
-    sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"])
-    operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"])
-    interest_exp = get_value(["이자비용", "금융원가"])
+    revenue = get_value(["매출액", "수익(매출액)", "영업수익"], df)
+    op_profit = get_value(["영업이익", "영업이익(손실)"], df)
+    net_income = get_value(["당기순이익", "당기순이익(손실)"], df)
+    total_assets = get_value(["자산총계"], df)
+    current_assets = get_value(["유동자산"], df)
+    current_liab = get_value(["유동부채"], df)
+    total_liab = get_value(["부채총계"], df)
+    total_equity = get_value(["자본총계"], df)
 
-    prev_revenue = get_value(["매출액", "수익(매출액)", "영업수익"], field="frmtrm_amount")
-    prev_net_income = get_value(["당기순이익", "당기순이익(손실)"], field="frmtrm_amount")
+    detail_df = df_full if df_full is not None else df
+    inventory = get_value(["재고자산"], detail_df)
+    sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"], detail_df)
+    operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"], detail_df)
+    interest_exp = get_value(["이자비용", "금융원가"], detail_df)
+
+    prev_revenue = get_value(["매출액", "수익(매출액)", "영업수익"], df, field="frmtrm_amount")
+    prev_net_income = get_value(["당기순이익", "당기순이익(손실)"], df, field="frmtrm_amount")
 
     invested_capital = total_assets - current_liab
     nopat = op_profit * (1 - CORP_TAX_RATE)
@@ -350,7 +378,9 @@ def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True):
     if df.empty:
         return None
 
-    result = _parse_report_financials(df)
+    result = _parse_report_financials(df, df_full=_fetch_full_statement_df(
+        stock_code, year, reprt_code=reprt_code, use_ofs_for_manufacturing=use_ofs_for_manufacturing
+    ))
     result["_report_year"] = year
     result["_report_code"] = reprt_code
     return result
@@ -384,7 +414,9 @@ def fetch_year_data(stock_code, year, use_ofs_for_manufacturing=True):
     if df.empty:
         return None
 
-    return _parse_year_financials(df)
+    return _parse_year_financials(df, df_full=_fetch_full_statement_df(
+        stock_code, year, reprt_code="11011", use_ofs_for_manufacturing=use_ofs_for_manufacturing
+    ))
 
 
 def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_manufacturing=True, kospi_mdd_cache=None):
@@ -625,7 +657,7 @@ def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manu
         targets = targets.head(limit)
 
     total = len(targets)
-    est_calls = total * 12  # 종목당 대략 연간 11회 + 최신 분기/반기 1회
+    est_calls = total * 24  # 종목당 대략 (연간 11회 + 최신 분기/반기 1회) x 2 (주요계정 + 전체재무제표)
     print(f"📋 대상 종목 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건)")
 
     succeeded, failed = [], []
