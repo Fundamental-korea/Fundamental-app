@@ -174,21 +174,22 @@ def _fetch_full_statement_df(stock_code, year, reprt_code="11011", use_ofs_for_m
     """
     dart.finstate()의 '주요계정'(13개 표준항목)에는 재고자산/판관비/이자비용/영업활동현금흐름이
     아예 없어서, 전체 재무제표(finstate_all)를 별도로 조회해 이 계정들을 찾기 위한 함수.
+    finstate_all()은 finstate()와 달리 fs_div(OFS/CFS)를 파라미터로 직접 지정해야 하며,
+    결과 df엔 이미 그 구분으로 걸러져 있어 'fs_div' 컬럼 자체가 없음(finstate()와 스키마가 다름).
     """
-    try:
-        fin_data = dart.finstate_all(stock_code, year, reprt_code=reprt_code)
-    except Exception as e:
-        print(f"  ⚠️ 전체 재무제표 조회 실패({year}년 {reprt_code}): {e}")
-        return None
+    fs_div_order = ["OFS", "CFS"] if use_ofs_for_manufacturing else ["CFS", "OFS"]
 
-    if fin_data is None or fin_data.empty:
-        return None
+    for fs_div in fs_div_order:
+        try:
+            fin_data = dart.finstate_all(stock_code, year, reprt_code=reprt_code, fs_div=fs_div)
+        except Exception as e:
+            print(f"  ⚠️ 전체 재무제표 조회 실패({year}년 {reprt_code}, {fs_div}): {e}")
+            fin_data = None
 
-    cfs = fin_data[fin_data["fs_div"] == "CFS"]
-    ofs = fin_data[fin_data["fs_div"] == "OFS"]
-    if use_ofs_for_manufacturing and not ofs.empty:
-        return ofs
-    return cfs if not cfs.empty else ofs
+        if fin_data is not None and not fin_data.empty:
+            return fin_data
+
+    return None
 
 
 def get_latest_annual_year():
