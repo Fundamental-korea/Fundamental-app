@@ -26,6 +26,24 @@ except Exception as e:
 # 이건 상세 업종 표시용으로 유지하고, 동종업계 비교/그룹핑에는 아래 WICS 대분류를 사용.
 FINANCIAL_SECTOR_KEYWORDS = ["금융", "보험", "은행", "캐피탈", "카드", "증권", "저축", "리스"]
 
+# 지주회사는 WICS로 안 잡힘(계열사 업종 따라 산업재/IT 등으로 분류되므로) - 별도 텍스트 키워드로 판별
+HOLDING_COMPANY_KEYWORDS = ["지주", "홀딩스"]
+
+# SK/LG처럼 사명 자체에 "지주"/"홀딩스"가 없어 키워드 매칭이 원천적으로 안 되는 주요 지주회사는
+# 직접 목록으로 관리. (확실한 것 위주로만 넣었고, 배치 결과 보면서 계속 보강 필요 - 완전하지 않을 수 있음)
+KNOWN_HOLDING_COMPANY_CODES = {
+    "034730": "SK",
+    "003550": "LG",
+    "000150": "두산",
+    "078930": "GS",
+    "001040": "CJ",
+    "002020": "코오롱",
+}
+
+# 레버리지/유동성 구조가 일반 기업과 달라 부채비율·당좌비율·이자보상배율을 예외 처리하는 WICS 대분류
+# (금융은 별도 로직으로 판별하고, 여기엔 그 외 업종만 추가)
+LEVERAGE_EXEMPT_WICS_SECTORS = {"유틸리티"}
+
 # WICS(FnGuide Wise Industry Classification Standard) 10개 대분류 - 네이버/다음 증권이 쓰는 것과 동일한 기준
 WICS_SECTOR_CODES = {
     "G10": "에너지",
@@ -159,15 +177,29 @@ def calculate_downturn_defense(stock_code, kospi_mdd_cache):
 
 def is_financial_sector(sector_str, wics_sector=None):
     """
-    금융업 여부 판별. WICS 분류가 있으면 그걸 우선 사용(정확), 없으면 KSIC Industry 키워드로 추정(휴리스틱).
+    금융업 여부 판별. WICS가 '금융'이면 바로 True.
+    WICS가 다른 값이어도(예: 지주회사가 계열사 업종으로 분류돼서), KSIC 상세업종 텍스트에
+    금융 관련 키워드가 있으면 True로 판정 (WICS 하나만 보고 끝내면 SK처럼 KSIC상 '기타 금융업'인데도
+    WICS가 '에너지'로 잡혀서 놓치는 케이스가 생김 - 두 신호를 OR로 결합).
     """
     if wics_sector == "금융":
         return True
-    if wics_sector is not None and wics_sector != "금융":
-        return False
-    if not sector_str or not isinstance(sector_str, str):
-        return False
-    return any(kw in sector_str for kw in FINANCIAL_SECTOR_KEYWORDS)
+    if sector_str and isinstance(sector_str, str) and any(kw in sector_str for kw in FINANCIAL_SECTOR_KEYWORDS):
+        return True
+    return False
+
+
+def is_holding_company(stock_code, sector_str, stock_name):
+    """
+    (비금융) 지주회사 여부 판별. 지주사는 별도재무제표(OFS)가 계열사 지분만 들고 있는 빈 껍데기라
+    CFS(연결)를 써야 함 - 금융지주는 is_financial_sector로 이미 걸러지므로 여기선 나머지만 잡음.
+    1순위: 알려진 지주회사 종목코드 목록 (SK/LG처럼 사명에 "지주"가 없어 키워드로 못 잡는 케이스 보완)
+    2순위: KSIC Industry 텍스트 또는 종목명에 "지주"/"홀딩스" 포함 여부
+    """
+    if stock_code in KNOWN_HOLDING_COMPANY_CODES:
+        return True
+    haystack = f"{sector_str or ''} {stock_name or ''}"
+    return any(kw in haystack for kw in HOLDING_COMPANY_KEYWORDS)
 
 
 def _fetch_full_statement_df(stock_code, year, reprt_code="11011", use_ofs_for_manufacturing=True):
@@ -541,10 +573,15 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         sector = sector_map.get(stock_code)
         wics_sector = wics_sector_map.get(stock_code)
         financial_sector = is_financial_sector(sector, wics_sector=wics_sector)
-        print(f"🏷️ [{stock_name}] 업종(상세): {sector or '미상'} / WICS: {wics_sector or '미상'} (금융업 여부: {financial_sector})")
+        holding_company = is_holding_company(stock_code, sector, stock_name)
+        leverage_exempt = financial_sector or holding_company or (wics_sector in LEVERAGE_EXEMPT_WICS_SECTORS)
+        print(
+            f"🏷️ [{stock_name}] 업종(상세): {sector or '미상'} / WICS: {wics_sector or '미상'} "
+            f"(금융업: {financial_sector} / 지주회사: {holding_company} / 레버리지 예외: {leverage_exempt})"
+        )
 
-        # 금융지주/보험/은행 등은 별도재무제표(OFS)가 사실상 빈 껍데기라, 연결재무제표(CFS)를 써야 실질적인 사업이 보임
-        effective_use_ofs = use_ofs_for_manufacturing and not financial_sector
+        # 금융지주/보험/은행/비금융 지주회사는 별도재무제표(OFS)가 사실상 빈 껍데기라, 연결재무제표(CFS)를 써야 실질적인 사업이 보임
+        effective_use_ofs = use_ofs_for_manufacturing and not (financial_sector or holding_company)
 
         multi = fetch_multi_year_metrics(stock_code, use_ofs_for_manufacturing=effective_use_ofs, kospi_mdd_cache=kospi_mdd_cache)
         if multi is None:
@@ -579,8 +616,8 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         for period, pdata in multi["period_results"].items():
             if pdata is None:
                 continue
-            avg_score = calculate_fundamental_score(pdata["avg_metrics"], is_financial_sector=financial_sector)
-            worst_score = calculate_fundamental_score(pdata["worst_metrics"], is_financial_sector=financial_sector)
+            avg_score = calculate_fundamental_score(pdata["avg_metrics"], leverage_exempt=leverage_exempt)
+            worst_score = calculate_fundamental_score(pdata["worst_metrics"], leverage_exempt=leverage_exempt)
             period_scores[f"{period}y"] = {
                 "years_used": pdata["years_used"],
                 "avg": {
@@ -605,6 +642,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "market": "KOR",
             "sector": sector,
             "wics_sector": wics_sector,
+            "holding_company": holding_company,
             "base_year": base_year,
             "stock_price": current_price,
             "per": per,
