@@ -665,10 +665,27 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
 
 
 def get_already_synced_codes():
-    """Supabase Fundamental 테이블에 이미 저장된 stock_code 목록 조회 (재시작 시 중복 방지용)"""
+    """Supabase Fundamental 테이블에 이미 저장된 stock_code 목록 조회 (재시작 시 중복 방지용)
+    PostgREST 기본 응답 제한(1000행)을 넘기지 못했던 버그 수정: range()로 페이지네이션."""
     try:
-        res = supabase.table("Fundamental").select("stock_code").execute()
-        return {row["stock_code"] for row in res.data}
+        all_codes = set()
+        page_size = 1000
+        start = 0
+        while True:
+            res = (
+                supabase.table("Fundamental")
+                .select("stock_code")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            rows = res.data
+            if not rows:
+                break
+            all_codes.update(row["stock_code"] for row in rows)
+            if len(rows) < page_size:
+                break
+            start += page_size
+        return all_codes
     except Exception as e:
         print(f"⚠️ 기존 저장 목록 조회 실패, 처음부터 진행합니다: {e}")
         return set()
