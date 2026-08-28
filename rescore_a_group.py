@@ -1,3 +1,4 @@
+
 # rescore_a_group.py
 # ==========================================================================
 # A그룹 재채점 스크립트 — DART 재조회 없이 Supabase에 이미 저장된
@@ -133,6 +134,12 @@ def recompute_period_mode(metric_scores, leverage_exempt, is_financial):
     defense_keys = set(METRIC_KEYS) - growth_keys - excluded
     growth_sub = sum(new_metric_scores[k]["weighted_score"] for k in growth_keys if k in new_metric_scores and "weighted_score" in new_metric_scores[k])
     defense_sub = sum(new_metric_scores[k]["weighted_score"] for k in defense_keys if k in new_metric_scores and "weighted_score" in new_metric_scores[k])
+
+    if is_financial:
+        # total_score와 동일한 리스케일 계수를 sub_scores에도 적용 (growth+defense 합 == total_score 유지)
+        rescale = 100.0 / FINANCIAL_REMAINING_WEIGHT
+        growth_sub *= rescale
+        defense_sub *= rescale
 
     missing_count = sum(1 for k in METRIC_KEYS if (metric_scores.get(k) or {}).get("value") is None)
 
