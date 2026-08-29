@@ -59,9 +59,10 @@ WICS_SECTOR_CODES = {
 }
 
 # 평균/최악 집계 대상 비율 지표 (성장률 2개는 CAGR로 별도 계산하므로 제외)
+# roa는 금융섹터 전용 대체지표 (roic 자리) - 비금융기업은 계산은 되지만 scoring.py에서 안 씀
 RATIO_METRICS = [
     "opm", "roic", "debt_rate", "quick_ratio",
-    "interest_coverage", "ocf_ratio", "sga_ratio",
+    "interest_coverage", "ocf_ratio", "sga_ratio", "roa",
 ]
 
 DEFAULT_PERIODS = (1, 3, 5, 10)  # 단기/중기/중장기/장기
@@ -400,6 +401,7 @@ def _parse_year_financials(df, df_full=None):
     ratios = {
         "opm": round(op_profit / revenue * 100, 2) if revenue > 0 else None,
         "roic": round(nopat / invested_capital * 100, 2) if invested_capital > 0 else None,
+        "roa": round(net_income / total_assets * 100, 2) if total_assets > 0 else None,  # 금융섹터 대체지표
         "debt_rate": debt_rate,
         "quick_ratio": round((current_assets - inventory) / current_liab * 100, 2) if current_liab > 0 else None,
         # interest_exp 추출 실패와 진짜 무차입을 debt_rate로 교차검증 (버그2 수정)
@@ -471,6 +473,7 @@ def _parse_report_financials(df, df_full=None):
     ratios = {
         "opm": round(op_profit / revenue * 100, 2) if revenue > 0 else None,
         "roic": round(nopat / invested_capital * 100, 2) if invested_capital > 0 else None,
+        "roa": round(net_income / total_assets * 100, 2) if total_assets > 0 else None,  # 금융섹터 대체지표
         "debt_rate": debt_rate,
         "quick_ratio": round((current_assets - inventory) / current_liab * 100, 2) if current_liab > 0 else None,
         "interest_coverage": resolve_interest_coverage(op_profit, interest_exp, debt_rate),
@@ -722,6 +725,8 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
 
         net_income = latest["net_income"]
         total_equity = latest["total_equity"]
+        # 버그6(자본총계 매칭 실패) 수정 이후이므로 이제 이 값을 신뢰할 수 있음 -> 자본잠식 플래그로 활용
+        capital_impairment = total_equity < 0
         eps = (net_income / issued_shares) if issued_shares > 0 else None
         bps = (total_equity / issued_shares) if issued_shares > 0 else None
         per = round(current_price / eps, 2) if (eps and eps > 0) else None
@@ -731,19 +736,25 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         for period, pdata in multi["period_results"].items():
             if pdata is None:
                 continue
-            avg_score = calculate_fundamental_score(pdata["avg_metrics"], leverage_exempt=leverage_exempt)
-            worst_score = calculate_fundamental_score(pdata["worst_metrics"], leverage_exempt=leverage_exempt)
+            avg_score = calculate_fundamental_score(pdata["avg_metrics"], leverage_exempt=leverage_exempt, is_financial=financial_sector)
+            worst_score = calculate_fundamental_score(pdata["worst_metrics"], leverage_exempt=leverage_exempt, is_financial=financial_sector)
             period_scores[f"{period}y"] = {
                 "years_used": pdata["years_used"],
                 "avg": {
                     "total_score": avg_score["total_score"],
-                    "grade": avg_score["grade"],
+                    "grade": avg_score["grade"],  # 잠정 등급 - 전체 수집 완료 후 재산정 예정
                     "metric_scores": avg_score["metric_scores"],
+                    "sub_scores": avg_score["sub_scores"],
+                    "financial_adjusted": avg_score["financial_adjusted"],
+                    "missing_metric_count": avg_score["missing_metric_count"],
                 },
                 "worst": {
                     "total_score": worst_score["total_score"],
-                    "grade": worst_score["grade"],
+                    "grade": worst_score["grade"],  # 잠정 등급 - 전체 수집 완료 후 재산정 예정
                     "metric_scores": worst_score["metric_scores"],
+                    "sub_scores": worst_score["sub_scores"],
+                    "financial_adjusted": worst_score["financial_adjusted"],
+                    "missing_metric_count": worst_score["missing_metric_count"],
                 },
             }
             print(
@@ -767,6 +778,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "net_income": int(latest["net_income"]),
             "total_liabilities": int(latest["total_liabilities"]),
             "total_equity": int(latest["total_equity"]),
+            "capital_impairment": capital_impairment,
             "period_scores": period_scores,  # Supabase jsonb 컬럼 저장 추천
             "b_group_synced_at": datetime.utcnow().isoformat(),
         }
