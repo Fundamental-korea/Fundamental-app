@@ -74,6 +74,93 @@ DOWNTURN_WINDOWS = [
     ("2022년 긴축 하락장", "2021-12-01", "2022-09-30"),
 ]
 
+# --------------------------------------------------------------------------
+# B그룹 버그 수정 (최종 재채점 계획: 버그1/버그2/버그6):
+#   - 버그1: 1년 growth(revenue_growth/eps_growth) base-effect/계정오류로 인한 폭주
+#   - 버그2: interest_coverage가 이자비용 추출 실패 시 무조건 만점(25) 처리되던 문제
+#   - 버그6: "자본총계" 계정명 매칭 실패율이 유독 높아 재무건전성 지표가 통째로 왜곡되던 문제
+# --------------------------------------------------------------------------
+GROWTH_SANITY_THRESHOLD = 500  # % 이 이상이면 base-effect/계정오류로 간주해 결측(None) 처리
+
+
+def sanitize_growth(value):
+    """분모(전년/기준연도) 값이 작아 생기는 base-effect나 계정 매칭 오류로 인한
+    비정상적 growth% 폭주를 걸러냄. 임계값 초과 시 결측(None) 처리 (버그1 수정).
+    결측 처리된 값은 scoring.py에서 0점 처리되므로, 최소한 "터무니없는 값으로 만점/폭주 점수"를
+    받는 것보다는 안전한 방향(과소평가) - 완전한 해결은 아니고 안전장치 수준."""
+    if value is None:
+        return None
+    if abs(value) > GROWTH_SANITY_THRESHOLD:
+        return None
+    return value
+
+
+def get_total_equity(df, detail_df=None):
+    """
+    '자본총계' 추출 강화판 (버그6 수정).
+    표준 13계정(df)과 전체 재무제표(detail_df) 양쪽에서, 정확매칭 -> 부분매칭 ->
+    (지배기업소유주지분 + 비지배지분) 합산 순으로 폴백. 연결재무제표(CFS)에서 '자본총계'라는
+    합계 행 자체가 없고 지배/비지배 지분으로만 쪼개져 표시되는 경우를 구제하기 위함.
+    (실측 결과: 기존 로직으로는 전체 종목의 9.8%가 자본총계=0으로 잘못 잡혔음 - 이 중 대부분이
+    진짜 자본잠식이 아니라 이 매칭 실패였음)
+    """
+    def try_direct(source_df):
+        row = source_df[source_df["account_nm"] == "자본총계"]
+        if row.empty:
+            row = source_df[source_df["account_nm"].str.contains("자본총계", na=False, regex=False)]
+        if not row.empty:
+            val_str = str(row.iloc[0]["thstrm_amount"]).replace(",", "")
+            if val_str and val_str != "-":
+                return float(val_str)
+        return None
+
+    def try_split_sum(source_df):
+        controlling_kw = ["지배기업의 소유주에게 귀속되는 자본", "지배기업소유주지분", "지배기업의 소유지분"]
+        minority_kw = ["비지배지분"]
+
+        def find_first(keywords):
+            for kw in keywords:
+                r = source_df[source_df["account_nm"].str.contains(kw, na=False, regex=False)]
+                if not r.empty:
+                    val_str = str(r.iloc[0]["thstrm_amount"]).replace(",", "")
+                    if val_str and val_str != "-":
+                        return float(val_str)
+            return None
+
+        controlling = find_first(controlling_kw)
+        if controlling is None:
+            return None
+        minority = find_first(minority_kw) or 0.0  # 비지배지분 없으면 0 (지배주주만 있는 회사면 정상)
+        return controlling + minority
+
+    for source_df in [df, detail_df]:
+        if source_df is None:
+            continue
+        val = try_direct(source_df)
+        if val is not None:
+            return val
+        val = try_split_sum(source_df)
+        if val is not None:
+            return val
+
+    return 0.0  # 그래도 못 찾으면 기존처럼 0 (발생 빈도는 크게 줄어들 것으로 예상됨)
+
+
+def resolve_interest_coverage(op_profit, interest_exp, debt_rate):
+    """
+    interest_coverage 기본값(25점 만점) 오남용 방지 (버그2 수정).
+    이자비용이 0으로 잡히면 '진짜 무차입'인지 '계정 추출 실패'인지 debt_rate로 교차검증.
+    - debt_rate가 낮으면(<=30%) 무차입 가능성이 높으므로 기존처럼 만점 수준(25.0) 부여
+    - debt_rate가 높은데도 interest_exp가 0으로 잡히면 추출 실패로 간주해 결측(None) 처리
+      (실측 결과: 아시아나항공 부채비율 2714%인데도 interest_coverage가 25로 찍히는 등
+      전체의 56%가 이 기본값을 받고 있었음 - 그 상당수가 실제로는 이런 오탐이었을 것으로 추정)
+    """
+    if interest_exp and interest_exp > 0:
+        return round(op_profit / interest_exp, 2)
+    if debt_rate is not None and debt_rate <= 30:
+        return 25.0
+    return None
+
 
 def get_sector_map():
     """{종목코드: 업종(Industry) 문자열} 딕셔너리 반환 (상세 업종, 표시용). KRX-DESC 조회 실패 시 빈 dict."""
@@ -270,6 +357,14 @@ def _parse_year_financials(df, df_full=None):
     (dart.finstate()의 표준 주요계정엔 이 4개가 없어서)."""
 
     def get_value(keywords, source_df):
+        # 1차: 정확히 일치하는 계정명 우선 (부분 문자열 오매칭으로 인한 값 왜곡 방지 - 버그6 관련 보강)
+        for kw in keywords:
+            row = source_df[source_df["account_nm"] == kw]
+            if not row.empty:
+                val_str = str(row.iloc[0]["thstrm_amount"]).replace(",", "")
+                if val_str and val_str != "-":
+                    return float(val_str)
+        # 2차: 부분 포함 매칭 (fallback)
         for kw in keywords:
             row = source_df[source_df["account_nm"].str.contains(kw, na=False, regex=False)]
             if not row.empty:
@@ -285,9 +380,12 @@ def _parse_year_financials(df, df_full=None):
     current_assets = get_value(["유동자산"], df)
     current_liab = get_value(["유동부채"], df)
     total_liab = get_value(["부채총계"], df)
-    total_equity = get_value(["자본총계"], df)
 
     detail_df = df_full if df_full is not None else df
+
+    # 자본총계는 매칭 실패율이 유독 높았던 계정이라 전용 폴백 로직 사용 (버그6 수정)
+    total_equity = get_total_equity(df, detail_df)
+
     inventory = get_value(["재고자산"], detail_df)
     sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"], detail_df)
     operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"], detail_df)
@@ -297,13 +395,15 @@ def _parse_year_financials(df, df_full=None):
     invested_capital = total_assets - current_liab
     nopat = op_profit * (1 - CORP_TAX_RATE)
 
+    debt_rate = round(total_liab / total_equity * 100, 2) if total_equity > 0 else None
+
     ratios = {
         "opm": round(op_profit / revenue * 100, 2) if revenue > 0 else None,
         "roic": round(nopat / invested_capital * 100, 2) if invested_capital > 0 else None,
-        "debt_rate": round(total_liab / total_equity * 100, 2) if total_equity > 0 else None,
+        "debt_rate": debt_rate,
         "quick_ratio": round((current_assets - inventory) / current_liab * 100, 2) if current_liab > 0 else None,
-        # 이자비용이 0이거나 거의 없으면 최고점 수준으로 처리
-        "interest_coverage": round(op_profit / interest_exp, 2) if interest_exp > 0 else 25.0,
+        # interest_exp 추출 실패와 진짜 무차입을 debt_rate로 교차검증 (버그2 수정)
+        "interest_coverage": resolve_interest_coverage(op_profit, interest_exp, debt_rate),
         "ocf_ratio": round(operating_cf / net_income, 2) if net_income > 0 else None,
         "sga_ratio": round(sga_costs / revenue * 100, 2) if revenue > 0 else None,
     }
@@ -327,6 +427,14 @@ def _parse_report_financials(df, df_full=None):
     """
 
     def get_value(keywords, source_df, field="thstrm_amount"):
+        # 1차: 정확히 일치하는 계정명 우선 (버그6 관련 보강)
+        for kw in keywords:
+            row = source_df[source_df["account_nm"] == kw]
+            if not row.empty:
+                val_str = str(row.iloc[0][field]).replace(",", "")
+                if val_str and val_str != "-":
+                    return float(val_str)
+        # 2차: 부분 포함 매칭 (fallback)
         for kw in keywords:
             row = source_df[source_df["account_nm"].str.contains(kw, na=False, regex=False)]
             if not row.empty:
@@ -342,9 +450,11 @@ def _parse_report_financials(df, df_full=None):
     current_assets = get_value(["유동자산"], df)
     current_liab = get_value(["유동부채"], df)
     total_liab = get_value(["부채총계"], df)
-    total_equity = get_value(["자본총계"], df)
 
     detail_df = df_full if df_full is not None else df
+
+    total_equity = get_total_equity(df, detail_df)
+
     inventory = get_value(["재고자산"], detail_df)
     sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"], detail_df)
     operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"], detail_df)
@@ -356,22 +466,25 @@ def _parse_report_financials(df, df_full=None):
     invested_capital = total_assets - current_liab
     nopat = op_profit * (1 - CORP_TAX_RATE)
 
+    debt_rate = round(total_liab / total_equity * 100, 2) if total_equity > 0 else None
+
     ratios = {
         "opm": round(op_profit / revenue * 100, 2) if revenue > 0 else None,
         "roic": round(nopat / invested_capital * 100, 2) if invested_capital > 0 else None,
-        "debt_rate": round(total_liab / total_equity * 100, 2) if total_equity > 0 else None,
+        "debt_rate": debt_rate,
         "quick_ratio": round((current_assets - inventory) / current_liab * 100, 2) if current_liab > 0 else None,
-        "interest_coverage": round(op_profit / interest_exp, 2) if interest_exp > 0 else 25.0,
+        "interest_coverage": resolve_interest_coverage(op_profit, interest_exp, debt_rate),
         "ocf_ratio": round(operating_cf / net_income, 2) if net_income > 0 else None,
         "sga_ratio": round(sga_costs / revenue * 100, 2) if revenue > 0 else None,
     }
 
-    revenue_growth = (
+    # base-effect/계정오류로 인한 growth% 폭주 방지 (버그1 수정)
+    revenue_growth = sanitize_growth(
         round((revenue - prev_revenue) / abs(prev_revenue) * 100, 2)
         if prev_revenue not in (0, None) else None
     )
     # EPS 성장률은 발행주식수가 안정적이라는 가정 하에 순이익 증가율로 근사
-    eps_growth = (
+    eps_growth = sanitize_growth(
         round((net_income - prev_net_income) / abs(prev_net_income) * 100, 2)
         if prev_net_income not in (0, None) else None
     )
@@ -495,11 +608,12 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
         rev_oldest, rev_newest = yearly_data[oldest]["revenue"], yearly_data[newest]["revenue"]
         ni_oldest, ni_newest = yearly_data[oldest]["net_income"], yearly_data[newest]["net_income"]
 
-        revenue_cagr = (
+        # base-effect/계정오류로 인한 CAGR 폭주 방지 (버그1 수정)
+        revenue_cagr = sanitize_growth(
             round(((rev_newest / rev_oldest) ** (1 / actual_span) - 1) * 100, 2)
             if (rev_oldest > 0 and rev_newest > 0 and actual_span > 0) else None
         )
-        eps_cagr = (
+        eps_cagr = sanitize_growth(
             round(((ni_newest / ni_oldest) ** (1 / actual_span) - 1) * 100, 2)
             if (ni_oldest > 0 and ni_newest > 0 and actual_span > 0) else None
         )
@@ -595,6 +709,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
                 "wics_sector": wics_sector,
                 "period_scores": None,
                 "data_unavailable": True,
+                "b_group_synced_at": datetime.utcnow().isoformat(),
             })
             try:
                 supabase.table("Fundamental").upsert(fail_payload, on_conflict="stock_code").execute()
@@ -653,6 +768,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "total_liabilities": int(latest["total_liabilities"]),
             "total_equity": int(latest["total_equity"]),
             "period_scores": period_scores,  # Supabase jsonb 컬럼 저장 추천
+            "b_group_synced_at": datetime.utcnow().isoformat(),
         }
 
         payload = _sanitize_json(payload)
@@ -665,8 +781,8 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
 
 
 def get_already_synced_codes():
-    """Supabase Fundamental 테이블에 이미 저장된 stock_code 목록 조회 (재시작 시 중복 방지용)
-    PostgREST 기본 응답 제한(1000행)을 넘기지 못했던 버그 수정: range()로 페이지네이션."""
+    """Supabase Fundamental 테이블에 이미 저장된 stock_code 목록 조회 (최초 수집 재시작 시 중복 방지용).
+    PostgREST 기본 응답 제한(1000행)을 페이지네이션으로 처리."""
     try:
         all_codes = set()
         page_size = 1000
@@ -691,6 +807,38 @@ def get_already_synced_codes():
         return set()
 
 
+def get_b_group_done_codes():
+    """
+    B그룹(계정 매칭 버그 수정 후 재수집) 완료된 종목 코드 목록 조회.
+    get_already_synced_codes()는 '테이블에 존재하는지'만 봐서 재수집 용도로는 못 씀 -
+    이미 예전 버그 버전으로 저장된 종목도 전부 다시 처리해야 하므로 별도 컬럼(b_group_synced_at)으로 추적.
+    PostgREST 기본 1000행 제한 페이지네이션 처리.
+    """
+    try:
+        all_codes = set()
+        page_size = 1000
+        start = 0
+        while True:
+            res = (
+                supabase.table("Fundamental")
+                .select("stock_code")
+                .not_.is_("b_group_synced_at", "null")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            rows = res.data
+            if not rows:
+                break
+            all_codes.update(row["stock_code"] for row in rows)
+            if len(rows) < page_size:
+                break
+            start += page_size
+        return all_codes
+    except Exception as e:
+        print(f"⚠️ B그룹 완료 목록 조회 실패, 처음부터 진행합니다: {e}")
+        return set()
+
+
 def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manufacturing=True):
     """
     KRX 상장 전체 종목을 순회하며 sync_kor_stock_fundamental 실행.
@@ -698,6 +846,9 @@ def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manu
     - sleep_sec: DART 서버 부담을 줄이기 위한 종목 간 대기시간(초)
     - resume: True면 Supabase에 이미 저장된 종목은 자동으로 건너뜀 (중간에 끊겨도 이어서 실행 가능)
     실패한 종목은 건너뛰고 계속 진행하며, 마지막에 성공/실패 목록을 출력.
+
+    ⚠️ 최초 전체 수집용 함수. B그룹 버그 수정 후 전체 재수집이 목적이면
+    sync_all_kor_stocks_b_group()을 대신 사용할 것 (이미 저장된 종목도 다시 처리해야 하므로).
     """
     df_krx = fdr.StockListing("KRX")
     sector_map = get_sector_map()
@@ -733,6 +884,58 @@ def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manu
         time.sleep(sleep_sec)
 
     print(f"\n\n=== 배치 완료: 성공 {len(succeeded)} / 실패 {len(failed)} / 전체 {total} ===")
+    if failed:
+        print("실패한 종목코드:", failed)
+    return succeeded, failed
+
+
+def sync_all_kor_stocks_b_group(limit=None, sleep_sec=0.5, use_ofs_for_manufacturing=True):
+    """
+    B그룹 버그 수정(자본총계 매칭 강화 / interest_coverage 오탐 방지 / growth 안전장치) 반영 후
+    전체 종목 재수집. 이미 저장된 종목도 전부 다시 처리하는 게 핵심이라
+    sync_all_kor_stocks()와는 완전히 다른 기준(b_group_synced_at 컬럼)으로 대상 판별.
+
+    ⚠️ DART 일일 호출 한도(4만 건) 때문에 전체(약 2,900개 x 24회 ≈ 69,000건)를
+    하루에 다 못 끝낼 가능성이 높음. 한도 초과로 중간에 실패가 늘어나도 걱정 말고,
+    다음날 이 함수를 다시 실행하면 b_group_synced_at 기준으로 이어서 진행됨.
+    """
+    df_krx = fdr.StockListing("KRX")
+    sector_map = get_sector_map()
+    wics_sector_map = get_wics_sector_map()
+    kospi_mdd_cache = get_kospi_mdd_cache()
+
+    already_done = get_b_group_done_codes()
+    if already_done:
+        print(f"⏭️  B그룹 재수집 이미 완료된 {len(already_done)}개 종목은 건너뜁니다.")
+
+    targets = df_krx[~df_krx["Code"].isin(already_done)]
+    if limit:
+        targets = targets.head(limit)
+
+    total = len(targets)
+    est_calls = total * 24
+    print(f"📋 B그룹 재수집 대상 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건)")
+    if est_calls > 40000:
+        print("   ⚠️ 예상 호출 건수가 일일 한도를 초과합니다 - 하루에 다 못 끝날 수 있습니다.")
+        print("   ⚠️ 도중에 DART 호출 실패가 급증하면 중단하고, 다음날 이 함수를 다시 실행해 이어가세요.")
+
+    succeeded, failed = [], []
+    for i, row in enumerate(targets.itertuples(), 1):
+        code, name = row.Code, row.Name
+        print(f"\n[{i}/{total}] ", end="")
+        try:
+            sync_kor_stock_fundamental(
+                code, name, df_krx=df_krx, sector_map=sector_map, wics_sector_map=wics_sector_map,
+                kospi_mdd_cache=kospi_mdd_cache,
+                use_ofs_for_manufacturing=use_ofs_for_manufacturing,
+            )
+            succeeded.append(code)
+        except Exception as e:
+            print(f"❌ [{name}({code})] 처리 중 예외 발생, 건너뜁니다: {e}")
+            failed.append(code)
+        time.sleep(sleep_sec)
+
+    print(f"\n\n=== B그룹 재수집 배치 완료: 성공 {len(succeeded)} / 실패 {len(failed)} / 전체 {total} ===")
     if failed:
         print("실패한 종목코드:", failed)
     return succeeded, failed
