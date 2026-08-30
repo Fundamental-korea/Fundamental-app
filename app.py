@@ -322,8 +322,8 @@ def get_stock_data(code):
             )
             if res.data and len(res.data) > 0:
                 supabase_data = res.data[0]
-        except Exception:
-            pass
+        except Exception as e:
+            st.error(f"Supabase 조회 실패: {e}")
 
     ticker_symbol = f"{code}.KS" if code.isdigit() else code
     try:
