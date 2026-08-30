@@ -919,6 +919,45 @@ else:
         else:
             st.info("실시간 차트 데이터를 불러올 수 없습니다.")
 
+        supabase_data = data.get("supabase_data")
+
+        # ------------------------------------------------------------
+        # PER/PBR 밸류에이션 추이 (Tier C)
+        # 저장된 per/pbr + 수집시점 주가로 EPS/BPS를 역산한 뒤, 실시간 주가(hist)로
+        # 나눠서 "최근 1년 밸류에이션 밴드"를 보여줌. 추가 DART 수집 불필요.
+        # 한계: EPS/BPS 자체는 최근 확정 연간실적 기준 고정값이라, 그래프는 어디까지나
+        # "주가 변동에 따른 밸류에이션 변화"만 반영함 (진짜 다년간 펀더멘탈 추이는 Tier A 몫).
+        # ------------------------------------------------------------
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("#### 💰 밸류에이션 (PER/PBR) 추이 (최근 1년)")
+
+        stored_per = (supabase_data or {}).get("per")
+        stored_pbr = (supabase_data or {}).get("pbr")
+        collection_price = (supabase_data or {}).get("stock_price")
+
+        if not hist_df.empty and collection_price:
+            col_v1, col_v2 = st.columns(2)
+
+            with col_v1:
+                if stored_per:
+                    eps_estimated = collection_price / stored_per
+                    per_series = hist_df["Close"] / eps_estimated
+                    st.caption(f"현재 PER: {stored_per} (최근 확정 실적 기준 역산)")
+                    st.line_chart(per_series)
+                else:
+                    st.info("PER 산출 불가 (최근 실적 적자 등)")
+
+            with col_v2:
+                if stored_pbr:
+                    bps_estimated = collection_price / stored_pbr
+                    pbr_series = hist_df["Close"] / bps_estimated
+                    st.caption(f"현재 PBR: {stored_pbr}")
+                    st.line_chart(pbr_series)
+                else:
+                    st.info("PBR 산출 불가")
+        else:
+            st.info("밸류에이션 데이터를 아직 확보하지 못했습니다.")
+
         st.markdown("<br>", unsafe_allow_html=True)
 
         # 10개 지표별 표시용 메타데이터 (scoring.py의 METRIC_KEYS와 정확히 일치)
@@ -936,7 +975,6 @@ else:
         }
         METRIC_ORDER = list(METRIC_DISPLAY.keys())
 
-        supabase_data = data.get("supabase_data")
         period_scores = (supabase_data or {}).get("period_scores") or {}
 
         if not period_scores:
@@ -988,6 +1026,26 @@ else:
                         """,
                         unsafe_allow_html=True,
                     )
+
+                    # ------------------------------------------------------------
+                    # 데이터 신뢰도 배지
+                    # collector.py가 채점 시점에 이미 계산해 저장해둔 missing_metric_count를
+                    # 그대로 사용 - 전체 종목 분포가 필요 없는 값이라 지금 바로 표시 가능.
+                    # ------------------------------------------------------------
+                    missing_count = view_data.get("missing_metric_count")
+                    if missing_count is not None:
+                        if missing_count == 0:
+                            rel_label, rel_color = "높음", "#16A34A"
+                        elif missing_count <= 2:
+                            rel_label, rel_color = "보통", "#D97706"
+                        else:
+                            rel_label, rel_color = "낮음", "#DC2626"
+                        st.markdown(
+                            f"<div style='margin: 4px 0 16px 4px; font-size: 13px; color: #64748B;'>"
+                            f"📊 데이터 신뢰도: <span style='color:{rel_color}; font-weight:800;'>{rel_label}</span>"
+                            f" (10개 지표 중 {10 - missing_count}개 확보)</div>",
+                            unsafe_allow_html=True,
+                        )
 
                     for metric_key in METRIC_ORDER:
                         title, desc = METRIC_DISPLAY[metric_key]
