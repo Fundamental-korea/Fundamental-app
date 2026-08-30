@@ -953,6 +953,153 @@ def sync_all_kor_stocks_b_group(limit=None, sleep_sec=0.5, use_ofs_for_manufactu
     return succeeded, failed
 
 
+
+# --------------------------------------------------------------------------
+# 분기 자동갱신 파이프라인
+# 실적발표(분기/반기/사업보고서) 나올 때마다 1년(1y) 지표만 가볍게 갱신 -
+# 3y/5y/10y는 연간 사업보고서에만 의존하므로 건드리지 않음. 종목당 DART 호출
+# ~24회(전체 재수집) -> ~2회로 줄어들어 전체 종목을 매번 돌려도 일일 한도(4만) 내로 여유있음.
+# --------------------------------------------------------------------------
+
+def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
+                  existing_period_scores, kospi_mdd_cache, use_ofs_for_manufacturing=True):
+    """
+    단일 종목의 1y 지표만 갱신. 3y/5y/10y는 existing_period_scores에서 그대로 유지.
+    이미 annual baseline 수집이 끝난 종목 대상 - sector/wics_sector/holding_company는
+    이미 저장된 값을 그대로 재사용 (매 분기마다 KRX-DESC/WICS 재조회 안 함 - 그건 연 1회 전체
+    재수집 때만 갱신되면 충분한 정보라서).
+    """
+    try:
+        financial_sector = is_financial_sector(sector, wics_sector=wics_sector)
+        leverage_exempt = financial_sector or holding_company or (wics_sector in LEVERAGE_EXEMPT_WICS_SECTORS)
+        effective_use_ofs = use_ofs_for_manufacturing and not (financial_sector or holding_company)
+
+        latest_report = fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=effective_use_ofs)
+        if latest_report is None:
+            print(f"  ⚠️ [{stock_name}] 최신 보고서를 가져오지 못해 1y 갱신을 건너뜁니다.")
+            return False
+
+        downturn_defense = calculate_downturn_defense(stock_code, kospi_mdd_cache)
+
+        metrics_1y = {
+            "revenue_growth": latest_report["revenue_growth"],
+            "eps_growth": latest_report["eps_growth"],
+            "downturn_defense": downturn_defense,
+        }
+        for metric in RATIO_METRICS:
+            metrics_1y[metric] = latest_report.get(metric)
+
+        score = calculate_fundamental_score(metrics_1y, leverage_exempt=leverage_exempt, is_financial=financial_sector)
+
+        report_year = latest_report["_report_year"]
+        report_code = latest_report["_report_code"]
+        report_label = REPORT_CODE_LABEL.get(report_code, report_code)
+
+        merged_period_scores = dict(existing_period_scores or {})
+        merged_period_scores["1y"] = {
+            "years_used": [f"{report_year} {report_label}"],
+            "avg": {
+                "total_score": score["total_score"],
+                "grade": score["grade"],  # 잠정 등급 - 등급 재산정 패스에서 최종 반영됨
+                "metric_scores": score["metric_scores"],
+                "sub_scores": score["sub_scores"],
+                "financial_adjusted": score["financial_adjusted"],
+                "missing_metric_count": score["missing_metric_count"],
+            },
+            "worst": {  # 보고서 1개뿐이라 평균=최악
+                "total_score": score["total_score"],
+                "grade": score["grade"],
+                "metric_scores": score["metric_scores"],
+                "sub_scores": score["sub_scores"],
+                "financial_adjusted": score["financial_adjusted"],
+                "missing_metric_count": score["missing_metric_count"],
+            },
+        }
+
+        capital_impairment = latest_report["total_equity"] < 0
+
+        payload = _sanitize_json({
+            "stock_code": stock_code,
+            "period_scores": merged_period_scores,
+            "capital_impairment": capital_impairment,
+            "last_1y_updated_at": datetime.utcnow().isoformat(),
+        })
+        supabase.table("Fundamental").upsert(payload, on_conflict="stock_code").execute()
+
+        print(f"  ✅ [{stock_name}] 1y 갱신 완료 -> {report_year}년 {report_label} 기준 {score['total_score']}점")
+        return True
+
+    except Exception as e:
+        print(f"❌ [{stock_name}] 1y 갱신 에러: {e}")
+        return False
+
+
+def get_1y_update_targets():
+    """
+    1y 갱신 대상 종목 조회 - annual baseline(period_scores)이 이미 있는 종목만 대상
+    (data_unavailable=true인 우선주 등은 애초에 재무제표가 없어서 1y 갱신도 무의미).
+    PostgREST 1000행 제한 페이지네이션 처리.
+    """
+    all_rows = []
+    page_size = 1000
+    start = 0
+    while True:
+        res = (
+            supabase.table("Fundamental")
+            .select("stock_code, stock_name, sector, wics_sector, holding_company, period_scores")
+            .not_.is_("period_scores", "null")
+            .range(start, start + page_size - 1)
+            .execute()
+        )
+        rows = res.data
+        if not rows:
+            break
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        start += page_size
+    return all_rows
+
+
+def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.3, use_ofs_for_manufacturing=True):
+    """
+    전체 종목의 1y 지표를 일괄 갱신 (분기 자동갱신 파이프라인의 메인 진입점).
+    - 종목당 DART 호출 약 2회 -> 전체 약 2,600개 기준 5,000~6,000건 -> 일일 한도(4만) 내 여유
+    - KRX-DESC/WICS 재조회 없음 (이미 저장된 sector/wics_sector/holding_company 재사용)
+    - GitHub Actions 등에서 매일 실행해도 무방 (실제 새 보고서가 없으면 같은 보고서를 다시
+      확인만 하고 끝나므로 안전 - 낭비되는 DART 호출은 있지만 데이터가 틀어지진 않음)
+    """
+    kospi_mdd_cache = get_kospi_mdd_cache()
+
+    targets = get_1y_update_targets()
+    if limit:
+        targets = targets[:limit]
+
+    total = len(targets)
+    est_calls = total * 2
+    print(f"📋 1y 갱신 대상 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건)")
+
+    succeeded, failed = [], []
+    for i, row in enumerate(targets, 1):
+        code, name = row["stock_code"], row["stock_name"]
+        print(f"\n[{i}/{total}] 🔄 [{name} ({code})]", end=" ")
+        ok = sync_1y_only(
+            code, name,
+            sector=row.get("sector"), wics_sector=row.get("wics_sector"),
+            holding_company=row.get("holding_company") or False,
+            existing_period_scores=row.get("period_scores") or {},
+            kospi_mdd_cache=kospi_mdd_cache,
+            use_ofs_for_manufacturing=use_ofs_for_manufacturing,
+        )
+        (succeeded if ok else failed).append(code)
+        time.sleep(sleep_sec)
+
+    print(f"\n\n=== 1y 갱신 배치 완료: 성공 {len(succeeded)} / 실패 {len(failed)} / 전체 {total} ===")
+    if failed:
+        print("실패한 종목코드:", failed)
+    return succeeded, failed
+
+
 if __name__ == "__main__":
     target_stocks = [
         ("005930", "삼성전자"), ("000660", "SK하이닉스"),
@@ -963,5 +1110,7 @@ if __name__ == "__main__":
     df_krx_all = fdr.StockListing("KRX")
     sector_map_all = get_sector_map()
 
+    for code, name in target_stocks:
+        sync_kor_stock_fundamental(code, name, df_krx=df_krx_all, sector_map=sector_map_all)
     for code, name in target_stocks:
         sync_kor_stock_fundamental(code, name, df_krx=df_krx_all, sector_map=sector_map_all)
