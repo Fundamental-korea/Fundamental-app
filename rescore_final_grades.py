@@ -52,25 +52,38 @@ GRADE_TIERS = [
 
 
 def fetch_all_rows():
-    """PostgREST 1000행 기본 제한 페이지네이션 처리"""
+    """PostgREST 1000행 기본 제한 페이지네이션 처리.
+    period_scores가 큰 jsonb 컬럼이라 페이지 크기를 작게(200) 잡고,
+    statement timeout 발생 시 페이지 크기를 더 줄여 재시도한다."""
     all_rows = []
-    page_size = 1000
+    page_size = 200
     start = 0
     while True:
-        res = (
-            supabase.table("Fundamental")
-            .select("stock_code, wics_sector, period_scores")
-            .not_.is_("period_scores", "null")
-            .range(start, start + page_size - 1)
-            .execute()
-        )
+        attempt_size = page_size
+        while True:
+            try:
+                res = (
+                    supabase.table("Fundamental")
+                    .select("stock_code, wics_sector, period_scores")
+                    .not_.is_("period_scores", "null")
+                    .range(start, start + attempt_size - 1)
+                    .execute()
+                )
+                break
+            except Exception as e:
+                if attempt_size <= 25:
+                    raise
+                attempt_size = max(25, attempt_size // 2)
+                print(f"   ⚠️ 타임아웃 발생, 페이지 크기를 {attempt_size}로 줄여 재시도합니다... ({e})")
+
         rows = res.data
         if not rows:
             break
         all_rows.extend(rows)
-        if len(rows) < page_size:
+        print(f"   ...{len(all_rows)}개 조회됨")
+        if len(rows) < attempt_size:
             break
-        start += page_size
+        start += attempt_size
     return all_rows
 
 
