@@ -312,6 +312,8 @@ def get_combined_stock_db():
 def get_stock_data(code):
     """Supabase에 펀더멘탈 스코어 데이터가 있으면 그걸 우선 사용, 없으면 yfinance로 가격 정보만 폴백"""
     supabase_data = None
+    if not supabase:
+        st.error("Supabase 클라이언트 초기화 실패 - secrets 확인 필요")
     if supabase:
         try:
             res = (
