@@ -2,6 +2,6 @@ streamlit
 supabase
 pandas
 finance-datareader
-OpenDartReader
+opendartreader
 requests
 yfinance
