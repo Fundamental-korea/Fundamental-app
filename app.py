@@ -294,6 +294,9 @@ st.markdown(
     .status-pill.reliability-low { background:#FEF2F2; color:#B91C1C !important; border:1px solid #FECACA; }
     .status-pill.impairment-warn { background:#FEF2F2; color:#B91C1C !important; border:1px solid #FECACA; }
     .status-pill.neutral { background:#F1F5F9; color:#334155 !important; border:1px solid #E2E8F0; }
+    .status-pill.tier-a { background:#ECFDF5; color:#047857 !important; border:1px solid #A7F3D0; }
+    .status-pill.tier-b { background:#F1F5F9; color:#334155 !important; border:1px solid #E2E8F0; }
+    .status-pill.tier-c { background:#FFF7ED; color:#9A3412 !important; border:1px solid #FED7AA; }
     </style>
 """,
     unsafe_allow_html=True,
@@ -1005,6 +1008,10 @@ else:
             row_sector_percentile = (
                 (period_scores.get("1y") or {}).get("avg") or {}
             ).get("sector_percentile")
+            row_per = supabase_data.get("per")
+            row_pbr = supabase_data.get("pbr")
+            row_per_tier = supabase_data.get("per_tier")
+            row_pbr_tier = supabase_data.get("pbr_tier")
 
             status_pills_html = ""
             if row_reliability:
@@ -1023,11 +1030,31 @@ else:
                     f'<span class="status-pill neutral">📊 업종 내 상위 '
                     f'{100 - row_sector_percentile:.1f}% (1년 평균 기준)</span>'
                 )
+            # PER/PBR 업종 내 상대적 저평가(A)/적정(B)/고평가(C) 배지 - rescore_valuation_tiers.py가 계산.
+            # 저평가=A라고 해서 매수 신호는 아님(밸류 트랩 가능성 등) - 어디까지나 업종 내 상대적 위치일 뿐.
+            tier_cls_map = {"A": "tier-a", "B": "tier-b", "C": "tier-c"}
+            tier_label_map = {"A": "저평가", "B": "적정", "C": "고평가"}
+            if row_per_tier and row_per is not None:
+                status_pills_html += (
+                    f'<span class="status-pill {tier_cls_map.get(row_per_tier, "neutral")}">'
+                    f'💰 PER {row_per} · 업종 내 {tier_label_map.get(row_per_tier, row_per_tier)}(Tier {row_per_tier})</span>'
+                )
+            if row_pbr_tier and row_pbr is not None:
+                status_pills_html += (
+                    f'<span class="status-pill {tier_cls_map.get(row_pbr_tier, "neutral")}">'
+                    f'🏦 PBR {row_pbr} · 업종 내 {tier_label_map.get(row_pbr_tier, row_pbr_tier)}(Tier {row_pbr_tier})</span>'
+                )
             if row_missing_count is not None:
                 status_pills_html += f'<span class="status-pill neutral">🧩 결측 지표: {row_missing_count}개</span>'
 
             if status_pills_html:
                 st.markdown(f'<div class="row-status-bar">{status_pills_html}</div>', unsafe_allow_html=True)
+                if row_per_tier or row_pbr_tier:
+                    st.caption(
+                        "ℹ️ PER/PBR Tier는 같은 업종(WICS) 내 상대적 위치일 뿐이며, "
+                        "저평가(A)가 반드시 좋은 투자를 의미하지 않습니다 (실적 악화로 인한 "
+                        "'밸류 트랩'일 수도 있음). 참고 정보로만 활용해주세요."
+                    )
 
             # 1/3/5/10년 기간 탭
             available_periods = [p for p in ["1y", "3y", "5y", "10y"] if p in period_scores]
