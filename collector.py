@@ -674,6 +674,18 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
             avg_metrics[metric] = round(sum(series) / len(series), 2) if series else None
             worst_metrics[metric] = worst_value(metric, series)
 
+        # interest_coverage 계산에 쓰인 이자비용이 근사치(금융비용 기준, 버그8)였는지 여부.
+        # 최악값이 정확히 어느 해에서 나왔는지까지는 추적하지 않고, "이 기간에 값을 채택한
+        # 연도 중 하나라도 근사치를 썼으면 이 기간 전체를 근사치로 표시"하는 보수적 방식.
+        ic_approx_years = [
+            yearly_data[y].get("interest_exp_is_approx", False)
+            for y in recent_years
+            if yearly_data[y].get("interest_coverage") is not None
+        ]
+        interest_coverage_is_approx = any(ic_approx_years) if ic_approx_years else False
+        avg_metrics["interest_coverage_is_approx"] = interest_coverage_is_approx
+        worst_metrics["interest_coverage_is_approx"] = interest_coverage_is_approx
+
         period_results[period] = {
             "years_used": window_years,
             "avg_metrics": avg_metrics,
@@ -695,6 +707,7 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
             }
             for metric in RATIO_METRICS:
                 metrics_1y[metric] = latest_report.get(metric)
+            metrics_1y["interest_coverage_is_approx"] = latest_report.get("interest_exp_is_approx", False)
 
             period_results[1] = {
                 "years_used": [f"{report_year} {report_label}"],
@@ -780,6 +793,13 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
                 continue
             avg_score = calculate_fundamental_score(pdata["avg_metrics"], leverage_exempt=leverage_exempt, is_financial=financial_sector)
             worst_score = calculate_fundamental_score(pdata["worst_metrics"], leverage_exempt=leverage_exempt, is_financial=financial_sector)
+
+            # 이자비용이 근사치(금융비용 기준, 버그8)로 계산된 기간이면 metric_scores에 표시해서
+            # app.py가 "이 값은 근사치입니다" 안내를 붙일 수 있게 함
+            if pdata["avg_metrics"].get("interest_coverage_is_approx") and "interest_coverage" in avg_score["metric_scores"]:
+                avg_score["metric_scores"]["interest_coverage"]["is_approximate"] = True
+            if pdata["worst_metrics"].get("interest_coverage_is_approx") and "interest_coverage" in worst_score["metric_scores"]:
+                worst_score["metric_scores"]["interest_coverage"]["is_approximate"] = True
             period_scores[f"{period}y"] = {
                 "years_used": pdata["years_used"],
                 "avg": {
@@ -1030,8 +1050,11 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         }
         for metric in RATIO_METRICS:
             metrics_1y[metric] = latest_report.get(metric)
+        metrics_1y["interest_coverage_is_approx"] = latest_report.get("interest_exp_is_approx", False)
 
         score = calculate_fundamental_score(metrics_1y, leverage_exempt=leverage_exempt, is_financial=financial_sector)
+        if metrics_1y.get("interest_coverage_is_approx") and "interest_coverage" in score["metric_scores"]:
+            score["metric_scores"]["interest_coverage"]["is_approximate"] = True
 
         report_year = latest_report["_report_year"]
         report_code = latest_report["_report_code"]
