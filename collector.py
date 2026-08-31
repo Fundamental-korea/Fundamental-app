@@ -6,9 +6,9 @@ import time
 import FinanceDataReader as fdr
 import requests
 try:
-    from OpenDartReader import OpenDartReader  # pip install OpenDartReader (requirements.txt 기준)
+    from opendartreader import OpenDartReader  # 실사용/대량 수집에서 검증된 소문자 모듈명 (우선)
 except ImportError:
-    from opendartreader import OpenDartReader  # 일부 환경(예: 기존 Colab 세션)의 소문자 모듈명 호환용
+    from OpenDartReader import OpenDartReader  # 일부 환경의 대문자 모듈명 호환용 (fallback)
 from supabase import create_client
 
 from scoring import calculate_fundamental_score, worst_value
