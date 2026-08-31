@@ -1,15 +1,13 @@
-name: Daily 1y Fundamental Score Auto-Update
+name: Daily Fundamental Data Auto-Update
 
 on:
   schedule:
     # 매일 UTC 0시 (한국 시간 오전 9시)에 자동 실행
-    # 매일 돌려도 안전함: 새 보고서가 없으면 같은 보고서를 다시 확인만 하고 끝남
-    # (DART 호출 종목당 약 2회 -> 전체 약 5,000~6,000건, 일일 한도 4만 건 내 충분히 여유)
     - cron: '0 0 * * *'
   workflow_dispatch: # GitHub 웹에서 수동으로도 즉시 실행 가능
 
 jobs:
-  run-1y-updater:
+  run-updater:
     runs-on: ubuntu-latest
 
     steps:
@@ -23,9 +21,9 @@ jobs:
 
       - name: 필수 라이브러리 설치
         run: |
-          pip install pandas finance-datareader opendartreader supabase requests
+          pip install -r requirements.txt
 
-      - name: 1y 점수 자동갱신 실행
+      - name: 1y 지표 자동 갱신 스크립트 실행
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
