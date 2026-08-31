@@ -1122,6 +1122,14 @@ else:
                                 "왜곡되는 걸 막기 위해 제외된 값입니다. 데이터 누락이 아닙니다."
                                 "</span>"
                             )
+                        # 이자비용을 못 찾아 금융비용(포괄 비용)으로 근사 계산된 경우 안내
+                        if metric_key == "interest_coverage" and entry.get("is_approximate"):
+                            growth_guard_note = (
+                                "<br><span style='font-size:12px; color:#92400E;'>"
+                                "ℹ️ 순수 이자비용 계정을 찾지 못해 금융비용(환차손 등 포함) 기준 "
+                                "근사치로 계산된 값입니다. 실제보다 다소 보수적으로 잡혔을 수 있습니다."
+                                "</span>"
+                            )
 
                         box_cls = "sketch-item-box excluded" if excluded else "sketch-item-box"
                         if excluded:
