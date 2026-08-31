@@ -163,6 +163,68 @@ def resolve_interest_coverage(op_profit, interest_exp, debt_rate):
     return None
 
 
+def _normalize_account_name(name):
+    """계정명 비교용 정규화: 모든 공백 제거. 한국 재무제표는 같은 계정을
+    '영업활동현금흐름'/'영업활동 현금흐름'처럼 공백 유무만 다르게 표기하는 경우가 흔해서,
+    단순 str.contains 매칭이 공백 하나 때문에 통째로 실패하는 걸 방지 (버그7 수정)."""
+    if name is None:
+        return ""
+    return "".join(str(name).split())
+
+
+def _find_account_value(source_df, keywords, field="thstrm_amount"):
+    """계정명 공백 차이를 무시하고 정확매칭 -> 부분매칭 순으로 값을 찾는다.
+    get_value()들의 공통 로직 - 공백 정규화가 반영된 버전. 못 찾으면 None
+    (0.0 fallback 여부는 호출부가 결정하도록 여기선 값 유무만 알려줌)."""
+    if source_df is None or source_df.empty:
+        return None
+    norm_names = source_df["account_nm"].map(_normalize_account_name)
+
+    for kw in keywords:
+        nkw = _normalize_account_name(kw)
+        mask = norm_names == nkw
+        if mask.any():
+            val_str = str(source_df[mask].iloc[0][field]).replace(",", "")
+            if val_str and val_str != "-":
+                return float(val_str)
+
+    for kw in keywords:
+        nkw = _normalize_account_name(kw)
+        mask = norm_names.str.contains(nkw, na=False, regex=False)
+        if mask.any():
+            val_str = str(source_df[mask].iloc[0][field]).replace(",", "")
+            if val_str and val_str != "-":
+                return float(val_str)
+
+    return None
+
+
+def get_interest_expense(detail_df, field="thstrm_amount"):
+    """
+    이자비용 추출 다단계 폴백 (버그8 수정 - '부채 지급비용'이라는 원래 취지에 가장 가까운
+    값을 우선순위대로 시도):
+      1순위 '이자비용'/'금융원가' - 손익계산서상 순수 이자비용 계정 (있으면 가장 정확)
+      2순위 '이자의 지급' - 현금흐름표 주석의 실제 이자 지급액(현금주의). 발생주의는 아니지만
+             환차손 등 노이즈가 안 섞여 있어 순수 이자부담에 가장 가까운 근사치
+      3순위 '금융비용' - 이자비용 외에 환차손/파생상품평가손실 등이 섞인 포괄 비용.
+             실제 이자부담보다 부풀려질 수 있는 최후의 수단이라 근사치로 플래그를 남김
+    반환값: (interest_exp, is_approximate) 튜플. 3순위를 쓴 경우만 근사치(True)로 표시.
+    """
+    val = _find_account_value(detail_df, ["이자비용", "금융원가"], field=field)
+    if val is not None:
+        return abs(val), False
+
+    val = _find_account_value(detail_df, ["이자의 지급"], field=field)
+    if val is not None:
+        return abs(val), False
+
+    val = _find_account_value(detail_df, ["금융비용"], field=field)
+    if val is not None:
+        return abs(val), True
+
+    return 0.0, False
+
+
 def get_sector_map():
     """{종목코드: 업종(Industry) 문자열} 딕셔너리 반환 (상세 업종, 표시용). KRX-DESC 조회 실패 시 빈 dict."""
     try:
@@ -358,21 +420,9 @@ def _parse_year_financials(df, df_full=None):
     (dart.finstate()의 표준 주요계정엔 이 4개가 없어서)."""
 
     def get_value(keywords, source_df):
-        # 1차: 정확히 일치하는 계정명 우선 (부분 문자열 오매칭으로 인한 값 왜곡 방지 - 버그6 관련 보강)
-        for kw in keywords:
-            row = source_df[source_df["account_nm"] == kw]
-            if not row.empty:
-                val_str = str(row.iloc[0]["thstrm_amount"]).replace(",", "")
-                if val_str and val_str != "-":
-                    return float(val_str)
-        # 2차: 부분 포함 매칭 (fallback)
-        for kw in keywords:
-            row = source_df[source_df["account_nm"].str.contains(kw, na=False, regex=False)]
-            if not row.empty:
-                val_str = str(row.iloc[0]["thstrm_amount"]).replace(",", "")
-                if val_str and val_str != "-":
-                    return float(val_str)
-        return 0.0
+        # 공백 유무 차이(예: '영업활동현금흐름' vs '영업활동 현금흐름')를 무시하고 매칭 (버그7 수정)
+        val = _find_account_value(source_df, keywords, field="thstrm_amount")
+        return val if val is not None else 0.0
 
     revenue = get_value(["매출액", "수익(매출액)", "영업수익"], df)
     op_profit = get_value(["영업이익", "영업이익(손실)"], df)
@@ -390,7 +440,8 @@ def _parse_year_financials(df, df_full=None):
     inventory = get_value(["재고자산"], detail_df)
     sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"], detail_df)
     operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"], detail_df)
-    interest_exp = get_value(["이자비용", "금융원가"], detail_df)
+    # 이자비용: 이자비용/금융원가 -> 이자의 지급(현금흐름표) -> 금융비용(포괄, 근사치) 순 폴백 (버그8 수정)
+    interest_exp, interest_exp_is_approx = get_interest_expense(detail_df, field="thstrm_amount")
 
     # 투하자본 근사치: 자산총계 - 유동부채 (이자부채만 정확히 구분하기 어려워 유동부채 전체를 차감하는 간이 추정)
     invested_capital = total_assets - current_liab
@@ -416,6 +467,7 @@ def _parse_year_financials(df, df_full=None):
         "net_income": net_income,
         "total_liabilities": total_liab,
         "total_equity": total_equity,
+        "interest_exp_is_approx": interest_exp_is_approx,
     }
 
     return {**ratios, **raw}
@@ -429,21 +481,9 @@ def _parse_report_financials(df, df_full=None):
     """
 
     def get_value(keywords, source_df, field="thstrm_amount"):
-        # 1차: 정확히 일치하는 계정명 우선 (버그6 관련 보강)
-        for kw in keywords:
-            row = source_df[source_df["account_nm"] == kw]
-            if not row.empty:
-                val_str = str(row.iloc[0][field]).replace(",", "")
-                if val_str and val_str != "-":
-                    return float(val_str)
-        # 2차: 부분 포함 매칭 (fallback)
-        for kw in keywords:
-            row = source_df[source_df["account_nm"].str.contains(kw, na=False, regex=False)]
-            if not row.empty:
-                val_str = str(row.iloc[0][field]).replace(",", "")
-                if val_str and val_str != "-":
-                    return float(val_str)
-        return 0.0
+        # 공백 유무 차이를 무시하고 매칭 (버그7 수정)
+        val = _find_account_value(source_df, keywords, field=field)
+        return val if val is not None else 0.0
 
     revenue = get_value(["매출액", "수익(매출액)", "영업수익"], df)
     op_profit = get_value(["영업이익", "영업이익(손실)"], df)
@@ -460,7 +500,8 @@ def _parse_report_financials(df, df_full=None):
     inventory = get_value(["재고자산"], detail_df)
     sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"], detail_df)
     operating_cf = get_value(["영업활동현금흐름", "영업활동으로 인한 현금흐름"], detail_df)
-    interest_exp = get_value(["이자비용", "금융원가"], detail_df)
+    # 이자비용: 이자비용/금융원가 -> 이자의 지급(현금흐름표) -> 금융비용(포괄, 근사치) 순 폴백 (버그8 수정)
+    interest_exp, interest_exp_is_approx = get_interest_expense(detail_df, field="thstrm_amount")
 
     prev_revenue = get_value(["매출액", "수익(매출액)", "영업수익"], df, field="frmtrm_amount")
     prev_net_income = get_value(["당기순이익", "당기순이익(손실)"], df, field="frmtrm_amount")
@@ -498,6 +539,7 @@ def _parse_report_financials(df, df_full=None):
         "net_income": net_income,
         "total_liabilities": total_liab,
         "total_equity": total_equity,
+        "interest_exp_is_approx": interest_exp_is_approx,
     }
 
     return {**ratios, "revenue_growth": revenue_growth, "eps_growth": eps_growth, **raw}
@@ -1110,7 +1152,5 @@ if __name__ == "__main__":
     df_krx_all = fdr.StockListing("KRX")
     sector_map_all = get_sector_map()
 
-    for code, name in target_stocks:
-        sync_kor_stock_fundamental(code, name, df_krx=df_krx_all, sector_map=sector_map_all)
     for code, name in target_stocks:
         sync_kor_stock_fundamental(code, name, df_krx=df_krx_all, sector_map=sector_map_all)
