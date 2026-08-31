@@ -5,10 +5,7 @@ import time
 
 import FinanceDataReader as fdr
 import requests
-try:
-    from opendartreader import OpenDartReader  # 실사용/대량 수집에서 검증된 소문자 모듈명 (우선)
-except ImportError:
-    from OpenDartReader import OpenDartReader  # 일부 환경의 대문자 모듈명 호환용 (fallback)
+import OpenDartReader  # 공식 사용법: from-import 아니고 모듈 자체를 바로 호출 (dart = OpenDartReader(key))
 from supabase import create_client
 
 from scoring import calculate_fundamental_score, worst_value
