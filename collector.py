@@ -963,6 +963,109 @@ def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manu
     return succeeded, failed
 
 
+def get_bugfix_affected_codes():
+    """
+    버그7(OCF 공백매칭 실패)/버그8(이자비용 계정 부재) 영향을 받았을 가능성이 있는 종목만 추려낸다.
+    판정 기준: 어느 기간(1y/3y/5y/10y)의 avg 또는 worst 어느 쪽에서든
+      - ocf_ratio 값이 정확히 0 이거나 (계정 못 찾아 0.0 fallback된 흔적)
+      - interest_coverage 값이 None (이자비용 추출 실패로 결측 처리된 흔적)
+    인 경우 그 종목을 대상에 포함. 전체 재수집 대신 이 목록만 다시 돌리면 DART 호출을
+    크게 줄일 수 있음 (실측: 전체 대비 약 절반 수준).
+    """
+    all_rows = []
+    page_size = 500
+    start = 0
+    while True:
+        res = (
+            supabase.table("Fundamental")
+            .select("stock_code, period_scores")
+            .not_.is_("period_scores", "null")
+            .range(start, start + page_size - 1)
+            .execute()
+        )
+        rows = res.data
+        if not rows:
+            break
+        all_rows.extend(rows)
+        if len(rows) < page_size:
+            break
+        start += page_size
+
+    affected = []
+    for row in all_rows:
+        ps = row.get("period_scores") or {}
+        is_affected = False
+        for period in PERIODS_LABELS:
+            pdata = ps.get(period)
+            if not pdata:
+                continue
+            for mode in ("avg", "worst"):
+                mscores = (pdata.get(mode) or {}).get("metric_scores") or {}
+                ocf_entry = mscores.get("ocf_ratio") or {}
+                ic_entry = mscores.get("interest_coverage") or {}
+                if ocf_entry.get("value") == 0:
+                    is_affected = True
+                if "interest_coverage" in mscores and ic_entry.get("value") is None:
+                    is_affected = True
+                if is_affected:
+                    break
+            if is_affected:
+                break
+        if is_affected:
+            affected.append(row["stock_code"])
+
+    print(f"🔍 버그7/8 영향 추정 종목: {len(affected)}개 / 전체 스코어 보유 {len(all_rows)}개")
+    return affected
+
+
+PERIODS_LABELS = ["1y", "3y", "5y", "10y"]
+
+
+def resync_bugfix_affected_stocks(limit=None, sleep_sec=0.5, use_ofs_for_manufacturing=True):
+    """
+    get_bugfix_affected_codes()로 추린 종목만 다시 수집 (전체 재수집 대신 사용).
+    sync_all_kor_stocks_b_group()과 달리 b_group_synced_at 기준 resume 로직은 안 씀 -
+    이건 일회성 패치 재수집이라, 이 함수를 다시 돌리면 매번 같은 대상 목록을 다시 계산해서
+    돈다(이미 고쳐진 종목은 다음 실행 때 판정 기준에 안 걸려 자동으로 목록에서 빠짐).
+    """
+    df_krx = fdr.StockListing("KRX")
+    sector_map = get_sector_map()
+    wics_sector_map = get_wics_sector_map()
+    kospi_mdd_cache = get_kospi_mdd_cache()
+
+    targets = get_bugfix_affected_codes()
+    if limit:
+        targets = targets[:limit]
+
+    total = len(targets)
+    est_calls = total * 24
+    print(f"📋 재수집 대상 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건)")
+    if est_calls > 40000:
+        print("   ⚠️ 예상 호출 건수가 일일 한도를 초과합니다 - limit을 나눠서 여러 날에 걸쳐 실행하세요.")
+
+    succeeded, failed = [], []
+    for i, code in enumerate(targets, 1):
+        name_row = df_krx[df_krx["Code"] == code]
+        name = name_row.iloc[0]["Name"] if not name_row.empty else code
+        print(f"\n[{i}/{total}] ", end="")
+        try:
+            sync_kor_stock_fundamental(
+                code, name, df_krx=df_krx, sector_map=sector_map, wics_sector_map=wics_sector_map,
+                kospi_mdd_cache=kospi_mdd_cache,
+                use_ofs_for_manufacturing=use_ofs_for_manufacturing,
+            )
+            succeeded.append(code)
+        except Exception as e:
+            print(f"❌ [{name}({code})] 처리 중 예외 발생, 건너뜁니다: {e}")
+            failed.append(code)
+        time.sleep(sleep_sec)
+
+    print(f"\n\n=== 버그 패치 재수집 완료: 성공 {len(succeeded)} / 실패 {len(failed)} / 전체 {total} ===")
+    if failed:
+        print("실패한 종목코드:", failed)
+    return succeeded, failed
+
+
 def sync_all_kor_stocks_b_group(limit=None, sleep_sec=0.5, use_ofs_for_manufacturing=True):
     """
     B그룹 버그 수정(자본총계 매칭 강화 / interest_coverage 오탐 방지 / growth 안전장치) 반영 후
@@ -1175,5 +1278,7 @@ if __name__ == "__main__":
     df_krx_all = fdr.StockListing("KRX")
     sector_map_all = get_sector_map()
 
+    for code, name in target_stocks:
+        sync_kor_stock_fundamental(code, name, df_krx=df_krx_all, sector_map=sector_map_all)
     for code, name in target_stocks:
         sync_kor_stock_fundamental(code, name, df_krx=df_krx_all, sector_map=sector_map_all)
