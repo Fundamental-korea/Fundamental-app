@@ -999,6 +999,12 @@ else:
             row_capital_impairment = supabase_data.get("capital_impairment")
             row_missing_count = supabase_data.get("missing_metric_count")
             row_wics_sector = supabase_data.get("wics_sector")
+            # sector_percentile은 8개(기간x기준) 조합 전체가 아니라 "1년-평균" 기준으로만
+            # 대표값 1개가 계산되는 설계(rescore_final_grades.py 참고)이므로,
+            # 기간 탭 안이 아니라 여기 종목 레벨 배지 줄에서 한 번만 보여준다.
+            row_sector_percentile = (
+                (period_scores.get("1y") or {}).get("avg") or {}
+            ).get("sector_percentile")
 
             status_pills_html = ""
             if row_reliability:
@@ -1012,6 +1018,11 @@ else:
                 status_pills_html += '<span class="status-pill impairment-warn">⚠️ 자본잠식 상태</span>'
             if row_wics_sector:
                 status_pills_html += f'<span class="status-pill neutral">🏷️ 업종(WICS): {row_wics_sector}</span>'
+            if row_sector_percentile is not None:
+                status_pills_html += (
+                    f'<span class="status-pill neutral">📊 업종 내 상위 '
+                    f'{100 - row_sector_percentile:.1f}% (1년 평균 기준)</span>'
+                )
             if row_missing_count is not None:
                 status_pills_html += f'<span class="status-pill neutral">🧩 결측 지표: {row_missing_count}개</span>'
 
@@ -1046,7 +1057,6 @@ else:
                     grade = view_data.get("grade", "N/A")
                     metric_scores = view_data.get("metric_scores", {})
                     sub_scores = view_data.get("sub_scores") or {}
-                    sector_percentile = view_data.get("sector_percentile")
                     financial_adjusted = view_data.get("financial_adjusted")
                     period_missing_count = view_data.get("missing_metric_count")
 
@@ -1058,8 +1068,6 @@ else:
                             sub_badges += f'<span class="mini-stat-badge">🌱 성장 서브스코어 {growth_v}</span>'
                         if defense_v is not None:
                             sub_badges += f'<span class="mini-stat-badge">🛡️ 방어 서브스코어 {defense_v}</span>'
-                    if sector_percentile is not None:
-                        sub_badges += f'<span class="mini-stat-badge">📊 업종 내 상위 {100 - sector_percentile:.1f}%</span>'
                     if financial_adjusted:
                         sub_badges += '<span class="mini-stat-badge">🏦 금융업 보정 적용</span>'
                     if period_missing_count is not None:
@@ -1080,8 +1088,6 @@ else:
                         """,
                         unsafe_allow_html=True,
                     )
-                    if sector_percentile is None and (row_wics_sector or "") != "":
-                        st.caption("ℹ️ 이 기간/기준 조합은 아직 업종 내 백분위(sector_percentile) 데이터가 계산되지 않았습니다.")
 
                     for metric_key in METRIC_ORDER:
                         entry = metric_scores.get(metric_key)
@@ -1105,6 +1111,18 @@ else:
                         else:
                             value_display = "N/A"
 
+                        # revenue_growth/eps_growth가 N/A인 경우, 데이터가 없는 게 아니라
+                        # 전년 기저값이 지나치게 작아 증가율이 왜곡되는 걸 막는 안전장치
+                        # (sanitize_growth: |증가율| > 500% 시 None 처리)가 작동한 경우가 대부분.
+                        growth_guard_note = ""
+                        if value is None and metric_key in ("revenue_growth", "eps_growth"):
+                            growth_guard_note = (
+                                "<br><span style='font-size:12px; color:#92400E;'>"
+                                "ℹ️ 전년 동기 기저값이 너무 작아(또는 흑자전환 등) 증가율이 "
+                                "왜곡되는 걸 막기 위해 제외된 값입니다. 데이터 누락이 아닙니다."
+                                "</span>"
+                            )
+
                         box_cls = "sketch-item-box excluded" if excluded else "sketch-item-box"
                         if excluded:
                             score_display = "업종 특성상 제외"
@@ -1117,7 +1135,7 @@ else:
                             f"""
                             <div class="{box_cls}">
                                 <div class="sketch-item-title">{title}</div>
-                                <div class="sketch-item-desc">{desc}<br><b>실측값: {value_display}</b></div>
+                                <div class="sketch-item-desc">{desc}<br><b>실측값: {value_display}</b>{growth_guard_note}</div>
                                 <div class="{score_cls}">{score_display}</div>
                             </div>
                             """,
