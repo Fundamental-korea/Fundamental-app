@@ -199,6 +199,10 @@ st.markdown(
         border-color: #F4A261;
         transform: translateY(-2px);
     }
+    .sketch-item-box.excluded {
+        opacity: 0.55;
+        background-color: #FAFAFA;
+    }
     .sketch-item-title {
         font-size: 17px;
         font-weight: 800;
@@ -222,6 +226,13 @@ st.markdown(
         border-radius: 8px;
         white-space: nowrap;
     }
+    .sketch-item-score.excluded {
+        font-size: 13px;
+        font-weight: 700;
+        color: #64748B !important;
+        background-color: #F1F5F9;
+        border: 1px solid #E2E8F0;
+    }
 
     .grade-hero-box {
         background-color: #FFFDF9;
@@ -231,8 +242,10 @@ st.markdown(
         display: flex;
         align-items: center;
         justify-content: space-between;
-        margin-bottom: 20px;
+        margin-bottom: 12px;
         box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12);
+        flex-wrap: wrap;
+        gap: 16px;
     }
     .grade-hero-score {
         font-size: 42px;
@@ -247,6 +260,40 @@ st.markdown(
         background-color: #D97706;
         color: #FFFFFF !important;
     }
+    .grade-hero-sub {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+    .mini-stat-badge {
+        font-size: 12px;
+        font-weight: 700;
+        padding: 6px 12px;
+        border-radius: 8px;
+        background-color: #FFFFFF;
+        border: 1px solid #F4A261;
+        color: #92400E !important;
+        white-space: nowrap;
+    }
+
+    .row-status-bar {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-bottom: 14px;
+    }
+    .status-pill {
+        font-size: 12px;
+        font-weight: 700;
+        padding: 5px 12px;
+        border-radius: 20px;
+        white-space: nowrap;
+    }
+    .status-pill.reliability-good { background:#ECFDF5; color:#047857 !important; border:1px solid #A7F3D0; }
+    .status-pill.reliability-mid { background:#FFFBEB; color:#92400E !important; border:1px solid #FDE68A; }
+    .status-pill.reliability-low { background:#FEF2F2; color:#B91C1C !important; border:1px solid #FECACA; }
+    .status-pill.impairment-warn { background:#FEF2F2; color:#B91C1C !important; border:1px solid #FECACA; }
+    .status-pill.neutral { background:#F1F5F9; color:#334155 !important; border:1px solid #E2E8F0; }
     </style>
 """,
     unsafe_allow_html=True,
@@ -312,8 +359,6 @@ def get_combined_stock_db():
 def get_stock_data(code):
     """Supabase에 펀더멘탈 스코어 데이터가 있으면 그걸 우선 사용, 없으면 yfinance로 가격 정보만 폴백"""
     supabase_data = None
-    if not supabase:
-        st.error("Supabase 클라이언트 초기화 실패 - secrets 확인 필요")
     if supabase:
         try:
             res = (
@@ -324,8 +369,8 @@ def get_stock_data(code):
             )
             if res.data and len(res.data) > 0:
                 supabase_data = res.data[0]
-        except Exception as e:
-            st.error(f"Supabase 조회 실패: {e}")
+        except Exception:
+            pass
 
     ticker_symbol = f"{code}.KS" if code.isdigit() else code
     try:
@@ -921,45 +966,6 @@ else:
         else:
             st.info("실시간 차트 데이터를 불러올 수 없습니다.")
 
-        supabase_data = data.get("supabase_data")
-
-        # ------------------------------------------------------------
-        # PER/PBR 밸류에이션 추이 (Tier C)
-        # 저장된 per/pbr + 수집시점 주가로 EPS/BPS를 역산한 뒤, 실시간 주가(hist)로
-        # 나눠서 "최근 1년 밸류에이션 밴드"를 보여줌. 추가 DART 수집 불필요.
-        # 한계: EPS/BPS 자체는 최근 확정 연간실적 기준 고정값이라, 그래프는 어디까지나
-        # "주가 변동에 따른 밸류에이션 변화"만 반영함 (진짜 다년간 펀더멘탈 추이는 Tier A 몫).
-        # ------------------------------------------------------------
-        st.markdown("<br>", unsafe_allow_html=True)
-        st.markdown("#### 💰 밸류에이션 (PER/PBR) 추이 (최근 1년)")
-
-        stored_per = (supabase_data or {}).get("per")
-        stored_pbr = (supabase_data or {}).get("pbr")
-        collection_price = (supabase_data or {}).get("stock_price")
-
-        if not hist_df.empty and collection_price:
-            col_v1, col_v2 = st.columns(2)
-
-            with col_v1:
-                if stored_per:
-                    eps_estimated = collection_price / stored_per
-                    per_series = hist_df["Close"] / eps_estimated
-                    st.caption(f"현재 PER: {stored_per} (최근 확정 실적 기준 역산)")
-                    st.line_chart(per_series)
-                else:
-                    st.info("PER 산출 불가 (최근 실적 적자 등)")
-
-            with col_v2:
-                if stored_pbr:
-                    bps_estimated = collection_price / stored_pbr
-                    pbr_series = hist_df["Close"] / bps_estimated
-                    st.caption(f"현재 PBR: {stored_pbr}")
-                    st.line_chart(pbr_series)
-                else:
-                    st.info("PBR 산출 불가")
-        else:
-            st.info("밸류에이션 데이터를 아직 확보하지 못했습니다.")
-
         st.markdown("<br>", unsafe_allow_html=True)
 
         # 10개 지표별 표시용 메타데이터 (scoring.py의 METRIC_KEYS와 정확히 일치)
@@ -974,9 +980,11 @@ else:
             "ocf_ratio": ("8. OCF Ratio", "영업활동현금흐름/순이익 비율: 장부상 이익이 아닌 실제 유입되는 현금 체력의 우수성을 나타냅니다."),
             "sga_ratio": ("9. SG&A Ratio", "판관비율: 매출 대비 판매관리비 비중으로, 기업의 비용 통제 및 경영 효율성을 보여줍니다."),
             "downturn_defense": ("10. Downturn Defense", "하락장 실제 방어력: 과거 주요 하락장(코로나, 2022년 긴축 등)에서 코스피 지수 대비 덜 하락한 정도(%p)를 반영합니다."),
+            "roa": ("4-B. ROA (금융업 전용)", "총자산이익률: 금융업종은 레버리지 구조상 ROIC 대신 총자산 대비 순이익 창출력으로 대체 평가합니다."),
         }
         METRIC_ORDER = list(METRIC_DISPLAY.keys())
 
+        supabase_data = data.get("supabase_data")
         period_scores = (supabase_data or {}).get("period_scores") or {}
 
         if not period_scores:
@@ -986,6 +994,30 @@ else:
                 "(국내(KR) 종목만 DART 기반 스코어링을 지원합니다)"
             )
         else:
+            # --- 종목 레벨(row) 상태 배지: 데이터 신뢰도 / 자본잠식 / 결측 지표 수 ---
+            row_reliability = supabase_data.get("data_reliability")
+            row_capital_impairment = supabase_data.get("capital_impairment")
+            row_missing_count = supabase_data.get("missing_metric_count")
+            row_wics_sector = supabase_data.get("wics_sector")
+
+            status_pills_html = ""
+            if row_reliability:
+                rel_cls = {
+                    "높음": "reliability-good", "양호": "reliability-good",
+                    "보통": "reliability-mid",
+                    "낮음": "reliability-low", "주의": "reliability-low",
+                }.get(row_reliability, "reliability-mid")
+                status_pills_html += f'<span class="status-pill {rel_cls}">📋 데이터 신뢰도: {row_reliability}</span>'
+            if row_capital_impairment:
+                status_pills_html += '<span class="status-pill impairment-warn">⚠️ 자본잠식 상태</span>'
+            if row_wics_sector:
+                status_pills_html += f'<span class="status-pill neutral">🏷️ 업종(WICS): {row_wics_sector}</span>'
+            if row_missing_count is not None:
+                status_pills_html += f'<span class="status-pill neutral">🧩 결측 지표: {row_missing_count}개</span>'
+
+            if status_pills_html:
+                st.markdown(f'<div class="row-status-bar">{status_pills_html}</div>', unsafe_allow_html=True)
+
             # 1/3/5/10년 기간 탭
             available_periods = [p for p in ["1y", "3y", "5y", "10y"] if p in period_scores]
             period_labels = {"1y": "📅 1년 (단기)", "3y": "📆 3년 (중기)", "5y": "🗓️ 5년 (중장기)", "10y": "📈 10년 (장기)"}
@@ -1013,6 +1045,25 @@ else:
                     total_score = view_data.get("total_score")
                     grade = view_data.get("grade", "N/A")
                     metric_scores = view_data.get("metric_scores", {})
+                    sub_scores = view_data.get("sub_scores") or {}
+                    sector_percentile = view_data.get("sector_percentile")
+                    financial_adjusted = view_data.get("financial_adjusted")
+                    period_missing_count = view_data.get("missing_metric_count")
+
+                    sub_badges = ""
+                    if sub_scores:
+                        growth_v = sub_scores.get("growth")
+                        defense_v = sub_scores.get("defense")
+                        if growth_v is not None:
+                            sub_badges += f'<span class="mini-stat-badge">🌱 성장 서브스코어 {growth_v}</span>'
+                        if defense_v is not None:
+                            sub_badges += f'<span class="mini-stat-badge">🛡️ 방어 서브스코어 {defense_v}</span>'
+                    if sector_percentile is not None:
+                        sub_badges += f'<span class="mini-stat-badge">📊 업종 내 상위 {100 - sector_percentile:.1f}%</span>'
+                    if financial_adjusted:
+                        sub_badges += '<span class="mini-stat-badge">🏦 금융업 보정 적용</span>'
+                    if period_missing_count is not None:
+                        sub_badges += f'<span class="mini-stat-badge">🧩 결측 {period_missing_count}개</span>'
 
                     st.markdown(
                         f"""
@@ -1024,40 +1075,28 @@ else:
                                 <div class="grade-hero-score">{total_score if total_score is not None else 'N/A'} / 100</div>
                             </div>
                             <div class="grade-hero-badge">{grade}</div>
+                            <div class="grade-hero-sub">{sub_badges}</div>
                         </div>
                         """,
                         unsafe_allow_html=True,
                     )
-
-                    # ------------------------------------------------------------
-                    # 데이터 신뢰도 배지
-                    # collector.py가 채점 시점에 이미 계산해 저장해둔 missing_metric_count를
-                    # 그대로 사용 - 전체 종목 분포가 필요 없는 값이라 지금 바로 표시 가능.
-                    # ------------------------------------------------------------
-                    missing_count = view_data.get("missing_metric_count")
-                    if missing_count is not None:
-                        if missing_count == 0:
-                            rel_label, rel_color = "높음", "#16A34A"
-                        elif missing_count <= 2:
-                            rel_label, rel_color = "보통", "#D97706"
-                        else:
-                            rel_label, rel_color = "낮음", "#DC2626"
-                        st.markdown(
-                            f"<div style='margin: 4px 0 16px 4px; font-size: 13px; color: #64748B;'>"
-                            f"📊 데이터 신뢰도: <span style='color:{rel_color}; font-weight:800;'>{rel_label}</span>"
-                            f" (10개 지표 중 {10 - missing_count}개 확보)</div>",
-                            unsafe_allow_html=True,
-                        )
+                    if sector_percentile is None and (row_wics_sector or "") != "":
+                        st.caption("ℹ️ 이 기간/기준 조합은 아직 업종 내 백분위(sector_percentile) 데이터가 계산되지 않았습니다.")
 
                     for metric_key in METRIC_ORDER:
+                        entry = metric_scores.get(metric_key)
+                        if entry is None:
+                            # roa는 금융업이 아닌 경우 metric_scores에 아예 없으므로 스킵
+                            continue
+
                         title, desc = METRIC_DISPLAY[metric_key]
-                        entry = metric_scores.get(metric_key, {})
                         value = entry.get("value")
                         score = entry.get("score")
-                        
+                        excluded = entry.get("excluded_from_total", False)
+
                         # 값 포맷팅 조정 (성장률이나 비율 지표는 뒤에 % 또는 %p 추가)
                         if value is not None:
-                            if metric_key in ["revenue_growth", "eps_growth", "opm", "roic", "debt_rate", "quick_ratio", "sga_ratio"]:
+                            if metric_key in ["revenue_growth", "eps_growth", "opm", "roic", "roa", "debt_rate", "quick_ratio", "sga_ratio"]:
                                 value_display = f"{value}%"
                             elif metric_key == "downturn_defense":
                                 value_display = f"{value}%p"
@@ -1066,14 +1105,20 @@ else:
                         else:
                             value_display = "N/A"
 
-                        score_display = f"{score}/10" if score is not None else "N/A"
+                        box_cls = "sketch-item-box excluded" if excluded else "sketch-item-box"
+                        if excluded:
+                            score_display = "업종 특성상 제외"
+                            score_cls = "sketch-item-score excluded"
+                        else:
+                            score_display = f"{score}/10" if score is not None else "N/A"
+                            score_cls = "sketch-item-score"
 
                         st.markdown(
                             f"""
-                            <div class="sketch-item-box">
+                            <div class="{box_cls}">
                                 <div class="sketch-item-title">{title}</div>
                                 <div class="sketch-item-desc">{desc}<br><b>실측값: {value_display}</b></div>
-                                <div class="sketch-item-score">Score {score_display}</div>
+                                <div class="{score_cls}">{score_display}</div>
                             </div>
                             """,
                             unsafe_allow_html=True,
