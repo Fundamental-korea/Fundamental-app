@@ -1,8 +1,9 @@
 # scoring.py
-# v3: v2(ROE→ROIC, 유동비율→당좌비율, downturn_defense 추가)에 이어,
-#     최종 데이터 분석 결과를 반영한 가중치 재배분 + 금융섹터 지표 보정을 scoring 단계에 직접 내장.
-#     (등급 컷오프는 전체 종목이 모여야 계산 가능한 상대적 개념이라 여기엔 포함하지 않음 -
-#      수집 완료 후 별도 rescore 패스에서 실제 분포 기준으로 부여)
+# v4: v3의 채점 로직(if/elif 체인)을 METRIC_SCORE_BANDS 데이터 구조로 전환.
+#     계산 로직(calculate_metric_score)과 UI 표시(app.py)가 이제 이 데이터를 공통으로
+#     참조하므로, 구간을 바꾸고 싶으면 여기 한 곳(METRIC_SCORE_BANDS)만 고치면
+#     채점기와 app.py의 "채점 기준표" 화면이 자동으로 같이 바뀐다 (진짜 단일 소스).
+#     ⚠️ 채점 결과 자체(v3 대비)는 완전히 동일하도록 값 하나하나 대조 검증했음.
 
 METRIC_KEYS = [
     "revenue_growth",
@@ -34,40 +35,63 @@ METRIC_DIRECTION = {
 }
 
 # --------------------------------------------------------------------------
-# 최종 가중치 (합계 100) — downturn_defense를 2배로(10→20), 성장성 2개는 절반으로(각 10→5),
-# 나머지 7개 지표는 원래 10점 유지. "하락장 방어" 목적에 맞게 방어력 신호 비중을 강화.
+# 채점 구간표 - calculate_metric_score()와 app.py의 "채점 기준표" 화면이 공통으로 참조하는
+# 단일 소스. 각 항목은 (threshold, 비교연산자, score) 튜플이고, 위에서부터 순서대로 검사해서
+# 처음 조건을 만족하는 항목의 score를 반환한다 (원래 if/elif 체인과 동일한 단락평가 순서).
+# 비교연산자: ">=" (이상), "<=" (이하), ">" (초과), "==" (정확히 일치)
+# 리스트에 없는 값(모든 조건 불만족)은 0점.
 # --------------------------------------------------------------------------
-METRIC_WEIGHTS = {
-    "revenue_growth": 5,
-    "eps_growth": 5,
-    "opm": 10,
-    "roic": 10,
-    "debt_rate": 10,
-    "quick_ratio": 10,
-    "interest_coverage": 10,
-    "ocf_ratio": 10,
-    "sga_ratio": 10,
-    "downturn_defense": 20,
+METRIC_SCORE_BANDS = {
+    "revenue_growth": [
+        (25, ">=", 10), (20, ">=", 9), (16, ">=", 8), (12, ">=", 7), (8, ">=", 6),
+        (5, ">=", 5), (2, ">=", 4), (0, ">=", 3), (-5, ">=", 2), (-10, ">=", 1),
+    ],
+    "eps_growth": [
+        (20, ">=", 10), (16, ">=", 9), (12, ">=", 8), (9, ">=", 7), (6, ">=", 6),
+        (3, ">=", 5), (1, ">=", 4), (0, ">=", 3), (-5, ">=", 2), (-15, ">=", 1),
+    ],
+    "opm": [
+        (25, ">=", 10), (20, ">=", 9), (16, ">=", 8), (13, ">=", 7), (10, ">=", 6),
+        (7, ">=", 5), (5, ">=", 4), (3, ">=", 3), (1, ">=", 2), (0, ">=", 1),
+    ],
+    "roic": [
+        (15, ">=", 10), (12, ">=", 9), (9, ">=", 8), (7, ">=", 7), (5, ">=", 6),
+        (3, ">=", 5), (1, ">=", 4), (0, ">=", 3), (-5, ">=", 2), (-15, ">=", 1),
+    ],
+    "roa": [
+        (1.5, ">=", 10), (1.2, ">=", 9), (1.0, ">=", 8), (0.8, ">=", 7), (0.6, ">=", 6),
+        (0.4, ">=", 5), (0.2, ">=", 4), (0.0, ">=", 3), (-0.5, ">=", 2), (-1.5, ">=", 1),
+    ],
+    "debt_rate": [
+        (20, "<=", 10), (40, "<=", 9), (60, "<=", 8), (80, "<=", 7), (100, "<=", 6),
+        (120, "<=", 5), (150, "<=", 4), (180, "<=", 3), (200, "<=", 2), (300, "<=", 1),
+    ],
+    "quick_ratio": [
+        (180, ">=", 10), (150, ">=", 9), (120, ">=", 8), (100, ">=", 7), (80, ">=", 6),
+        (60, ">=", 5), (40, ">=", 4), (25, ">=", 3), (15, ">=", 2), (5, ">=", 1),
+    ],
+    "interest_coverage": [
+        (20, ">=", 10), (15, ">=", 9), (11, ">=", 8), (8, ">=", 7), (5, ">=", 6),
+        (3, ">=", 5), (2, ">=", 4), (1.5, ">=", 3), (1.0, ">=", 2), (0, ">", 1),
+    ],
+    "ocf_ratio": [
+        (1.5, ">=", 10), (1.3, ">=", 9), (1.1, ">=", 8), (1.0, ">=", 7), (0.8, ">=", 6),
+        (0.6, ">=", 5), (0.4, ">=", 4), (0.2, ">=", 3), (0, ">", 2), (0, "==", 1),
+    ],
+    "sga_ratio": [
+        (8, "<=", 10), (12, "<=", 9), (16, "<=", 8), (20, "<=", 7), (25, "<=", 6),
+        (30, "<=", 5), (35, "<=", 4), (40, "<=", 3), (50, "<=", 2), (65, "<=", 1),
+    ],
+    "downturn_defense": [
+        (20, ">=", 10), (15, ">=", 9), (10, ">=", 8), (5, ">=", 7), (0, ">=", 6),
+        (-5, ">=", 5), (-10, ">=", 4), (-15, ">=", 3), (-25, ">=", 2), (-40, ">=", 1),
+    ],
 }
-assert sum(METRIC_WEIGHTS.values()) == 100
 
-# 금융섹터(은행/보험/증권 등)는 매출액/영업이익 개념 자체가 일반기업과 달라 이 3개 지표가
-# 구조적으로 안 맞음 -> 총점에서 제외하고 나머지로 리스케일
-FINANCIAL_EXCLUDED_METRICS = {"opm", "roic", "sga_ratio"}
-FINANCIAL_REMAINING_WEIGHT = sum(
-    w for k, w in METRIC_WEIGHTS.items() if k not in FINANCIAL_EXCLUDED_METRICS
-)  # = 70
+# debt_rate/quick_ratio/interest_coverage는 금융/지주회사/유틸리티 등 레버리지 구조가
+# 다른 업종에서 leverage_exempt=True일 때 자동 만점(10점) 처리되는 지표
+LEVERAGE_EXEMPT_METRICS = {"debt_rate", "quick_ratio", "interest_coverage"}
 
-# 금융섹터는 roic(투하자본이익률) 대신 ROA(총자산이익률)를 대체 지표로 채점 -
-# 은행/보험은 "투하자본" 개념 자체가 안 맞아 roic을 그냥 빼기만 했더니 실질 변별 지표가
-# 4개(revenue_growth/eps_growth/ocf_ratio/downturn_defense)뿐이었음. ROA를 추가해 5개로 보강.
-# ⚠️ 아래 브라켓은 잠정치 - 한국 은행/보험 ROA 실제 분포(대략 0.3~1.5%대로 알려짐)를 참고해 초안
-#    설정했고, 전체 수집 후 실제 금융주 ROA 분포로 재보정 필요.
-ROA_WEIGHT = 10
-FINANCIAL_ACHIEVABLE_WEIGHT = FINANCIAL_REMAINING_WEIGHT + ROA_WEIGHT  # 70 + 10 = 80
-
-# 잠정 등급 컷오프 (참고용) - 실제 최종 등급은 전체 수집 완료 후 실제 점수 분포의
-# 백분위 기준으로 재산정됨 (rescore 패스). 수집 도중 임시로 참고할 값일 뿐 최종이 아님.
 PROVISIONAL_GRADE_CUTOFFS = {"S": 76, "A": 64, "B": 53, "C": 42}
 
 
@@ -81,162 +105,34 @@ def worst_value(metric_name, values):
     return min(clean)  # 높을수록 좋은 지표 -> 가장 작은 값이 최악
 
 
+def _check_band(value, threshold, op):
+    if op == ">=":
+        return value >= threshold
+    elif op == "<=":
+        return value <= threshold
+    elif op == ">":
+        return value > threshold
+    elif op == "==":
+        return value == threshold
+    return False
+
+
 def calculate_metric_score(metric_name, value, leverage_exempt=False):
-    """각 재무 지표 수치(value)를 입력받아 0~10점 사이의 점수를 반환"""
+    """각 재무 지표 수치(value)를 입력받아 0~10점 사이의 점수를 반환.
+    METRIC_SCORE_BANDS를 위에서부터 순서대로 검사해 처음 만족하는 구간의 점수를 반환한다."""
     if value is None:
         return 0  # 데이터 부재 시 기본값
 
-    if metric_name == "revenue_growth":
-        if value >= 25: return 10
-        elif value >= 20: return 9
-        elif value >= 16: return 8
-        elif value >= 12: return 7
-        elif value >= 8:  return 6
-        elif value >= 5:  return 5
-        elif value >= 2:  return 4
-        elif value >= 0:  return 3
-        elif value >= -5: return 2
-        elif value >= -10: return 1
-        else: return 0
+    if leverage_exempt and metric_name in LEVERAGE_EXEMPT_METRICS:
+        return 10  # 금융/지주회사/유틸리티 등 레버리지 구조가 다른 업종 예외
 
-    elif metric_name == "eps_growth":
-        if value >= 20: return 10
-        elif value >= 16: return 9
-        elif value >= 12: return 8
-        elif value >= 9:  return 7
-        elif value >= 6:  return 6
-        elif value >= 3:  return 5
-        elif value >= 1:  return 4
-        elif value >= 0:  return 3
-        elif value >= -5: return 2
-        elif value >= -15: return 1
-        else: return 0
+    bands = METRIC_SCORE_BANDS.get(metric_name)
+    if not bands:
+        return 0
 
-    elif metric_name == "opm":
-        if value >= 25: return 10
-        elif value >= 20: return 9
-        elif value >= 16: return 8
-        elif value >= 13: return 7
-        elif value >= 10: return 6
-        elif value >= 7:  return 5
-        elif value >= 5:  return 4
-        elif value >= 3:  return 3
-        elif value >= 1:  return 2
-        elif value >= 0:  return 1
-        else: return 0
-
-    elif metric_name == "roic":
-        # ROE보다 낮게 나오는 게 정상(레버리지 효과 없음)이라 구간을 ROE 대비 낮춰 잡음
-        if value >= 15: return 10
-        elif value >= 12: return 9
-        elif value >= 9:  return 8
-        elif value >= 7:  return 7
-        elif value >= 5:  return 6
-        elif value >= 3:  return 5
-        elif value >= 1:  return 4
-        elif value >= 0:  return 3
-        elif value >= -5: return 2
-        elif value >= -15: return 1
-        else: return 0
-
-    elif metric_name == "debt_rate":
-        if leverage_exempt: return 10  # 금융/유틸리티 등 레버리지 구조가 다른 업종 예외
-        if value <= 20: return 10
-        elif value <= 40: return 9
-        elif value <= 60: return 8
-        elif value <= 80: return 7
-        elif value <= 100: return 6
-        elif value <= 120: return 5
-        elif value <= 150: return 4
-        elif value <= 180: return 3
-        elif value <= 200: return 2
-        elif value <= 300: return 1
-        else: return 0
-
-    elif metric_name == "quick_ratio":
-        # 정의: (유동자산 - 재고자산) / 유동부채 x 100 - 유동비율보다 낮게 나오는 게 정상
-        if leverage_exempt: return 10  # 금융/유틸리티 등 레버리지 구조가 다른 업종 예외
-        if value >= 180: return 10
-        elif value >= 150: return 9
-        elif value >= 120: return 8
-        elif value >= 100: return 7
-        elif value >= 80:  return 6
-        elif value >= 60:  return 5
-        elif value >= 40:  return 4
-        elif value >= 25:  return 3
-        elif value >= 15:  return 2
-        elif value >= 5:   return 1
-        else: return 0
-
-    elif metric_name == "interest_coverage":
-        if leverage_exempt: return 10  # 금융/유틸리티 등 레버리지 구조가 다른 업종 예외
-        if value >= 20: return 10
-        elif value >= 15: return 9
-        elif value >= 11: return 8
-        elif value >= 8:  return 7
-        elif value >= 5:  return 6
-        elif value >= 3:  return 5
-        elif value >= 2:  return 4
-        elif value >= 1.5: return 3
-        elif value >= 1.0: return 2
-        elif value > 0:   return 1
-        else: return 0
-
-    elif metric_name == "ocf_ratio":
-        # 정의: 영업활동현금흐름 / 당기순이익
-        if value >= 1.5: return 10
-        elif value >= 1.3: return 9
-        elif value >= 1.1: return 8
-        elif value >= 1.0: return 7
-        elif value >= 0.8: return 6
-        elif value >= 0.6: return 5
-        elif value >= 0.4: return 4
-        elif value >= 0.2: return 3
-        elif value > 0:    return 2
-        elif value == 0:   return 1
-        else: return 0
-
-    elif metric_name == "sga_ratio":
-        if value <= 8: return 10
-        elif value <= 12: return 9
-        elif value <= 16: return 8
-        elif value <= 20: return 7
-        elif value <= 25: return 6
-        elif value <= 30: return 5
-        elif value <= 35: return 4
-        elif value <= 40: return 3
-        elif value <= 50: return 2
-        elif value <= 65: return 1
-        else: return 0
-
-    elif metric_name == "roa":
-        # 금융섹터 전용 (roic 대체) - 총자산이익률. 잠정 브라켓, 실제 분포로 재보정 예정.
-        if value >= 1.5: return 10
-        elif value >= 1.2: return 9
-        elif value >= 1.0: return 8
-        elif value >= 0.8: return 7
-        elif value >= 0.6: return 6
-        elif value >= 0.4: return 5
-        elif value >= 0.2: return 4
-        elif value >= 0.0: return 3
-        elif value >= -0.5: return 2
-        elif value >= -1.5: return 1
-        else: return 0
-
-    elif metric_name == "downturn_defense":
-        # 정의: (종목 MDD - 코스피 MDD), 과거 하락장 구간(코로나/2022년 긴축) 평균, 단위 %p
-        # 양수 = 코스피보다 덜 빠짐(방어적) / 음수 = 코스피보다 더 빠짐(취약)
-        if value >= 20: return 10
-        elif value >= 15: return 9
-        elif value >= 10: return 8
-        elif value >= 5:  return 7
-        elif value >= 0:  return 6
-        elif value >= -5: return 5
-        elif value >= -10: return 4
-        elif value >= -15: return 3
-        elif value >= -25: return 2
-        elif value >= -40: return 1
-        else: return 0
+    for threshold, op, score in bands:
+        if _check_band(value, threshold, op):
+            return score
 
     return 0
 
@@ -255,17 +151,36 @@ def evaluate_defense_grade(total_score):
     else: return "D", "위험 (잠정)"
 
 
+# --------------------------------------------------------------------------
+# 최종 가중치 (합계 100)
+# --------------------------------------------------------------------------
+METRIC_WEIGHTS = {
+    "revenue_growth": 5,
+    "eps_growth": 5,
+    "opm": 10,
+    "roic": 10,
+    "debt_rate": 10,
+    "quick_ratio": 10,
+    "interest_coverage": 10,
+    "ocf_ratio": 10,
+    "sga_ratio": 10,
+    "downturn_defense": 20,
+}
+assert sum(METRIC_WEIGHTS.values()) == 100
+
+FINANCIAL_EXCLUDED_METRICS = {"opm", "roic", "sga_ratio"}
+FINANCIAL_REMAINING_WEIGHT = sum(
+    w for k, w in METRIC_WEIGHTS.items() if k not in FINANCIAL_EXCLUDED_METRICS
+)  # = 70
+
+ROA_WEIGHT = 10
+FINANCIAL_ACHIEVABLE_WEIGHT = FINANCIAL_REMAINING_WEIGHT + ROA_WEIGHT  # 70 + 10 = 80
+
+
 def calculate_fundamental_score(metrics: dict, leverage_exempt: bool = False, is_financial: bool = False) -> dict:
     """
     metrics 딕셔너리(METRIC_KEYS 10개 키)를 받아 지표별 점수, 총점(0~100), 잠정등급을 반환.
     값이 없는 지표는 0점 처리되므로 collector.py에서 10개 지표를 모두 채워서 넘기는 것을 전제로 함.
-
-    - leverage_exempt: 금융/지주회사/유틸리티 -> debt_rate/quick_ratio/interest_coverage 3개 지표 만점 처리
-    - is_financial: 금융섹터(wics_sector=='금융') -> opm/roic/sga_ratio 3개 지표를 총점에서 제외하고
-      대신 roic 자리에 ROA(총자산이익률)를 추가 채점. 나머지 7개(70점)+ROA(10점)=80점 만점을
-      100점으로 리스케일. leverage_exempt와 별개 축이라 둘 다 True일 수 있음
-      (금융업은 보통 둘 다 True가 됨 - is_financial_sector가 leverage_exempt 판정에도 들어가므로).
-      is_financial=True인 경우 metrics 딕셔너리에 "roa" 키가 포함되어 있어야 함.
     """
     scores = {}
     total_weighted = 0.0
@@ -285,7 +200,6 @@ def calculate_fundamental_score(metrics: dict, leverage_exempt: bool = False, is
             total_weighted += weighted
         scores[key] = entry
 
-    # 금융섹터: roic 자리를 대신할 ROA를 추가로 채점 (roic/opm/sga_ratio는 위에서 이미 제외됨)
     if is_financial:
         roa_value = metrics.get("roa")
         roa_score = calculate_metric_score("roa", roa_value, leverage_exempt=False)
@@ -306,7 +220,7 @@ def calculate_fundamental_score(metrics: dict, leverage_exempt: bool = False, is
     growth_sub = sum(scores[k]["weighted_score"] for k in growth_keys if k not in excluded)
     defense_sub = sum(scores[k]["weighted_score"] for k in defense_keys)
     if is_financial:
-        defense_sub += scores["roa"]["weighted_score"]  # ROA는 방어/수익성 서브스코어에 포함
+        defense_sub += scores["roa"]["weighted_score"]
         rescale = 100.0 / FINANCIAL_ACHIEVABLE_WEIGHT
         growth_sub *= rescale
         defense_sub *= rescale
@@ -316,9 +230,9 @@ def calculate_fundamental_score(metrics: dict, leverage_exempt: bool = False, is
         missing_count += 1
 
     return {
-        "metric_scores": scores,   # Supabase jsonb 컬럼 저장 추천
+        "metric_scores": scores,
         "total_score": total_score,
-        "grade": grade,            # 잠정 등급 - 전체 수집 완료 후 재산정 예정
+        "grade": grade,
         "grade_desc": grade_desc,
         "sub_scores": {"growth": round(growth_sub, 1), "defense": round(defense_sub, 1)},
         "financial_adjusted": is_financial,
