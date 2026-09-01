@@ -5,7 +5,6 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 from supabase import create_client
-from scoring import METRIC_SCORE_BANDS  # 채점 구간표 - scoring.py가 유일한 소스 (자동 동기화)
 import yfinance as yf
 
 # ==========================================
@@ -89,7 +88,8 @@ st.markdown(
         box-sizing: border-box;
     }
 
-    div[data-testid="stButton"] > button, div.stButton > button {
+    div[data-testid="stButton"] > button, div.stButton > button,
+    div[data-testid="stLinkButton"] > a {
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
         border: 1.5px solid #D1D5DB !important;
@@ -100,10 +100,30 @@ st.markdown(
         transition: all 0.2s ease !important;
     }
 
-    div[data-testid="stButton"] > button:hover, div.stButton > button:hover {
+    div[data-testid="stButton"] > button:hover, div.stButton > button:hover,
+    div[data-testid="stLinkButton"] > a:hover {
         border-color: #F4A261 !important;
         color: #D97706 !important;
         background-color: #FFFDF9 !important;
+    }
+
+    /* 브라우저/OS 다크모드에서도 네이티브 위젯(표/차트/expander)이 항상 라이트로
+       보이도록 강제 - config.toml 테마 설정이 반영 안 되는 경우의 보조 장치 */
+    div[data-testid="stExpander"] {
+        background-color: #FFFFFF !important;
+        border: 1px solid #E5E7EB !important;
+        border-radius: 10px !important;
+    }
+    div[data-testid="stExpander"] summary {
+        background-color: #FAFAFA !important;
+        color: #1A1A1A !important;
+    }
+    div[data-testid="stDataFrame"], div[data-testid="stDataFrame"] * {
+        background-color: #FFFFFF !important;
+        color: #1A1A1A !important;
+    }
+    div[data-testid="stVegaLiteChart"], div[data-testid="stArrowVegaLiteChart"] {
+        background-color: #FFFFFF !important;
     }
 
     div[data-testid="stTabs"] [data-baseweb="tab-list"] {
@@ -1185,44 +1205,11 @@ else:
                         unsafe_allow_html=True,
                     )
 
-                    # 지표별 표시 단위 (scoring.py의 METRIC_SCORE_BANDS는 숫자만 담고 있어서
-                    # 사람이 읽는 구간표로 바꿀 때 단위를 여기서 붙여줌)
-                    METRIC_UNITS = {
-                        "interest_coverage": "배", "ocf_ratio": "배", "downturn_defense": "%p",
-                    }
-
-                    def _format_score_bands(metric_key_inner):
-                        """scoring.py의 METRIC_SCORE_BANDS를 사람이 읽는 (구간, 점수) 행 리스트로 변환.
-                        scoring.py가 유일한 소스라 구간이 바뀌면 이 표도 자동으로 같이 바뀐다."""
-                        bands = METRIC_SCORE_BANDS.get(metric_key_inner)
-                        if not bands:
-                            return None
-                        unit = METRIC_UNITS.get(metric_key_inner, "%")
-                        rows = []
-                        for i, (threshold, op, band_score) in enumerate(bands):
-                            prev_threshold = bands[i - 1][0] if i > 0 else None
-                            if op == ">=":
-                                label = f"{threshold}{unit} 이상" if i == 0 else f"{threshold}~{prev_threshold}{unit}"
-                            elif op == "<=":
-                                label = f"{threshold}{unit} 이하" if i == 0 else f"{prev_threshold}~{threshold}{unit}"
-                            elif op == ">":
-                                label = f"{threshold}{unit} 초과" if i == 0 else f"{threshold}~{prev_threshold}{unit} (미포함)"
-                            elif op == "==":
-                                label = f"정확히 {threshold}{unit}"
-                            else:
-                                label = f"{threshold}{unit}"
-                            rows.append((label, band_score))
-
-                        # 마지막 구간 이후(모든 조건 불만족 -> 0점) 표시
-                        last_threshold, last_op, _ = bands[-1]
-                        if last_op in (">=", ">", "=="):
-                            rows.append((f"{last_threshold}{unit} 미만", 0))
-                        elif last_op == "<=":
-                            rows.append((f"{last_threshold}{unit} 초과", 0))
-                        return rows
-
                     def _metric_across_periods(metric_key_inner, mode_inner="avg"):
-                        """모든 기간(1y/3y/5y/10y)에서 이 지표의 (기간라벨, value, score) 목록 반환"""
+                        """모든 기간(1y/3y/5y/10y)에서 이 지표의 (기간라벨, value, score) 목록 반환.
+                        라벨은 한글(1년/3년 등)로 하면 st.line_chart가 좁은 폭에서 90도로
+                        회전시켜 세로글자가 되는 문제가 있어 짧은 영문(1Y/3Y 등) 사용."""
+                        period_short_label = {"1y": "1Y", "3y": "3Y", "5y": "5Y", "10y": "10Y"}
                         out = []
                         for p in ["1y", "3y", "5y", "10y"]:
                             pdata_p = period_scores.get(p)
@@ -1230,7 +1217,7 @@ else:
                                 continue
                             entry_p = (pdata_p.get(mode_inner) or {}).get("metric_scores", {}).get(metric_key_inner)
                             if entry_p and entry_p.get("value") is not None:
-                                out.append((period_labels[p].split(" ")[1], entry_p.get("value"), entry_p.get("score")))
+                                out.append((period_short_label[p], entry_p.get("value"), entry_p.get("score")))
                         return out
 
                     # collector.py의 leverage_exempt 판정(금융/지주회사/유틸리티는 부채비율 등
@@ -1305,18 +1292,25 @@ else:
                         )
 
                         with st.expander(f"🔍 {title} 자세히 보기"):
-                            bands = _format_score_bands(metric_key)
-                            if bands:
-                                st.markdown("**채점 기준표**")
-                                band_df = pd.DataFrame(bands, columns=["구간", "점수"])
-                                current_score_display = score if not excluded else None
-                                if current_score_display is not None:
-                                    band_df["현재"] = band_df["점수"].apply(
-                                        lambda s: "◀ 이 종목" if s == current_score_display else ""
-                                    )
-                                st.dataframe(band_df, hide_index=True, use_container_width=True)
-                                if leverage_exempt and metric_key in ("debt_rate", "quick_ratio", "interest_coverage"):
-                                    st.caption("ℹ️ 이 종목은 레버리지 예외 업종이라 이 지표는 자동 만점(10점) 처리됩니다.")
+                            # 정확한 채점 구간표는 비공개(경쟁 우위 보호) - 대신 업종 내 상대적
+                            # 우위 백분위만 표시. rescore_metric_percentiles.py가 미리 계산해둔
+                            # metric_scores[key]["sector_percentile"] (1년 평균 기준 대표값)을 사용.
+                            metric_sector_pct = (
+                                (period_scores.get("1y", {}).get("avg") or {})
+                                .get("metric_scores", {})
+                                .get(metric_key, {})
+                                .get("sector_percentile")
+                            )
+                            if metric_sector_pct is not None:
+                                st.markdown(
+                                    f"**업종 내 상대적 위치**: 이 지표에서 같은 업종({row_wics_sector or '미상'}) "
+                                    f"내 상위 **{100 - metric_sector_pct:.1f}%** 입니다. (1년 평균 기준)"
+                                )
+                                st.progress(metric_sector_pct / 100.0)
+                            else:
+                                st.caption("업종 내 비교 데이터가 아직 계산되지 않았습니다.")
+                            if leverage_exempt and metric_key in ("debt_rate", "quick_ratio", "interest_coverage"):
+                                st.caption("ℹ️ 이 종목은 레버리지 예외 업종이라 이 지표는 자동 만점(10점) 처리됩니다.")
 
                             history = _metric_across_periods(metric_key, view_mode)
                             if len(history) >= 2:
