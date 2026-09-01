@@ -2,6 +2,7 @@ import json
 import random
 import FinanceDataReader as fdr
 import pandas as pd
+import altair as alt
 import streamlit as st
 import streamlit.components.v1 as components
 from supabase import create_client
@@ -295,6 +296,7 @@ st.markdown(
         border: 1px solid #F4A261;
         color: #92400E !important;
         white-space: nowrap;
+        cursor: help;
     }
 
     .row-status-bar {
@@ -1181,13 +1183,34 @@ else:
                         growth_v = sub_scores.get("growth")
                         defense_v = sub_scores.get("defense")
                         if growth_v is not None:
-                            sub_badges += f'<span class="mini-stat-badge">🌱 성장 서브스코어 {growth_v}</span>'
+                            growth_tip = (
+                                "매출액 성장률 + EPS 성장률, 두 지표의 가중점수 합산 "
+                                "(전체 100점 중 성장성에 배정된 배점)"
+                            )
+                            sub_badges += (
+                                f'<span class="mini-stat-badge" title="{growth_tip}">'
+                                f'🌱 성장 서브스코어 {growth_v}</span>'
+                            )
                         if defense_v is not None:
-                            sub_badges += f'<span class="mini-stat-badge">🛡️ 방어 서브스코어 {defense_v}</span>'
+                            defense_tip = (
+                                "성장성 2개 지표를 제외한 나머지 8개 지표(수익성/재무건전성/현금흐름/"
+                                "하락장 방어력)의 가중점수 합산"
+                            )
+                            sub_badges += (
+                                f'<span class="mini-stat-badge" title="{defense_tip}">'
+                                f'🛡️ 방어 서브스코어 {defense_v}</span>'
+                            )
                     if financial_adjusted:
-                        sub_badges += '<span class="mini-stat-badge">🏦 금융업 보정 적용</span>'
+                        sub_badges += (
+                            '<span class="mini-stat-badge" title="금융업(은행/보험/증권)은 매출액/영업이익 '
+                            '개념이 일반기업과 달라 OPM/ROIC/SG&A비율 3개 지표를 제외하고, 대신 ROA(총자산이익률)로 '
+                            '대체 채점한 뒤 100점 만점으로 환산했습니다.">🏦 금융업 보정 적용</span>'
+                        )
                     if period_missing_count is not None:
-                        sub_badges += f'<span class="mini-stat-badge">🧩 결측 {period_missing_count}개</span>'
+                        sub_badges += (
+                            f'<span class="mini-stat-badge" title="DART 공시 데이터에서 값을 찾지 못해 '
+                            f'0점 처리된 지표 수입니다.">🧩 결측 {period_missing_count}개</span>'
+                        )
 
                     st.markdown(
                         f"""
@@ -1204,6 +1227,11 @@ else:
                         """,
                         unsafe_allow_html=True,
                     )
+
+                    # 지표별 표시 단위 (차트 y축 라벨용)
+                    METRIC_UNITS = {
+                        "interest_coverage": "배", "ocf_ratio": "배", "downturn_defense": "%p",
+                    }
 
                     def _metric_across_periods(metric_key_inner, mode_inner="avg"):
                         """모든 기간(1y/3y/5y/10y)에서 이 지표의 (기간라벨, value, score) 목록 반환.
@@ -1272,26 +1300,23 @@ else:
                                 "</span>"
                             )
 
-                        box_cls = "sketch-item-box excluded" if excluded else "sketch-item-box"
                         if excluded:
                             score_display = "업종 특성상 제외"
-                            score_cls = "sketch-item-score excluded"
+                            score_emoji = "⚪"
+                        elif score is not None:
+                            score_display = f"{score}/10"
+                            score_emoji = "🟢" if score >= 8 else ("🟡" if score >= 5 else "🔴")
                         else:
-                            score_display = f"{score}/10" if score is not None else "N/A"
-                            score_cls = "sketch-item-score"
+                            score_display = "N/A"
+                            score_emoji = "⚪"
 
-                        st.markdown(
-                            f"""
-                            <div class="{box_cls}">
-                                <div class="sketch-item-title">{title}</div>
-                                <div class="sketch-item-desc">{desc}<br><b>실측값: {value_display}</b>{growth_guard_note}</div>
-                                <div class="{score_cls}">{score_display}</div>
-                            </div>
-                            """,
-                            unsafe_allow_html=True,
-                        )
+                        expander_label = f"{title}   |   실측값 {value_display}   |   {score_emoji} {score_display}"
 
-                        with st.expander(f"🔍 {title} 자세히 보기"):
+                        with st.expander(expander_label):
+                            st.markdown(f"{desc}{growth_guard_note}", unsafe_allow_html=True)
+                            st.markdown("---")
+
+
                             # 정확한 채점 구간표는 비공개(경쟁 우위 보호) - 대신 업종 내 상대적
                             # 우위 백분위만 표시. rescore_metric_percentiles.py가 미리 계산해둔
                             # metric_scores[key]["sector_percentile"] (1년 평균 기준 대표값)을 사용.
@@ -1314,12 +1339,27 @@ else:
 
                             history = _metric_across_periods(metric_key, view_mode)
                             if len(history) >= 2:
-                                st.markdown("**기간별 추이 (1y/3y/5y/10y)**")
+                                st.markdown("**기간별 추이**")
+                                unit_label = METRIC_UNITS.get(metric_key, "%")
                                 trend_df = pd.DataFrame(
-                                    {"실측값": [h[1] for h in history]},
-                                    index=[h[0] for h in history],
+                                    {"기간": [h[0] for h in history], "실측값": [h[1] for h in history]}
                                 )
-                                st.line_chart(trend_df)
+                                chart_type = st.radio(
+                                    "차트 유형",
+                                    ["선", "막대"],
+                                    horizontal=True,
+                                    key=f"charttype_{period_key}_{view_mode}_{metric_key}",
+                                    label_visibility="collapsed",
+                                )
+                                base = alt.Chart(trend_df).encode(
+                                    x=alt.X("기간:N", sort=["1Y", "3Y", "5Y", "10Y"], title="기간",
+                                            axis=alt.Axis(labelAngle=0)),
+                                    y=alt.Y("실측값:Q", title=f"실측값 ({unit_label})"),
+                                    tooltip=["기간", "실측값"],
+                                )
+                                chart = base.mark_line(point=True, color="#D97706") if chart_type == "선" \
+                                    else base.mark_bar(color="#D97706")
+                                st.altair_chart(chart, use_container_width=True)
                             else:
                                 st.caption("추이를 그리기엔 사용 가능한 기간 데이터가 부족합니다.")
 
