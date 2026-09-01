@@ -7,7 +7,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import FinanceDataReader as fdr
 import requests
-import OpenDartReader  # 공식 사용법: from-import 아니고 모듈 자체를 바로 호출 (dart = OpenDartReader(key))
+try:
+    from opendartreader import OpenDartReader  # 실제 설치 확인됨(find /usr/local/lib/.../dist-packages) - 소문자 모듈명이 정확
+except ImportError:
+    import OpenDartReader  # 일부 환경(패키지 구조가 다른 버전)의 대문자 모듈 호환용 fallback
 from supabase import create_client
 
 from scoring import calculate_fundamental_score, worst_value
