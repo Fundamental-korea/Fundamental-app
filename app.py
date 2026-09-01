@@ -5,6 +5,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 from supabase import create_client
+from scoring import METRIC_SCORE_BANDS  # 채점 구간표 - scoring.py가 유일한 소스 (자동 동기화)
 import yfinance as yf
 
 # ==========================================
@@ -710,8 +711,77 @@ def render_unified_search_box(stock_db):
 # ==========================================
 query_params = st.query_params
 selected_code = query_params.get("code", None)
+view_mode_param = query_params.get("view", None)
 
-if not selected_code:
+if selected_code and view_mode_param == "chart":
+    # ==========================================
+    # [5-0] 차트 확대 페이지 - 새 탭에서 열림 (애드센스 페이지뷰 확보 목적)
+    # ==========================================
+    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
+
+    with col_logo:
+        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
+
+    with col_quote:
+        quotes = [
+            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
+            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
+            "투자는 지능이 아니라 인내심의 게임이다.",
+            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다.",
+        ]
+        st.markdown(
+            f"""<div class='quote-box'><div style='font-size: 36px;'>👨‍💼</div>
+            <div class='quote-text'>"{random.choice(quotes)}"</div></div>""",
+            unsafe_allow_html=True,
+        )
+
+    with col_login:
+        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+        st.link_button("📊 리포트로 돌아가기", f"?code={selected_code}", use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    left_ad, chart_main, right_ad = st.columns([0.6, 6.8, 0.6])
+
+    with left_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
+    with chart_main:
+        stock_name_for_chart = query_params.get("name", selected_code)
+        st.markdown(f"### 📈 {stock_name_for_chart} ({selected_code}) 상세 차트")
+
+        tv_symbol = f"KRX:{selected_code}" if selected_code.isdigit() else selected_code
+        components.html(
+            f"""
+            <div class="tradingview-widget-container" style="height:600px;">
+              <div id="tradingview_chart" style="height:100%;"></div>
+              <script src="https://s3.tradingview.com/tv.js"></script>
+              <script>
+              new TradingView.widget({{
+                "width": "100%",
+                "height": 600,
+                "symbol": "{tv_symbol}",
+                "interval": "D",
+                "timezone": "Asia/Seoul",
+                "theme": "light",
+                "style": "1",
+                "locale": "kr",
+                "toolbar_bg": "#f1f3f6",
+                "enable_publishing": false,
+                "allow_symbol_change": true,
+                "container_id": "tradingview_chart"
+              }});
+              </script>
+            </div>
+            """,
+            height=620,
+        )
+        st.caption("차트 제공: TradingView")
+
+    with right_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
+elif not selected_code:
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
     with col_logo:
@@ -756,12 +826,11 @@ if not selected_code:
         )
 
     with main_content:
-        tab1, tab2, tab3, tab4 = st.tabs(
+        tab1, tab2, tab3 = st.tabs(
             [
                 "US Market Overview",
                 "Korea Market Overview",
                 "Live News",
-                "Gem Screener",
             ]
         )
 
@@ -795,16 +864,6 @@ if not selected_code:
             render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
                 "📰 **Live News**: 글로벌 증시 속보 및 하락장 리스크 관리 뉴스를 실시간으로 모니터링하는 공간입니다."
-            )
-
-        with tab4:
-            st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
-                unsafe_allow_html=True,
-            )
-            render_unified_search_box(stock_db=combined_stocks_db)
-            st.info(
-                "💎 **Gem Screener**: ROIC/PER/PBR 펀더멘탈 요건을 모두 충족한 하락장 우수 방어주(Gem) 스크리닝 리스트입니다."
             )
 
         st.markdown(
@@ -969,6 +1028,16 @@ else:
         else:
             st.info("실시간 차트 데이터를 불러올 수 없습니다.")
 
+        # 차트를 새 탭에서 크게 보기 - 클릭에서 바로 실행되는 target="_blank" 링크라
+        # 팝업 차단에 안 걸림 (검색창의 window.open 패턴과 동일한 원리).
+        # 새 탭 = 별도 페이지뷰라 애드센스 광고 노출도 그만큼 늘어남.
+        st.markdown(
+            f"<a href='?code={selected_code}&view=chart&name={data.get('stock_name', selected_code)}' target='_blank' "
+            f"style='font-size:13px; color:#D97706; text-decoration:none; font-weight:700;'>"
+            f"🔍 차트 크게 보기 (새 탭)</a>",
+            unsafe_allow_html=True,
+        )
+
         st.markdown("<br>", unsafe_allow_html=True)
 
         # 10개 지표별 표시용 메타데이터 (scoring.py의 METRIC_KEYS와 정확히 일치)
@@ -1116,6 +1185,64 @@ else:
                         unsafe_allow_html=True,
                     )
 
+                    # 지표별 표시 단위 (scoring.py의 METRIC_SCORE_BANDS는 숫자만 담고 있어서
+                    # 사람이 읽는 구간표로 바꿀 때 단위를 여기서 붙여줌)
+                    METRIC_UNITS = {
+                        "interest_coverage": "배", "ocf_ratio": "배", "downturn_defense": "%p",
+                    }
+
+                    def _format_score_bands(metric_key_inner):
+                        """scoring.py의 METRIC_SCORE_BANDS를 사람이 읽는 (구간, 점수) 행 리스트로 변환.
+                        scoring.py가 유일한 소스라 구간이 바뀌면 이 표도 자동으로 같이 바뀐다."""
+                        bands = METRIC_SCORE_BANDS.get(metric_key_inner)
+                        if not bands:
+                            return None
+                        unit = METRIC_UNITS.get(metric_key_inner, "%")
+                        rows = []
+                        for i, (threshold, op, band_score) in enumerate(bands):
+                            prev_threshold = bands[i - 1][0] if i > 0 else None
+                            if op == ">=":
+                                label = f"{threshold}{unit} 이상" if i == 0 else f"{threshold}~{prev_threshold}{unit}"
+                            elif op == "<=":
+                                label = f"{threshold}{unit} 이하" if i == 0 else f"{prev_threshold}~{threshold}{unit}"
+                            elif op == ">":
+                                label = f"{threshold}{unit} 초과" if i == 0 else f"{threshold}~{prev_threshold}{unit} (미포함)"
+                            elif op == "==":
+                                label = f"정확히 {threshold}{unit}"
+                            else:
+                                label = f"{threshold}{unit}"
+                            rows.append((label, band_score))
+
+                        # 마지막 구간 이후(모든 조건 불만족 -> 0점) 표시
+                        last_threshold, last_op, _ = bands[-1]
+                        if last_op in (">=", ">", "=="):
+                            rows.append((f"{last_threshold}{unit} 미만", 0))
+                        elif last_op == "<=":
+                            rows.append((f"{last_threshold}{unit} 초과", 0))
+                        return rows
+
+                    def _metric_across_periods(metric_key_inner, mode_inner="avg"):
+                        """모든 기간(1y/3y/5y/10y)에서 이 지표의 (기간라벨, value, score) 목록 반환"""
+                        out = []
+                        for p in ["1y", "3y", "5y", "10y"]:
+                            pdata_p = period_scores.get(p)
+                            if not pdata_p:
+                                continue
+                            entry_p = (pdata_p.get(mode_inner) or {}).get("metric_scores", {}).get(metric_key_inner)
+                            if entry_p and entry_p.get("value") is not None:
+                                out.append((period_labels[p].split(" ")[1], entry_p.get("value"), entry_p.get("score")))
+                        return out
+
+                    # collector.py의 leverage_exempt 판정(금융/지주회사/유틸리티는 부채비율 등
+                    # 3개 지표 자동 만점)을 저장된 필드로 재구성 - app.py는 DART/WICS 원본 로직에
+                    # 접근 못 하므로 supabase에 저장된 값 기준으로 근사
+                    leverage_exempt = (
+                        row_wics_sector == "금융"
+                        or bool(supabase_data.get("holding_company"))
+                        or row_wics_sector == "유틸리티"
+                    )
+
+
                     for metric_key in METRIC_ORDER:
                         entry = metric_scores.get(metric_key)
                         if entry is None:
@@ -1176,6 +1303,54 @@ else:
                             """,
                             unsafe_allow_html=True,
                         )
+
+                        with st.expander(f"🔍 {title} 자세히 보기"):
+                            bands = _format_score_bands(metric_key)
+                            if bands:
+                                st.markdown("**채점 기준표**")
+                                band_df = pd.DataFrame(bands, columns=["구간", "점수"])
+                                current_score_display = score if not excluded else None
+                                if current_score_display is not None:
+                                    band_df["현재"] = band_df["점수"].apply(
+                                        lambda s: "◀ 이 종목" if s == current_score_display else ""
+                                    )
+                                st.dataframe(band_df, hide_index=True, use_container_width=True)
+                                if leverage_exempt and metric_key in ("debt_rate", "quick_ratio", "interest_coverage"):
+                                    st.caption("ℹ️ 이 종목은 레버리지 예외 업종이라 이 지표는 자동 만점(10점) 처리됩니다.")
+
+                            history = _metric_across_periods(metric_key, view_mode)
+                            if len(history) >= 2:
+                                st.markdown("**기간별 추이 (1y/3y/5y/10y)**")
+                                trend_df = pd.DataFrame(
+                                    {"실측값": [h[1] for h in history]},
+                                    index=[h[0] for h in history],
+                                )
+                                st.line_chart(trend_df)
+                            else:
+                                st.caption("추이를 그리기엔 사용 가능한 기간 데이터가 부족합니다.")
+
+                            # 급변 감지: 1y 점수가 3y(없으면 5y/10y) 평균 점수 대비 3점 이상 벌어지면 플래그
+                            st.markdown("**급변 감지**")
+                            one_y_entry = (period_scores.get("1y", {}).get(view_mode) or {}).get("metric_scores", {}).get(metric_key)
+                            baseline_period = next((p for p in ("3y", "5y", "10y") if period_scores.get(p)), None)
+                            baseline_entry = None
+                            if baseline_period:
+                                baseline_entry = (period_scores.get(baseline_period, {}).get(view_mode) or {}).get("metric_scores", {}).get(metric_key)
+
+                            if one_y_entry and baseline_entry and one_y_entry.get("score") is not None and baseline_entry.get("score") is not None:
+                                score_gap = one_y_entry["score"] - baseline_entry["score"]
+                                if abs(score_gap) >= 3:
+                                    direction = "개선" if score_gap > 0 else "악화"
+                                    st.warning(
+                                        f"⚡ 최근 1년 점수({one_y_entry['score']}/10)가 {baseline_period} 평균"
+                                        f"({baseline_entry['score']}/10) 대비 급격히 {direction}됐습니다 "
+                                        f"(점수차 {abs(score_gap)}점). 일시적 요인인지 추세 전환인지 다른 지표와 "
+                                        f"함께 확인해보세요."
+                                    )
+                                else:
+                                    st.caption(f"✅ {baseline_period} 평균 대비 특이 변동 없음 (점수차 {abs(score_gap)}점)")
+                            else:
+                                st.caption("비교할 기준 기간 데이터가 부족해 급변 여부를 판단할 수 없습니다.")
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
