@@ -2,6 +2,8 @@ import os
 from datetime import datetime, timedelta
 import math
 import time
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import FinanceDataReader as fdr
 import requests
@@ -1143,7 +1145,19 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
             print(f"  ⚠️ [{stock_name}] 최신 보고서를 가져오지 못해 1y 갱신을 건너뜁니다.")
             return False
 
-        downturn_defense = calculate_downturn_defense(stock_code, kospi_mdd_cache)
+        # downturn_defense는 2020년 코로나/2022년 긴축장이라는 '이미 지나간' 고정 구간
+        # 기준값이라 한번 계산되면 다시는 안 바뀜 - 매번 재계산하면 종목당 네트워크 호출만
+        # 낭비되므로, 기존에 저장된 값이 있으면 그대로 재사용 (없을 때만 새로 계산)
+        downturn_defense = None
+        for _period_key in ("1y", "3y", "5y", "10y"):
+            _pdata = (existing_period_scores or {}).get(_period_key)
+            if _pdata:
+                _dd_entry = (_pdata.get("avg") or {}).get("metric_scores", {}).get("downturn_defense")
+                if _dd_entry and _dd_entry.get("value") is not None:
+                    downturn_defense = _dd_entry["value"]
+                    break
+        if downturn_defense is None:
+            downturn_defense = calculate_downturn_defense(stock_code, kospi_mdd_cache)
 
         metrics_1y = {
             "revenue_growth": latest_report["revenue_growth"],
@@ -1228,13 +1242,16 @@ def get_1y_update_targets():
     return all_rows
 
 
-def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.3, use_ofs_for_manufacturing=True):
+def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.05, use_ofs_for_manufacturing=True, max_workers=8):
     """
     전체 종목의 1y 지표를 일괄 갱신 (분기 자동갱신 파이프라인의 메인 진입점).
     - 종목당 DART 호출 약 2회 -> 전체 약 2,600개 기준 5,000~6,000건 -> 일일 한도(4만) 내 여유
     - KRX-DESC/WICS 재조회 없음 (이미 저장된 sector/wics_sector/holding_company 재사용)
+    - downturn_defense는 고정 과거 구간 기준값이라 기존 저장값 재사용 (재계산 안 함 - sync_1y_only 참고)
     - GitHub Actions 등에서 매일 실행해도 무방 (실제 새 보고서가 없으면 같은 보고서를 다시
       확인만 하고 끝나므로 안전 - 낭비되는 DART 호출은 있지만 데이터가 틀어지진 않음)
+    - max_workers: 동시 처리 종목 수. 네트워크 대기시간이 대부분이라 병렬화 효과가 큼.
+      DART 쪽에서 429(rate limit) 에러가 늘어나면 이 값을 낮춰서 재시도할 것.
     """
     kospi_mdd_cache = get_kospi_mdd_cache()
 
@@ -1244,12 +1261,14 @@ def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.3, use_ofs_for_manufactu
 
     total = len(targets)
     est_calls = total * 2
-    print(f"📋 1y 갱신 대상 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건)")
+    print(f"📋 1y 갱신 대상 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건, 동시 {max_workers}개 처리)")
 
     succeeded, failed = [], []
-    for i, row in enumerate(targets, 1):
+    completed = 0
+    lock = threading.Lock()
+
+    def _worker(row):
         code, name = row["stock_code"], row["stock_name"]
-        print(f"\n[{i}/{total}] 🔄 [{name} ({code})]", end=" ")
         ok = sync_1y_only(
             code, name,
             sector=row.get("sector"), wics_sector=row.get("wics_sector"),
@@ -1258,8 +1277,19 @@ def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.3, use_ofs_for_manufactu
             kospi_mdd_cache=kospi_mdd_cache,
             use_ofs_for_manufacturing=use_ofs_for_manufacturing,
         )
-        (succeeded if ok else failed).append(code)
-        time.sleep(sleep_sec)
+        if sleep_sec:
+            time.sleep(sleep_sec)
+        return code, name, ok
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_worker, row): row for row in targets}
+        for future in as_completed(futures):
+            code, name, ok = future.result()
+            with lock:
+                completed += 1
+                (succeeded if ok else failed).append(code)
+                status = "✅" if ok else "⚠️"
+                print(f"[{completed}/{total}] {status} [{name} ({code})]")
 
     print(f"\n\n=== 1y 갱신 배치 완료: 성공 {len(succeeded)} / 실패 {len(failed)} / 전체 {total} ===")
     if failed:
