@@ -1123,18 +1123,43 @@ else:
                 )
             # PER/PBR 업종 내 상대적 저평가(A)/적정(B)/고평가(C) 배지 - rescore_valuation_tiers.py가 계산.
             # 저평가=A라고 해서 매수 신호는 아님(밸류 트랩 가능성 등) - 어디까지나 업종 내 상대적 위치일 뿐.
+            # 음수(적자) PER은 크기 비교가 직관과 반대로 움직여서(적자가 클수록 PER 절댓값이
+            # 작아짐) 업종 순위 계산에서 아예 제외됨 - 대신 실측값 그대로 "적자"로 표시.
             tier_cls_map = {"A": "tier-a", "B": "tier-b", "C": "tier-c"}
             tier_label_map = {"A": "저평가", "B": "적정", "C": "고평가"}
-            if row_per_tier and row_per is not None:
-                status_pills_html += (
-                    f'<span class="status-pill {tier_cls_map.get(row_per_tier, "neutral")}">'
-                    f'💰 PER {row_per} · 업종 내 {tier_label_map.get(row_per_tier, row_per_tier)}(Tier {row_per_tier})</span>'
-                )
-            if row_pbr_tier and row_pbr is not None:
-                status_pills_html += (
-                    f'<span class="status-pill {tier_cls_map.get(row_pbr_tier, "neutral")}">'
-                    f'🏦 PBR {row_pbr} · 업종 내 {tier_label_map.get(row_pbr_tier, row_pbr_tier)}(Tier {row_pbr_tier})</span>'
-                )
+            per_is_negative = row_per is not None and row_per < 0
+            pbr_is_negative = row_pbr is not None and row_pbr < 0
+
+            if row_per is not None:
+                if per_is_negative:
+                    status_pills_html += (
+                        f'<span class="status-pill tier-c" '
+                        f'title="적자 상태입니다. PER은 업종 순위 비교에서 제외됩니다.">'
+                        f'💰 PER {row_per} (적자)</span>'
+                    )
+                elif row_per_tier:
+                    status_pills_html += (
+                        f'<span class="status-pill {tier_cls_map.get(row_per_tier, "neutral")}">'
+                        f'💰 PER {row_per} · 업종 내 {tier_label_map.get(row_per_tier, row_per_tier)}(Tier {row_per_tier})</span>'
+                    )
+                else:
+                    status_pills_html += f'<span class="status-pill neutral">💰 PER {row_per}</span>'
+
+            if row_pbr is not None:
+                if pbr_is_negative:
+                    status_pills_html += (
+                        f'<span class="status-pill tier-c" '
+                        f'title="자본잠식 상태입니다. PBR은 업종 순위 비교에서 제외됩니다.">'
+                        f'🏦 PBR {row_pbr} (자본잠식)</span>'
+                    )
+                elif row_pbr_tier:
+                    status_pills_html += (
+                        f'<span class="status-pill {tier_cls_map.get(row_pbr_tier, "neutral")}">'
+                        f'🏦 PBR {row_pbr} · 업종 내 {tier_label_map.get(row_pbr_tier, row_pbr_tier)}(Tier {row_pbr_tier})</span>'
+                    )
+                else:
+                    status_pills_html += f'<span class="status-pill neutral">🏦 PBR {row_pbr}</span>'
+
             if row_missing_count is not None:
                 status_pills_html += f'<span class="status-pill neutral">🧩 결측 지표: {row_missing_count}개</span>'
 
@@ -1145,6 +1170,12 @@ else:
                         "ℹ️ PER/PBR Tier는 같은 업종(WICS) 내 상대적 위치일 뿐이며, "
                         "저평가(A)가 반드시 좋은 투자를 의미하지 않습니다 (실적 악화로 인한 "
                         "'밸류 트랩'일 수도 있음). 참고 정보로만 활용해주세요."
+                    )
+                if per_is_negative or pbr_is_negative:
+                    st.caption(
+                        "ℹ️ 적자/자본잠식 상태에서는 PER·PBR 값이 커도 작아도 크기 비교가 "
+                        "직관과 반대로 움직여서(적자가 클수록 오히려 절댓값이 작아짐), "
+                        "업종 내 순위(Tier) 계산에서 제외했습니다. 실측값 자체는 참고용으로 표시합니다."
                     )
 
             # 1/3/5/10년 기간 탭
