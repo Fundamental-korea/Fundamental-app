@@ -528,15 +528,19 @@ def _parse_report_financials(df, df_full=None):
     }
 
     # base-effect/계정오류로 인한 growth% 폭주 방지 (버그1 수정)
-    revenue_growth = sanitize_growth(
+    # 단, 채점용 값은 걸러내되(sanitize_growth) 원본 계산값은 별도로 보존 -
+    # 사용자가 "왜곡 가능성 있지만 실제로 계산하면 이 값이다"를 참고할 수 있게 함
+    revenue_growth_raw = (
         round((revenue - prev_revenue) / abs(prev_revenue) * 100, 2)
         if prev_revenue not in (0, None) else None
     )
+    revenue_growth = sanitize_growth(revenue_growth_raw)
     # EPS 성장률은 발행주식수가 안정적이라는 가정 하에 순이익 증가율로 근사
-    eps_growth = sanitize_growth(
+    eps_growth_raw = (
         round((net_income - prev_net_income) / abs(prev_net_income) * 100, 2)
         if prev_net_income not in (0, None) else None
     )
+    eps_growth = sanitize_growth(eps_growth_raw)
 
     raw = {
         "revenue": revenue,
@@ -545,6 +549,8 @@ def _parse_report_financials(df, df_full=None):
         "total_liabilities": total_liab,
         "total_equity": total_equity,
         "interest_exp_is_approx": interest_exp_is_approx,
+        "revenue_growth_raw": revenue_growth_raw,
+        "eps_growth_raw": eps_growth_raw,
     }
 
     return {**ratios, "revenue_growth": revenue_growth, "eps_growth": eps_growth, **raw}
@@ -658,21 +664,29 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
         rev_oldest, rev_newest = yearly_data[oldest]["revenue"], yearly_data[newest]["revenue"]
         ni_oldest, ni_newest = yearly_data[oldest]["net_income"], yearly_data[newest]["net_income"]
 
-        # base-effect/계정오류로 인한 CAGR 폭주 방지 (버그1 수정)
-        revenue_cagr = sanitize_growth(
+        # base-effect/계정오류로 인한 CAGR 폭주 방지 (버그1 수정) - 원본값도 같이 보존
+        revenue_cagr_raw = (
             round(((rev_newest / rev_oldest) ** (1 / actual_span) - 1) * 100, 2)
             if (rev_oldest > 0 and rev_newest > 0 and actual_span > 0) else None
         )
-        eps_cagr = sanitize_growth(
+        revenue_cagr = sanitize_growth(revenue_cagr_raw)
+        eps_cagr_raw = (
             round(((ni_newest / ni_oldest) ** (1 / actual_span) - 1) * 100, 2)
             if (ni_oldest > 0 and ni_newest > 0 and actual_span > 0) else None
         )
+        eps_cagr = sanitize_growth(eps_cagr_raw)
 
         # 평균/최악 집계는 경계연도(가장 오래된 해)를 제외한 최근 period개 연도만 사용
         recent_years = window_years[1:] if len(window_years) > 1 else window_years
 
-        avg_metrics = {"revenue_growth": revenue_cagr, "eps_growth": eps_cagr, "downturn_defense": downturn_defense}
-        worst_metrics = {"revenue_growth": revenue_cagr, "eps_growth": eps_cagr, "downturn_defense": downturn_defense}
+        avg_metrics = {
+            "revenue_growth": revenue_cagr, "eps_growth": eps_cagr, "downturn_defense": downturn_defense,
+            "revenue_growth_raw": revenue_cagr_raw, "eps_growth_raw": eps_cagr_raw,
+        }
+        worst_metrics = {
+            "revenue_growth": revenue_cagr, "eps_growth": eps_cagr, "downturn_defense": downturn_defense,
+            "revenue_growth_raw": revenue_cagr_raw, "eps_growth_raw": eps_cagr_raw,
+        }
 
         for metric in RATIO_METRICS:
             series = [yearly_data[y][metric] for y in recent_years if yearly_data[y].get(metric) is not None]
@@ -709,6 +723,8 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
                 "revenue_growth": latest_report["revenue_growth"],
                 "eps_growth": latest_report["eps_growth"],
                 "downturn_defense": downturn_defense,
+                "revenue_growth_raw": latest_report.get("revenue_growth_raw"),
+                "eps_growth_raw": latest_report.get("eps_growth_raw"),
             }
             for metric in RATIO_METRICS:
                 metrics_1y[metric] = latest_report.get(metric)
@@ -789,7 +805,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         capital_impairment = total_equity < 0
         eps = (net_income / issued_shares) if issued_shares > 0 else None
         bps = (total_equity / issued_shares) if issued_shares > 0 else None
-        per = round(current_price / eps, 2) if (eps and eps > 0) else None
+        per = round(current_price / eps, 2) if eps else None  # 음수(적자) PER도 저장 - 0 나눗셈만 방지
         pbr = round(current_price / bps, 2) if (bps and bps > 0) else None
 
         period_scores = {}
@@ -805,6 +821,18 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
                 avg_score["metric_scores"]["interest_coverage"]["is_approximate"] = True
             if pdata["worst_metrics"].get("interest_coverage_is_approx") and "interest_coverage" in worst_score["metric_scores"]:
                 worst_score["metric_scores"]["interest_coverage"]["is_approximate"] = True
+
+            # revenue_growth/eps_growth가 base-effect 가드(sanitize_growth)에 걸려 value가
+            # None이 됐어도, "참고용 실제 계산값"을 raw_value로 같이 남김 - 사용자가 왜곡
+            # 가능성을 감안해서 직접 판단할 수 있게 함 (점수 자체는 여전히 0점 처리, 안 바뀜)
+            for growth_key in ("revenue_growth", "eps_growth"):
+                avg_raw = pdata["avg_metrics"].get(f"{growth_key}_raw")
+                if avg_raw is not None and avg_score["metric_scores"].get(growth_key, {}).get("value") is None:
+                    avg_score["metric_scores"][growth_key]["raw_value"] = avg_raw
+                worst_raw = pdata["worst_metrics"].get(f"{growth_key}_raw")
+                if worst_raw is not None and worst_score["metric_scores"].get(growth_key, {}).get("value") is None:
+                    worst_score["metric_scores"][growth_key]["raw_value"] = worst_raw
+
             period_scores[f"{period}y"] = {
                 "years_used": pdata["years_used"],
                 "avg": {
@@ -840,6 +868,8 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "stock_price": current_price,
             "per": per,
             "pbr": pbr,
+            "eps": round(eps, 2) if eps is not None else None,
+            "bps": round(bps, 2) if bps is not None else None,
             "revenue": int(latest["revenue"]),
             "operating_income": int(latest["operating_income"]),
             "net_income": int(latest["net_income"]),
@@ -1166,6 +1196,8 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
             "revenue_growth": latest_report["revenue_growth"],
             "eps_growth": latest_report["eps_growth"],
             "downturn_defense": downturn_defense,
+            "revenue_growth_raw": latest_report.get("revenue_growth_raw"),
+            "eps_growth_raw": latest_report.get("eps_growth_raw"),
         }
         for metric in RATIO_METRICS:
             metrics_1y[metric] = latest_report.get(metric)
@@ -1174,6 +1206,10 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         score = calculate_fundamental_score(metrics_1y, leverage_exempt=leverage_exempt, is_financial=financial_sector)
         if metrics_1y.get("interest_coverage_is_approx") and "interest_coverage" in score["metric_scores"]:
             score["metric_scores"]["interest_coverage"]["is_approximate"] = True
+        for growth_key in ("revenue_growth", "eps_growth"):
+            raw_v = metrics_1y.get(f"{growth_key}_raw")
+            if raw_v is not None and score["metric_scores"].get(growth_key, {}).get("value") is None:
+                score["metric_scores"][growth_key]["raw_value"] = raw_v
 
         report_year = latest_report["_report_year"]
         report_code = latest_report["_report_code"]
