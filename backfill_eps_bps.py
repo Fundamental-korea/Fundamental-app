@@ -41,6 +41,8 @@ def fetch_rows_missing_eps():
             supabase.table("Fundamental")
             .select("stock_code, net_income, total_equity, eps, stock_price")
             .not_.is_("net_income", "null")
+            .neq("net_income", 0)  # net_income이 정확히 0인 건 실제 실적이 아니라
+                                    # 원래 수집 실패 시 남은 sentinel 값 (data_unavailable 케이스)
             .is_("eps", "null")
             .range(start, start + page_size - 1)
             .execute()
@@ -69,11 +71,18 @@ def main():
     updates = []
     skipped_no_krx = 0
     skipped_no_shares = 0
+    skipped_sentinel_zero = 0
 
     for row in rows:
         code = row["stock_code"]
         net_income = row.get("net_income")
         total_equity = row.get("total_equity")
+
+        # 이중 안전장치: net_income/total_equity가 둘 다 0이면 실제 실적이 아니라
+        # 수집 실패 sentinel 값일 가능성이 높으므로 건너뜀
+        if net_income == 0 and total_equity == 0:
+            skipped_sentinel_zero += 1
+            continue
 
         krx_row = krx_map.get(code)
         if krx_row is None:
@@ -100,6 +109,7 @@ def main():
         })
 
     print(f"\n✅ 계산 완료: {len(updates)}개 종목")
+    print(f"   ⚠️ net_income/total_equity 둘 다 0(수집 실패 sentinel 추정)이라 건너뜀: {skipped_sentinel_zero}개")
     print(f"   ⚠️ KRX 상장정보 없어서 건너뜀: {skipped_no_krx}개 (상장폐지/거래정지 등 가능성)")
     print(f"   ⚠️ 발행주식수 없어서 건너뜀: {skipped_no_shares}개")
 
@@ -131,6 +141,9 @@ def main():
 
     print(f"\n🎉 전체 {len(updates)}개 종목 eps/bps/per/pbr 백필 완료!")
 
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
