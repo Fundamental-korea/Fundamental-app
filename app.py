@@ -1199,6 +1199,13 @@ else:
                         format_func=lambda v: "📊 평균 기준 (꾸준함)" if v == "avg" else "🛡️ 최악 기준 (위기 대응력)",
                         horizontal=True,
                         key=f"view_mode_{period_key}",
+                        help=(
+                            "**평균 기준**: 선택한 기간(예: 3년) 동안 각 지표의 연도별 값을 평균 내서 "
+                            "채점합니다 - 꾸준한 실적을 잘 반영합니다.\n\n"
+                            "**최악 기준**: 같은 기간 동안 각 지표가 가장 나빴던 해의 값으로 채점합니다 - "
+                            "위기 상황에서 얼마나 잘 버티는지(하방 방어력)를 보여줍니다. 평균보다 항상 "
+                            "같거나 낮은 점수가 나옵니다."
+                        ),
                     )
 
                     view_data = pdata.get(view_mode) or {}
@@ -1302,18 +1309,29 @@ else:
                                 value_display = f"{value}%p"
                             else:
                                 value_display = f"{value}"
+                        elif metric_key in ("revenue_growth", "eps_growth") and entry.get("raw_value") is not None:
+                            # 채점용 value는 가드에 걸려 None이지만, 실제 계산된 원본값(raw_value)은
+                            # 항상 보여준다 - "N/A"로 감추지 않는 게 최우선 요구사항
+                            raw_v = entry["raw_value"]
+                            value_display = f"{raw_v:+.2f}% (실측)"
                         else:
                             value_display = "N/A"
 
-                        # revenue_growth/eps_growth가 N/A인 경우, 데이터가 없는 게 아니라
-                        # 전년 기저값이 지나치게 작아 증가율이 왜곡되는 걸 막는 안전장치
-                        # (sanitize_growth: |증가율| > 500% 시 None 처리)가 작동한 경우가 대부분.
+                        # revenue_growth/eps_growth가 raw_value로 표시된 경우, 왜 점수 계산에선
+                        # 제외됐는지 안내 (전년 기저값이 지나치게 작아 증가율이 왜곡되는 걸 막는
+                        # 안전장치: sanitize_growth, |증가율| > 500% 시 채점용 value만 None 처리)
                         growth_guard_note = ""
-                        if value is None and metric_key in ("revenue_growth", "eps_growth"):
+                        if metric_key in ("revenue_growth", "eps_growth") and value is None and entry.get("raw_value") is not None:
                             growth_guard_note = (
                                 "<br><span style='font-size:12px; color:#92400E;'>"
-                                "ℹ️ 전년 동기 기저값이 너무 작아(또는 흑자전환 등) 증가율이 "
-                                "왜곡되는 걸 막기 위해 제외된 값입니다. 데이터 누락이 아닙니다."
+                                "ℹ️ 위 실측값은 전년 동기 대비 실제 계산된 증가율입니다. 다만 전년 "
+                                "기저값이 너무 작아(또는 흑자전환 등) 왜곡 가능성이 높아 점수 계산에는 "
+                                "반영하지 않았습니다 (점수 0점 처리).</span>"
+                            )
+                        elif value is None and metric_key in ("revenue_growth", "eps_growth"):
+                            growth_guard_note = (
+                                "<br><span style='font-size:12px; color:#92400E;'>"
+                                "ℹ️ 전년 동기 데이터 자체가 없어 증가율을 계산할 수 없습니다."
                                 "</span>"
                             )
                         # 이자비용을 못 찾아 금융비용(포괄 비용)으로 근사 계산된 경우 안내
@@ -1345,18 +1363,23 @@ else:
                             # 정확한 채점 구간표는 비공개(경쟁 우위 보호) - 대신 업종 내 상대적
                             # 우위 백분위만 표시. rescore_metric_percentiles.py가 미리 계산해둔
                             # metric_scores[key]["sector_percentile"] (1년 평균 기준 대표값)을 사용.
-                            metric_sector_pct = (
+                            metric_sector_entry = (
                                 (period_scores.get("1y", {}).get("avg") or {})
                                 .get("metric_scores", {})
                                 .get(metric_key, {})
-                                .get("sector_percentile")
                             )
+                            metric_sector_pct = metric_sector_entry.get("sector_percentile")
                             if metric_sector_pct is not None:
                                 st.markdown(
                                     f"**업종 내 상대적 위치**: 이 지표에서 같은 업종({row_wics_sector or '미상'}) "
                                     f"내 상위 **{100 - metric_sector_pct:.1f}%** 입니다. (1년 평균 기준)"
                                 )
                                 st.progress(metric_sector_pct / 100.0)
+                                if metric_sector_entry.get("sector_percentile_basis") == "raw_value":
+                                    st.caption(
+                                        "ℹ️ 점수 계산에는 제외된 실측값(위 안내 참고) 기준으로 "
+                                        "순위만 참고용으로 매긴 것입니다."
+                                    )
                             else:
                                 st.caption("업종 내 비교 데이터가 아직 계산되지 않았습니다.")
                             if leverage_exempt and metric_key in ("debt_rate", "quick_ratio", "interest_coverage"):
@@ -1417,5 +1440,7 @@ else:
                             else:
                                 st.caption("비교할 기준 기간 데이터가 부족해 급변 여부를 판단할 수 없습니다.")
 
+    with right_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
