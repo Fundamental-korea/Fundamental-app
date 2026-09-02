@@ -97,7 +97,7 @@ def main():
 
         eps = round(net_income / issued_shares, 2) if net_income is not None else None
         bps = round(total_equity / issued_shares, 2) if total_equity is not None else None
-        per = round(current_price / eps, 2) if (eps and eps > 0 and current_price) else None
+        per = round(current_price / eps, 2) if (eps and current_price) else None  # 음수(적자) PER도 저장
         pbr = round(current_price / bps, 2) if (bps and bps > 0 and current_price) else None
 
         updates.append({
@@ -144,6 +144,4 @@ def main():
 
 if __name__ == "__main__":
     main()
-
-if __name__ == "__main__":
     main()
