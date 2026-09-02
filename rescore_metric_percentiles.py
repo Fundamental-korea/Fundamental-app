@@ -42,6 +42,19 @@ MIN_SECTOR_SAMPLE = 5  # 업종 표본이 이보다 적으면 percentile 계산 
 # 금융섹터는 roic 대신 roa를 채점하므로, roic이 있는 자리에 roa도 같이 계산 대상에 포함
 ALL_PERCENTILE_METRICS = METRIC_KEYS + ["roa"]
 
+# revenue_growth/eps_growth는 sanitize_growth 가드로 value가 None이어도, 실제 계산된
+# raw_value(원본 증가율)가 있으면 그걸로 업종 내 순위 비교는 계속 할 수 있게 함
+GROWTH_KEYS_WITH_RAW_FALLBACK = {"revenue_growth", "eps_growth"}
+
+
+def _comparable_value(metric_key, entry):
+    """순위 비교에 쓸 값 - 기본은 value, growth 지표는 value가 없으면 raw_value로 폴백."""
+    if entry.get("value") is not None:
+        return entry["value"], False  # (값, raw_value를 썼는지 여부)
+    if metric_key in GROWTH_KEYS_WITH_RAW_FALLBACK and entry.get("raw_value") is not None:
+        return entry["raw_value"], True
+    return None, False
+
 
 def fetch_all_rows():
     """PostgREST 1000행 기본 제한 페이지네이션 처리."""
@@ -99,8 +112,11 @@ def main():
         metric_scores = (pdata.get("avg") or {}).get("metric_scores") or {}
         for metric_key in ALL_PERCENTILE_METRICS:
             entry = metric_scores.get(metric_key)
-            if entry and entry.get("value") is not None:
-                value_pool[(sector, metric_key)].append(entry["value"])
+            if not entry:
+                continue
+            comparable, _ = _comparable_value(metric_key, entry)
+            if comparable is not None:
+                value_pool[(sector, metric_key)].append(comparable)
 
     for key in value_pool:
         value_pool[key].sort()
@@ -123,13 +139,18 @@ def main():
         changed = False
         for metric_key in ALL_PERCENTILE_METRICS:
             entry = metric_scores.get(metric_key)
-            if not entry or entry.get("value") is None:
+            if not entry:
+                continue
+            comparable, used_raw = _comparable_value(metric_key, entry)
+            if comparable is None:
                 continue
             direction = METRIC_DIRECTION.get(metric_key, "higher")
             pool = value_pool.get((sector, metric_key), [])
-            pct = compute_percentile(entry["value"], pool, direction)
+            pct = compute_percentile(comparable, pool, direction)
             if pct is not None:
                 entry["sector_percentile"] = pct
+                if used_raw:
+                    entry["sector_percentile_basis"] = "raw_value"  # 채점 가드로 제외된 실측값 기준
                 changed = True
 
         if changed:
@@ -169,6 +190,9 @@ def main():
 
     print(f"\n🎉 전체 {len(updates)}개 종목 지표별 백분위 반영 완료!")
 
+
+if __name__ == "__main__":
+    main()
 
 if __name__ == "__main__":
     main()
