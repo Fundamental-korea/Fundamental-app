@@ -1264,20 +1264,14 @@ else:
                         "interest_coverage": "배", "ocf_ratio": "배", "downturn_defense": "%p",
                     }
 
-                    def _metric_across_periods(metric_key_inner, mode_inner="avg"):
-                        """모든 기간(1y/3y/5y/10y)에서 이 지표의 (기간라벨, value, score) 목록 반환.
-                        라벨은 한글(1년/3년 등)로 하면 st.line_chart가 좁은 폭에서 90도로
-                        회전시켜 세로글자가 되는 문제가 있어 짧은 영문(1Y/3Y 등) 사용."""
-                        period_short_label = {"1y": "1Y", "3y": "3Y", "5y": "5Y", "10y": "10Y"}
-                        out = []
-                        for p in ["1y", "3y", "5y", "10y"]:
-                            pdata_p = period_scores.get(p)
-                            if not pdata_p:
-                                continue
-                            entry_p = (pdata_p.get(mode_inner) or {}).get("metric_scores", {}).get(metric_key_inner)
-                            if entry_p and entry_p.get("value") is not None:
-                                out.append((period_short_label[p], entry_p.get("value"), entry_p.get("score")))
-                        return out
+                    def _metric_within_period(metric_key_inner):
+                        """현재 보고 있는 기간 탭(period_key) 안에서 이 지표의 세부 추이를 반환.
+                        3/5/10년 탭 -> 연도별(예: 2023,2024,2025), 1년 탭 -> 최근 4분기별.
+                        collector.py의 yearly_breakdown(1y는 이름만 같고 실제론 분기별)을 그대로 사용,
+                        딕셔너리 삽입 순서 = 시간순(오래된 것 -> 최신)이라 그대로 순회하면 됨."""
+                        breakdown = (period_scores.get(period_key, {}) or {}).get("yearly_breakdown", {}) or {}
+                        metric_breakdown = breakdown.get(metric_key_inner, {})
+                        return [(label, value) for label, value in metric_breakdown.items() if value is not None]
 
                     # collector.py의 leverage_exempt 판정(금융/지주회사/유틸리티는 부채비율 등
                     # 3개 지표 자동 만점)을 저장된 필드로 재구성 - app.py는 DART/WICS 원본 로직에
@@ -1368,13 +1362,16 @@ else:
                             if leverage_exempt and metric_key in ("debt_rate", "quick_ratio", "interest_coverage"):
                                 st.caption("ℹ️ 이 종목은 레버리지 예외 업종이라 이 지표는 자동 만점(10점) 처리됩니다.")
 
-                            history = _metric_across_periods(metric_key, view_mode)
+                            history = _metric_within_period(metric_key)
                             if len(history) >= 2:
-                                st.markdown("**기간별 추이**")
+                                period_chart_title = {
+                                    "1y": "**최근 4분기 추이**", "3y": "**연도별 추이 (3년)**",
+                                    "5y": "**연도별 추이 (5년)**", "10y": "**연도별 추이 (10년)**",
+                                }.get(period_key, "**기간별 추이**")
+                                st.markdown(period_chart_title)
                                 unit_label = METRIC_UNITS.get(metric_key, "%")
-                                trend_df = pd.DataFrame(
-                                    {"기간": [h[0] for h in history], "실측값": [h[1] for h in history]}
-                                )
+                                x_labels = [h[0] for h in history]
+                                trend_df = pd.DataFrame({"기간": x_labels, "실측값": [h[1] for h in history]})
                                 chart_type = st.radio(
                                     "차트 유형",
                                     ["선", "막대"],
@@ -1383,9 +1380,12 @@ else:
                                     label_visibility="collapsed",
                                 )
                                 base = alt.Chart(trend_df).encode(
-                                    x=alt.X("기간:N", sort=["1Y", "3Y", "5Y", "10Y"], title="기간",
+                                    x=alt.X("기간:N", sort=x_labels, title="기간",
                                             axis=alt.Axis(labelAngle=0)),
-                                    y=alt.Y("실측값:Q", title=f"실측값 ({unit_label})"),
+                                    y=alt.Y(
+                                        "실측값:Q", title=f"실측값 ({unit_label})",
+                                        axis=alt.Axis(titleAngle=0, titleAlign="left", titleY=-10, titleX=0),
+                                    ),
                                     tooltip=["기간", "실측값"],
                                 )
                                 chart = base.mark_line(point=True, color="#D97706") if chart_type == "선" \
