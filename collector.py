@@ -448,6 +448,14 @@ def _parse_year_financials(df, df_full=None):
     # 이자비용: 이자비용/금융원가 -> 이자의 지급(현금흐름표) -> 금융비용(포괄, 근사치) 순 폴백 (버그8 수정)
     interest_exp, interest_exp_is_approx = get_interest_expense(detail_df, field="thstrm_amount")
 
+    # 주당순이익(EPS): 회사가 K-IFRS 기준으로 직접 계산해서 공시하는 "기본주당순이익" 계정을
+    # 우선 사용 (순이익÷발행주식수로 자체 근사하면 자사주 미차감 등으로 부정확 - 버그9 수정).
+    # 못 찾으면 None -> 호출부(sync_kor_stock_fundamental)에서 근사치로 폴백.
+    reported_eps = _find_account_value(
+        detail_df, ["기본주당순이익", "기본주당이익", "주당순이익", "보통주기본주당순이익"],
+        field="thstrm_amount",
+    )
+
     # 투하자본 근사치: 자산총계 - 유동부채 (이자부채만 정확히 구분하기 어려워 유동부채 전체를 차감하는 간이 추정)
     invested_capital = total_assets - current_liab
     nopat = op_profit * (1 - CORP_TAX_RATE)
@@ -473,6 +481,7 @@ def _parse_year_financials(df, df_full=None):
         "total_liabilities": total_liab,
         "total_equity": total_equity,
         "interest_exp_is_approx": interest_exp_is_approx,
+        "reported_eps": reported_eps,
     }
 
     return {**ratios, **raw}
@@ -556,16 +565,13 @@ def _parse_report_financials(df, df_full=None):
     return {**ratios, "revenue_growth": revenue_growth, "eps_growth": eps_growth, **raw}
 
 
-def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True):
-    """
-    1년(단기) 기간 전용: 연간 사업보고서가 아니라 '지금 시점 가장 최신' 분기/반기 보고서 기준으로
-    지표와 전년동기 대비 성장률을 계산 (최신성 우선).
-    """
-    year, reprt_code = get_latest_available_report()
+def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing=True):
+    """특정 (연도, 보고서유형) 시점의 재무 지표를 조회/파싱하는 공통 로직.
+    fetch_latest_report_metrics와 fetch_recent_quarters_metrics가 공유해서 씀."""
     try:
         fin_data = dart.finstate(stock_code, year, reprt_code=reprt_code)
     except Exception as e:
-        print(f"  ⚠️ 최신 보고서({year}년 {reprt_code}) 조회 실패: {e}")
+        print(f"  ⚠️ 보고서({year}년 {reprt_code}) 조회 실패: {e}")
         return None
 
     if fin_data is None or fin_data.empty:
@@ -588,12 +594,57 @@ def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True):
     return result
 
 
+def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True):
+    """
+    1년(단기) 기간 전용: 연간 사업보고서가 아니라 '지금 시점 가장 최신' 분기/반기 보고서 기준으로
+    지표와 전년동기 대비 성장률을 계산 (최신성 우선).
+    """
+    year, reprt_code = get_latest_available_report()
+    return _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing)
+
+
 REPORT_CODE_LABEL = {
     "11011": "사업보고서(연간)",
     "11012": "반기보고서",
     "11013": "1분기보고서",
     "11014": "3분기보고서",
 }
+
+# 보고서 시점 순서 (1분기 -> 반기 -> 3분기 -> 사업보고서 -> 다음해 1분기 ...)
+_REPORT_SEQUENCE = ["11013", "11012", "11014", "11011"]
+
+
+def _previous_report_period(year, reprt_code):
+    """주어진 보고서 시점의 '바로 이전' 분기/반기/연간 보고서 시점 (연도, reprt_code) 반환."""
+    idx = _REPORT_SEQUENCE.index(reprt_code)
+    if idx == 0:  # 1분기보고서의 이전은 전년도 사업보고서
+        return year - 1, "11011"
+    return year, _REPORT_SEQUENCE[idx - 1]
+
+
+def fetch_recent_quarters_metrics(stock_code, latest_report=None, n_more=3, use_ofs_for_manufacturing=True):
+    """
+    1년(단기) 탭의 '최근 4분기 추이' 표시용 - 최신 보고서 포함 최근 n_more+1개 시점을
+    오래된 것부터 시간순으로 반환. latest_report를 넘기면 그 보고서는 재조회하지 않고
+    재사용해서 DART 호출을 아낀다 (그래도 이전 n_more개는 각각 새로 호출 필요).
+    ⚠️ 종목당 DART 호출이 n_more회 늘어남 (기본 3회) - 사용자 확인 후 도입.
+    """
+    if latest_report is not None:
+        year, reprt_code = latest_report["_report_year"], latest_report["_report_code"]
+        quarters = [latest_report]
+    else:
+        year, reprt_code = get_latest_available_report()
+        first = _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing)
+        quarters = [first] if first else []
+
+    for _ in range(n_more):
+        year, reprt_code = _previous_report_period(year, reprt_code)
+        result = _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing)
+        if result:
+            quarters.append(result)
+
+    quarters.reverse()  # 오래된 것 -> 최신 순
+    return quarters
 
 
 def fetch_year_data(stock_code, year, use_ofs_for_manufacturing=True):
@@ -705,10 +756,42 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
         avg_metrics["interest_coverage_is_approx"] = interest_coverage_is_approx
         worst_metrics["interest_coverage_is_approx"] = interest_coverage_is_approx
 
+        # --- 연도별 breakdown (사용자 요청: 3/5/10년 탭 추이 차트를 실제 연도로 표시) ---
+        # DART 재호출 없음 - yearly_data에 이미 있는 값을 그대로 정리만 함.
+        yearly_breakdown = {}
+        for metric in RATIO_METRICS:
+            yearly_breakdown[metric] = {
+                str(y): yearly_data[y][metric]
+                for y in recent_years
+                if yearly_data[y].get(metric) is not None
+            }
+        # revenue_growth/eps_growth는 CAGR(기간 전체 단일값)이라 연도별로 따로 없음 ->
+        # 각 연도의 전년 대비(YoY) 증가율을 별도 계산해서 breakdown용으로만 사용
+        rev_growth_by_year, eps_growth_by_year = {}, {}
+        for y in recent_years:
+            prev_y = y - 1
+            if not (yearly_data.get(prev_y) and yearly_data.get(y)):
+                continue
+            rev_y, rev_prev = yearly_data[y]["revenue"], yearly_data[prev_y]["revenue"]
+            ni_y, ni_prev = yearly_data[y]["net_income"], yearly_data[prev_y]["net_income"]
+            if rev_prev not in (0, None):
+                rg = sanitize_growth(round((rev_y - rev_prev) / abs(rev_prev) * 100, 2))
+                if rg is not None:
+                    rev_growth_by_year[str(y)] = rg
+            if ni_prev not in (0, None):
+                eg = sanitize_growth(round((ni_y - ni_prev) / abs(ni_prev) * 100, 2))
+                if eg is not None:
+                    eps_growth_by_year[str(y)] = eg
+        yearly_breakdown["revenue_growth"] = rev_growth_by_year
+        yearly_breakdown["eps_growth"] = eps_growth_by_year
+        if downturn_defense is not None:
+            yearly_breakdown["downturn_defense"] = {str(y): downturn_defense for y in recent_years}
+
         period_results[period] = {
             "years_used": window_years,
             "avg_metrics": avg_metrics,
             "worst_metrics": worst_metrics,
+            "yearly_breakdown": yearly_breakdown,
         }
 
     # 1년(단기) 기간은 연간 사업보고서 대신 '지금 시점 가장 최신' 분기/반기 보고서로 대체 (최신성 우선)
@@ -730,12 +813,25 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
                 metrics_1y[metric] = latest_report.get(metric)
             metrics_1y["interest_coverage_is_approx"] = latest_report.get("interest_exp_is_approx", False)
 
+            # 최근 4분기(최신 포함) 추이 - 사용자 요청으로 도입, DART 호출 종목당 +3회.
+            # latest_report는 이미 가져온 걸 재사용해서 4번째 호출을 아낌.
+            quarterly_breakdown = {}
+            recent_quarters = fetch_recent_quarters_metrics(
+                stock_code, latest_report=latest_report, n_more=3,
+                use_ofs_for_manufacturing=use_ofs_for_manufacturing,
+            )
+            for q in recent_quarters:
+                q_label = f"{q['_report_year']} {REPORT_CODE_LABEL.get(q['_report_code'], q['_report_code'])}"
+                for metric in RATIO_METRICS + ["revenue_growth", "eps_growth"]:
+                    quarterly_breakdown.setdefault(metric, {})[q_label] = q.get(metric)
+
             period_results[1] = {
                 "years_used": [f"{report_year} {report_label}"],
                 "avg_metrics": metrics_1y,
                 "worst_metrics": metrics_1y,  # 데이터가 보고서 1개뿐이므로 평균=최악
+                "yearly_breakdown": quarterly_breakdown,  # 이름은 yearly지만 1y는 분기 단위 breakdown
             }
-            print(f"  🕐 1년 기간: {report_year}년 {report_label} 기준으로 최신화")
+            print(f"  🕐 1년 기간: {report_year}년 {report_label} 기준으로 최신화 (최근 {len(recent_quarters)}개 분기 추이 포함)")
         else:
             print("  ⚠️ 1년 기간: 최신 분기/반기 보고서를 가져오지 못해 연간 사업보고서 기준으로 대체합니다.")
 
@@ -803,7 +899,18 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         total_equity = latest["total_equity"]
         # 버그6(자본총계 매칭 실패) 수정 이후이므로 이제 이 값을 신뢰할 수 있음 -> 자본잠식 플래그로 활용
         capital_impairment = total_equity < 0
-        eps = (net_income / issued_shares) if issued_shares > 0 else None
+
+        # EPS: "기본주당순이익" 공시 계정을 우선 사용 (회사가 K-IFRS 기준 가중평균 유통주식수로
+        # 정확히 계산한 값). 계정을 못 찾은 경우에만 순이익÷발행주식수 근사로 폴백 (버그9 수정) -
+        # 자사주 미차감 등으로 근사치가 실제보다 낮게 나오는 경향이 있어 우선순위를 명확히 함.
+        reported_eps = latest.get("reported_eps")
+        if reported_eps is not None:
+            eps = reported_eps
+            eps_is_reported = True
+        else:
+            eps = (net_income / issued_shares) if issued_shares > 0 else None
+            eps_is_reported = False
+        # BPS는 K-IFRS 표준 공시 계정이 따로 없어 계속 자본총계÷발행주식수로 근사
         bps = (total_equity / issued_shares) if issued_shares > 0 else None
         per = round(current_price / eps, 2) if eps else None  # 음수(적자) PER도 저장 - 0 나눗셈만 방지
         pbr = round(current_price / bps, 2) if (bps and bps > 0) else None
@@ -835,6 +942,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
 
             period_scores[f"{period}y"] = {
                 "years_used": pdata["years_used"],
+                "yearly_breakdown": pdata.get("yearly_breakdown", {}),  # 3/5/10y=연도별, 1y=분기별
                 "avg": {
                     "total_score": avg_score["total_score"],
                     "grade": avg_score["grade"],  # 잠정 등급 - 전체 수집 완료 후 재산정 예정
@@ -869,6 +977,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "per": per,
             "pbr": pbr,
             "eps": round(eps, 2) if eps is not None else None,
+            "eps_is_reported": eps_is_reported,
             "bps": round(bps, 2) if bps is not None else None,
             "revenue": int(latest["revenue"]),
             "operating_income": int(latest["operating_income"]),
@@ -1215,9 +1324,22 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         report_code = latest_report["_report_code"]
         report_label = REPORT_CODE_LABEL.get(report_code, report_code)
 
+        # 최근 4분기(최신 포함) 추이 - 매일 자동갱신 때도 같이 최신화 (DART 호출 종목당 +3회,
+        # 사용자 확인 후 도입 - 비용 증가 감수)
+        quarterly_breakdown = {}
+        recent_quarters = fetch_recent_quarters_metrics(
+            stock_code, latest_report=latest_report, n_more=3,
+            use_ofs_for_manufacturing=effective_use_ofs,
+        )
+        for q in recent_quarters:
+            q_label = f"{q['_report_year']} {REPORT_CODE_LABEL.get(q['_report_code'], q['_report_code'])}"
+            for metric in RATIO_METRICS + ["revenue_growth", "eps_growth"]:
+                quarterly_breakdown.setdefault(metric, {})[q_label] = q.get(metric)
+
         merged_period_scores = dict(existing_period_scores or {})
         merged_period_scores["1y"] = {
             "years_used": [f"{report_year} {report_label}"],
+            "yearly_breakdown": quarterly_breakdown,
             "avg": {
                 "total_score": score["total_score"],
                 "grade": score["grade"],  # 잠정 등급 - 등급 재산정 패스에서 최종 반영됨
