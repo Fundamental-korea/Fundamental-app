@@ -1411,6 +1411,16 @@ def sync_all_kor_stocks_b_group(limit=None, sleep_sec=0.5, use_ofs_for_manufactu
         print(f"⏭️  B그룹 재수집 이미 완료된 {len(already_done)}개 종목은 건너뜁니다.")
 
     targets = df_krx[~df_krx["Code"].isin(already_done)]
+
+    # 정상적인 보통주/우선주 코드는 항상 6자리 숫자. 신주인수권/스팩 등 비정상 코드(예: '0011T0')는
+    # DART에 재무제표 자체가 없어서 OpenDartReader가 깔끔하게 실패 못 하고 TypeError를 던짐 -
+    # 시간/DART quota 낭비 방지를 위해 사전에 걸러냄 (버그10 수정)
+    valid_code_mask = targets["Code"].astype(str).str.fullmatch(r"\d{6}")
+    invalid_codes = targets[~valid_code_mask]
+    if not invalid_codes.empty:
+        print(f"⚠️ 비정상 종목코드 {len(invalid_codes)}개 제외: {list(invalid_codes['Code'])[:10]}{'...' if len(invalid_codes) > 10 else ''}")
+    targets = targets[valid_code_mask]
+
     if limit:
         targets = targets.head(limit)
 
