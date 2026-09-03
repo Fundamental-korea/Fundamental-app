@@ -1160,6 +1160,16 @@ else:
                 else:
                     status_pills_html += f'<span class="status-pill neutral">🏦 PBR {row_pbr}</span>'
 
+            row_dividend_yield = supabase_data.get("dividend_yield")
+            row_dividend_payout = supabase_data.get("dividend_payout_ratio")
+            if row_dividend_yield is not None:
+                payout_part = f" · 배당성향 {row_dividend_payout}%" if row_dividend_payout is not None else ""
+                status_pills_html += (
+                    f'<span class="status-pill neutral" '
+                    f'title="하락장에서는 배당이 꾸준한 기업이 상대적으로 방어적인 경향이 있습니다.">'
+                    f'💵 배당수익률 {row_dividend_yield}%{payout_part}</span>'
+                )
+
             if row_missing_count is not None:
                 status_pills_html += f'<span class="status-pill neutral">🧩 결측 지표: {row_missing_count}개</span>'
 
@@ -1440,7 +1450,5 @@ else:
                             else:
                                 st.caption("비교할 기준 기간 데이터가 부족해 급변 여부를 판단할 수 없습니다.")
 
-    with right_ad:
-        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
