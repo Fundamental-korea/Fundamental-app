@@ -6,6 +6,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import FinanceDataReader as fdr
+import pandas as pd
 import requests
 try:
     from opendartreader import OpenDartReader  # 실제 설치 확인됨(find /usr/local/lib/.../dist-packages) - 소문자 모듈명이 정확
@@ -357,6 +358,75 @@ def is_holding_company(stock_code, sector_str, stock_name):
     return any(kw in haystack for kw in HOLDING_COMPANY_KEYWORDS)
 
 
+def _sanitize_for_cache(df):
+    """DataFrame -> JSON 저장 가능한 레코드 리스트로 변환 (NaN 등 정리)."""
+    if df is None:
+        return None
+    return _sanitize_json(df.where(df.notnull(), None).to_dict(orient="records"))
+
+
+def _get_cached_raw(stock_code, year, reprt_code, fs_div, source):
+    """Dart_Raw_Cache에서 이미 받은 원본 재무제표가 있으면 DataFrame으로 복원해서 반환.
+    없으면 None. 확정된 과거 보고서는 DART에서 값이 안 바뀌므로(정정공시는 별도 접수번호로
+    새로 올라옴) 캐시를 사실상 영구적으로 신뢰해도 됨."""
+    try:
+        res = (
+            supabase.table("Dart_Raw_Cache")
+            .select("account_data")
+            .eq("stock_code", stock_code).eq("year", year)
+            .eq("reprt_code", reprt_code).eq("fs_div", fs_div).eq("source", source)
+            .execute()
+        )
+        if res.data:
+            return pd.DataFrame(res.data[0]["account_data"])
+    except Exception as e:
+        print(f"  ⚠️ 캐시 조회 실패({stock_code}, {year}, {reprt_code}, {fs_div}, {source}): {e}")
+    return None
+
+
+def _set_cached_raw(stock_code, year, reprt_code, fs_div, source, df):
+    """DART에서 새로 받은 원본 재무제표를 캐시에 저장 - 다음번엔 이 조합을 DART 재호출 없이 재사용."""
+    if df is None or df.empty:
+        return
+    try:
+        supabase.table("Dart_Raw_Cache").upsert({
+            "stock_code": stock_code, "year": year, "reprt_code": reprt_code,
+            "fs_div": fs_div, "source": source, "account_data": _sanitize_for_cache(df),
+        }, on_conflict="stock_code,year,reprt_code,fs_div,source").execute()
+    except Exception as e:
+        print(f"  ⚠️ 캐시 저장 실패({stock_code}, {year}, {reprt_code}, {fs_div}, {source}): {e}")
+
+
+def _dart_finstate_cached(stock_code, year, reprt_code):
+    """dart.finstate()(주요계정, OFS/CFS 한 번에 옴) 캐싱 래퍼."""
+    cached = _get_cached_raw(stock_code, year, reprt_code, fs_div="BOTH", source="finstate")
+    if cached is not None:
+        return cached
+    try:
+        fin_data = dart.finstate(stock_code, year, reprt_code=reprt_code)
+    except Exception as e:
+        print(f"  ⚠️ finstate 조회 실패({stock_code}, {year}년 {reprt_code}): {e}")
+        return None
+    if fin_data is not None and not fin_data.empty:
+        _set_cached_raw(stock_code, year, reprt_code, "BOTH", "finstate", fin_data)
+    return fin_data
+
+
+def _dart_finstate_all_cached(stock_code, year, reprt_code, fs_div):
+    """dart.finstate_all()(전체계정, fs_div별 개별 요청) 캐싱 래퍼."""
+    cached = _get_cached_raw(stock_code, year, reprt_code, fs_div=fs_div, source="finstate_all")
+    if cached is not None:
+        return cached
+    try:
+        fin_data = dart.finstate_all(stock_code, year, reprt_code=reprt_code, fs_div=fs_div)
+    except Exception as e:
+        print(f"  ⚠️ finstate_all 조회 실패({stock_code}, {year}년 {reprt_code}, {fs_div}): {e}")
+        return None
+    if fin_data is not None and not fin_data.empty:
+        _set_cached_raw(stock_code, year, reprt_code, fs_div, "finstate_all", fin_data)
+    return fin_data
+
+
 def _fetch_full_statement_df(stock_code, year, reprt_code="11011", use_ofs_for_manufacturing=True):
     """
     dart.finstate()의 '주요계정'(13개 표준항목)에는 재고자산/판관비/이자비용/영업활동현금흐름이
@@ -367,12 +437,7 @@ def _fetch_full_statement_df(stock_code, year, reprt_code="11011", use_ofs_for_m
     fs_div_order = ["OFS", "CFS"] if use_ofs_for_manufacturing else ["CFS", "OFS"]
 
     for fs_div in fs_div_order:
-        try:
-            fin_data = dart.finstate_all(stock_code, year, reprt_code=reprt_code, fs_div=fs_div)
-        except Exception as e:
-            print(f"  ⚠️ 전체 재무제표 조회 실패({year}년 {reprt_code}, {fs_div}): {e}")
-            fin_data = None
-
+        fin_data = _dart_finstate_all_cached(stock_code, year, reprt_code, fs_div)
         if fin_data is not None and not fin_data.empty:
             return fin_data
 
@@ -568,11 +633,7 @@ def _parse_report_financials(df, df_full=None):
 def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing=True):
     """특정 (연도, 보고서유형) 시점의 재무 지표를 조회/파싱하는 공통 로직.
     fetch_latest_report_metrics와 fetch_recent_quarters_metrics가 공유해서 씀."""
-    try:
-        fin_data = dart.finstate(stock_code, year, reprt_code=reprt_code)
-    except Exception as e:
-        print(f"  ⚠️ 보고서({year}년 {reprt_code}) 조회 실패: {e}")
-        return None
+    fin_data = _dart_finstate_cached(stock_code, year, reprt_code)
 
     if fin_data is None or fin_data.empty:
         return None
@@ -622,6 +683,119 @@ def _previous_report_period(year, reprt_code):
     return year, _REPORT_SEQUENCE[idx - 1]
 
 
+def fetch_dividend_info(stock_code, year):
+    """
+    배당에 관한 사항 조회 (dart.report 키워드 '배당'). 캐싱 적용(Dart_Raw_Cache 재사용,
+    source='report_dividend'). 실제 필드 구조 실측 확인됨(005930/035420/105560 샘플):
+    컬럼 = rcept_no/corp_cls/corp_code/corp_name/se/stock_knd/thstrm/frmtrm/lwfr/stlm_dt.
+    """
+    cached = _get_cached_raw(stock_code, year, "11011", fs_div="N/A", source="report_dividend")
+    if cached is not None:
+        return cached
+    df = None
+    for kw in ["배당", "alotMatter"]:
+        try:
+            candidate = dart.report(stock_code, kw, year)
+            if candidate is not None and not candidate.empty:
+                df = candidate
+                break
+        except Exception:
+            continue
+    if df is not None and not df.empty:
+        _set_cached_raw(stock_code, year, "11011", "N/A", "report_dividend", df)
+    return df
+
+
+def fetch_treasury_stock_info(stock_code, year):
+    """
+    자기주식 취득/처분 현황 조회 (dart.report 키워드 '자기주식'). 캐싱 적용.
+    실측 확인됨: 컬럼 = rcept_no/.../stock_knd/acqs_mth1/acqs_mth2/acqs_mth3/bsis_qy/
+    change_qy_acqs/change_qy_dsps/change_qy_incnr/trmend_qy/rm/stlm_dt.
+    """
+    cached = _get_cached_raw(stock_code, year, "11011", fs_div="N/A", source="report_treasury")
+    if cached is not None:
+        return cached
+    df = None
+    for kw in ["자기주식", "tesstkAcqsDspsSttus"]:
+        try:
+            candidate = dart.report(stock_code, kw, year)
+            if candidate is not None and not candidate.empty:
+                df = candidate
+                break
+        except Exception:
+            continue
+    if df is not None and not df.empty:
+        _set_cached_raw(stock_code, year, "11011", "N/A", "report_treasury", df)
+    return df
+
+
+def _parse_dart_number(val_str):
+    """DART report의 문자열 숫자('44,260,956' 또는 '-')를 float/None으로 변환."""
+    if val_str is None:
+        return None
+    s = str(val_str).replace(",", "").strip()
+    if s in ("-", "", "nan", "None"):
+        return None
+    try:
+        return float(s)
+    except ValueError:
+        return None
+
+
+def extract_dividend_metrics(df):
+    """
+    배당 리포트 df -> {dividend_yield, dividend_payout_ratio, dividend_per_share} (보통주 기준).
+    se 컬럼 값(정확히 일치해야 함)은 실측으로 확인된 표준 라벨: '(연결)현금배당성향(%)',
+    '현금배당수익률(%)', '주당 현금배당금(원)'. stock_knd는 회사마다 '보통주'/'보통주식'처럼
+    표기가 다를 수 있어 부분일치(contains)로 필터링.
+    """
+    result = {"dividend_yield": None, "dividend_payout_ratio": None, "dividend_per_share": None}
+    if df is None or df.empty or "se" not in df.columns:
+        return result
+
+    def _get(se_candidates, stock_knd_filter=None):
+        for se_label in se_candidates:
+            subset = df[df["se"] == se_label]
+            if stock_knd_filter is not None and "stock_knd" in subset.columns:
+                subset = subset[subset["stock_knd"].astype(str).str.contains(stock_knd_filter, na=False)]
+            if not subset.empty:
+                val = _parse_dart_number(subset.iloc[0]["thstrm"])
+                if val is not None:
+                    return val
+        return None
+
+    result["dividend_payout_ratio"] = _get(["(연결)현금배당성향(%)", "(별도)현금배당성향(%)", "현금배당성향(%)"])
+    result["dividend_yield"] = _get(["현금배당수익률(%)"], stock_knd_filter="보통주")
+    result["dividend_per_share"] = _get(["주당 현금배당금(원)"], stock_knd_filter="보통주")
+    return result
+
+
+def extract_treasury_shares(df):
+    """
+    자기주식 리포트 df -> 기말 보통주 자기주식 수량(int).
+    실측 확인됨: acqs_mth1/2/3이 전부 '총계'인 행의 trmend_qy가 기말 보유수량 합계.
+    반환값: 정상 조회+합계행 있음 -> 수량, 리포트가 비어있음(자사주 없음으로 간주) -> 0,
+    조회 자체 실패(None) -> None(모름, EPS 근사 계산 시 보정 안 함).
+    """
+    if df is None:
+        return None
+    if df.empty:
+        return 0
+
+    required_cols = {"acqs_mth1", "acqs_mth2", "acqs_mth3", "stock_knd", "trmend_qy"}
+    if not required_cols.issubset(df.columns):
+        return None
+
+    common = df[df["stock_knd"].astype(str).str.contains("보통주", na=False)]
+    total_row = common[
+        (common["acqs_mth1"] == "총계") & (common["acqs_mth2"] == "총계") & (common["acqs_mth3"] == "총계")
+    ]
+    if total_row.empty:
+        return 0
+    val = _parse_dart_number(total_row.iloc[0]["trmend_qy"])
+    return int(val) if val is not None else 0
+
+
 def fetch_recent_quarters_metrics(stock_code, latest_report=None, n_more=3, use_ofs_for_manufacturing=True):
     """
     1년(단기) 탭의 '최근 4분기 추이' 표시용 - 최신 보고서 포함 최근 n_more+1개 시점을
@@ -649,11 +823,7 @@ def fetch_recent_quarters_metrics(stock_code, latest_report=None, n_more=3, use_
 
 def fetch_year_data(stock_code, year, use_ofs_for_manufacturing=True):
     """특정 사업연도(사업보고서 기준) 재무데이터 1건 조회. 실패/결측 시 None."""
-    try:
-        fin_data = dart.finstate(stock_code, year, reprt_code="11011")
-    except Exception as e:
-        print(f"  ⚠️ {year}년 조회 실패: {e}")
-        return None
+    fin_data = _dart_finstate_cached(stock_code, year, "11011")
 
     if fin_data is None or fin_data.empty:
         return None
@@ -900,15 +1070,23 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         # 버그6(자본총계 매칭 실패) 수정 이후이므로 이제 이 값을 신뢰할 수 있음 -> 자본잠식 플래그로 활용
         capital_impairment = total_equity < 0
 
+        # 배당/자기주식 정보 (하락장 방어 컨셉과 연관성 높음 + EPS 근사치 개선용)
+        dividend_df = fetch_dividend_info(stock_code, base_year)
+        dividend_metrics = extract_dividend_metrics(dividend_df)
+        treasury_df = fetch_treasury_stock_info(stock_code, base_year)
+        treasury_shares = extract_treasury_shares(treasury_df)
+
         # EPS: "기본주당순이익" 공시 계정을 우선 사용 (회사가 K-IFRS 기준 가중평균 유통주식수로
-        # 정확히 계산한 값). 계정을 못 찾은 경우에만 순이익÷발행주식수 근사로 폴백 (버그9 수정) -
-        # 자사주 미차감 등으로 근사치가 실제보다 낮게 나오는 경향이 있어 우선순위를 명확히 함.
+        # 정확히 계산한 값). 계정을 못 찾은 경우에만 순이익÷유통주식수 근사로 폴백 (버그9 수정) -
+        # 자기주식(자사주) 보유 수량만큼 제외한 유통주식수를 분모로 써서 근사 정확도를 개선함
+        # (자사주 미차감 근사는 실측 비교 결과 종목에 따라 최대 수백% 오차가 났었음).
         reported_eps = latest.get("reported_eps")
         if reported_eps is not None:
             eps = reported_eps
             eps_is_reported = True
         else:
-            eps = (net_income / issued_shares) if issued_shares > 0 else None
+            float_shares = issued_shares - (treasury_shares or 0)
+            eps = (net_income / float_shares) if float_shares > 0 else None
             eps_is_reported = False
         # BPS는 K-IFRS 표준 공시 계정이 따로 없어 계속 자본총계÷발행주식수로 근사
         bps = (total_equity / issued_shares) if issued_shares > 0 else None
@@ -978,6 +1156,10 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "pbr": pbr,
             "eps": round(eps, 2) if eps is not None else None,
             "eps_is_reported": eps_is_reported,
+            "dividend_yield": dividend_metrics["dividend_yield"],
+            "dividend_payout_ratio": dividend_metrics["dividend_payout_ratio"],
+            "dividend_per_share": dividend_metrics["dividend_per_share"],
+            "treasury_shares": treasury_shares,
             "bps": round(bps, 2) if bps is not None else None,
             "revenue": int(latest["revenue"]),
             "operating_income": int(latest["operating_income"]),
