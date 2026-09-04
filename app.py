@@ -173,7 +173,7 @@ st.markdown(
 
 /* 이름 뒤에 빼기표(-) 추가 */
     .quote-author::after {
-        content: " --";
+        content: " —";
     }
 
     .ad-box-tall {
