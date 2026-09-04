@@ -1402,15 +1402,20 @@ def resync_bugfix_affected_stocks(limit=None, sleep_sec=0.5, use_ofs_for_manufac
         print("실패한 종목코드:", failed)
     return succeeded, failed
 
-def sync_all_kor_stocks_b_group(limit=None, sleep_sec=0.5, use_ofs_for_manufacturing=True):
+def sync_all_kor_stocks_b_group(limit=None, sleep_sec=0.1, use_ofs_for_manufacturing=True, max_workers=8):
     """
     B그룹 버그 수정(자본총계 매칭 강화 / interest_coverage 오탐 방지 / growth 안전장치) 반영 후
     전체 종목 재수집. 이미 저장된 종목도 전부 다시 처리하는 게 핵심이라
     sync_all_kor_stocks()와는 완전히 다른 기준(b_group_synced_at 컬럼)으로 대상 판별.
 
-    ⚠️ DART 일일 호출 한도(4만 건) 때문에 전체(약 2,900개 x 24회 ≈ 69,000건)를
-    하루에 다 못 끝낼 가능성이 높음. 한도 초과로 중간에 실패가 늘어나도 걱정 말고,
-    다음날 이 함수를 다시 실행하면 b_group_synced_at 기준으로 이어서 진행됨.
+    ⚠️ DART 일일 호출 한도(4만 건) 때문에 전체(약 2,900개 x 40회 이상 - 분기 4개 이력/배당/
+    자기주식 추가로 늘어남)를 하루에 다 못 끝낼 가능성이 높음. 한도 초과로 중간에 실패가
+    늘어나도 걱정 말고, 다음날 이 함수를 다시 실행하면 b_group_synced_at 기준으로 이어서 진행됨.
+
+    max_workers: 동시 처리 종목 수. 네트워크 대기시간이 대부분이라 병렬화 효과가 큼
+    (sync_all_kor_stocks_1y_only와 동일한 패턴). DART 쪽에서 429(rate limit) 에러가
+    늘어나면 이 값을 낮춰서 재시도할 것. USE_DART_CACHE=False 상태에서 처음 도는 대량
+    수집엔 이 병렬화가 가장 효과적인 속도 개선책.
     """
     df_krx = fdr.StockListing("KRX")
     sector_map = get_sector_map()
@@ -1436,27 +1441,41 @@ def sync_all_kor_stocks_b_group(limit=None, sleep_sec=0.5, use_ofs_for_manufactu
         targets = targets.head(limit)
 
     total = len(targets)
-    est_calls = total * 24
-    print(f"📋 B그룹 재수집 대상 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건)")
+    est_calls = total * 40
+    print(f"📋 B그룹 재수집 대상 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건, 동시 {max_workers}개 처리)")
     if est_calls > 40000:
         print("   ⚠️ 예상 호출 건수가 일일 한도를 초과합니다 - 하루에 다 못 끝날 수 있습니다.")
         print("   ⚠️ 도중에 DART 호출 실패가 급증하면 중단하고, 다음날 이 함수를 다시 실행해 이어가세요.")
 
     succeeded, failed = [], []
-    for i, row in enumerate(targets.itertuples(), 1):
+    completed = 0
+    lock = threading.Lock()
+
+    def _worker(row):
         code, name = row.Code, row.Name
-        print(f"\n[{i}/{total}] ", end="")
         try:
             sync_kor_stock_fundamental(
                 code, name, df_krx=df_krx, sector_map=sector_map, wics_sector_map=wics_sector_map,
                 kospi_mdd_cache=kospi_mdd_cache,
                 use_ofs_for_manufacturing=use_ofs_for_manufacturing,
             )
-            succeeded.append(code)
+            ok = True
         except Exception as e:
-            print(f"❌ [{name}({code})] 처리 중 예외 발생, 건너뜁니다: {e}")
-            failed.append(code)
-        time.sleep(sleep_sec)
+            print(f"❌ [{name}({code})] 처리 중 예외 발생: {e}")
+            ok = False
+        if sleep_sec:
+            time.sleep(sleep_sec)
+        return code, name, ok
+
+    with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        futures = {executor.submit(_worker, row): row for row in targets.itertuples()}
+        for future in as_completed(futures):
+            code, name, ok = future.result()
+            with lock:
+                completed += 1
+                (succeeded if ok else failed).append(code)
+                status = "✅" if ok else "⚠️"
+                print(f"[{completed}/{total}] {status} [{name} ({code})]")
 
     print(f"\n\n=== B그룹 재수집 배치 완료: 성공 {len(succeeded)} / 실패 {len(failed)} / 전체 {total} ===")
     if failed:
