@@ -52,7 +52,11 @@ st.markdown(
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
     }
 
+    /* 살짝 둥근 폰트(나눔스퀘어라운드) 불러오기 */
+@import url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_two@1.0/NanumSquareRound.woff');
+
     .quote-box-v2 {
+        font-family: 'NanumSquareRound', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; /* 둥근 폰트 적용 */
         background-color: #FFFDF9;
         border: 2px solid #F4A261;
         border-radius: 16px;
@@ -99,22 +103,17 @@ st.markdown(
         flex-direction: column;
         justify-content: center;
         gap: 4px;
-    }
+    } 
 
     .quote-en-row {
         display: flex;
         align-items: flex-start;
         gap: 6px;
     }
+
+/* 닫는 괄호 오류 수정 및 중복 코드 제거 */
     .quote-mark {
         display: none !important;
-
-    .quote-mark {
-        font-size: 26px;
-        font-weight: 900;
-        color: #F4A261 !important;
-        line-height: 1;
-        flex: 0 0 auto;
     }
 
     .quote-en {
@@ -127,12 +126,14 @@ st.markdown(
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
     }
-    
+
+/* 영문 쌍따옴표 정상 작동 */
     .quote-en::before,
     .quote-en::after {
         content: '"';
-}
+    }
 
+/* 괄호 오류가 수정되어 주황색(#F4A261)이 정상 적용됩니다 */
     .quote-divider {
         border: none;
         border-top: 1px solid #F4A261;
@@ -146,15 +147,16 @@ st.markdown(
         line-height: 1.45;
         margin-left: 0;
         overflow: hidden;
-        display: -webkit-box;           /* nowrap 대신 */
-        -webkit-line-clamp: 2;          /* 국문도 2줄까지 자동 줄바꿈 */
+        display: -webkit-box;           
+        -webkit-line-clamp: 2;          
         -webkit-box-orient: vertical;
     }
 
+/* 국문 쌍따옴표 정상 작동 */
     .quote-ko::before,
     .quote-ko::after {
         content: '"';
-}
+    }
 
     .quote-author {
         font-size: 13px;
@@ -165,8 +167,13 @@ st.markdown(
         flex-shrink: 0; 
         white-space: nowrap;
         overflow: hidden;
-        line-height: 1.6; /* 하단 잘림 방지용 줄 높이 추가 */
-        padding-bottom: 4px; /* 하단 잘림 방지용 여백 추가 */
+        line-height: 1.6; 
+        padding-bottom: 4px; 
+    }
+
+/* 이름 뒤에 빼기표(-) 추가 */
+    .quote-author::after {
+        content: " -";
     }
 
     .ad-box-tall {
