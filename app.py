@@ -56,7 +56,7 @@ st.markdown(
         background-color: #FFFDF9;
         border: 2px solid #F4A261;
         border-radius: 16px;
-        min-height: 140px !important;
+        min-height: 148px !important;
         height: auto;
         display: flex;
         flex-direction: row;
@@ -119,7 +119,7 @@ st.markdown(
         font-size: 14px;
         font-weight: 700;
         color: #1A1A1A !important;
-        line-height: 1.35;
+        line-height: 1.25;
         overflow: hidden;
         display: -webkit-box;
         -webkit-line-clamp: 2;
