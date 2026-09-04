@@ -1,7 +1,6 @@
 import json
 import random
 import FinanceDataReader as fdr
-import html
 import pandas as pd
 import altair as alt
 import streamlit as st
@@ -73,113 +72,7 @@ st.markdown(
         font-weight: 600;
         color: #333333 !important;
     }
-     .investor-quote-card {
-    background: linear-gradient(135deg, #FFF8EF 0%, #FFFDF9 100%);
-    border: 1.5px solid #F4A261;
-    border-radius: 14px;
-    height: 130px !important;
-    min-height: 130px !important;
-    display: flex;
-    align-items: center;
-    gap: 18px;
-    padding: 10px 22px 10px 12px;
-    box-shadow: 0 3px 10px rgba(244, 162, 97, 0.10);
-    overflow: hidden;
-}
 
-.investor-photo-wrap {
-    width: 96px;
-    height: 96px;
-    flex: 0 0 96px;
-    position: relative;
-    border-radius: 12px;
-    overflow: hidden;
-    background: #FDEAD7;
-    border: 2px solid #F4A261;
-}
-
-.investor-photo {
-    width: 100%;
-    height: 100%;
-    object-fit: cover;
-    display: block;
-}
-
-.investor-quote-fallback {
-    position: absolute;
-    inset: 0;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    font-size: 36px;
-    font-weight: 800;
-    color: #D97706;
-    background: #FEF3C7;
-}
-
-.investor-photo-wrap.image-failed .investor-quote-fallback {
-    display: flex;
-}
-
-.investor-quote-content {
-    min-width: 0;
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-}
-
-.investor-quote-en {
-    font-size: 15px;
-    font-weight: 700;
-    line-height: 1.35;
-    color: #1F2937 !important;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.investor-quote-ko {
-    margin-top: 5px;
-    font-size: 12.5px;
-    line-height: 1.35;
-    color: #6B7280 !important;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-}
-
-.investor-name {
-    margin-top: 4px;
-    font-size: 11px;
-    font-weight: 800;
-    color: #D97706 !important;
-}
-
-@media (max-width: 768px) {
-    .investor-quote-card {
-        height: 150px !important;
-        min-height: 150px !important;
-        padding: 10px;
-        gap: 12px;
-    }
-
-    .investor-photo-wrap {
-        width: 78px;
-        height: 78px;
-        flex-basis: 78px;
-    }
-
-    .investor-quote-en {
-        font-size: 13px;
-    }
-
-    .investor-quote-ko {
-        font-size: 11px;
-    }
-    
     .ad-box-tall {
         background-color: #F8F9FA;
         border: 2px dashed #D0D0D0;
@@ -448,100 +341,6 @@ def init_supabase():
 
 
 supabase = init_supabase()
-
-@st.cache_data(ttl=300, show_spinner=False)
-def load_active_investor_quotes(_supabase):
-    if _supabase is None:
-        return []
-
-    try:
-        res = (
-            _supabase.table("investor_quotes")
-            .select(
-                "id, investor_name, quote_en, quote_ko, image_url"
-            )
-            .eq("active", True)
-            .execute()
-        )
-        return res.data or []
-    except Exception:
-        return []
-
-def render_investor_quote(_supabase):
-    rows = load_active_investor_quotes(_supabase)
-
-    if not rows:
-        st.markdown(
-            """
-            <div class="quote-box">
-                <div style="font-size:36px;">💼</div>
-                <div class="quote-text">
-                    좋은 기업을 찾는 것은 숫자를 읽는 것에서 시작됩니다.
-                </div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        return
-
-    row = random.choice(rows)
-
-    investor_name = html.escape(
-        str(row.get("investor_name") or "Investor")
-    )
-    quote_en = html.escape(
-        str(row.get("quote_en") or "")
-    )
-    quote_ko = html.escape(
-        str(row.get("quote_ko") or "")
-    )
-    image_url = str(
-        row.get("image_url") or ""
-    ).strip()
-
-    # 이미지가 있는 경우
-    if image_url:
-        image_html = (
-            f'<img src="{html.escape(image_url, quote=True)}" '
-            f'class="investor-photo" '
-            f'alt="{investor_name}" '
-            f'onerror="this.style.display=\'none\'; '
-            f'this.parentElement.classList.add(\'image-failed\');">'
-        )
-    else:
-        image_html = ""
-
-    st.markdown(
-        f"""
-        <div class="investor-quote-card">
-
-            <div class="investor-photo-wrap">
-                {image_html}
-                <div class="investor-quote-fallback">
-                    {html.escape(investor_name[:1])}
-                </div>
-            </div>
-
-            <div class="investor-quote-content">
-
-                <div class="investor-quote-en">
-                    “{quote_en}”
-                </div>
-
-                <div class="investor-quote-ko">
-                    {quote_ko}
-                </div>
-
-                <div class="investor-name">
-                    — {investor_name}
-                </div>
-
-            </div>
-
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
 
 
 @st.cache_data
@@ -946,7 +745,17 @@ if selected_code and view_mode_param == "chart":
         st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
 
     with col_quote:
-        render_investor_quote(supabase)
+        quotes = [
+            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
+            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
+            "투자는 지능이 아니라 인내심의 게임이다.",
+            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다.",
+        ]
+        st.markdown(
+            f"""<div class='quote-box'><div style='font-size: 36px;'>👨‍💼</div>
+            <div class='quote-text'>"{random.choice(quotes)}"</div></div>""",
+            unsafe_allow_html=True,
+        )
 
     with col_login:
         st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
@@ -1004,8 +813,24 @@ elif not selected_code:
         )
 
     with col_quote:
-        render_investor_quote(supabase)
-    
+        quotes = [
+            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
+            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
+            "투자는 지능이 아니라 인내심의 게임이다.",
+            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다.",
+        ]
+        selected_quote = random.choice(quotes)
+
+        st.markdown(
+            f"""
+            <div class='quote-box'>
+                <div style='font-size: 36px;'>👨‍💼</div> 
+                <div class='quote-text'>"{selected_quote}"</div>
+            </div>
+        """,
+            unsafe_allow_html=True,
+        )
+
     with col_login:
         st.markdown(
             "<div style='height: 40px;'></div>", unsafe_allow_html=True
@@ -1185,7 +1010,22 @@ else:
         )
 
     with col_quote:
-        render_investor_quote(supabase)
+        quotes = [
+            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
+            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
+            "투자는 지능이 아니라 인내심의 게임이다.",
+            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다.",
+        ]
+        selected_quote = random.choice(quotes)
+        st.markdown(
+            f"""
+            <div class='quote-box'>
+                <div style='font-size: 36px;'>👨‍💼</div> 
+                <div class='quote-text'>"{selected_quote}"</div>
+            </div>
+        """,
+            unsafe_allow_html=True,
+        )
 
     with col_login:
         st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
