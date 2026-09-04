@@ -1007,7 +1007,7 @@ elif not selected_code:
         )
 
     with col_quote:
-    render_investor_quote(supabase)
+        render_investor_quote(supabase)
     
     with col_login:
         st.markdown(
