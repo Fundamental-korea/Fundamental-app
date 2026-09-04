@@ -106,6 +106,8 @@ st.markdown(
         align-items: flex-start;
         gap: 6px;
     }
+    .quote-mark {
+        display: none !important;
 
     .quote-mark {
         font-size: 26px;
@@ -133,8 +135,8 @@ st.markdown(
 
     .quote-divider {
         border: none;
-        border-top: 1px solid #F0E4D8;
-        margin: 6px 0 6px 30px;
+        border-top: 1px solid #F4A261;
+        margin: 6px 0;
     }
 
     .quote-ko {
@@ -142,7 +144,7 @@ st.markdown(
         font-weight: 600;
         color: #4B5563 !important;
         line-height: 1.45;
-        margin-left: 30px;
+        margin-left: 0;
         overflow: hidden;
         display: -webkit-box;           /* nowrap 대신 */
         -webkit-line-clamp: 2;          /* 국문도 2줄까지 자동 줄바꿈 */
@@ -158,13 +160,13 @@ st.markdown(
         font-size: 13px;
         font-weight: 800;
         color: #D97706 !important;
-        margin-left: 30px;
+        margin-left: 0;
         margin-top: 4px;
         flex-shrink: 0; 
         white-space: nowrap;
         overflow: hidden;
-        line-height: 1.4; /* 하단 잘림 방지용 줄 높이 추가 */
-        padding-bottom: 2px; /* 하단 잘림 방지용 여백 추가 */
+        line-height: 1.6; /* 하단 잘림 방지용 줄 높이 추가 */
+        padding-bottom: 4px; /* 하단 잘림 방지용 여백 추가 */
     }
 
     .ad-box-tall {
