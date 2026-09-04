@@ -106,8 +106,8 @@ st.markdown(
 }
 
 .investor-quote-fallback {
-    width: 100%;
-    height: 100%;
+    position: absolute;
+    inset: 0;
     display: none;
     align-items: center;
     justify-content: center;
@@ -115,6 +115,10 @@ st.markdown(
     font-weight: 800;
     color: #D97706;
     background: #FEF3C7;
+}
+
+.investor-photo-wrap.image-failed .investor-quote-fallback {
+    display: flex;
 }
 
 .investor-quote-content {
@@ -463,16 +467,15 @@ def load_active_investor_quotes(_supabase):
     except Exception:
         return []
 
-
 def render_investor_quote(_supabase):
     rows = load_active_investor_quotes(_supabase)
 
     if not rows:
         st.markdown(
             """
-            <div class='quote-box'>
-                <div style='font-size:36px;'>💼</div>
-                <div class='quote-text'>
+            <div class="quote-box">
+                <div style="font-size:36px;">💼</div>
+                <div class="quote-text">
                     좋은 기업을 찾는 것은 숫자를 읽는 것에서 시작됩니다.
                 </div>
             </div>
@@ -496,26 +499,17 @@ def render_investor_quote(_supabase):
         row.get("image_url") or ""
     ).strip()
 
+    # 이미지가 있는 경우
     if image_url:
-        image_html = f"""
-        <img
-            class="investor-photo"
-            src="{html.escape(image_url, quote=True)}"
-            alt="{investor_name}"
-            onerror="
-                this.style.display='none';
-                this.nextElementSibling.style.display='flex';
-            "
-        >
-        """
+        image_html = (
+            f'<img src="{html.escape(image_url, quote=True)}" '
+            f'class="investor-photo" '
+            f'alt="{investor_name}" '
+            f'onerror="this.style.display=\'none\'; '
+            f'this.parentElement.classList.add(\'image-failed\');">'
+        )
     else:
         image_html = ""
-
-    fallback = f"""
-    <div class="investor-quote-fallback">
-        {html.escape(investor_name[:1])}
-    </div>
-    """
 
     st.markdown(
         f"""
@@ -523,7 +517,9 @@ def render_investor_quote(_supabase):
 
             <div class="investor-photo-wrap">
                 {image_html}
-                {fallback}
+                <div class="investor-quote-fallback">
+                    {html.escape(investor_name[:1])}
+                </div>
             </div>
 
             <div class="investor-quote-content">
@@ -546,6 +542,7 @@ def render_investor_quote(_supabase):
         """,
         unsafe_allow_html=True,
     )
+
 
 @st.cache_data
 def get_combined_stock_db():
