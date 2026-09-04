@@ -98,7 +98,7 @@ st.markdown(
         display: flex;
         flex-direction: column;
         justify-content: center;
-        gap: 4px;
+        gap: 2px;
     }
 
     .quote-en-row {
@@ -129,7 +129,7 @@ st.markdown(
     .quote-divider {
         border: none;
         border-top: 1px solid #F0E4D8;
-        margin: 4px 0 4px 30px;
+        margin: 2px 0 2px 30px;
     }
 
     .quote-ko {
@@ -148,7 +148,7 @@ st.markdown(
         font-weight: 800;
         color: #D97706 !important;
         margin-left: 30px;
-        margin-top: 2px;
+        margin-top: 0px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
