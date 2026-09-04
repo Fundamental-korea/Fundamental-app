@@ -56,26 +56,24 @@ st.markdown(
         background-color: #FFFDF9;
         border: 2px solid #F4A261;
         border-radius: 16px;
-        height: 140px !important;
         min-height: 140px !important;
+        height: auto;
         display: flex;
         flex-direction: row;
         align-items: center;
         gap: 16px;
-        padding: 12px 22px 12px 12px;
+        padding: 14px 22px 14px 12px;
         box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12);
-        overflow: hidden;
         box-sizing: border-box;
     }
 
     .quote-photo-wrap {
         flex: 0 0 auto;
-        height: 100%;
     }
 
     .quote-photo {
-        width: 84px;
-        height: 100%;
+        width: 90px;
+        height: 112px;
         object-fit: cover;
         border-radius: 10px;
         border: 1px solid #F0E4D8;
@@ -83,8 +81,8 @@ st.markdown(
     }
 
     .quote-photo-fallback {
-        width: 84px;
-        height: 100%;
+        width: 90px;
+        height: 112px;
         border-radius: 10px;
         border: 1px solid #F0E4D8;
         background-color: #FFF3E4;
@@ -97,12 +95,10 @@ st.markdown(
     .quote-content {
         flex: 1 1 auto;
         min-width: 0;
-        height: 100%;
         display: flex;
         flex-direction: column;
         justify-content: center;
-        gap: 3px;
-        overflow: hidden;
+        gap: 4px;
     }
 
     .quote-en-row {
@@ -120,10 +116,10 @@ st.markdown(
     }
 
     .quote-en {
-        font-size: 13.5px;
+        font-size: 14px;
         font-weight: 700;
         color: #1A1A1A !important;
-        line-height: 1.3;
+        line-height: 1.35;
         overflow: hidden;
         display: -webkit-box;
         -webkit-line-clamp: 2;
@@ -133,17 +129,17 @@ st.markdown(
     .quote-divider {
         border: none;
         border-top: 1px solid #F0E4D8;
-        margin: 3px 0 3px 28px;
+        margin: 4px 0 4px 30px;
     }
 
     .quote-ko {
-        font-size: 12px;
+        font-size: 12.5px;
         font-weight: 600;
         color: #4B5563 !important;
-        line-height: 1.3;
-        margin-left: 28px;
-        overflow: hidden;
+        line-height: 1.35;
+        margin-left: 30px;
         white-space: nowrap;
+        overflow: hidden;
         text-overflow: ellipsis;
     }
 
@@ -151,7 +147,8 @@ st.markdown(
         font-size: 11px;
         font-weight: 800;
         color: #D97706 !important;
-        margin-left: 28px;
+        margin-left: 30px;
+        margin-top: 2px;
         white-space: nowrap;
         overflow: hidden;
         text-overflow: ellipsis;
