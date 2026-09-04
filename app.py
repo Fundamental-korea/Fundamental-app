@@ -119,7 +119,7 @@ st.markdown(
     .quote-en {
         font-size: 17px;
         font-weight: 700;
-        color: #1A1A1A !important;
+        color: #4B5563 !important;
         line-height: 1.35;
         overflow: hidden;
         display: -webkit-box;
@@ -136,7 +136,7 @@ st.markdown(
 /* 괄호 오류가 수정되어 주황색(#F4A261)이 정상 적용됩니다 */
     .quote-divider {
         border: none;
-        border-top: 1px solid #F4A261;
+        border-top: 2px solid #F4A261;
         margin: 6px 0;
     }
 
@@ -173,7 +173,7 @@ st.markdown(
 
 /* 이름 뒤에 빼기표(-) 추가 */
     .quote-author::after {
-        content: " -";
+        content: " --";
     }
 
     .ad-box-tall {
