@@ -365,10 +365,19 @@ def _sanitize_for_cache(df):
     return _sanitize_json(df.where(df.notnull(), None).to_dict(orient="records"))
 
 
+# 캐시 읽기/쓰기 On/Off 스위치. 첫 전체 재수집처럼 캐시가 비어있는 게 확실한 상황에서는
+# 매 DART 호출마다 붙는 Supabase 조회+저장 왕복이 순수 오버헤드라 오히려 느려짐.
+# collector.USE_DART_CACHE = False 로 끄면 원래 속도로 돌아가고, 다음 재수집부터
+# True로 다시 켜면 캐시가 정상적으로 쌓임.
+USE_DART_CACHE = True
+
+
 def _get_cached_raw(stock_code, year, reprt_code, fs_div, source):
     """Dart_Raw_Cache에서 이미 받은 원본 재무제표가 있으면 DataFrame으로 복원해서 반환.
     없으면 None. 확정된 과거 보고서는 DART에서 값이 안 바뀌므로(정정공시는 별도 접수번호로
     새로 올라옴) 캐시를 사실상 영구적으로 신뢰해도 됨."""
+    if not USE_DART_CACHE:
+        return None
     try:
         res = (
             supabase.table("Dart_Raw_Cache")
@@ -386,6 +395,8 @@ def _get_cached_raw(stock_code, year, reprt_code, fs_div, source):
 
 def _set_cached_raw(stock_code, year, reprt_code, fs_div, source, df):
     """DART에서 새로 받은 원본 재무제표를 캐시에 저장 - 다음번엔 이 조합을 DART 재호출 없이 재사용."""
+    if not USE_DART_CACHE:
+        return
     if df is None or df.empty:
         return
     try:
