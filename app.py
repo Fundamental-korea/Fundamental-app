@@ -98,7 +98,7 @@ st.markdown(
         display: flex;
         flex-direction: column;
         justify-content: center;
-        gap: 2px;
+        gap: 4px;
     }
 
     .quote-en-row {
@@ -108,7 +108,7 @@ st.markdown(
     }
 
     .quote-mark {
-        font-size: 22px;
+        font-size: 26px;
         font-weight: 900;
         color: #F4A261 !important;
         line-height: 1;
@@ -116,27 +116,32 @@ st.markdown(
     }
 
     .quote-en {
-        font-size: 14px;
+        font-size: 17px;
         font-weight: 700;
         color: #1A1A1A !important;
-        line-height: 1.25;
+        line-height: 1.35;
         overflow: hidden;
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
     }
+    
+    .quote-en::before,
+    .quote-en::after {
+        content: '"';
+}
 
     .quote-divider {
         border: none;
         border-top: 1px solid #F0E4D8;
-        margin: 2px 0 2px 30px;
+        margin: 6px 0 6px 30px;
     }
 
     .quote-ko {
-        font-size: 12.5px;
+        font-size: 15px;
         font-weight: 600;
         color: #4B5563 !important;
-        line-height: 1.35;
+        line-height: 1.45;
         margin-left: 30px;
         overflow: hidden;
         display: -webkit-box;           /* nowrap 대신 */
@@ -144,16 +149,22 @@ st.markdown(
         -webkit-box-orient: vertical;
     }
 
+    .quote-ko::before,
+    .quote-ko::after {
+        content: '"';
+}
+
     .quote-author {
-        font-size: 11px;
+        font-size: 13px;
         font-weight: 800;
         color: #D97706 !important;
         margin-left: 30px;
-        margin-top: 2px;
+        margin-top: 4px;
         flex-shrink: 0; 
         white-space: nowrap;
         overflow: hidden;
-        
+        line-height: 1.4; /* 하단 잘림 방지용 줄 높이 추가 */
+        padding-bottom: 2px; /* 하단 잘림 방지용 여백 추가 */
     }
 
     .ad-box-tall {
