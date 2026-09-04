@@ -129,7 +129,7 @@ st.markdown(
     .quote-divider {
         border: none;
         border-top: 1px solid #F0E4D8;
-        margin: 2px 0 2px 30px;
+        margin: 1px 0 1px 30px;
     }
 
     .quote-ko {
