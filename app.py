@@ -56,7 +56,7 @@ st.markdown(
         background-color: #FFFDF9;
         border: 2px solid #F4A261;
         border-radius: 16px;
-        min-height: 148px !important;
+        min-height: 168px !important;
         height: auto;
         display: flex;
         flex-direction: row;
@@ -138,9 +138,10 @@ st.markdown(
         color: #4B5563 !important;
         line-height: 1.35;
         margin-left: 30px;
-        white-space: nowrap;
         overflow: hidden;
-        text-overflow: ellipsis;
+        display: -webkit-box;           /* nowrap 대신 */
+        -webkit-line-clamp: 2;          /* 국문도 2줄까지 자동 줄바꿈 */
+        -webkit-box-orient: vertical;
     }
 
     .quote-author {
@@ -148,10 +149,11 @@ st.markdown(
         font-weight: 800;
         color: #D97706 !important;
         margin-left: 30px;
-        margin-top: 0px;
+        margin-top: 2px;
+        flex-shrink: 0; 
         white-space: nowrap;
         overflow: hidden;
-        text-overflow: ellipsis;
+        
     }
 
     .ad-box-tall {
