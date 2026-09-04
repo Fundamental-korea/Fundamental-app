@@ -948,7 +948,7 @@ if selected_code and view_mode_param == "chart":
     with col_logo:
         st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
 
-   with col_quote:
+    with col_quote:
     render_investor_quote(supabase)
 
     with col_login:
