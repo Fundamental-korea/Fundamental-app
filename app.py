@@ -36,7 +36,7 @@ logo_style = f"""
 """ if logo_base64 else ""
 
 # ==========================================
-# 2. 글로벌 CSS 스타일 (폰트 + 디자인 + 로고)
+# 2. 글로벌 CSS 스타일 (폰트 + 디자인 + 로고 + 명언 박스)
 # ==========================================
 st.markdown(
     f"""
@@ -76,13 +76,10 @@ st.markdown(
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
         {logo_style}
     }}
-    </style>
-    """,
-    unsafe_allow_html=True
-   )
 
-    .quote-box-v2 {
-        font-family: 'NanumSquareRound', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; /* 둥근 폰트 적용 */
+    /* 5. 투자 명언 박스 (quote-box-v2) 스타일 */
+    .quote-box-v2 {{
+        font-family: 'NanumSquareRound', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif;
         background-color: #FFFDF9;
         border: 2px solid #F4A261;
         border-radius: 16px;
@@ -95,26 +92,25 @@ st.markdown(
         padding: 14px 22px 14px 12px;
         box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12);
         box-sizing: border-box;
-    }
+    }}
 
-    .quote-photo-wrap {
+    .quote-photo-wrap {{
         flex: 0 0 auto;
         display: flex;
         align-items: center;
         justify-content: center;
-    }
-    
+    }}
 
-    .quote-photo {
+    .quote-photo {{
         width: 100px;
         height: 140px;
         object-fit: contain;
         border-radius: 10px;
         border: 1px solid #F0E4D8;
         display: block;
-    }
+    }}
 
-    .quote-photo-fallback {
+    .quote-photo-fallback {{
         width: 100px;
         height: 140px;
         border-radius: 10px;
@@ -124,29 +120,28 @@ st.markdown(
         align-items: center;
         justify-content: center;
         font-size: 32px;
-    }
+    }}
 
-    .quote-content {
+    .quote-content {{
         flex: 1 1 auto;
         min-width: 0;
         display: flex;
         flex-direction: column;
         justify-content: center;
         gap: 4px;
-    } 
+    }} 
 
-    .quote-en-row {
+    .quote-en-row {{
         display: flex;
         align-items: flex-start;
         gap: 6px;
-    }
+    }}
 
-/* 닫는 괄호 오류 수정 및 중복 코드 제거 */
-    .quote-mark {
+    .quote-mark {{
         display: none !important;
-    }
+    }}
 
-    .quote-en {
+    .quote-en {{
         font-size: 17px;
         font-weight: 700;
         color: #4B5563 !important;
@@ -155,22 +150,20 @@ st.markdown(
         display: -webkit-box;
         -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
-    }
+    }}
 
-/* 영문 쌍따옴표 정상 작동 */
     .quote-en::before,
-    .quote-en::after {
+    .quote-en::after {{
         content: '"';
-    }
+    }}
 
-/* 괄호 오류가 수정되어 주황색(#F4A261)이 정상 적용됩니다 */
-    .quote-divider {
+    .quote-divider {{
         border: none;
         border-top: 2px solid #F4A261;
         margin: 6px 0;
-    }
+    }}
 
-    .quote-ko {
+    .quote-ko {{
         font-size: 15px;
         font-weight: 600;
         color: #4B5563 !important;
@@ -180,15 +173,14 @@ st.markdown(
         display: -webkit-box;           
         -webkit-line-clamp: 2;          
         -webkit-box-orient: vertical;
-    }
+    }}
 
-/* 국문 쌍따옴표 정상 작동 */
     .quote-ko::before,
-    .quote-ko::after {
+    .quote-ko::after {{
         content: '"';
-    }
+    }}
 
-    .quote-author {
+    .quote-author {{
         font-size: 13px;
         font-weight: 800;
         color: #D97706 !important;
@@ -199,20 +191,23 @@ st.markdown(
         overflow: hidden;
         line-height: 1.6; 
         padding-bottom: 4px; 
-    }
+    }}
 
-     .quote-affiliation {
-         font-size: 11px;
-         font-weight: 600;
-         color: #9CA3AF !important;
-         margin-top: -2px;
-         line-height: 1.4;
-    }
+    .quote-affiliation {{
+        font-size: 11px;
+        font-weight: 600;
+        color: #9CA3AF !important;
+        margin-top: -2px;
+        line-height: 1.4;
+    }}
 
-/* 이름 뒤에 빼기표(-) 추가 */
-    .quote-author::after {
+    .quote-author::after {{
         content: " —";
-    }
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
     .ad-box-tall {
         background-color: #F8F9FA;
