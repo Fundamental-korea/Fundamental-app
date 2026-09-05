@@ -8,16 +8,17 @@ import streamlit.components.v1 as components
 from supabase import create_client
 import yfinance as yf
 import base64
+import os
+from PIL import Image
 
-# 로컬 logo.png 파일을 읽어서 Base64 문자열로 변환하는 함수
-def get_image_base64(file_path):
-    with open(file_path, "rb") as image_file:
-        return base64.b64encode(image_file.read()).decode()
+# 로고 파일 이름 (GitHub main에 올린 파일명과 정확히 대소문자까지 일치해야 합니다)
+LOGO_FILENAME = "logo.png" 
 
-# 이미지 파일명 (main 레포지토리에 올린 파일 이름)
-logo_base64 = get_image_base64("logo.png")
-
-
+logo_base64 = ""
+if os.path.exists(LOGO_FILENAME):
+    with open(LOGO_FILENAME, "rb") as f:
+        logo_base64 = base64.b64encode(f.read()).decode("utf-8")
+        
 st.set_page_config(
     page_title="Fundamental Analyzer - 하락장 방어 플랫폼",
     page_icon="🛡️",
@@ -47,14 +48,14 @@ st.markdown(
         border: 2px solid #F4A261;
         border-radius: 14px;
         background-color: #FFFDF9;
-        /* 로컬 PNG 이미지를 Base64 인코딩하여 적용 */
-        background-image: url("data:image/png;base64,{logo_base64}") !important;
+        background-image: url("data:image/png;base64," + logo_base64 + ") !important;
         background-size: contain !important;
         background-repeat: no-repeat !important;
         background-position: center !important;
         height: 140px !important;
         min-height: 140px !important;
-        color: transparent !important; /* 기존 글자 숨김 */
+        width: 100% !important;
+        display: block !important;
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
     }
 
