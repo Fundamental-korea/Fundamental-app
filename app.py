@@ -204,10 +204,6 @@ st.markdown(
     .quote-author::after {{
         content: " —";
     }}
-    </style>
-    """,
-    unsafe_allow_html=True
-)
 
     .ad-box-tall {
         background-color: #F8F9FA;
