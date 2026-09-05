@@ -78,7 +78,6 @@ st.markdown(
         justify-content: center;
     }
     
-    }
 
     .quote-photo {
         width: 100px;
