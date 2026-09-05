@@ -458,10 +458,13 @@ def get_investor_quotes():
     1시간 캐싱 후, 렌더링할 때마다 random.choice()로 하나씩 뽑아 보여줌."""
     fallback = [
         {
-            "investor_name": "Warren Buffett",
-            "quote_en": "Be fearful when others are greedy, and greedy when others are fearful.",
-            "quote_ko": "남들이 탐욕스러워할 때 두려워하고, 남들이 두려워할 때 탐욕스러워져라.",
-            "image_url": None,
+             "investor_name": "Warren Buffett",
+             "investor_name_ko": "워런 버핏",
+             "investor_affiliation": "Berkshire Hathaway",
+             "investor_affiliation_ko": "버크셔 해서웨이",
+             "quote_en": "Be fearful when others are greedy, and greedy when others are fearful.",
+             "quote_ko": "남들이 탐욕스러워할 때 두려워하고, 남들이 두려워할 때 탐욕스러워져라.",
+             "image_url": None,
         }
     ]
     if not supabase:
@@ -469,7 +472,15 @@ def get_investor_quotes():
     try:
         res = (
             supabase.table("investor_quotes")
-            .select("investor_name,quote_en,quote_ko,image_url")
+            .select(    
+                "investor_name,"
+                "investor_name_ko,"
+                "investor_affiliation,"
+                "investor_affiliation_ko,"
+                "quote_en,"
+                "quote_ko,"
+                "image_url"
+            )
             .eq("active", True)
             .execute()
         )
