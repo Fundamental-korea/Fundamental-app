@@ -55,7 +55,7 @@ st.markdown(
         color: #1A1A1A !important;
     }
 
-    .logo-box {
+    .logo-box {{
         border: 2px solid #F4A261;
         border-radius: 14px;
         background-color: #FFFDF9;
@@ -71,7 +71,7 @@ st.markdown(
         align-items: center;
         justify-content: center;
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
-    }
+    }}
 
     /* 살짝 둥근 폰트(나눔스퀘어라운드) 불러오기 */
 @import url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_two@1.0/NanumSquareRound.woff');
