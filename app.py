@@ -40,17 +40,16 @@ st.markdown(
         border: 2px solid #F4A261;
         border-radius: 14px;
         background-color: #FFFDF9;
-        color: #D97706 !important;
-        font-weight: bold;
-        font-size: 18px;
         height: 140px !important;
         min-height: 140px !important;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        text-align: center;
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
-    }
+    
+    /* 이미지 적용 스타일 */
+        background-image: url("app/static/logo.png"); /* Streamlit 로컬 경로 사용 시 */
+        background-size: contain;                     /* 비율 유지 및 상자 맞춤 */
+        background-repeat: no-repeat;                 /* 반복 금지 */
+        background-position: center;                  /* 중앙 정렬 */
+     }
 
     /* 살짝 둥근 폰트(나눔스퀘어라운드) 불러오기 */
 @import url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_two@1.0/NanumSquareRound.woff');
@@ -935,7 +934,7 @@ if selected_code and view_mode_param == "chart":
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
     with col_logo:
-        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
+        st.markdown('<div class="logo-box"></div>', unsafe_allow_html=True)
 
     with col_quote:
         render_quote_box()
