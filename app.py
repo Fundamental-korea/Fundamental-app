@@ -7,18 +7,10 @@ import streamlit as st
 import streamlit.components.v1 as components
 from supabase import create_client
 import yfinance as yf
-import base64
-import os
 
-# GitHub main 루트에 있는 로고 파일명 (대소문자 구분 필수!)
-LOGO_FILE = "logo.png"
-
-# 이미지를 읽어서 CSS에 넣을 수 있는 문자열로 변환하는 로직
-logo_base64 = ""
-if os.path.exists(LOGO_FILE):
-    with open(LOGO_FILE, "rb") as f:
-        logo_base64 = base64.b64encode(f.read()).decode("utf-8")
-        
+# ==========================================
+# 1. 페이지 및 커스텀 디자인 설정
+# ==========================================
 st.set_page_config(
     page_title="Fundamental Analyzer - 하락장 방어 플랫폼",
     page_icon="🛡️",
@@ -48,16 +40,15 @@ st.markdown(
         border: 2px solid #F4A261;
         border-radius: 14px;
         background-color: #FFFDF9;
-        background-image: url("data:image/png;base64," + logo_base64 + ") !important;
-        background-size: contain !important;
-        background-repeat: no-repeat !important;
-        background-position: center !important;
-        color: transparent !important; /* 기존 '📈 Fundamental' 텍스트 숨김 */
+        color: #D97706 !important;
+        font-weight: bold;
+        font-size: 18px;
         height: 140px !important;
         min-height: 140px !important;
         display: flex;
         align-items: center;
         justify-content: center;
+        text-align: center;
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
     }
 
