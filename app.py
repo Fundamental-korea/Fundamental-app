@@ -59,7 +59,7 @@ st.markdown(
     .logo-box {{
         border: 2px solid #F4A261;
         border-radius: 14px;
-        background-color: #FFFFFF
+        background-color: #FFFDF9;
         /* Raw 이미지를 Base64 데이터로 직접 주입 */
         background-image: url("data:image/png;base64,{logo_base64}") !important;
         background-size: contain !important;
