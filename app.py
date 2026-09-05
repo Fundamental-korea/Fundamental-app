@@ -457,7 +457,6 @@ def init_supabase():
 
 supabase = init_supabase()
 
-@st.cache_data(ttl=3600)
 def get_investor_quotes():
     """investor_quotes 테이블에서 active=true인 명언 전체를 가져옴
     (RLS: anon/authenticated는 active=true 행만 SELECT 가능하도록 이미 정책 설정돼 있음).
