@@ -9,14 +9,14 @@ from supabase import create_client
 import yfinance as yf
 import base64
 import os
-from PIL import Image
 
-# 로고 파일 이름 (GitHub main에 올린 파일명과 정확히 대소문자까지 일치해야 합니다)
-LOGO_FILENAME = "logo.png" 
+# GitHub main 루트에 있는 로고 파일명 (대소문자 구분 필수!)
+LOGO_FILE = "logo.png"
 
+# 이미지를 읽어서 CSS에 넣을 수 있는 문자열로 변환하는 로직
 logo_base64 = ""
-if os.path.exists(LOGO_FILENAME):
-    with open(LOGO_FILENAME, "rb") as f:
+if os.path.exists(LOGO_FILE):
+    with open(LOGO_FILE, "rb") as f:
         logo_base64 = base64.b64encode(f.read()).decode("utf-8")
         
 st.set_page_config(
@@ -52,10 +52,12 @@ st.markdown(
         background-size: contain !important;
         background-repeat: no-repeat !important;
         background-position: center !important;
+        color: transparent !important; /* 기존 '📈 Fundamental' 텍스트 숨김 */
         height: 140px !important;
         min-height: 140px !important;
-        width: 100% !important;
-        display: block !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
     }
 
