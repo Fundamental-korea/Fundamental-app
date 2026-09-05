@@ -73,20 +73,25 @@ st.markdown(
 
     .quote-photo-wrap {
         flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
     }
 
     .quote-photo {
-        width: 90px;
-        height: 112px;
-        object-fit: cover;
+        width: 100px;
+        height: 140px;
+        object-fit: cotain;
         border-radius: 10px;
         border: 1px solid #F0E4D8;
         display: block;
     }
 
     .quote-photo-fallback {
-        width: 90px;
-        height: 112px;
+        width: 100px;
+        height: 140px;
         border-radius: 10px;
         border: 1px solid #F0E4D8;
         background-color: #FFF3E4;
