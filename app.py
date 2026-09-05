@@ -7,6 +7,25 @@ import streamlit as st
 import streamlit.components.v1 as components
 from supabase import create_client
 import yfinance as yf
+import base64
+import requests
+import streamlit as st
+
+# GitHub의 실제 Raw 이미지 URL
+RAW_LOGO_URL = "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/logo.png"
+
+# 이미지를 가져와 Base64로 변환하는 함수
+@st.cache_data
+def get_logo_base64(url):
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            return base64.b64encode(response.content).decode("utf-8")
+    except Exception:
+        pass
+    return ""
+
+logo_base64 = get_logo_base64(RAW_LOGO_URL)
 
 # ==========================================
 # 1. 페이지 및 커스텀 디자인 설정
@@ -40,15 +59,17 @@ st.markdown(
         border: 2px solid #F4A261;
         border-radius: 14px;
         background-color: #FFFDF9;
-        color: #D97706 !important;
-        font-weight: bold;
-        font-size: 18px;
+        /* Raw 이미지를 Base64 데이터로 직접 주입 */
+        background-image: url("data:image/png;base64,{logo_base64}") !important;
+        background-size: contain !important;
+        background-repeat: no-repeat !important;
+        background-position: center !important;
+        color: transparent !important; /* 기존 글자 숨김 */
         height: 140px !important;
         min-height: 140px !important;
         display: flex;
         align-items: center;
         justify-content: center;
-        text-align: center;
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
     }
 
