@@ -7,6 +7,8 @@ import streamlit as st
 import streamlit.components.v1 as components
 from supabase import create_client
 import yfinance as yf
+import base64
+import os
 
 # ==========================================
 # 1. 페이지 및 커스텀 디자인 설정
@@ -17,10 +19,31 @@ st.set_page_config(
     layout="wide",
 )
 
-st.markdown(
+# 로고 이미지를 Base64 문자열로 변환하는 함수
+def get_base64_image(image_path):
+    if os.path.exists(image_path):
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode("utf-8")
+    return None
+
+# logo.png 파일 로드 (app.py와 같은 경로에 logo.png 위치 필요)
+logo_base64 = get_base64_image("logo.png")
+
+# 로고 배경 CSS 스타일 정의
+if logo_base64:
+    logo_style = f"""
+        background-image: url("data:image/png;base64,{logo_base64}") !important;
+        background-size: 85% auto !important;
+        background-repeat: no-repeat !important;
+        background-position: center !important;
     """
+else:
+    logo_style = ""
+
+st.markdown(
+    f"""
     <style>
-    html, body, [data-testid="stAppViewContainer"], .stApp {
+    html, body, [data-testid="stAppViewContainer"], .stApp {{
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
         background-image: 
@@ -30,26 +53,25 @@ st.markdown(
             radial-gradient(circle at 100% 100%, rgba(248, 190, 140, 0.2) 0%, transparent 45%) !important;
         background-repeat: no-repeat !important;
         background-attachment: fixed !important;
-    }
+    }}
 
-    p, span, div, label, h1, h2, h3, h4, h5, h6 {
+    p, span, div, label, h1, h2, h3, h4, h5, h6 {{
         color: #1A1A1A !important;
-    }
+    }}
 
-    .logo-box {
+    .logo-box {{
         border: 2px solid #F4A261;
         border-radius: 14px;
         background-color: #FFFDF9;
         height: 140px !important;
         min-height: 140px !important;
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
-    
-    /* 이미지 적용 스타일 */
-        background-image: url("app/static/logo.png"); /* Streamlit 로컬 경로 사용 시 */
-        background-size: contain;                     /* 비율 유지 및 상자 맞춤 */
-        background-repeat: no-repeat;                 /* 반복 금지 */
-        background-position: center;                  /* 중앙 정렬 */
-     }
+        {logo_style}
+    }}
+    </style>
+    """,
+    unsafe_allow_html=True
+)
 
     /* 살짝 둥근 폰트(나눔스퀘어라운드) 불러오기 */
 @import url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_two@1.0/NanumSquareRound.woff');
@@ -934,7 +956,7 @@ if selected_code and view_mode_param == "chart":
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
     with col_logo:
-        st.markdown('<div class="logo-box"></div>', unsafe_allow_html=True)
+        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
 
     with col_quote:
         render_quote_box()
