@@ -7,6 +7,25 @@ import streamlit as st
 import streamlit.components.v1 as components
 from supabase import create_client
 import yfinance as yf
+import base64
+import requests
+import streamlit as st
+
+# GitHub의 실제 Raw 이미지 URL
+RAW_LOGO_URL = "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/logo.png"
+
+# 이미지를 가져와 Base64로 변환하는 함수
+@st.cache_data
+def get_logo_base64(url):
+    try:
+        response = requests.get(url)
+        if response.status_code == 200:
+            return base64.b64encode(response.content).decode("utf-8")
+    except Exception:
+        pass
+    return ""
+
+logo_base64 = get_logo_base64(RAW_LOGO_URL)
 
 # ==========================================
 # 1. 페이지 및 커스텀 디자인 설정
@@ -40,37 +59,147 @@ st.markdown(
         border: 2px solid #F4A261;
         border-radius: 14px;
         background-color: #FFFDF9;
-        color: #D97706 !important;
-        font-weight: bold;
-        font-size: 18px;
-        height: 130px !important;
-        min-height: 130px !important;
+        /* Raw 이미지를 Base64 데이터로 직접 주입 */
+        background-image: url("data:image/png;base64,{logo_base64}") !important;
+        background-size: contain !important;
+        background-repeat: no-repeat !important;
+        background-position: center !important;
+        color: transparent !important; /* 기존 글자 숨김 */
+        height: 140px !important;
+        min-height: 140px !important;
         display: flex;
         align-items: center;
         justify-content: center;
-        text-align: center;
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
     }
 
-    .quote-box {
-        background-color: #FAFAFA;
-        border: 1.5px solid #E5E5E5;
-        border-radius: 14px;
-        height: 130px !important;
-        min-height: 130px !important;
+    /* 살짝 둥근 폰트(나눔스퀘어라운드) 불러오기 */
+@import url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_two@1.0/NanumSquareRound.woff');
+
+    .quote-box-v2 {
+        font-family: 'NanumSquareRound', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; /* 둥근 폰트 적용 */
+        background-color: #FFFDF9;
+        border: 2px solid #F4A261;
+        border-radius: 16px;
+        min-height: 168px !important;
+        height: auto;
         display: flex;
         flex-direction: row;
         align-items: center;
-        justify-content: center;
-        gap: 20px;
-        padding: 0 30px;
-        box-shadow: 0 3px 10px rgba(0,0,0,0.02);
+        gap: 16px;
+        padding: 14px 22px 14px 12px;
+        box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12);
+        box-sizing: border-box;
     }
 
-    .quote-text {
-        font-size: 18px;
+    .quote-photo-wrap {
+        flex: 0 0 auto;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    
+    }
+
+    .quote-photo {
+        width: 100px;
+        height: 140px;
+        object-fit: cotain;
+        border-radius: 10px;
+        border: 1px solid #F0E4D8;
+        display: block;
+    }
+
+    .quote-photo-fallback {
+        width: 100px;
+        height: 140px;
+        border-radius: 10px;
+        border: 1px solid #F0E4D8;
+        background-color: #FFF3E4;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 32px;
+    }
+
+    .quote-content {
+        flex: 1 1 auto;
+        min-width: 0;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        gap: 4px;
+    } 
+
+    .quote-en-row {
+        display: flex;
+        align-items: flex-start;
+        gap: 6px;
+    }
+
+/* 닫는 괄호 오류 수정 및 중복 코드 제거 */
+    .quote-mark {
+        display: none !important;
+    }
+
+    .quote-en {
+        font-size: 17px;
+        font-weight: 700;
+        color: #4B5563 !important;
+        line-height: 1.35;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+    }
+
+/* 영문 쌍따옴표 정상 작동 */
+    .quote-en::before,
+    .quote-en::after {
+        content: '"';
+    }
+
+/* 괄호 오류가 수정되어 주황색(#F4A261)이 정상 적용됩니다 */
+    .quote-divider {
+        border: none;
+        border-top: 2px solid #F4A261;
+        margin: 6px 0;
+    }
+
+    .quote-ko {
+        font-size: 15px;
         font-weight: 600;
-        color: #333333 !important;
+        color: #4B5563 !important;
+        line-height: 1.45;
+        margin-left: 0;
+        overflow: hidden;
+        display: -webkit-box;           
+        -webkit-line-clamp: 2;          
+        -webkit-box-orient: vertical;
+    }
+
+/* 국문 쌍따옴표 정상 작동 */
+    .quote-ko::before,
+    .quote-ko::after {
+        content: '"';
+    }
+
+    .quote-author {
+        font-size: 13px;
+        font-weight: 800;
+        color: #D97706 !important;
+        margin-left: 0;
+        margin-top: 4px;
+        flex-shrink: 0; 
+        white-space: nowrap;
+        overflow: hidden;
+        line-height: 1.6; 
+        padding-bottom: 4px; 
+    }
+
+/* 이름 뒤에 빼기표(-) 추가 */
+    .quote-author::after {
+        content: " —";
     }
 
     .ad-box-tall {
@@ -325,6 +454,7 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
+
 # ==========================================
 # 2. 데이터 및 세션 상태 초기화
 # ==========================================
@@ -341,6 +471,84 @@ def init_supabase():
 
 
 supabase = init_supabase()
+
+def get_investor_quotes():
+    """investor_quotes 테이블에서 active=true인 명언 전체를 가져옴
+    (RLS: anon/authenticated는 active=true 행만 SELECT 가능하도록 이미 정책 설정돼 있음).
+    1시간 캐싱 후, 렌더링할 때마다 random.choice()로 하나씩 뽑아 보여줌."""
+    fallback = [
+        {
+             "investor_name": "Warren Buffett",
+             "investor_name_ko": "워런 버핏",
+             "investor_affiliation": "Berkshire Hathaway",
+             "investor_affiliation_ko": "버크셔 해서웨이",
+             "quote_en": "Be fearful when others are greedy, and greedy when others are fearful.",
+             "quote_ko": "남들이 탐욕스러워할 때 두려워하고, 남들이 두려워할 때 탐욕스러워져라.",
+             "image_url": None,
+        }
+    ]
+    if not supabase:
+        return fallback
+    try:
+        res = (
+            supabase.table("investor_quotes")
+            .select(    
+                "investor_name,"
+                "investor_name_ko,"
+                "investor_affiliation,"
+                "investor_affiliation_ko,"
+                "quote_en,"
+                "quote_ko,"
+                "image_url"
+            )
+            .eq("active", True)
+            .execute()
+        )
+        if res.data and len(res.data) > 0:
+            return res.data
+    except Exception:
+        pass
+    return fallback
+
+
+def render_quote_box():
+    """상단 명언 박스 렌더링 (인물 사진 + 영문 명언 + 국문 번역 + 출처)"""
+    quotes = get_investor_quotes()
+    q = random.choice(quotes)
+
+    name = q.get("investor_name_ko") or q.get("investor_name", "")
+    affiliation = q.get("investor_affiliation_ko") or q.get("investor_affiliation", "")
+    quote_en = q.get("quote_en", "")
+    quote_ko = q.get("quote_ko", "")
+    image_url = q.get("image_url")
+
+    if image_url:
+        photo_html = (
+            f"<img class='quote-photo' src='{image_url}' alt='{name}' "
+            f"onerror=\"this.style.display='none'; this.nextElementSibling.style.display='flex';\"/>"
+            f"<div class='quote-photo-fallback' style='display:none;'>👨‍💼</div>"
+        )
+    else:
+        photo_html = "<div class='quote-photo-fallback'>👨‍💼</div>"
+
+    st.markdown(
+        f"""
+        <div class='quote-box-v2'>
+            <div class='quote-photo-wrap'>{photo_html}</div>
+            <div class='quote-content'>
+                <div class='quote-en-row'>
+                    <span class='quote-mark'>&ldquo;</span>
+                    <span class='quote-en'>{quote_en}</span>
+                </div>
+                <hr class='quote-divider' />
+                <div class='quote-ko'>{quote_ko}</div>
+                <div class='quote-author'>&mdash; {name}</div>
+                <div class='quote-affiliation'>{affiliation}</div>
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 @st.cache_data
@@ -745,17 +953,7 @@ if selected_code and view_mode_param == "chart":
         st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
 
     with col_quote:
-        quotes = [
-            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
-            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
-            "투자는 지능이 아니라 인내심의 게임이다.",
-            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다.",
-        ]
-        st.markdown(
-            f"""<div class='quote-box'><div style='font-size: 36px;'>👨‍💼</div>
-            <div class='quote-text'>"{random.choice(quotes)}"</div></div>""",
-            unsafe_allow_html=True,
-        )
+        render_quote_box()
 
     with col_login:
         st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
@@ -813,23 +1011,7 @@ elif not selected_code:
         )
 
     with col_quote:
-        quotes = [
-            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
-            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
-            "투자는 지능이 아니라 인내심의 게임이다.",
-            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다.",
-        ]
-        selected_quote = random.choice(quotes)
-
-        st.markdown(
-            f"""
-            <div class='quote-box'>
-                <div style='font-size: 36px;'>👨‍💼</div> 
-                <div class='quote-text'>"{selected_quote}"</div>
-            </div>
-        """,
-            unsafe_allow_html=True,
-        )
+        render_quote_box()
 
     with col_login:
         st.markdown(
@@ -1010,22 +1192,7 @@ else:
         )
 
     with col_quote:
-        quotes = [
-            "하락장은 우량한 기업을 헐값에 살 수 있는 가장 위대한 기회다.",
-            "시장이 공포에 질려 있을 때가 탐욕을 부릴 최적의 시기다.",
-            "투자는 지능이 아니라 인내심의 게임이다.",
-            "가격은 내가 지불하는 것이고, 가치는 내가 얻는 것이다.",
-        ]
-        selected_quote = random.choice(quotes)
-        st.markdown(
-            f"""
-            <div class='quote-box'>
-                <div style='font-size: 36px;'>👨‍💼</div> 
-                <div class='quote-text'>"{selected_quote}"</div>
-            </div>
-        """,
-            unsafe_allow_html=True,
-        )
+        render_quote_box()
 
     with col_login:
         st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
@@ -1281,41 +1448,14 @@ else:
                         "interest_coverage": "배", "ocf_ratio": "배", "downturn_defense": "%p",
                     }
 
-                    # 분기 라벨('2025 3분기보고서' 등)에서 (연도, 분기순번)과 'N분기' 표기를 추출.
-                    # jsonb는 딕셔너리 키 삽입 순서를 보장 안 하므로, 저장 순서에 의존하지 않고
-                    # 여기서 직접 정렬한다. 사업보고서(연간)는 4분기로 통일 표기.
-                    _QUARTER_RANK = {"1분기": 1, "반기": 2, "3분기": 3, "사업보고서": 4}
-
-                    def _parse_quarter_label(label):
-                        parts = label.split(" ", 1)
-                        if len(parts) != 2:
-                            return (0, 0), label
-                        year_str, report_part = parts
-                        try:
-                            year = int(year_str)
-                        except ValueError:
-                            return (0, 0), label
-                        for key, rank in _QUARTER_RANK.items():
-                            if key in report_part:
-                                return (year, rank), f"{year} {rank}분기"
-                        return (year, 0), label
-
                     def _metric_within_period(metric_key_inner):
                         """현재 보고 있는 기간 탭(period_key) 안에서 이 지표의 세부 추이를 반환.
                         3/5/10년 탭 -> 연도별(예: 2023,2024,2025), 1년 탭 -> 최근 4분기별.
-                        jsonb 키 순서가 보장 안 되므로 여기서 명시적으로 시간순 정렬한다."""
+                        collector.py의 yearly_breakdown(1y는 이름만 같고 실제론 분기별)을 그대로 사용,
+                        딕셔너리 삽입 순서 = 시간순(오래된 것 -> 최신)이라 그대로 순회하면 됨."""
                         breakdown = (period_scores.get(period_key, {}) or {}).get("yearly_breakdown", {}) or {}
                         metric_breakdown = breakdown.get(metric_key_inner, {})
-                        items = [(label, value) for label, value in metric_breakdown.items() if value is not None]
-
-                        if period_key == "1y":
-                            parsed = [(_parse_quarter_label(label), value) for label, value in items]
-                            parsed.sort(key=lambda x: x[0][0])
-                            return [(x[1], value) for x, value in parsed]
-                        else:
-                            # 3/5/10y는 연도 문자열 키 -> 숫자로 정렬
-                            items.sort(key=lambda x: int(x[0]))
-                            return items
+                        return [(label, value) for label, value in metric_breakdown.items() if value is not None]
 
                     # collector.py의 leverage_exempt 판정(금융/지주회사/유틸리티는 부채비율 등
                     # 3개 지표 자동 만점)을 저장된 필드로 재구성 - app.py는 DART/WICS 원본 로직에
@@ -1450,7 +1590,6 @@ else:
                                 )
                                 chart = base.mark_line(point=True, color="#D97706") if chart_type == "선" \
                                     else base.mark_bar(color="#D97706")
-                                chart = chart.properties(height=150)  # 기본 높이의 절반 수준
                                 st.altair_chart(chart, use_container_width=True)
                             else:
                                 st.caption("추이를 그리기엔 사용 가능한 기간 데이터가 부족합니다.")
@@ -1480,3 +1619,4 @@ else:
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
