@@ -83,7 +83,7 @@ st.markdown(
     .quote-photo {
         width: 100px;
         height: 140px;
-        object-fit: cotain;
+        object-fit: contain;
         border-radius: 10px;
         border: 1px solid #F0E4D8;
         display: block;
@@ -174,6 +174,14 @@ st.markdown(
         overflow: hidden;
         line-height: 1.6; 
         padding-bottom: 4px; 
+    }
+
+     .quote-affiliation {
+         font-size: 11px;
+         font-weight: 600;
+         color: #9CA3AF !important;
+         margin-top: -2px;
+         line-height: 1.4;
     }
 
 /* 이름 뒤에 빼기표(-) 추가 */
@@ -496,7 +504,8 @@ def render_quote_box():
     quotes = get_investor_quotes()
     q = random.choice(quotes)
 
-    name = q.get("investor_name", "")
+    name = q.get("investor_name_ko") or q.get("investor_name", "")
+    affiliation = q.get("investor_affiliation_ko") or q.get("investor_affiliation", "")
     quote_en = q.get("quote_en", "")
     quote_ko = q.get("quote_ko", "")
     image_url = q.get("image_url")
@@ -522,6 +531,7 @@ def render_quote_box():
                 <hr class='quote-divider' />
                 <div class='quote-ko'>{quote_ko}</div>
                 <div class='quote-author'>&mdash; {name}</div>
+                <div class='quote-affiliation'>{affiliation}</div>
             </div>
         </div>
         """,
