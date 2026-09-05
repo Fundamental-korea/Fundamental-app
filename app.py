@@ -11,7 +11,7 @@ import base64
 import os
 
 # ==========================================
-# 1. 페이지 및 커스텀 디자인 설정
+# 1. 페이지 설정
 # ==========================================
 st.set_page_config(
     page_title="Fundamental Analyzer - 하락장 방어 플랫폼",
@@ -26,23 +26,30 @@ def get_base64_image(image_path):
             return base64.b64encode(img_file.read()).decode("utf-8")
     return None
 
-# logo.png 파일 로드 (app.py와 같은 경로에 logo.png 위치 필요)
 logo_base64 = get_base64_image("logo.png")
 
-# 로고 배경 CSS 스타일 정의
-if logo_base64:
-    logo_style = f"""
-        background-image: url("data:image/png;base64,{logo_base64}") !important;
-        background-size: 85% auto !important;
-        background-repeat: no-repeat !important;
-        background-position: center !important;
-    """
-else:
-    logo_style = ""
+logo_style = f"""
+    background-image: url("data:image/png;base64,{logo_base64}") !important;
+    background-size: 85% auto !important;
+    background-repeat: no-repeat !important;
+    background-position: center !important;
+""" if logo_base64 else ""
 
+# ==========================================
+# 2. 글로벌 CSS 스타일 (폰트 + 디자인 + 로고)
+# ==========================================
 st.markdown(
     f"""
     <style>
+    /* 1. 웹폰트 불러오기 (@import는 최상단에 위치) */
+    @import url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_two@1.0/NanumSquareRound.woff');
+
+    /* 2. 전체 폰트 적용 */
+    * {{
+        font-family: 'NanumSquareRound', sans-serif !important;
+    }}
+
+    /* 3. 배경 및 기본 디자인 */
     html, body, [data-testid="stAppViewContainer"], .stApp {{
         background-color: #FFFFFF !important;
         color: #1A1A1A !important;
@@ -59,6 +66,7 @@ st.markdown(
         color: #1A1A1A !important;
     }}
 
+    /* 4. 로고 박스 스타일 */
     .logo-box {{
         border: 2px solid #F4A261;
         border-radius: 14px;
@@ -71,10 +79,7 @@ st.markdown(
     </style>
     """,
     unsafe_allow_html=True
-)
-
-    /* 살짝 둥근 폰트(나눔스퀘어라운드) 불러오기 */
-@import url('https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_two@1.0/NanumSquareRound.woff');
+   )
 
     .quote-box-v2 {
         font-family: 'NanumSquareRound', 'Apple SD Gothic Neo', 'Malgun Gothic', sans-serif; /* 둥근 폰트 적용 */
