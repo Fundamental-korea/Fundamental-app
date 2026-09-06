@@ -62,7 +62,7 @@ st.markdown(
         background-color: #ffffff;
         /* Raw 이미지를 Base64 데이터로 직접 주입 */
         background-image: url("data:image/png;base64,{logo_base64}") !important;
-        background-size: contain !important;
+        background-size: 105% !important;
         background-repeat: no-repeat !important;
         background-position: center !important;
         color: transparent !important; /* 기존 글자 숨김 */
