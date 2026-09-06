@@ -180,12 +180,28 @@ FINANCIAL_ACHIEVABLE_WEIGHT = FINANCIAL_REMAINING_WEIGHT + ROA_WEIGHT  # 70 + 10
 def calculate_fundamental_score(metrics: dict, leverage_exempt: bool = False, is_financial: bool = False) -> dict:
     """
     metrics 딕셔너리(METRIC_KEYS 10개 키)를 받아 지표별 점수, 총점(0~100), 잠정등급을 반환.
-    값이 없는 지표는 0점 처리되므로 collector.py에서 10개 지표를 모두 채워서 넘기는 것을 전제로 함.
+
+    revenue_growth/eps_growth는 value가 None이면(기저효과 가드로 걸렸든, 전년 비교 데이터
+    자체가 없든) 0점 처리하는 대신 총점 계산에서 제외하고 나머지 지표로 100점 재환산한다
+    (버그11 수정) - "실제로는 잘하고 있는데 증가율 계산이 왜곡됐다는 이유로 억울하게
+    0점을 받는" 문제를 해결하기 위함. 금융섹터 제외(opm/roic/sga_ratio)와 동일한
+    'excluded_from_total' 방식이며, 두 종류의 제외가 동시에 적용될 수도 있다(동적 계산).
     """
     scores = {}
     total_weighted = 0.0
 
-    excluded = FINANCIAL_EXCLUDED_METRICS if is_financial else set()
+    excluded = set(FINANCIAL_EXCLUDED_METRICS) if is_financial else set()
+
+    # growth 지표는 값이 없으면(가드/데이터부재 불문) 총점에서 동적으로 제외
+    GROWTH_KEYS = {"revenue_growth", "eps_growth"}
+    for gk in GROWTH_KEYS:
+        if metrics.get(gk) is None:
+            excluded.add(gk)
+
+    # 실제로 총점에 반영 가능한 가중치 합 - 위에서 결정된 제외 목록에 따라 매 호출마다 동적으로 계산
+    achievable_weight = sum(w for k, w in METRIC_WEIGHTS.items() if k not in excluded)
+    if is_financial:
+        achievable_weight += ROA_WEIGHT
 
     for key in METRIC_KEYS:
         value = metrics.get(key)
@@ -209,9 +225,9 @@ def calculate_fundamental_score(metrics: dict, leverage_exempt: bool = False, is
             "financial_only": True,
         }
         total_weighted += roa_weighted
-        total_score = round(total_weighted * (100.0 / FINANCIAL_ACHIEVABLE_WEIGHT), 1)
-    else:
-        total_score = round(total_weighted, 1)
+
+    rescale = (100.0 / achievable_weight) if achievable_weight > 0 else 0.0
+    total_score = round(total_weighted * rescale, 1)
 
     grade, grade_desc = evaluate_defense_grade(total_score)
 
@@ -221,9 +237,8 @@ def calculate_fundamental_score(metrics: dict, leverage_exempt: bool = False, is
     defense_sub = sum(scores[k]["weighted_score"] for k in defense_keys)
     if is_financial:
         defense_sub += scores["roa"]["weighted_score"]
-        rescale = 100.0 / FINANCIAL_ACHIEVABLE_WEIGHT
-        growth_sub *= rescale
-        defense_sub *= rescale
+    growth_sub *= rescale
+    defense_sub *= rescale
 
     missing_count = sum(1 for k in METRIC_KEYS if metrics.get(k) is None)
     if is_financial and metrics.get("roa") is None:
