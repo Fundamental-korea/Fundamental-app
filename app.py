@@ -59,7 +59,7 @@ st.markdown(
     .logo-box {{
         border: 2px solid #F4A261;
         border-radius: 14px;
-        background-color: #FFFDF9;
+        background-color: #ffffff;
         /* Raw 이미지를 Base64 데이터로 직접 주입 */
         background-image: url("data:image/png;base64,{logo_base64}") !important;
         background-size: contain !important;
@@ -72,6 +72,7 @@ st.markdown(
         align-items: center;
         justify-content: center;
         box-shadow: 0 3px 10px rgba(0,0,0,0.03);
+        overflow: hidden;
     }}
     """
     + """
