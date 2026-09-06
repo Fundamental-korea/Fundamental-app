@@ -62,14 +62,19 @@ st.markdown(
         background-color: #ffffff;
         /* Raw 이미지를 Base64 데이터로 직접 주입 */
         background-image: url("data:image/png;base64,{logo_base64}") !important;
-        background-size: 110% !important;
+        background-size: contain !important;
         background-repeat: no-repeat !important;
         background-position: center !important;
         color: transparent !important; /* 기존 글자 숨김 */
-        width: 100px !important;
-        min-width: 100px !important;
-        height: 100px !important;
-        min-height: 100px !important;
+        width: 140px !important;
+        min-width: 140px !important;
+        height: 140px !important;
+        min-height: 140px !important;
+        /* 잔상 및 드래그 문제 완벽 해결 */
+        color: transparent !important;
+        font-size: 0 !important; /* 내부 텍스트 크기를 0으로 만들어 숨김 */
+        user-select: none !important; /* 마우스 드래그 선택 차단 */
+        -webkit-user-drag: none; /* 이미지 자체 드래그 차단 */
         display: flex;
         align-items: center;
         justify-content: center;
