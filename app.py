@@ -1473,14 +1473,41 @@ else:
                         "interest_coverage": "배", "ocf_ratio": "배", "downturn_defense": "%p",
                     }
 
+                    # 분기 라벨('2025 3분기보고서' 등)에서 (연도, 분기순번)과 'N분기' 표기를 추출.
+                    # jsonb는 딕셔너리 키 삽입 순서를 보장 안 하므로, 저장 순서에 의존하지 않고
+                    # 여기서 직접 정렬한다. 사업보고서(연간)는 4분기로 통일 표기.
+                    _QUARTER_RANK = {"1분기": 1, "반기": 2, "3분기": 3, "사업보고서": 4}
+
+                    def _parse_quarter_label(label):
+                        parts = label.split(" ", 1)
+                        if len(parts) != 2:
+                            return (0, 0), label
+                        year_str, report_part = parts
+                        try:
+                            year = int(year_str)
+                        except ValueError:
+                            return (0, 0), label
+                        for key, rank in _QUARTER_RANK.items():
+                            if key in report_part:
+                                return (year, rank), f"{year} {rank}분기"
+                        return (year, 0), label
+
                     def _metric_within_period(metric_key_inner):
                         """현재 보고 있는 기간 탭(period_key) 안에서 이 지표의 세부 추이를 반환.
                         3/5/10년 탭 -> 연도별(예: 2023,2024,2025), 1년 탭 -> 최근 4분기별.
-                        collector.py의 yearly_breakdown(1y는 이름만 같고 실제론 분기별)을 그대로 사용,
-                        딕셔너리 삽입 순서 = 시간순(오래된 것 -> 최신)이라 그대로 순회하면 됨."""
+                        jsonb 키 순서가 보장 안 되므로 여기서 명시적으로 시간순 정렬한다."""
                         breakdown = (period_scores.get(period_key, {}) or {}).get("yearly_breakdown", {}) or {}
                         metric_breakdown = breakdown.get(metric_key_inner, {})
-                        return [(label, value) for label, value in metric_breakdown.items() if value is not None]
+                        items = [(label, value) for label, value in metric_breakdown.items() if value is not None]
+
+                        if period_key == "1y":
+                            parsed = [(_parse_quarter_label(label), value) for label, value in items]
+                            parsed.sort(key=lambda x: x[0][0])
+                            return [(x[1], value) for x, value in parsed]
+                        else:
+                            # 3/5/10y는 연도 문자열 키 -> 숫자로 정렬
+                            items.sort(key=lambda x: int(x[0]))
+                            return items
 
                     # collector.py의 leverage_exempt 판정(금융/지주회사/유틸리티는 부채비율 등
                     # 3개 지표 자동 만점)을 저장된 필드로 재구성 - app.py는 DART/WICS 원본 로직에
