@@ -101,7 +101,7 @@ st.markdown(
         box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12);
         box-sizing: border-box;
     }
-        @media (max-width: 768px) {
+        @media (max-width: 1200px) {
         .quote-box-v2 {
             flex-direction: column !important; /* 화면이 좁아지면 세로로 정렬 */
             align-items: stretch !important;
