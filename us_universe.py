@@ -354,36 +354,100 @@ def build_us_universe(
         )
         print("-" * 60)
 
-        for start in range(
-            0,
-            len(updates),
-            batch_size,
-        ):
+            # -----------------------------------------------------
+    # UPDATE changed rows only
+    # -----------------------------------------------------
+    #
+    # IMPORTANT:
+    # Do NOT use upsert here.
+    #
+    # US_Companies has NOT NULL columns such as CIK.
+    # Universe filtering only changes eligibility fields
+    # on existing rows, so UPDATE is safer than UPSERT.
+    # -----------------------------------------------------
 
-            batch = updates[
-                start:start + batch_size
-            ]
+    updated_count = 0
+
+    if updates:
+
+        print("\n" + "-" * 60)
+        print(
+            f"💾 Updating {len(updates):,} "
+            "changed rows..."
+        )
+        print("-" * 60)
+
+        for item in updates:
+
+            ticker = item["ticker"]
+
+            payload = {
+                "is_fundamental_eligible":
+                    item["is_fundamental_eligible"],
+
+                "exclusion_reason":
+                    item["exclusion_reason"],
+
+                "filtered_at":
+                    item["filtered_at"],
+
+                "updated_at":
+                    item["updated_at"],
+            }
 
             try:
 
-                (
+                response = (
                     supabase
                     .table("US_Companies")
-                    .upsert(
-                        batch,
-                        on_conflict="ticker",
-                    )
+                    .update(payload)
+                    .eq("ticker", ticker)
                     .execute()
                 )
 
-                updated_count += len(batch)
+                # Make sure the target row actually existed.
+                if not response.data:
+                    print(
+                        f"[US Universe] "
+                        f"⚠️ No row updated: {ticker}"
+                    )
+                    continue
+
+                updated_count += 1
+
+                # Don't print every row.
+                # Print progress every 100 rows.
+                if (
+                    updated_count % 100 == 0
+                    or updated_count == len(updates)
+                ):
+                    print(
+                        f"[US Universe] "
+                        f"Update progress: "
+                        f"{updated_count:,} / "
+                        f"{len(updates):,}"
+                    )
+
+            except Exception as exc:
 
                 print(
-                    f"[US Universe] Update progress: "
-                    f"{updated_count:,} / "
-                    f"{len(updates):,}"
+                    f"\n❌ Update failed: {ticker}"
                 )
 
+                print(
+                    type(exc).__name__,
+                    ":",
+                    exc,
+                )
+
+                raise
+
+    else:
+
+        print(
+            "\n[US Universe] "
+            "No database updates required."
+        )
             except Exception as exc:
 
                 print(
