@@ -101,6 +101,21 @@ st.markdown(
         box-shadow: 0 4px 12px rgba(244, 162, 97, 0.12);
         box-sizing: border-box;
     }
+        @media (max-width: 768px) {
+        .quote-box-v2 {
+            flex-direction: column !important; /* 화면이 좁아지면 세로로 정렬 */
+            align-items: stretch !important;
+            padding: 16px !important;
+        }
+        .logo-box {
+            width: 100% !important; /* 모바일에서 로고 박스를 가로 꽉 차게 조절 */
+            min-width: 100% !important;
+            height: 100px !important; /* 높이는 살짝 줄여서 비율 맞춤 */
+            min-height: 100px !important;
+            margin-right: 0 !important;
+            margin-bottom: 12px !important; /* 아래 명언 박스와의 간격 확보 */
+        }
+    }
 
     .quote-photo-wrap {
         flex: 0 0 auto;
