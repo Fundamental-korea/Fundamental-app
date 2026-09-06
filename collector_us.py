@@ -23,7 +23,7 @@ SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 # SEC asks automated clients to identify themselves with a descriptive User-Agent.
 SEC_USER_AGENT = os.environ.get(
     "SEC_USER_AGENT",
-    "Fundamental-app/1.0 contact@example.com",
+    "Fundamental-app/1.0 qkrrjsdnd123789@gmail.com",
 )
 
 SEC_TICKERS_URL = "https://www.sec.gov/files/company_tickers.json"
