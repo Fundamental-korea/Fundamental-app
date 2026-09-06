@@ -66,10 +66,12 @@ st.markdown(
         background-repeat: no-repeat !important;
         background-position: center !important;
         color: transparent !important; /* 기존 글자 숨김 */
-        width: 140px !important;
-        min-width: 140px !important;
-        height: 140px !important;
-        min-height: 140px !important;
+        width: 100px !important;
+        min-width: 100px !important;
+        height: 100px !important;
+        min-height: 100px !important;
+        margin-right: 20px !important; /* 우측 명언 박스를 밀어냄 */
+        flex-shrink: 0 !important;
         display: flex;
         align-items: center;
         justify-content: center;
