@@ -1644,7 +1644,7 @@ else:
                                     tooltip=["기간", "실측값"],
                                 )
                                 chart = base.mark_line(point=True, color="#D97706") if chart_type == "선" \
-                                    else base.mark_bar(color="#D97706")
+                                    else base.mark_bar(color="#D97706", size=15)
                                 chart = chart.properties(height=150)  # 기본 높이의 절반, tickCount로 세세함 유지
                                 st.altair_chart(chart, use_container_width=True)
                             else:
