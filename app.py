@@ -1573,7 +1573,10 @@ else:
                             )
 
                         if excluded:
-                            score_display = "업종 특성상 제외"
+                            if metric_key in ("revenue_growth", "eps_growth"):
+                                 score_display = "기저효과로 제외"
+                            else:
+                                 score_display = "업종 특성상 제외"
                             score_emoji = "⚪"
                         elif score is not None:
                             score_display = f"{score}/10"
