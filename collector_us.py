@@ -82,14 +82,14 @@ def fetch_sec_company_tickers(timeout=30):
 
 
 def _load_existing_companies(supabase, page_size=1000):
-    """Load existing ticker/CIK pairs with pagination."""
+    """Load existing ticker/CIK/company-name pairs with pagination."""
     rows = []
     offset = 0
 
     while True:
         response = (
             supabase.table("US_Companies")
-            .select("ticker,cik")
+            .select("ticker,cik,company_name")
             .range(offset, offset + page_size - 1)
             .execute()
         )
@@ -106,9 +106,9 @@ def _load_existing_companies(supabase, page_size=1000):
 def save_us_companies(companies, batch_size=500):
     """Save SEC company master records efficiently and safely.
 
-    Existing rows are reconciled in memory first. Writes are performed in
-    batches. If an incoming ticker conflicts with an existing different CIK,
-    that record is skipped rather than risking a UNIQUE-key failure.
+    Existing rows that are already correct are skipped entirely. New rows are
+    inserted in batches. Existing rows are updated only when the SEC company
+    name differs. This prevents thousands of unnecessary Supabase requests.
     """
     supabase = get_supabase_client()
 
@@ -116,7 +116,10 @@ def save_us_companies(companies, batch_size=500):
 
     existing_rows = _load_existing_companies(supabase)
     by_cik = {
-        str(row["cik"]): str(row["ticker"]).upper()
+        str(row["cik"]): {
+            "ticker": str(row["ticker"]).upper(),
+            "company_name": str(row.get("company_name") or ""),
+        }
         for row in existing_rows
         if row.get("cik") and row.get("ticker")
     }
@@ -128,20 +131,31 @@ def save_us_companies(companies, batch_size=500):
 
     to_insert = []
     to_update = []
+    unchanged = 0
     skipped = 0
 
     for company in companies:
         ticker = company["ticker"].upper()
         cik = company["cik"]
-
-        existing_ticker = by_cik.get(cik)
+        existing = by_cik.get(cik)
         existing_cik = by_ticker.get(ticker)
 
-        if existing_ticker:
-            # Preserve the existing ticker for this issuer. This is important
-            # because changing ticker can collide with another unique ticker.
-            update_payload = {k: v for k, v in company.items() if k != "ticker"}
-            to_update.append((existing_ticker, update_payload))
+        if existing:
+            # Keep the existing ticker because ticker changes can collide with
+            # another UNIQUE ticker. Only update if the company name changed.
+            if existing["company_name"] != company["company_name"]:
+                payload = {
+                    "company_name": company["company_name"],
+                    "entity_type": company["entity_type"],
+                    "exchange": company["exchange"],
+                    "is_active": company["is_active"],
+                    "source": company["source"],
+                    "fetched_at": company["fetched_at"],
+                    "updated_at": company["updated_at"],
+                }
+                to_update.append((existing["ticker"], payload))
+            else:
+                unchanged += 1
             continue
 
         if existing_cik:
@@ -149,65 +163,61 @@ def save_us_companies(companies, batch_size=500):
             continue
 
         to_insert.append(company)
-        by_cik[cik] = ticker
+        by_cik[cik] = {
+            "ticker": ticker,
+            "company_name": company["company_name"],
+        }
         by_ticker[ticker] = cik
 
     print(
         f"[SEC] Plan: insert {len(to_insert):,}, "
-        f"update {len(to_update):,}, skip {skipped:,}."
+        f"update {len(to_update):,}, unchanged {unchanged:,}, "
+        f"skip {skipped:,}."
     )
 
-    total_operations = len(to_insert) + len(to_update)
-    completed = 0
+    inserted = 0
+    updated = 0
 
-    # New records: true bulk inserts. Chunk size is configurable and remains
-    # small enough for Supabase/PostgREST request limits.
+    # New records are written in bulk.
     for start in range(0, len(to_insert), batch_size):
         batch = to_insert[start:start + batch_size]
         try:
             supabase.table("US_Companies").insert(batch).execute()
+            inserted += len(batch)
         except Exception as exc:
-            # If a batch has an unexpected conflict, fall back to individual
-            # inserts so one problematic row does not discard the whole batch.
             print(f"[SEC][WARN] Batch insert failed at {start:,}: {exc}")
             for company in batch:
                 try:
                     supabase.table("US_Companies").insert(company).execute()
+                    inserted += 1
                 except Exception as row_exc:
                     skipped += 1
                     print(
                         f"[SEC][SKIP] {company['ticker']} / {company['cik']}: "
                         f"{row_exc}"
                     )
-        completed += len(batch)
+
         print(
-            f"[SEC] Progress: {completed:,} / {total_operations:,} "
-            f"({completed / max(total_operations, 1) * 100:.1f}%)"
+            f"[SEC] Insert progress: {min(start + batch_size, len(to_insert)):,} "
+            f"/ {len(to_insert):,}"
         )
 
-    # Existing records: updates are grouped into batches by sending one
-    # request per row because each row needs a different WHERE ticker clause.
-    # This is only for already-known companies and avoids unsafe bulk upserts.
+    # Updates should be rare. Process them individually only when necessary.
     for index, (ticker, payload) in enumerate(to_update, start=1):
         try:
             supabase.table("US_Companies").update(payload).eq("ticker", ticker).execute()
+            updated += 1
         except Exception as exc:
             skipped += 1
             print(f"[SEC][SKIP] update {ticker}: {exc}")
 
         if index == 1 or index % batch_size == 0 or index == len(to_update):
-            completed = len(to_insert) + index
-            print(
-                f"[SEC] Progress: {completed:,} / {total_operations:,} "
-                f"({completed / max(total_operations, 1) * 100:.1f}%)"
-            )
-
-        # Small pause to stay polite to the API without making the job crawl.
+            print(f"[SEC] Update progress: {index:,} / {len(to_update):,}")
         time.sleep(0.005)
 
     print(
-        f"[SEC] Finished. Inserted {len(to_insert):,}, "
-        f"updated {len(to_update):,}, skipped {skipped:,}."
+        f"[SEC] Finished. inserted={inserted:,}, updated={updated:,}, "
+        f"unchanged={unchanged:,}, skipped={skipped:,}"
     )
 
     return len(companies)
