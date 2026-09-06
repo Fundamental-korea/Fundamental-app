@@ -58,15 +58,16 @@ st.markdown(
     + f"""
     .logo-box {{
         border: 2px solid #F4A261;
-        border-radius: 0px;
+        border-radius: 14px !important;
         background-color: #ffffff;
         /* Raw 이미지를 Base64 데이터로 직접 주입 */
         background-image: url("data:image/png;base64,{logo_base64}") !important;
-        background-size: cover !important;
+        background-size: 110% !important;
         background-repeat: no-repeat !important;
         background-position: center !important;
         color: transparent !important; /* 기존 글자 숨김 */
         width: 140px !important;
+        min-width: 140px !important;
         height: 140px !important;
         min-height: 140px !important;
         display: flex;
