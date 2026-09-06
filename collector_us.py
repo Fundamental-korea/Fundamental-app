@@ -59,9 +59,9 @@ def fetch_sec_company_tickers(timeout=30):
 
         cik = f"{int(cik_int):010d}"
 
-        # US_Companies has UNIQUE constraints on both ticker and CIK.
-        # SEC's ticker master can contain multiple ticker records for the
-        # same CIK, so keep only the first occurrence of each CIK.
+        # The SEC ticker master may contain multiple securities/tickers for
+        # one issuer CIK. US_Companies requires CIK to be unique, so keep the
+        # first valid record for each CIK in the master list.
         if cik in seen_ciks:
             continue
         seen_ciks.add(cik)
@@ -84,44 +84,104 @@ def fetch_sec_company_tickers(timeout=30):
 
 
 def save_us_companies(companies, batch_size=500):
-    """Upsert the SEC company master list into US_Companies.
+    """Save SEC company master records without violating ticker/CIK UNIQUE keys.
 
-    US_Companies has UNIQUE constraints on ticker and CIK. To avoid a
-    PostgreSQL CIK conflict when a ticker changes or multiple SEC ticker
-    records point to the same issuer, existing rows are reconciled by CIK
-    before the final ticker-based upsert.
+    Strategy:
+    1. Load existing ticker/CIK pairs once.
+    2. For each SEC record, determine whether the CIK already exists.
+    3. If the CIK exists under another ticker, update the existing row by CIK.
+    4. Otherwise upsert the new record by ticker.
+
+    Processing one record at a time is intentional here: this is a master
+    table and correctness is more important than bulk-write speed.
     """
     supabase = get_supabase_client()
 
-    # Reconcile each company by CIK first. This handles an existing row whose
-    # CIK matches but whose ticker differs from the incoming SEC record.
-    for company in companies:
-        cik = company["cik"]
-        existing = (
+    existing_rows = []
+    page_size = 1000
+    offset = 0
+
+    # Read the current master table so ticker/CIK conflicts can be reconciled
+    # locally before any writes are made.
+    while True:
+        response = (
             supabase.table("US_Companies")
             .select("ticker,cik")
-            .eq("cik", cik)
-            .limit(1)
+            .range(offset, offset + page_size - 1)
             .execute()
         )
+        rows = response.data or []
+        existing_rows.extend(rows)
 
-        if existing.data:
-            old_ticker = existing.data[0]["ticker"]
-            if old_ticker != company["ticker"]:
-                supabase.table("US_Companies").update(company).eq("cik", cik).execute()
+        if len(rows) < page_size:
+            break
+        offset += page_size
+
+    by_cik = {str(row["cik"]): row["ticker"] for row in existing_rows if row.get("cik")}
+    by_ticker = {str(row["ticker"]).upper(): row["cik"] for row in existing_rows if row.get("ticker")}
+
+    inserted = 0
+    updated = 0
+    skipped = 0
+
+    for company in companies:
+        ticker = company["ticker"].upper()
+        cik = company["cik"]
+
+        existing_ticker_for_cik = by_cik.get(cik)
+        existing_cik_for_ticker = by_ticker.get(ticker)
+
+        try:
+            if existing_ticker_for_cik:
+                # Same issuer already exists. Update that row by its current
+                # ticker, avoiding an ON CONFLICT race between two UNIQUE keys.
+                supabase.table("US_Companies").update(company).eq(
+                    "ticker", existing_ticker_for_cik
+                ).execute()
+                updated += 1
+
+                # Keep local indexes synchronized after a possible ticker change.
+                if existing_ticker_for_cik != ticker:
+                    by_ticker.pop(existing_ticker_for_cik, None)
+                by_ticker[ticker] = cik
+                by_cik[cik] = ticker
+
+            elif existing_cik_for_ticker:
+                # Ticker exists with another CIK. Do not overwrite it blindly;
+                # preserve the existing row and report the conflict.
+                skipped += 1
+                print(
+                    f"[SEC][SKIP] ticker conflict: {ticker} already maps to "
+                    f"CIK {existing_cik_for_ticker}, incoming CIK {cik}"
+                )
+
             else:
-                supabase.table("US_Companies").update(company).eq("ticker", company["ticker"]).execute()
-        else:
-            supabase.table("US_Companies").upsert(company, on_conflict="ticker").execute()
+                supabase.table("US_Companies").insert(company).execute()
+                inserted += 1
+                by_ticker[ticker] = cik
+                by_cik[cik] = ticker
+
+        except Exception as exc:
+            # Do not abort the entire master collection because of one bad
+            # record. Surface the exact ticker/CIK and continue.
+            skipped += 1
+            print(f"[SEC][SKIP] {ticker} / {cik}: {exc}")
 
         time.sleep(0.02)
+
+    print(
+        f"[SEC] Inserted {inserted:,}, updated {updated:,}, "
+        f"skipped {skipped:,} records."
+    )
+
+    return len(companies)
 
 
 def collect_us_company_master():
     """Main Step-1 collector."""
     companies = fetch_sec_company_tickers()
     save_us_companies(companies)
-    print(f"[SEC] Saved {len(companies):,} company/ticker records.")
+    print(f"[SEC] Processed {len(companies):,} SEC company/ticker records.")
     return len(companies)
 
 
