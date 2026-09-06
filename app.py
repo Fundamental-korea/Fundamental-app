@@ -70,8 +70,6 @@ st.markdown(
         min-width: 100px !important;
         height: 100px !important;
         min-height: 100px !important;
-        margin-right: 20px !important; /* 우측 명언 박스를 밀어냄 */
-        flex-shrink: 0 !important;
         display: flex;
         align-items: center;
         justify-content: center;
