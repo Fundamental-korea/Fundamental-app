@@ -2,7 +2,7 @@
 US SEC EDGAR collector
 
 Step 1:
-- Fetch the official SEC ticker -> CIK company master list.
+- Fetch the official SEC ticker -> CIK/company-name master list.
 - Store the master list in Supabase.
 
 This file intentionally does NOT collect financial statements yet.
@@ -59,9 +59,7 @@ def fetch_sec_company_tickers(timeout=30):
 
         cik = f"{int(cik_int):010d}"
 
-        # The SEC ticker master may contain multiple securities/tickers for
-        # one issuer CIK. US_Companies requires CIK to be unique, so keep the
-        # first valid record for each CIK in the master list.
+        # US_Companies has a UNIQUE CIK, so keep one canonical ticker per issuer.
         if cik in seen_ciks:
             continue
         seen_ciks.add(cik)
@@ -83,26 +81,11 @@ def fetch_sec_company_tickers(timeout=30):
     return companies
 
 
-def save_us_companies(companies, batch_size=500):
-    """Save SEC company master records without violating ticker/CIK UNIQUE keys.
-
-    Strategy:
-    1. Load existing ticker/CIK pairs once.
-    2. For each SEC record, determine whether the CIK already exists.
-    3. If the CIK exists under another ticker, update the existing row by CIK.
-    4. Otherwise upsert the new record by ticker.
-
-    Processing one record at a time is intentional here: this is a master
-    table and correctness is more important than bulk-write speed.
-    """
-    supabase = get_supabase_client()
-
-    existing_rows = []
-    page_size = 1000
+def _load_existing_companies(supabase, page_size=1000):
+    """Load existing ticker/CIK pairs with pagination."""
+    rows = []
     offset = 0
 
-    # Read the current master table so ticker/CIK conflicts can be reconciled
-    # locally before any writes are made.
     while True:
         response = (
             supabase.table("US_Companies")
@@ -110,68 +93,121 @@ def save_us_companies(companies, batch_size=500):
             .range(offset, offset + page_size - 1)
             .execute()
         )
-        rows = response.data or []
-        existing_rows.extend(rows)
+        page = response.data or []
+        rows.extend(page)
 
-        if len(rows) < page_size:
+        if len(page) < page_size:
             break
         offset += page_size
 
-    by_cik = {str(row["cik"]): row["ticker"] for row in existing_rows if row.get("cik")}
-    by_ticker = {str(row["ticker"]).upper(): row["cik"] for row in existing_rows if row.get("ticker")}
+    return rows
 
-    inserted = 0
-    updated = 0
+
+def save_us_companies(companies, batch_size=500):
+    """Save SEC company master records efficiently and safely.
+
+    Existing rows are reconciled in memory first. Writes are performed in
+    batches. If an incoming ticker conflicts with an existing different CIK,
+    that record is skipped rather than risking a UNIQUE-key failure.
+    """
+    supabase = get_supabase_client()
+
+    print(f"[SEC] Preparing {len(companies):,} SEC records...")
+
+    existing_rows = _load_existing_companies(supabase)
+    by_cik = {
+        str(row["cik"]): str(row["ticker"]).upper()
+        for row in existing_rows
+        if row.get("cik") and row.get("ticker")
+    }
+    by_ticker = {
+        str(row["ticker"]).upper(): str(row["cik"])
+        for row in existing_rows
+        if row.get("ticker") and row.get("cik")
+    }
+
+    to_insert = []
+    to_update = []
     skipped = 0
 
     for company in companies:
         ticker = company["ticker"].upper()
         cik = company["cik"]
 
-        existing_ticker_for_cik = by_cik.get(cik)
-        existing_cik_for_ticker = by_ticker.get(ticker)
+        existing_ticker = by_cik.get(cik)
+        existing_cik = by_ticker.get(ticker)
 
-        try:
-            if existing_ticker_for_cik:
-                # Same issuer already exists. Update that row by its current
-                # ticker, avoiding an ON CONFLICT race between two UNIQUE keys.
-                supabase.table("US_Companies").update(company).eq(
-                    "ticker", existing_ticker_for_cik
-                ).execute()
-                updated += 1
+        if existing_ticker:
+            # Preserve the existing ticker for this issuer. This is important
+            # because changing ticker can collide with another unique ticker.
+            update_payload = {k: v for k, v in company.items() if k != "ticker"}
+            to_update.append((existing_ticker, update_payload))
+            continue
 
-                # Keep local indexes synchronized after a possible ticker change.
-                if existing_ticker_for_cik != ticker:
-                    by_ticker.pop(existing_ticker_for_cik, None)
-                by_ticker[ticker] = cik
-                by_cik[cik] = ticker
-
-            elif existing_cik_for_ticker:
-                # Ticker exists with another CIK. Do not overwrite it blindly;
-                # preserve the existing row and report the conflict.
-                skipped += 1
-                print(
-                    f"[SEC][SKIP] ticker conflict: {ticker} already maps to "
-                    f"CIK {existing_cik_for_ticker}, incoming CIK {cik}"
-                )
-
-            else:
-                supabase.table("US_Companies").insert(company).execute()
-                inserted += 1
-                by_ticker[ticker] = cik
-                by_cik[cik] = ticker
-
-        except Exception as exc:
-            # Do not abort the entire master collection because of one bad
-            # record. Surface the exact ticker/CIK and continue.
+        if existing_cik:
             skipped += 1
-            print(f"[SEC][SKIP] {ticker} / {cik}: {exc}")
+            continue
 
-        time.sleep(0.02)
+        to_insert.append(company)
+        by_cik[cik] = ticker
+        by_ticker[ticker] = cik
 
     print(
-        f"[SEC] Inserted {inserted:,}, updated {updated:,}, "
-        f"skipped {skipped:,} records."
+        f"[SEC] Plan: insert {len(to_insert):,}, "
+        f"update {len(to_update):,}, skip {skipped:,}."
+    )
+
+    total_operations = len(to_insert) + len(to_update)
+    completed = 0
+
+    # New records: true bulk inserts. Chunk size is configurable and remains
+    # small enough for Supabase/PostgREST request limits.
+    for start in range(0, len(to_insert), batch_size):
+        batch = to_insert[start:start + batch_size]
+        try:
+            supabase.table("US_Companies").insert(batch).execute()
+        except Exception as exc:
+            # If a batch has an unexpected conflict, fall back to individual
+            # inserts so one problematic row does not discard the whole batch.
+            print(f"[SEC][WARN] Batch insert failed at {start:,}: {exc}")
+            for company in batch:
+                try:
+                    supabase.table("US_Companies").insert(company).execute()
+                except Exception as row_exc:
+                    skipped += 1
+                    print(
+                        f"[SEC][SKIP] {company['ticker']} / {company['cik']}: "
+                        f"{row_exc}"
+                    )
+        completed += len(batch)
+        print(
+            f"[SEC] Progress: {completed:,} / {total_operations:,} "
+            f"({completed / max(total_operations, 1) * 100:.1f}%)"
+        )
+
+    # Existing records: updates are grouped into batches by sending one
+    # request per row because each row needs a different WHERE ticker clause.
+    # This is only for already-known companies and avoids unsafe bulk upserts.
+    for index, (ticker, payload) in enumerate(to_update, start=1):
+        try:
+            supabase.table("US_Companies").update(payload).eq("ticker", ticker).execute()
+        except Exception as exc:
+            skipped += 1
+            print(f"[SEC][SKIP] update {ticker}: {exc}")
+
+        if index == 1 or index % batch_size == 0 or index == len(to_update):
+            completed = len(to_insert) + index
+            print(
+                f"[SEC] Progress: {completed:,} / {total_operations:,} "
+                f"({completed / max(total_operations, 1) * 100:.1f}%)"
+            )
+
+        # Small pause to stay polite to the API without making the job crawl.
+        time.sleep(0.005)
+
+    print(
+        f"[SEC] Finished. Inserted {len(to_insert):,}, "
+        f"updated {len(to_update):,}, skipped {skipped:,}."
     )
 
     return len(companies)
@@ -179,9 +215,11 @@ def save_us_companies(companies, batch_size=500):
 
 def collect_us_company_master():
     """Main Step-1 collector."""
+    print("🇺🇸 SEC US Company Master collection started")
     companies = fetch_sec_company_tickers()
+    print(f"[SEC] Downloaded {len(companies):,} unique CIK records.")
     save_us_companies(companies)
-    print(f"[SEC] Processed {len(companies):,} SEC company/ticker records.")
+    print(f"[SEC] Processed {len(companies):,} SEC company records.")
     return len(companies)
 
 
