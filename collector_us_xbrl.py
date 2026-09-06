@@ -53,6 +53,22 @@ def fetch_submissions(cik):
     return sec_get(f"https://data.sec.gov/submissions/CIK{cik10}.json")
 
 
+def clean_date(value):
+    """Convert SEC empty date strings to None for PostgreSQL date columns."""
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value if value else None
+
+
+def clean_datetime(value):
+    """Convert SEC empty datetime strings to None for PostgreSQL timestamp columns."""
+    if value is None:
+        return None
+    value = str(value).strip()
+    return value if value else None
+
+
 def filing_rows(cik, submissions):
     recent = (submissions or {}).get("filings", {}).get("recent", {})
     accession = recent.get("accessionNumber", [])
@@ -67,31 +83,65 @@ def filing_rows(cik, submissions):
     for i, acc in enumerate(accession):
         if not acc:
             continue
+
+        filing_date = clean_date(
+            recent.get("filingDate", [None] * len(accession))[i]
+        )
+        report_date = clean_date(
+            recent.get("reportDate", [None] * len(accession))[i]
+        )
+        acceptance_datetime = clean_datetime(
+            recent.get("acceptanceDateTime", [None] * len(accession))[i]
+        )
+        primary_document = recent.get(
+            "primaryDocument", [None] * len(accession)
+        )[i]
+
         row = {
             "accession_number": acc,
             "cik": str(cik).zfill(10),
             "form": recent.get("form", [None] * len(accession))[i],
-            "filing_date": recent.get("filingDate", [None] * len(accession))[i],
-            "report_date": recent.get("reportDate", [None] * len(accession))[i],
-            "acceptance_datetime": recent.get("acceptanceDateTime", [None] * len(accession))[i],
-            "primary_document": recent.get("primaryDocument", [None] * len(accession))[i],
-            "primary_doc_description": recent.get("primaryDocDescription", [None] * len(accession))[i],
-            "is_xbrl": bool(recent.get("isXBRL", [0] * len(accession))[i]),
-            "filing_url": f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc.replace('-', '')}/{recent.get('primaryDocument', [''])[i] or ''}",
-            "raw_filing": {field: recent.get(field, [None] * len(accession))[i] for field in fields},
+            "filing_date": filing_date,
+            "report_date": report_date,
+            "acceptance_datetime": acceptance_datetime,
+            "primary_document": primary_document,
+            "primary_doc_description": recent.get(
+                "primaryDocDescription", [None] * len(accession)
+            )[i],
+            "is_xbrl": bool(
+                recent.get("isXBRL", [0] * len(accession))[i]
+            ),
+            "filing_url": (
+                f"https://www.sec.gov/Archives/edgar/data/"
+                f"{int(cik)}/{acc.replace('-', '')}/"
+                f"{primary_document or ''}"
+            ),
+            "raw_filing": {
+                field: recent.get(
+                    field, [None] * len(accession)
+                )[i]
+                for field in fields
+            },
             "fetched_at": now,
             "updated_at": now,
         }
         rows.append(row)
+
     return rows
 
 
 def save_company(cik, ticker, company_facts, submissions, batch_size=500):
     supabase = get_supabase_client()
     now = datetime.now(timezone.utc).isoformat()
-    entity_name = submissions.get("name") if submissions else company_facts.get("entityName")
+    entity_name = (
+        submissions.get("name")
+        if submissions
+        else company_facts.get("entityName")
+    )
     sic = submissions.get("sic") if submissions else None
-    sic_description = submissions.get("sicDescription") if submissions else None
+    sic_description = (
+        submissions.get("sicDescription") if submissions else None
+    )
 
     supabase.table("US_XBRL_Raw").upsert(
         {
@@ -114,7 +164,8 @@ def save_company(cik, ticker, company_facts, submissions, batch_size=500):
     rows = filing_rows(cik, submissions)
     for start in range(0, len(rows), batch_size):
         supabase.table("US_Filings").upsert(
-            rows[start:start + batch_size], on_conflict="accession_number"
+            rows[start:start + batch_size],
+            on_conflict="accession_number",
         ).execute()
 
 
@@ -154,12 +205,21 @@ def collect_from_universe(limit=None):
         try:
             result = collect_one(row["cik"], row["ticker"])
             success += 1
-            print(f"[SEC XBRL] {row['ticker']}: {result['concept_count']:,} concepts")
+            print(
+                f"[SEC XBRL] {row['ticker']}: "
+                f"{result['concept_count']:,} concepts"
+            )
         except Exception as exc:
             failed += 1
-            print(f"[SEC XBRL] FAILED {row['ticker']} ({row['cik']}): {exc}")
+            print(
+                f"[SEC XBRL] FAILED {row['ticker']} "
+                f"({row['cik']}): {exc}"
+            )
 
-    print(f"[SEC XBRL] Completed. success={success:,}, failed={failed:,}")
+    print(
+        f"[SEC XBRL] Completed. "
+        f"success={success:,}, failed={failed:,}"
+    )
     return success, failed
 
 
