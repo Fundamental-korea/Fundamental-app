@@ -1636,16 +1636,20 @@ else:
                                             axis=alt.Axis(labelAngle=0)),
                                     y=alt.Y(
                                         "실측값:Q", title=f"실측값 ({unit_label})",
-                                        axis=alt.Axis(
-                                            titleAngle=0, titleAlign="left", titleY=-10, titleX=0,
-                                            tickCount=6,  # 높이 줄여도 세로축 눈금 개수는 유지
-                                        ),
+                                        scale=alt.Scale(nice=True, zero=True),  # 0을 항상 눈금에 포함
+                                        axis=alt.Axis(titleAngle=0, titleAlign="left", titleY=-10, titleX=0),
                                     ),
                                     tooltip=["기간", "실측값"],
                                 )
-                                chart = base.mark_line(point=True, color="#D97706") if chart_type == "선" \
-                                    else base.mark_bar(color="#D97706", size=15)
-                                chart = chart.properties(height=150)  # 기본 높이의 절반, tickCount로 세세함 유지
+                                # 막대그래프는 양수/음수 색을 다르게 (양수=주황, 음수=빨강)
+                                sign_color = alt.condition(
+                                    alt.datum.실측값 >= 0, alt.value("#DC2626"), alt.value("#2563EB")
+                                )
+                                if chart_type == "선":
+                                    chart = base.mark_line(point=True, color="#D97706")
+                                else:
+                                    chart = base.mark_bar().encode(color=sign_color)
+                                chart = chart.properties(height=150)
                                 st.altair_chart(chart, use_container_width=True)
                             else:
                                 st.caption("추이를 그리기엔 사용 가능한 기간 데이터가 부족합니다.")
