@@ -1,11 +1,8 @@
 """US market downturn-defense calculator.
 
-Calculates a structural 0~20-ish defense value without storing price history in Supabase.
+Calculates a structural defense value without storing price history in Supabase.
 Benchmark: S&P 500 (^GSPC). Market-defined bear episodes are detected dynamically.
 """
-
-from datetime import datetime
-import math
 
 import pandas as pd
 import yfinance as yf
@@ -38,32 +35,47 @@ def _close_series(ticker, start=START_DATE):
 def _bear_episodes(market):
     """Detect S&P 500 bear-market episodes from running drawdown.
 
-    Start = first <= -20% drawdown from a prior peak.
+    The important distinction is that an episode starts at the prior market
+    peak, not at the day the drawdown first crosses -20%.
+
+    Start = peak immediately preceding the first <= -20% drawdown.
     End   = first recovery above -5% drawdown after entering the bear market.
-    This prevents the 2022 bear market's temporary rallies from splitting it.
+
+    Keeping the prior peak in the window makes the measured market drawdown
+    represent the actual bear-market loss (e.g. COVID and 2022), rather than
+    only the remaining loss after the -20% threshold was crossed.
     """
     if market is None or len(market) < 30:
         return []
 
-    peak = market.cummax()
-    dd = market / peak - 1.0
+    peak_values = market.cummax()
+    dd = market / peak_values - 1.0
     in_bear = False
-    start = None
+    peak_date = None
+    bear_start = None
     episodes = []
 
     for date, value in dd.items():
         if not in_bear and value <= BEAR_THRESHOLD:
+            # Find the actual running-peak date immediately before the
+            # threshold crossing. Include that peak in the episode window.
+            prior = market.loc[:date]
+            peak_value = prior.max()
+            peak_candidates = prior[prior == peak_value]
+            peak_date = peak_candidates.index[-1]
+            bear_start = peak_date
             in_bear = True
-            start = date
+
         elif in_bear and value >= RECOVERY_THRESHOLD:
             end = date
-            if start is not None and (end - start).days >= 20:
-                episodes.append((start, end))
+            if bear_start is not None and (end - bear_start).days >= 20:
+                episodes.append((bear_start, end))
             in_bear = False
-            start = None
+            bear_start = None
+            peak_date = None
 
-    if in_bear and start is not None:
-        episodes.append((start, market.index[-1]))
+    if in_bear and bear_start is not None:
+        episodes.append((bear_start, market.index[-1]))
 
     return episodes
 
@@ -128,7 +140,10 @@ def calculate_downturn_defense(ticker, market=None, stock=None):
         m_recovery = _recovery_days(m, m_trough)
         s_recovery = _recovery_days(s, s_trough)
         if m_recovery and m_recovery > 0 and s_recovery is not None:
-            recovery_advantage = max(-20.0, min(20.0, (m_recovery - s_recovery) / m_recovery * 20.0))
+            recovery_advantage = max(
+                -20.0,
+                min(20.0, (m_recovery - s_recovery) / m_recovery * 20.0),
+            )
         else:
             recovery_advantage = 0.0
 
