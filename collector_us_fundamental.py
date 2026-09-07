@@ -24,10 +24,7 @@ from scoring import calculate_fundamental_score, worst_value
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
-SEC_USER_AGENT = os.environ.get(
-    "SEC_USER_AGENT",
-    "Fundamental-app contact@example.com",
-)
+SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "Fundamental-app contact@example.com")
 
 SEC_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
@@ -35,11 +32,10 @@ SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 PERIODS = (1, 3, 5, 10)
 FLOW_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
-# Common SEC taxonomy alternatives.  We intentionally use a small, conservative
-# set rather than storing the entire XBRL fact universe.
 FACT_ALIASES = {
     "revenue": [
         "RevenueFromContractWithCustomerExcludingAssessedTax",
+        "RevenueFromContractWithCustomerIncludingAssessedTax",
         "Revenues",
         "SalesRevenueNet",
         "SalesRevenueGoodsNet",
@@ -47,7 +43,10 @@ FACT_ALIASES = {
     "operating_income": ["OperatingIncomeLoss"],
     "net_income": ["NetIncomeLoss", "ProfitLoss"],
     "assets": ["Assets"],
-    "equity": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
+    "equity": [
+        "StockholdersEquity",
+        "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+    ],
     "liabilities": ["Liabilities"],
     "current_assets": ["AssetsCurrent"],
     "current_liabilities": ["LiabilitiesCurrent"],
@@ -57,11 +56,13 @@ FACT_ALIASES = {
         "AccountsReceivableNetCurrent",
         "AccountsReceivableNet",
         "AccountsAndNotesReceivableNetCurrent",
+        "AccountsReceivableGrossCurrent",
     ],
     "interest_expense": [
         "InterestExpenseNonOperating",
         "InterestExpenseDebt",
         "InterestExpenseNonOperatingNet",
+        "InterestExpenseNonOperatingAndOther",
     ],
     "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
     "sga": [
@@ -89,13 +90,10 @@ def sanitize_growth(value):
 
 
 def annual_records(fact):
-    """Return one best annual record per fiscal year.
-
-    Duration facts must be roughly one fiscal year. Instant facts use the annual
-    filing's fiscal-year end. For duplicate filings, prefer the latest filed date.
-    """
+    """Return one best annual record per fiscal year."""
     units = fact.get("units") or {}
     records = []
+
     for unit, rows in units.items():
         if not isinstance(rows, list):
             continue
@@ -106,6 +104,7 @@ def annual_records(fact):
             filed = r.get("filed")
             if not fy or not end or form not in FLOW_FORMS:
                 continue
+
             start = r.get("start")
             if start:
                 try:
@@ -117,25 +116,27 @@ def annual_records(fact):
                     continue
                 if not 300 <= days <= 380:
                     continue
+
+            value = clean_number(r.get("val"))
+            if value is None:
+                continue
+
             records.append({
                 "fy": int(fy),
                 "end": end,
                 "filed": filed or "",
-                "val": clean_number(r.get("val")),
+                "val": value,
                 "form": form,
                 "frame": r.get("frame"),
+                "unit": unit,
             })
 
-    # Latest filing wins.  If multiple facts exist for the same FY/end, the
-    # latest filed annual value is generally the best representation.
-    records.sort(key=lambda x: (x["fy"], x["end"], x["filed"]))
-    out = {}
-    for r in records:
-        key = (r["fy"], r["end"])
-        out[key] = r
+    # Prefer the latest filing for a fiscal year/end. If several units exist,
+    # the last record is only used after sorting deterministically.
+    records.sort(key=lambda x: (x["fy"], x["end"], x["filed"], x["unit"]))
 
     by_fy = {}
-    for r in out.values():
+    for r in records:
         by_fy[r["fy"]] = r
     return by_fy
 
@@ -143,18 +144,20 @@ def annual_records(fact):
 def build_fact_index(companyfacts):
     facts = (companyfacts.get("facts") or {}).get("us-gaap") or {}
     index = {}
+
     for logical_name, aliases in FACT_ALIASES.items():
-        best = None
+        best = {}
+        best_tag = None
         for tag in aliases:
             fact = facts.get(tag)
             if not fact:
                 continue
             rows = annual_records(fact)
-            if not rows:
-                continue
-            if best is None or len(rows) > len(best):
+            if len(rows) > len(best):
                 best = rows
-        index[logical_name] = best or {}
+                best_tag = tag
+        index[logical_name] = best
+
     return index
 
 
@@ -166,14 +169,12 @@ def latest_annual_value(index, metric, year):
 def growth_cagr(current, base, years):
     current = clean_number(current)
     base = clean_number(base)
-    if current is None or base is None or years <= 0:
+    if current is None or base is None or years <= 0 or base == 0:
         return None
-    # Preserve sign changes as a simple percentage change rather than taking
-    # an invalid fractional power of a negative number.
-    if base == 0:
-        return None
+
     if current > 0 and base > 0:
         return sanitize_growth(((current / base) ** (1.0 / years) - 1.0) * 100.0)
+
     return sanitize_growth((current / base - 1.0) * 100.0)
 
 
@@ -192,9 +193,7 @@ def annual_metrics(index, year):
     assets = latest_annual_value(index, "assets", year)
     equity = latest_annual_value(index, "equity", year)
     liabilities = latest_annual_value(index, "liabilities", year)
-    current_assets = latest_annual_value(index, "current_assets", year)
     current_liabilities = latest_annual_value(index, "current_liabilities", year)
-    inventory = latest_annual_value(index, "inventory", year)
     cash = latest_annual_value(index, "cash", year)
     receivables = latest_annual_value(index, "receivables", year)
     interest = latest_annual_value(index, "interest_expense", year)
@@ -202,8 +201,6 @@ def annual_metrics(index, year):
     sga = latest_annual_value(index, "sga", year)
     eps = latest_annual_value(index, "eps", year)
 
-    # ROIC approximation aligned with the Korean collector's intent:
-    # NOPAT / invested capital, using a conservative fixed tax rate.
     nopat = opinc * 0.78 if opinc is not None else None
     invested_capital = None
     if equity is not None or liabilities is not None:
@@ -227,9 +224,6 @@ def annual_metrics(index, year):
         "interest_coverage": ratio(opinc, interest),
         "ocf_ratio": ratio(ocf, net_income),
         "sga_ratio": ratio(sga, revenue, 100.0),
-        # Price-based downturn defense is deliberately left missing in this
-        # SEC-only collector. It will be supplied by the market-data collector
-        # before the full universe is scored as production data.
         "downturn_defense": None,
         "roa": ratio(net_income, assets, 100.0),
         "net_income": net_income,
@@ -263,47 +257,62 @@ def load_company(session, ticker, cik):
 
 
 def period_metrics(index, latest_year, period):
-    years = sorted(set(index.get("revenue", {}).keys()) & set(index.get("eps", {}).keys()))
-    if not years:
-        years = sorted(set(index.get("revenue", {}).keys()) | set(index.get("opm", {}).keys()))
-    if not years:
-        return None, {}
+    """Build a period using the nearest available annual base year.
 
-    base_year = latest_year - period
-    # For a period score, use the latest annual ratio values but the CAGR growth
-    # between the latest and requested base year. Ratio metrics are represented
-    # by the worst annual observation in the requested window.
-    candidate_years = [y for y in years if base_year <= y <= latest_year]
+    We do not require revenue AND EPS to exist for the same year just to create
+    a period. Each growth metric is independently allowed to be missing.
+    """
+    all_years = sorted({y for rows in index.values() for y in rows.keys()})
+    if latest_year not in all_years:
+        return None, {}, None
+
+    target_base = latest_year - period
+    prior_years = [y for y in all_years if y <= target_base and y < latest_year]
+    if prior_years:
+        base_year = max(prior_years)
+    else:
+        earlier = [y for y in all_years if y < latest_year]
+        if not earlier:
+            base_year = None
+        else:
+            base_year = min(earlier)
+
+    candidate_years = [y for y in all_years if base_year is not None and base_year <= y <= latest_year]
     if not candidate_years:
-        return None, {}
+        candidate_years = [latest_year]
 
     yearly = {y: annual_metrics(index, y) for y in candidate_years}
-    latest = yearly.get(latest_year) or annual_metrics(index, latest_year)
-    base = yearly.get(base_year)
-    if base is None:
-        earlier = [y for y in candidate_years if y < latest_year]
-        base = yearly[max(earlier)] if earlier else None
-        actual_years = max(candidate_years) - min(candidate_years) if len(candidate_years) > 1 else None
-    else:
-        actual_years = period
+    latest = yearly[latest_year]
+    base = yearly.get(base_year) if base_year is not None else None
 
+    actual_years = (latest_year - base_year) if base_year is not None else 0
     metrics = dict(latest)
-    metrics["revenue_growth"] = growth_cagr(latest.get("revenue"), base.get("revenue") if base else None, actual_years or period)
-    metrics["eps_growth"] = growth_cagr(latest.get("eps"), base.get("eps") if base else None, actual_years or period)
+    metrics["revenue_growth"] = growth_cagr(
+        latest.get("revenue"),
+        base.get("revenue") if base else None,
+        actual_years,
+    )
+    metrics["eps_growth"] = growth_cagr(
+        latest.get("eps"),
+        base.get("eps") if base else None,
+        actual_years,
+    )
 
-    for key in ("opm", "roic", "debt_rate", "quick_ratio", "interest_coverage", "ocf_ratio", "sga_ratio"):
-        vals = [yearly[y].get(key) for y in candidate_years]
-        metrics[key] = worst_value(key, vals)
+    ratio_keys = (
+        "opm", "roic", "debt_rate", "quick_ratio",
+        "interest_coverage", "ocf_ratio", "sga_ratio", "roa",
+    )
+    for key in ratio_keys:
+        metrics[key] = worst_value(key, [yearly[y].get(key) for y in candidate_years])
 
-    # ROA is used only when the shared scorer is told this is a financial company.
-    metrics["roa"] = worst_value("roa", [yearly[y].get("roa") for y in candidate_years])
-    return candidate_years[-1], metrics
+    return latest_year, metrics, base_year
 
 
 def build_result(ticker, cik, company_name, facts, submissions):
     index = build_fact_index(facts)
-    available_years = sorted({y for rows in index.values() for y in rows.keys()})
-    if not available_years:
+    all_years = sorted({y for rows in index.values() for y in rows.keys()})
+
+    if not all_years:
         return {
             "ticker": ticker,
             "cik": str(cik),
@@ -319,29 +328,50 @@ def build_result(ticker, cik, company_name, facts, submissions):
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
-    latest_year = max(available_years)
+    # Prefer the latest year for which an actual income-statement flow exists.
+    flow_years = sorted(
+        set(index.get("revenue", {}).keys())
+        | set(index.get("operating_income", {}).keys())
+        | set(index.get("net_income", {}).keys())
+    )
+    latest_year = max(flow_years) if flow_years else max(all_years)
+
     period_scores = {}
     latest_score = None
+    latest_grade = None
     latest_missing = 10
 
     for period in PERIODS:
-        used_year, metrics = period_metrics(index, latest_year, period)
+        used_year, metrics, base_year = period_metrics(index, latest_year, period)
         if not metrics:
             continue
-        # SEC-only MVP: non-financial by default. Financial-sector ROA handling
-        # can be added once SIC/WICS mapping is finalized.
-        scored = calculate_fundamental_score(metrics, leverage_exempt=False, is_financial=False)
-        missing = sum(1 for k in scored.get("scores", {}) if scored["scores"][k].get("value") is None)
+
+        scored = calculate_fundamental_score(
+            metrics,
+            leverage_exempt=False,
+            is_financial=False,
+        )
+
+        score_entries = scored.get("scores", {})
+        missing = sum(
+            1
+            for key in score_entries
+            if score_entries[key].get("value") is None
+        )
+
         period_scores[str(period)] = {
-            "base_year": max(used_year - period, min(available_years)) if used_year else None,
+            "base_year": base_year,
             "metrics": metrics,
             "scores": scored,
         }
+
         if period == 1:
             latest_score = scored.get("total_score")
+            latest_grade = scored.get("grade")
             latest_missing = missing
 
     reliability = "high" if len(period_scores) >= 3 else ("medium" if period_scores else "low")
+
     return {
         "ticker": ticker,
         "cik": str(cik),
@@ -350,7 +380,7 @@ def build_result(ticker, cik, company_name, facts, submissions):
         "base_year": latest_year,
         "period_scores": period_scores,
         "total_score": int(round(latest_score)) if latest_score is not None else None,
-        "grade": scored.get("grade") if latest_score is not None else None,
+        "grade": latest_grade,
         "data_unavailable": not bool(period_scores),
         "data_reliability": reliability,
         "missing_metric_count": latest_missing,
@@ -360,13 +390,24 @@ def build_result(ticker, cik, company_name, facts, submissions):
 
 def get_universe(sb, tickers=None, limit=None, all_rows=False):
     if tickers:
-        rows = sb.table("US_Companies").select("ticker,cik,company_name").in_("ticker", tickers).execute().data
-    else:
-        q = sb.table("US_Companies").select("ticker,cik,company_name").eq("is_fundamental_eligible", True).order("ticker")
-        if not all_rows:
-            q = q.limit(limit or 5)
-        rows = q.execute().data
-    return rows
+        return (
+            sb.table("US_Companies")
+            .select("ticker,cik,company_name")
+            .in_("ticker", tickers)
+            .eq("is_fundamental_eligible", True)
+            .execute()
+            .data
+        )
+
+    q = (
+        sb.table("US_Companies")
+        .select("ticker,cik,company_name")
+        .eq("is_fundamental_eligible", True)
+        .order("ticker")
+    )
+    if not all_rows:
+        q = q.limit(limit or 5)
+    return q.execute().data
 
 
 def main():
@@ -389,23 +430,39 @@ def main():
 
     rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
     session = requests.Session()
-    session.headers.update({"User-Agent": SEC_USER_AGENT, "Accept-Encoding": "gzip, deflate"})
+    session.headers.update({
+        "User-Agent": SEC_USER_AGENT,
+        "Accept-Encoding": "gzip, deflate",
+        "Host": "data.sec.gov",
+    })
 
     success = 0
     failed = 0
+
     for row in rows:
         ticker = row["ticker"]
         try:
             facts, submissions = load_company(session, ticker, row["cik"])
-            result = build_result(ticker, row["cik"], row.get("company_name"), facts, submissions)
+            result = build_result(
+                ticker,
+                row["cik"],
+                row["company_name"],
+                facts,
+                submissions,
+            )
+
             sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
+
+            print(
+                f"[US] {ticker}: score={result['total_score']} "
+                f"grade={result['grade']} periods={len(result['period_scores'])} "
+                f"missing={result['missing_metric_count']}"
+            )
             success += 1
-            print(f"[US] {ticker}: score={result['total_score']} periods={len(result['period_scores'])} missing={result['missing_metric_count']}")
         except Exception as exc:
             failed += 1
-            print(f"[US] FAILED {ticker}: {exc}")
-        # SEC asks clients to be considerate; keep the collector well below
-        # aggressive request rates, especially when --all is used.
+            print(f"[US] {ticker}: FAILED - {type(exc).__name__}: {exc}")
+
         time.sleep(0.15)
 
     print(f"Completed. success={success}, failed={failed}, total={len(rows)}")
