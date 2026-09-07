@@ -42,8 +42,8 @@ def _bear_episodes(market):
     End   = first recovery above -5% drawdown after entering the bear market.
 
     Keeping the prior peak in the window makes the measured market drawdown
-    represent the actual bear-market loss (e.g. COVID and 2022), rather than
-    only the remaining loss after the -20% threshold was crossed.
+    represent the actual bear-market loss rather than only the remaining loss
+    after the -20% threshold was crossed.
     """
     if market is None or len(market) < 30:
         return []
@@ -51,19 +51,15 @@ def _bear_episodes(market):
     peak_values = market.cummax()
     dd = market / peak_values - 1.0
     in_bear = False
-    peak_date = None
     bear_start = None
     episodes = []
 
     for date, value in dd.items():
         if not in_bear and value <= BEAR_THRESHOLD:
-            # Find the actual running-peak date immediately before the
-            # threshold crossing. Include that peak in the episode window.
             prior = market.loc[:date]
             peak_value = prior.max()
             peak_candidates = prior[prior == peak_value]
-            peak_date = peak_candidates.index[-1]
-            bear_start = peak_date
+            bear_start = peak_candidates.index[-1]
             in_bear = True
 
         elif in_bear and value >= RECOVERY_THRESHOLD:
@@ -72,7 +68,6 @@ def _bear_episodes(market):
                 episodes.append((bear_start, end))
             in_bear = False
             bear_start = None
-            peak_date = None
 
     if in_bear and bear_start is not None:
         episodes.append((bear_start, market.index[-1]))
@@ -89,7 +84,13 @@ def _max_drawdown(series):
     return float(dd.min() * 100.0), trough_date
 
 
-def _recovery_days(series, trough_date):
+def _recovery_days(series, trough_date, recovery_end=None):
+    """Days from trough until 90% of the pre-trough loss is recovered.
+
+    Recovery is intentionally allowed to continue after the bear episode's
+    -5% drawdown end date. The episode window defines the stress event; it
+    should not artificially truncate the subsequent recovery measurement.
+    """
     if series is None or trough_date is None:
         return None
     pre = series.loc[:trough_date]
@@ -101,6 +102,8 @@ def _recovery_days(series, trough_date):
         return None
     target = trough + (peak - trough) * RECOVERY_TARGET
     after = series.loc[trough_date:]
+    if recovery_end is not None:
+        after = after.loc[:recovery_end]
     recovered = after[after >= target]
     if recovered.empty:
         return None
@@ -137,8 +140,11 @@ def calculate_downturn_defense(ticker, market=None, stock=None):
             continue
 
         relative_advantage = s_dd - m_dd
-        m_recovery = _recovery_days(m, m_trough)
-        s_recovery = _recovery_days(s, s_trough)
+        # Recovery speed is measured beyond the stress-event end if necessary.
+        # This avoids turning a valid recovery into None merely because the
+        # market crossed the -5% episode boundary before reaching 90% recovery.
+        m_recovery = _recovery_days(market, m_trough)
+        s_recovery = _recovery_days(stock, s_trough)
         if m_recovery and m_recovery > 0 and s_recovery is not None:
             recovery_advantage = max(
                 -20.0,
