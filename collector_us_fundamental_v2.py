@@ -13,7 +13,6 @@ Usage:
 
 import argparse
 from datetime import datetime, timezone
-import os
 
 from supabase import create_client
 
@@ -23,17 +22,14 @@ from collector_us_fundamental import (
     SEC_USER_AGENT,
     load_company,
     get_universe,
+    build_result,
 )
 from scoring import calculate_fundamental_score
 from downturn_us import calculate_downturn_defense, _close_series, BENCHMARK
 
 
 def add_downturn_and_rescore(base_result, ticker, market_close):
-    """Inject the same structural downturn-defense value into all periods.
-
-    Downturn defense is intentionally independent of the 1/3/5/10-year
-    accounting window: it measures long-run behavior in major market crises.
-    """
+    """Add structural downturn defense and recalculate every period score."""
     defense_value, defense_detail = calculate_downturn_defense(
         ticker,
         market=market_close,
@@ -56,21 +52,22 @@ def add_downturn_and_rescore(base_result, ticker, market_close):
         payload["metrics"] = metrics
         payload["scores"] = scored
 
-        missing = sum(
-            1
-            for key, entry in (scored.get("scores") or {}).items()
-            if entry.get("value") is None
-        )
         if period == "1":
             latest_score = scored.get("total_score")
             latest_grade = scored.get("grade")
-            latest_missing = missing
+            latest_missing = sum(
+                1 for entry in (scored.get("scores") or {}).values()
+                if entry.get("value") is None
+            )
+
+    # Keep diagnostic detail inside period_scores JSONB; no schema change needed.
+    if "1" in period_scores:
+        period_scores["1"]["downturn_defense_detail"] = defense_detail
 
     base_result["period_scores"] = period_scores
     base_result["total_score"] = int(round(latest_score)) if latest_score is not None else None
     base_result["grade"] = latest_grade
     base_result["missing_metric_count"] = latest_missing
-    base_result["downturn_defense_detail"] = defense_detail
     base_result["updated_at"] = datetime.now(timezone.utc).isoformat()
     return base_result
 
@@ -113,8 +110,6 @@ def main():
         ticker = row["ticker"]
         try:
             facts, submissions = load_company(session, ticker, row["cik"])
-            # Reuse the stable SEC result builder from the existing collector.
-            from collector_us_fundamental import build_result
             result = build_result(
                 ticker,
                 row["cik"],
@@ -123,7 +118,6 @@ def main():
                 submissions,
             )
             result = add_downturn_and_rescore(result, ticker, market_close)
-
             sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
 
             dd = None
