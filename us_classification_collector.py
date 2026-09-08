@@ -118,21 +118,25 @@ def classify_from_sec(
     ticker: str,
     company_name: str,
     cik: str,
+    existing_sic: Any = None,
 ) -> dict[str, Any]:
 
     submissions = fetch_sec_submissions(cik)
 
-    sic = submissions.get("sic")
+    # 1차: SEC submissions SIC
+    sic_raw = submissions.get("sic")
 
-# SEC submissions에 SIC가 없으면 US_Companies의 기존 SIC 사용
-    if not sic:
-    sic = row.get("sic_code")
+    # 2차: US_Companies에 이미 저장된 SIC
+    # SEC submissions에 SIC가 없는 기업(CYATY 등) 대응
+    if not sic_raw:
+        sic_raw = existing_sic
 
-    sic_description = submissions.get("sicDescription")
     try:
         sic = int(sic_raw) if sic_raw is not None else None
     except (TypeError, ValueError):
         sic = None
+
+    sic_desc = submissions.get("sicDescription")
 
     result = classify_company(
         ticker=ticker,
@@ -140,6 +144,33 @@ def classify_from_sec(
         sic=sic,
         sic_desc=sic_desc,
     )
+
+    # classify_company() 결과가 dict인 현재 구조를 기준으로 처리
+    if not isinstance(result, dict):
+        raise RuntimeError(
+            f"{ticker}: classify_company()가 dict를 반환하지 않았습니다: "
+            f"{type(result)}"
+        )
+
+    sector_common = result.get("sector_common")
+    company_type = result.get("company_type")
+    scoring_profile = result.get("scoring_profile")
+
+    sector_common_ko = SECTOR_COMMON_KO.get(
+        sector_common,
+        "기타",
+    )
+
+    return {
+        "ticker": ticker,
+        "sic_code": str(sic) if sic is not None else None,
+        "sector_source": "SEC_SIC",
+        "sector_raw": sic_desc or None,
+        "sector_common": sector_common,
+        "sector_common_ko": sector_common_ko,
+        "company_type": company_type or "standard",
+        "scoring_profile": scoring_profile or "standard",
+    }
 
     # classify_company() 결과가 dict인 현재 구조를 기준으로 처리
     if not isinstance(result, dict):
@@ -302,6 +333,7 @@ def run(
                 ticker=ticker,
                 company_name=company_name,
                 cik=cik,
+                existing_sic=company.get("sic_code"),
             )
 
             save_classification(result)
