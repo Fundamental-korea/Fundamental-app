@@ -576,7 +576,7 @@ def render_quote_box():
     )
 
 
-@st.cache_data
+@st.cache_data(ttl=3600)
 def get_combined_stock_db():
     us_stocks = [
         {"ticker": "AAPL", "name": "Apple Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
@@ -592,14 +592,38 @@ def get_combined_stock_db():
 
     kr_stocks = []
     try:
-        df = fdr.StockListing("KRX")
-        for _, row in df.iterrows():
-            market = row.get("Market", "KOSPI")
+        # ⚠️ 2026-09: KRX 정보데이터시스템이 로그인 필수 정책으로 바뀌면서 fdr.StockListing("KRX")
+        # 호출이 막힘 (Dart_Raw_Cache 삭제와는 무관한 별개 이슈). 이미 Supabase Fundamental
+        # 테이블에 전체 KRX 종목의 stock_code/stock_name이 있으므로, KRX/fdr/pykrx 없이
+        # 여기서 바로 가져온다. 반환 형식(ticker/name/exch/flag)은 기존과 완전히 동일하게 유지.
+        # PostgREST 1000행 기본 제한 페이지네이션 처리 (전체 약 2,876개 종목).
+        all_rows = []
+        page_size = 1000
+        start = 0
+        while True:
+            res = (
+                supabase.table("Fundamental")
+                .select("stock_code, stock_name")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            rows = res.data
+            if not rows:
+                break
+            all_rows.extend(rows)
+            if len(rows) < page_size:
+                break
+            start += page_size
+
+        if not all_rows:
+            raise ValueError("Supabase Fundamental 테이블에서 종목을 하나도 가져오지 못함")
+
+        for row in all_rows:
             kr_stocks.append(
                 {
-                    "ticker": str(row["Code"]),
-                    "name": str(row["Name"]),
-                    "exch": f"Equities - {market}",
+                    "ticker": str(row["stock_code"]),
+                    "name": str(row["stock_name"]),
+                    "exch": "Equities - KRX",
                     "flag": "🇰🇷",
                 }
             )
