@@ -63,7 +63,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_SECRET_KEY")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError(
-        "SUPABASE_URL 또는 SUPABASE_SERVICE_ROLE_KEY 환경변수가 없습니다."
+        "SUPABASE_URL 또는 SUPABASE_SECRET_KEY 환경변수가 없습니다."
     )
 
 supabase = create_client(
