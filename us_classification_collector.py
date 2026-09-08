@@ -55,6 +55,25 @@ SECTOR_COMMON_KO = {
 
 
 # ============================================================
+# MANUAL SIC OVERRIDES
+# ============================================================
+
+# SEC submissions와 US_Companies 양쪽에서 SIC가 없는
+# 일부 기업을 위한 최소한의 수동 override.
+#
+# CYATY:
+# Contemporary Amperex Technology Co., Limited/ADR
+# SEC submissions에 SIC가 제공되지 않음.
+#
+# SIC 2834 = Pharmaceutical Preparations
+#
+# 실제 분류 목적상 healthcare로 처리한다.
+MANUAL_SIC_OVERRIDES = {
+    "CYATY": 2834,
+}
+
+
+# ============================================================
 # ENV
 # ============================================================
 
@@ -123,25 +142,53 @@ def classify_from_sec(
 
     submissions = fetch_sec_submissions(cik)
 
+    # --------------------------------------------------------
+    # 1. SEC submissions SIC
+    # --------------------------------------------------------
+
     sic_raw = submissions.get("sic")
 
-    if not sic_raw:
+    sector_source = "SEC_SIC"
+
+    # --------------------------------------------------------
+    # 2. US_Companies에 이미 존재하는 SIC fallback
+    # --------------------------------------------------------
+
+    if not sic_raw and existing_sic is not None:
         sic_raw = existing_sic
+        sector_source = "US_COMPANIES_SIC"
+
+    # --------------------------------------------------------
+    # 3. Manual SIC override
+    # --------------------------------------------------------
+
+    if not sic_raw and ticker in MANUAL_SIC_OVERRIDES:
+        sic_raw = MANUAL_SIC_OVERRIDES[ticker]
+        sector_source = "MANUAL_OVERRIDE"
+
+    # --------------------------------------------------------
+    # SIC 숫자 변환
+    # --------------------------------------------------------
 
     try:
         sic = int(sic_raw) if sic_raw is not None else None
     except (TypeError, ValueError):
         sic = None
 
-    # ADR / SEC metadata 누락 기업 예외
-    MANUAL_SIC_OVERRIDES = {
-        "CYATY": 2834,
-    }
-
+    # 숫자 변환 실패 후에도 manual override가 필요한 경우
     if sic is None and ticker in MANUAL_SIC_OVERRIDES:
         sic = MANUAL_SIC_OVERRIDES[ticker]
+        sector_source = "MANUAL_OVERRIDE"
+
+    # --------------------------------------------------------
+    # SEC SIC description
+    # --------------------------------------------------------
 
     sic_desc = submissions.get("sicDescription")
+
+    # --------------------------------------------------------
+    # Classification
+    # --------------------------------------------------------
 
     result = classify_company(
         ticker=ticker,
@@ -150,7 +197,7 @@ def classify_from_sec(
         sic_desc=sic_desc,
     )
 
-    # classify_company() 결과가 dict인 현재 구조를 기준으로 처리
+    # classify_company() 결과가 dict인지 확인
     if not isinstance(result, dict):
         raise RuntimeError(
             f"{ticker}: classify_company()가 dict를 반환하지 않았습니다: "
@@ -166,37 +213,14 @@ def classify_from_sec(
         "기타",
     )
 
-    return {
-        "ticker": ticker,
-        "sic_code": str(sic) if sic is not None else None,
-        "sector_source": "SEC_SIC",
-        "sector_raw": sic_desc or None,
-        "sector_common": sector_common,
-        "sector_common_ko": sector_common_ko,
-        "company_type": company_type or "standard",
-        "scoring_profile": scoring_profile or "standard",
-    }
-
-    # classify_company() 결과가 dict인 현재 구조를 기준으로 처리
-    if not isinstance(result, dict):
-        raise RuntimeError(
-            f"{ticker}: classify_company()가 dict를 반환하지 않았습니다: "
-            f"{type(result)}"
-        )
-
-    sector_common = result.get("sector_common")
-    company_type = result.get("company_type")
-    scoring_profile = result.get("scoring_profile")
-
-    sector_common_ko = SECTOR_COMMON_KO.get(
-        sector_common,
-        "기타",
-    )
+    # SIC가 완전히 없는 경우
+    if sic is None:
+        sector_source = "UNAVAILABLE"
 
     return {
         "ticker": ticker,
         "sic_code": str(sic) if sic is not None else None,
-        "sector_source": "SEC_SIC",
+        "sector_source": sector_source,
         "sector_raw": sic_desc or None,
         "sector_common": sector_common,
         "sector_common_ko": sector_common_ko,
