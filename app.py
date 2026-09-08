@@ -1528,7 +1528,7 @@ else:
                                 "성장성 2개 지표를 제외한 나머지 8개 지표(수익성/재무건전성/현금흐름/"
                                 "하락장 방어력)의 가중점수 합산"
                             )
-                            sub_badges += (
+                        sub_badges += (
                                 f'<span class="mini-stat-badge" title="{defense_tip}">'
                                 f'🛡️ 방어 서브스코어 {defense_v}</span>'
                             )
