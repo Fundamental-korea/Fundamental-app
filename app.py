@@ -1538,6 +1538,17 @@ else:
                             '개념이 일반기업과 달라 OPM/ROIC/SG&A비율 3개 지표를 제외하고, 대신 ROA(총자산이익률)로 '
                             '대체 채점한 뒤 100점 만점으로 환산했습니다.">🏦 금융업 보정 적용</span>'
                         )
+                         if financial_adjusted:
+                        sub_badges += (
+                            '<span class="mini-stat-badge" title="금융업(은행/보험/증권)은 매출액/영업이익 '
+                            '개념이 일반기업과 달라 OPM/ROIC/SG&A비율 3개 지표를 제외하고, 대신 ROA(총자산이익률)로 '
+                            '대체 채점한 뒤 100점 만점으로 환산했습니다.">🏦 금융업 보정 적용</span>'
+                        )
+                    if period_missing_count is not None:
+                        sub_badges += (
+                            f'<span class="mini-stat-badge" title="DART 공시 데이터에서 값을 찾지 못해 '
+                            f'0점 처리된 지표 수입니다.">🧩 결측 {period_missing_count}개</span>'
+                        )
                     if period_missing_count is not None:
                         sub_badges += (
                             f'<span class="mini-stat-badge" title="DART 공시 데이터에서 값을 찾지 못해 '
