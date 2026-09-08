@@ -58,8 +58,8 @@ SECTOR_COMMON_KO = {
 # ENV
 # ============================================================
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+SUPABASE_URL = os.getenv("https://cnweggechipghcivruie.supabase.co")
+SUPABASE_KEY = os.getenv("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImNud2VnZ2VjaGlwZ2hjaXZydWllIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc4NzA4NTk4OSwiZXhwIjoyMTAyNjYxOTg5fQ.3JZlKnrWH9RcaExixzADDYN97gduWGoNs8HB1K1IyFc")
 
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise RuntimeError(
