@@ -87,18 +87,38 @@ DOWNTURN_WINDOWS = [
 #   - 버그2: interest_coverage가 이자비용 추출 실패 시 무조건 만점(25) 처리되던 문제
 #   - 버그6: "자본총계" 계정명 매칭 실패율이 유독 높아 재무건전성 지표가 통째로 왜곡되던 문제
 # --------------------------------------------------------------------------
-GROWTH_SANITY_THRESHOLD = 500  # % 이 이상이면 base-effect/계정오류로 간주해 결측(None) 처리
+
+# --------------------------------------------------------------------------
+# growth(revenue_growth/eps_growth) 극단값 처리 (버그1 재검토, growth-cap 개편):
+# 예전엔 |값| > 500%면 base-effect/계정오류로 간주해 통째로 None(결측) 처리했음. 그런데
+# 실측 결과(2026-09 진단) eps_growth null 392건 중:
+#   - surge(500% 초과 폭증): 257건 - 대부분 삼성전자/SK하이닉스처럼 반도체 다운턴 이후
+#     흑자전환/실적 급개선한 "진짜 좋은 실적" 케이스였음
+#   - crash(-500% 미만 폭락): 103건
+#   - no_data(전년동기 순이익 0/None이라 애초에 % 계산 자체가 불가능): 7건뿐
+# scoring.py의 METRIC_SCORE_BANDS가 eps_growth 20%↑/revenue_growth 25%↑는 이미 무조건
+# 10점, eps_growth -15%↓/revenue_growth -10%↓는 이미 무조건 0점으로 자체 캡 처리를 하고
+# 있어서, 여기서 또 500% 넘는다고 값 자체를 null 처리하는 건 불필요한 이중 방어였고,
+# 오히려 진짜 실적이 좋아진 종목만 억울하게 0점 처리하는 부작용이 있었음. 그래서 컷오프를
+# 없애고, 극단값 여부는 "참고용 표시 뱃지" 목적의 is_extreme_growth()로만 판별한다.
+# 진짜 계산 불가능한 no_data 케이스는 여전히 None으로 남고, scoring.py의 achievable_weight
+# 재환산(제외) 로직이 그대로 처리해준다.
+# --------------------------------------------------------------------------
+GROWTH_EXTREME_DISPLAY_THRESHOLD = 500  # ⚠️ 점수 계산용 컷오프가 아니라 "이례적 수치" 표시 뱃지 기준일 뿐
+
+
+def is_extreme_growth(value):
+    """값 자체는 점수 계산에 그대로 쓰되, 화면에 '이례적 수치(기저효과 등)' 참고 뱃지를
+    붙일지 판별하는 표시 전용 헬퍼. calculate_metric_score()에는 전혀 영향 없음."""
+    return value is not None and abs(value) > GROWTH_EXTREME_DISPLAY_THRESHOLD
 
 
 def sanitize_growth(value):
-    """분모(전년/기준연도) 값이 작아 생기는 base-effect나 계정 매칭 오류로 인한
-    비정상적 growth% 폭주를 걸러냄. 임계값 초과 시 결측(None) 처리 (버그1 수정).
-    결측 처리된 값은 scoring.py에서 0점 처리되므로, 최소한 "터무니없는 값으로 만점/폭주 점수"를
-    받는 것보다는 안전한 방향(과소평가) - 완전한 해결은 아니고 안전장치 수준."""
-    if value is None:
-        return None
-    if abs(value) > GROWTH_SANITY_THRESHOLD:
-        return None
+    """⚠️ 이름은 하위 호환을 위해 유지하지만 더 이상 값을 null 처리하지 않고 그대로
+    반환한다 (identity function). 예전엔 500% 초과 시 None 처리했으나, score band가
+    이미 상/하한을 캡 처리하고 있어 이중 방어가 불필요했고, 오히려 정상적인 실적
+    급개선/급악화 케이스를 억울하게 0점 처리하는 부작용을 낳아서 제거함. 극단값 표시가
+    필요하면 is_extreme_growth()를 대신 사용할 것."""
     return value
 
 
@@ -365,11 +385,15 @@ def _sanitize_for_cache(df):
     return _sanitize_json(df.where(df.notnull(), None).to_dict(orient="records"))
 
 
-# 캐시 읽기/쓰기 On/Off 스위치. 첫 전체 재수집처럼 캐시가 비어있는 게 확실한 상황에서는
-# 매 DART 호출마다 붙는 Supabase 조회+저장 왕복이 순수 오버헤드라 오히려 느려짐.
-# collector.USE_DART_CACHE = False 로 끄면 원래 속도로 돌아가고, 다음 재수집부터
-# True로 다시 켜면 캐시가 정상적으로 쌓임.
-USE_DART_CACHE = True
+# 캐시 읽기/쓰기 On/Off 스위치.
+# ⚠️ 2026-09: Dart_Raw_Cache(원문 전체 저장) 테이블은 MVP 단계 용량 관리를 위해 삭제됨(의도적).
+#    이후 이 테이블이 없는 상태로 daily 자동갱신 파이프라인이 계속 USE_DART_CACHE=True로
+#    돌면서, 존재하지 않는 테이블에 매 DART 호출마다 조회/저장을 시도했다가 실패하는
+#    왕복이 누적되고 - 무엇보다 캐시가 원래 아껴주던 "같은 분기 보고서 재조회 생략" 효과가
+#    완전히 사라지면서 일일 실행시간이 20분 -> 2~3시간으로 늘어나는 문제가 발생함.
+#    그래서 기본값을 False로 바꾸고, 원문 전체 대신 파싱 완료된 지표만 캐싱하는 경량 캐시
+#    (아래 Report_Metrics_Cache 관련 함수들)로 대체함 - 실제 속도 개선은 그쪽이 담당.
+USE_DART_CACHE = False
 
 
 def _get_cached_raw(stock_code, year, reprt_code, fs_div, source):
@@ -436,6 +460,48 @@ def _dart_finstate_all_cached(stock_code, year, reprt_code, fs_div):
     if fin_data is not None and not fin_data.empty:
         _set_cached_raw(stock_code, year, reprt_code, fs_div, "finstate_all", fin_data)
     return fin_data
+
+
+# --------------------------------------------------------------------------
+# 경량 지표 캐시 (2026-09 재도입): Dart_Raw_Cache(원문 전체 저장, 계정과목 수십 개씩 담긴
+# jsonb라 용량이 컸음)를 대신해 "파싱이 끝난 지표 딕셔너리"(숫자 15개 내외)만 저장하는
+# 훨씬 작은 캐시. 확정된 과거 보고서는 DART에서 값이 안 바뀌므로(정정공시는 별도
+# 접수번호로 올라옴) 캐시를 사실상 영구적으로 신뢰해도 됨 - Dart_Raw_Cache 때와 동일한 전제.
+# use_ofs를 키에 포함시켜서, 드물게 섹터 재분류로 OFS/CFS 선택이 바뀌는 경우까지 대비함.
+# --------------------------------------------------------------------------
+USE_METRICS_CACHE = True
+
+
+def _get_cached_report_metrics(stock_code, year, reprt_code, use_ofs):
+    """Report_Metrics_Cache에서 이미 파싱된 지표 딕셔너리가 있으면 그대로 반환. 없으면 None."""
+    if not USE_METRICS_CACHE:
+        return None
+    try:
+        res = (
+            supabase.table("Report_Metrics_Cache")
+            .select("metrics")
+            .eq("stock_code", stock_code).eq("year", year)
+            .eq("reprt_code", reprt_code).eq("use_ofs", use_ofs)
+            .execute()
+        )
+        if res.data:
+            return res.data[0]["metrics"]
+    except Exception as e:
+        print(f"  ⚠️ 지표 캐시 조회 실패({stock_code}, {year}, {reprt_code}): {e}")
+    return None
+
+
+def _set_cached_report_metrics(stock_code, year, reprt_code, use_ofs, metrics):
+    """새로 파싱한 지표 딕셔너리를 캐시에 저장 - 다음 실행부터 이 조합은 DART 재호출 없이 재사용."""
+    if not USE_METRICS_CACHE:
+        return
+    try:
+        supabase.table("Report_Metrics_Cache").upsert({
+            "stock_code": stock_code, "year": year, "reprt_code": reprt_code,
+            "use_ofs": use_ofs, "metrics": _sanitize_json(metrics),
+        }, on_conflict="stock_code,year,reprt_code,use_ofs").execute()
+    except Exception as e:
+        print(f"  ⚠️ 지표 캐시 저장 실패({stock_code}, {year}, {reprt_code}): {e}")
 
 
 def _fetch_full_statement_df(stock_code, year, reprt_code="11011", use_ofs_for_manufacturing=True):
@@ -612,9 +678,9 @@ def _parse_report_financials(df, df_full=None):
         "sga_ratio": round(sga_costs / revenue * 100, 2) if revenue > 0 else None,
     }
 
-    # base-effect/계정오류로 인한 growth% 폭주 방지 (버그1 수정)
-    # 단, 채점용 값은 걸러내되(sanitize_growth) 원본 계산값은 별도로 보존 -
-    # 사용자가 "왜곡 가능성 있지만 실제로 계산하면 이 값이다"를 참고할 수 있게 함
+    # revenue_growth/eps_growth: 이제 sanitize_growth()가 값을 지우지 않으므로(identity 함수),
+    # 계산된 값이 그대로 채점/표시에 쓰인다. 극단값(|500%| 초과)은 is_extreme_growth()로
+    # sync_kor_stock_fundamental에서 별도 표시 플래그만 붙는다 (점수는 이미 band에서 캡 처리).
     revenue_growth_raw = (
         round((revenue - prev_revenue) / abs(prev_revenue) * 100, 2)
         if prev_revenue not in (0, None) else None
@@ -643,7 +709,13 @@ def _parse_report_financials(df, df_full=None):
 
 def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing=True):
     """특정 (연도, 보고서유형) 시점의 재무 지표를 조회/파싱하는 공통 로직.
-    fetch_latest_report_metrics와 fetch_recent_quarters_metrics가 공유해서 씀."""
+    fetch_latest_report_metrics와 fetch_recent_quarters_metrics가 공유해서 씀.
+    ⚠️ 경량 지표 캐시(Report_Metrics_Cache) 우선 조회 - 매일 자동갱신 파이프라인이
+    같은 4개 분기 보고서를 매번 새로 DART 조회하던 문제(20분->2~3시간)를 여기서 해결함."""
+    cached = _get_cached_report_metrics(stock_code, year, reprt_code, use_ofs_for_manufacturing)
+    if cached is not None:
+        return cached
+
     fin_data = _dart_finstate_cached(stock_code, year, reprt_code)
 
     if fin_data is None or fin_data.empty:
@@ -663,6 +735,7 @@ def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufact
     ))
     result["_report_year"] = year
     result["_report_code"] = reprt_code
+    _set_cached_report_metrics(stock_code, year, reprt_code, use_ofs_for_manufacturing, result)
     return result
 
 
@@ -833,7 +906,13 @@ def fetch_recent_quarters_metrics(stock_code, latest_report=None, n_more=3, use_
 
 
 def fetch_year_data(stock_code, year, use_ofs_for_manufacturing=True):
-    """특정 사업연도(사업보고서 기준) 재무데이터 1건 조회. 실패/결측 시 None."""
+    """특정 사업연도(사업보고서 기준) 재무데이터 1건 조회. 실패/결측 시 None.
+    ⚠️ 경량 지표 캐시(Report_Metrics_Cache) 우선 조회 - b_group 전체 재수집이 중간에
+    끊겨도 이미 처리한 연도는 재조회 없이 이어서 진행 가능해짐 (부가 효과)."""
+    cached = _get_cached_report_metrics(stock_code, year, "11011", use_ofs_for_manufacturing)
+    if cached is not None:
+        return cached
+
     fin_data = _dart_finstate_cached(stock_code, year, "11011")
 
     if fin_data is None or fin_data.empty:
@@ -848,9 +927,11 @@ def fetch_year_data(stock_code, year, use_ofs_for_manufacturing=True):
     if df.empty:
         return None
 
-    return _parse_year_financials(df, df_full=_fetch_full_statement_df(
+    result = _parse_year_financials(df, df_full=_fetch_full_statement_df(
         stock_code, year, reprt_code="11011", use_ofs_for_manufacturing=use_ofs_for_manufacturing
     ))
+    _set_cached_report_metrics(stock_code, year, "11011", use_ofs_for_manufacturing, result)
+    return result
 
 
 def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_manufacturing=True, kospi_mdd_cache=None):
@@ -896,7 +977,8 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
         rev_oldest, rev_newest = yearly_data[oldest]["revenue"], yearly_data[newest]["revenue"]
         ni_oldest, ni_newest = yearly_data[oldest]["net_income"], yearly_data[newest]["net_income"]
 
-        # base-effect/계정오류로 인한 CAGR 폭주 방지 (버그1 수정) - 원본값도 같이 보존
+        # revenue_growth/eps_growth CAGR: sanitize_growth가 이제 identity 함수라 값이
+        # 그대로 유지된다 (극단값도 점수는 band에서 자체 캡 처리되므로 null 처리 불필요)
         revenue_cagr_raw = (
             round(((rev_newest / rev_oldest) ** (1 / actual_span) - 1) * 100, 2)
             if (rev_oldest > 0 and rev_newest > 0 and actual_span > 0) else None
@@ -1118,16 +1200,17 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             if pdata["worst_metrics"].get("interest_coverage_is_approx") and "interest_coverage" in worst_score["metric_scores"]:
                 worst_score["metric_scores"]["interest_coverage"]["is_approximate"] = True
 
-            # revenue_growth/eps_growth가 base-effect 가드(sanitize_growth)에 걸려 value가
-            # None이 됐어도, "참고용 실제 계산값"을 raw_value로 같이 남김 - 사용자가 왜곡
-            # 가능성을 감안해서 직접 판단할 수 있게 함 (점수 자체는 여전히 0점 처리, 안 바뀜)
+            # revenue_growth/eps_growth 값이 이례적으로 크면(기저효과 등) 화면에 참고 뱃지를
+            # 붙일 수 있도록 표시만 해둠 - 값 자체는 이미 그대로 저장되고 있고(더 이상 null
+            # 처리 안 함), 점수도 band에서 자체 캡 처리되므로 이 플래그가 점수 계산에
+            # 영향을 주지는 않음
             for growth_key in ("revenue_growth", "eps_growth"):
-                avg_raw = pdata["avg_metrics"].get(f"{growth_key}_raw")
-                if avg_raw is not None and avg_score["metric_scores"].get(growth_key, {}).get("value") is None:
-                    avg_score["metric_scores"][growth_key]["raw_value"] = avg_raw
-                worst_raw = pdata["worst_metrics"].get(f"{growth_key}_raw")
-                if worst_raw is not None and worst_score["metric_scores"].get(growth_key, {}).get("value") is None:
-                    worst_score["metric_scores"][growth_key]["raw_value"] = worst_raw
+                avg_val = pdata["avg_metrics"].get(growth_key)
+                if is_extreme_growth(avg_val):
+                    avg_score["metric_scores"][growth_key]["is_extreme"] = True
+                worst_val = pdata["worst_metrics"].get(growth_key)
+                if is_extreme_growth(worst_val):
+                    worst_score["metric_scores"][growth_key]["is_extreme"] = True
 
             period_scores[f"{period}y"] = {
                 "years_used": pdata["years_used"],
@@ -1537,10 +1620,14 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         score = calculate_fundamental_score(metrics_1y, leverage_exempt=leverage_exempt, is_financial=financial_sector)
         if metrics_1y.get("interest_coverage_is_approx") and "interest_coverage" in score["metric_scores"]:
             score["metric_scores"]["interest_coverage"]["is_approximate"] = True
+
+        # revenue_growth/eps_growth 값이 이례적으로 크면(기저효과 등) 화면에 참고 뱃지를
+        # 붙일 수 있도록 표시만 해둠 - sync_kor_stock_fundamental과 동일한 처리
+        # (값 자체는 이미 None 처리 없이 그대로 score["metric_scores"]에 들어있음)
         for growth_key in ("revenue_growth", "eps_growth"):
-            raw_v = metrics_1y.get(f"{growth_key}_raw")
-            if raw_v is not None and score["metric_scores"].get(growth_key, {}).get("value") is None:
-                score["metric_scores"][growth_key]["raw_value"] = raw_v
+            val = metrics_1y.get(growth_key)
+            if is_extreme_growth(val) and growth_key in score["metric_scores"]:
+                score["metric_scores"][growth_key]["is_extreme"] = True
 
         report_year = latest_report["_report_year"]
         report_code = latest_report["_report_code"]
