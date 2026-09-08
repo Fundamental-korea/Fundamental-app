@@ -123,11 +123,8 @@ def classify_from_sec(
 
     submissions = fetch_sec_submissions(cik)
 
-    # 1차: SEC submissions SIC
     sic_raw = submissions.get("sic")
 
-    # 2차: US_Companies에 이미 저장된 SIC
-    # SEC submissions에 SIC가 없는 기업(CYATY 등) 대응
     if not sic_raw:
         sic_raw = existing_sic
 
@@ -135,6 +132,14 @@ def classify_from_sec(
         sic = int(sic_raw) if sic_raw is not None else None
     except (TypeError, ValueError):
         sic = None
+
+    # ADR / SEC metadata 누락 기업 예외
+    MANUAL_SIC_OVERRIDES = {
+        "CYATY": 2834,
+    }
+
+    if sic is None and ticker in MANUAL_SIC_OVERRIDES:
+        sic = MANUAL_SIC_OVERRIDES[ticker]
 
     sic_desc = submissions.get("sicDescription")
 
