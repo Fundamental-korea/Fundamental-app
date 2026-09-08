@@ -1,34 +1,39 @@
 """
-US company classification engine v1
+US company classification
 
 Purpose
 -------
-SEC SIC + company metadata
-    -> sector_common
-    -> sector_common_ko
-    -> company_type
-    -> scoring_profile
+SEC SIC 기반으로 미국 기업을 서비스용 공통 분류체계로 변환한다.
 
-This version is intentionally separated from the financial collector.
-No Supabase writes are performed.
+Output
+------
+{
+    "sector_source": ...,
+    "sector_raw": ...,
+    "sector_common": ...,
+    "sector_common_ko": ...,
+    "company_type": ...,
+    "scoring_profile": ...
+}
 
-Usage
------
-python us_classification.py --test30
-python us_classification.py --ticker AAPL
+주의
+----
+- sector_raw는 SEC SIC description을 그대로 보존
+- sector_common은 서비스/UI용 공통 대분류
+- company_type은 금융/REIT/BDC/Utility 등의 세부 유형
+- scoring_profile은 실제 scoring.py 적용용
 """
 
 from __future__ import annotations
 
 import argparse
-import time
-from typing import Any
-
-import requests
+import os
+import re
+from typing import Optional
 
 
 # ============================================================
-# 1. COMMON SECTOR
+# 1. COMMON SECTORS
 # ============================================================
 
 COMMON_SECTORS = {
@@ -47,7 +52,7 @@ COMMON_SECTORS = {
 
 
 # ============================================================
-# 2. COMPANY TYPE
+# 2. COMPANY TYPES
 # ============================================================
 
 COMPANY_TYPES = {
@@ -71,7 +76,7 @@ COMPANY_TYPES = {
 
 
 # ============================================================
-# 3. SCORING PROFILE
+# 3. SCORING PROFILES
 # ============================================================
 
 SCORING_PROFILES = {
@@ -83,78 +88,28 @@ SCORING_PROFILES = {
 }
 
 
-COMPANY_TYPE_TO_PROFILE = {
-    "standard": "standard",
+PROFILE_BY_COMPANY_TYPE = {
     "bank": "financial",
     "insurance": "financial",
     "asset_manager": "financial",
     "broker_dealer": "financial",
     "bdc": "bdc",
     "reit": "reit",
-    "real_estate_company": "standard",
-    "oil_gas": "standard",
-    "midstream": "standard",
-    "mlp": "standard",
     "utility": "utility",
-    "telecom": "standard",
-    "holding": "standard",
-    "spac": "standard",
-    "closed_end_fund": "standard",
 }
 
 
 # ============================================================
-# 4. REPRESENTATIVE 30
-# ============================================================
-
-TEST_COMPANIES = {
-    "AAPL": "애플",
-    "MSFT": "마이크로소프트",
-    "NVDA": "엔비디아",
-    "GOOGL": "알파벳",
-    "AMZN": "아마존",
-    "META": "메타",
-    "AVGO": "브로드컴",
-    "ORCL": "오라클",
-
-    "JPM": "JP모건",
-    "BAC": "뱅크오브아메리카",
-    "GS": "골드만삭스",
-    "MS": "모건스탠리",
-    "BLK": "블랙록",
-
-    "JNJ": "존슨앤드존슨",
-    "PFE": "화이자",
-    "MRK": "머크",
-    "LLY": "일라이릴리",
-
-    "O": "리얼티 인컴",
-    "AMT": "아메리칸 타워",
-    "PLD": "프로로지스",
-
-    "NEE": "넥스트에라 에너지",
-    "DUK": "듀크 에너지",
-
-    "XOM": "엑슨모빌",
-    "CVX": "셰브론",
-
-    "RTX": "RTX",
-    "LMT": "록히드마틴",
-    "BA": "보잉",
-
-    "GSBD": "골드만삭스 BDC",
-    "ARCC": "아레스 캐피털",
-}
-
-
-# ============================================================
-# 5. TEST OVERRIDES
+# 4. MANUAL OVERRIDES
 # ============================================================
 #
-# 이것은 "최종 override table"이 아니라 30개 검증용이다.
-# 실제 전체 수집에서는 Supabase
-# US_Company_Classification_Overrides
-# 로 분리한다.
+# 중요한 예외기업.
+#
+# 실제 전체 universe에서는 이후
+# US_Company_Classification_Overrides 테이블과 연결할 예정.
+#
+# 여기서는 classifier 자체가 독립적으로 테스트될 수 있도록
+# 핵심 예외만 유지한다.
 #
 
 TEST_OVERRIDES = {
@@ -162,119 +117,331 @@ TEST_OVERRIDES = {
         "sector_common": "financials",
         "company_type": "asset_manager",
         "scoring_profile": "financial",
-        "reason": "SEC SIC 6211 but primary business is asset management",
+        "reason": "BlackRock is an asset manager; SEC SIC 6211 alone is insufficient.",
     },
     "GSBD": {
         "sector_common": "financials",
         "company_type": "bdc",
         "scoring_profile": "bdc",
-        "reason": "Known BDC",
+        "reason": "Goldman Sachs BDC.",
     },
     "ARCC": {
         "sector_common": "financials",
         "company_type": "bdc",
         "scoring_profile": "bdc",
-        "reason": "Known BDC",
+        "reason": "Ares Capital Corporation BDC.",
     },
 }
 
 
 # ============================================================
-# 6. SIC RANGE HELPERS
+# 5. REPRESENTATIVE TEST COMPANIES
 # ============================================================
 
-def sic_between(sic: int | None, low: int, high: int) -> bool:
-    return sic is not None and low <= sic <= high
+TEST_COMPANIES = [
+    # Technology
+    "AAPL",
+    "MSFT",
+    "NVDA",
+    "GOOGL",
+    "AMZN",
+    "META",
+    "AVGO",
+    "ORCL",
 
+    # Financials
+    "JPM",
+    "BAC",
+    "GS",
+    "MS",
+    "BLK",
 
-def sic_in(sic: int | None, values: set[int]) -> bool:
-    return sic in values if sic is not None else False
+    # Healthcare
+    "JNJ",
+    "PFE",
+    "MRK",
+    "LLY",
+
+    # Real estate
+    "O",
+    "AMT",
+    "PLD",
+
+    # Utilities
+    "NEE",
+    "DUK",
+
+    # Energy
+    "XOM",
+    "CVX",
+
+    # Industrials / defense
+    "RTX",
+    "LMT",
+    "BA",
+
+    # BDC
+    "GSBD",
+    "ARCC",
+]
 
 
 # ============================================================
-# 7. COMMON SECTOR FROM SIC
+# 6. HELPERS
+# ============================================================
+
+def _normalize_text(value: Optional[str]) -> str:
+    if not value:
+        return ""
+
+    return re.sub(
+        r"\s+",
+        " ",
+        str(value).strip().lower(),
+    )
+
+
+def _sic_int(sic: Optional[str | int]) -> Optional[int]:
+    if sic is None:
+        return None
+
+    try:
+        return int(str(sic).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def _contains_any(text: str, keywords: list[str]) -> bool:
+    return any(keyword in text for keyword in keywords)
+
+
+# ============================================================
+# 7. COMMON SECTOR — SIC
 # ============================================================
 
 def common_sector_from_sic(
-    sic: int | None,
-    sic_desc: str = "",
+    sic: Optional[str | int],
+    sic_desc: Optional[str] = None,
 ) -> str:
+    """
+    SEC SIC → common sector.
 
-    desc = (sic_desc or "").lower()
+    중요한 원칙:
+    1. 금융/부동산/유틸리티/커뮤니케이션은 우선 처리
+    2. 의료/기술의 대표 SIC를 명시적으로 처리
+    3. 소비재와 산업재의 경계는 description 보정
+    4. 애매하면 other
+    """
 
-    if sic is None:
-        return "other"
+    sic_num = _sic_int(sic)
+    desc = _normalize_text(sic_desc)
+
+    if sic_num is None:
+        return _sector_from_description(desc)
 
     # --------------------------------------------------------
-    # Real Estate
+    # REAL ESTATE
     # --------------------------------------------------------
 
-    if sic == 6798:
+    if 6500 <= sic_num <= 6799:
         return "real_estate"
 
-    if 6500 <= sic <= 6799:
-        return "real_estate"
-
     # --------------------------------------------------------
-    # Financials
+    # FINANCIALS
     # --------------------------------------------------------
 
-    if 6000 <= sic <= 6499:
+    if 6000 <= sic_num <= 6499:
         return "financials"
 
     # --------------------------------------------------------
-    # Utilities
+    # UTILITIES
     # --------------------------------------------------------
 
-    if 4900 <= sic <= 4999:
+    if 4900 <= sic_num <= 4999:
         return "utilities"
 
     # --------------------------------------------------------
-    # Communication
+    # COMMUNICATION
     # --------------------------------------------------------
 
-    if 4800 <= sic <= 4899:
+    if 4800 <= sic_num <= 4899:
         return "communication"
+
+    # --------------------------------------------------------
+    # HEALTHCARE
+    # --------------------------------------------------------
+
+    healthcare_sic_ranges = [
+        (2833, 2836),   # Medicinal / Pharmaceutical
+        (3841, 3851),   # Medical instruments / equipment
+        (8000, 8099),   # Health services
+    ]
+
+    for lo, hi in healthcare_sic_ranges:
+        if lo <= sic_num <= hi:
+            return "healthcare"
+
+    # --------------------------------------------------------
+    # TECHNOLOGY
+    # --------------------------------------------------------
+
+    technology_sic_ranges = [
+        (3570, 3579),   # Computer / office equipment
+        (3660, 3669),   # Communication equipment
+        (3670, 3679),   # Electronic components / semiconductors
+        (3812, 3812),   # Search / navigation / guidance
+        (3823, 3829),   # Industrial measurement / controls
+        (7370, 7379),   # Computer programming / data processing
+    ]
+
+    for lo, hi in technology_sic_ranges:
+        if lo <= sic_num <= hi:
+            return "technology"
+
+    # --------------------------------------------------------
+    # ENERGY
+    # --------------------------------------------------------
+    #
+    # 1200~1399에는 oil/gas extraction 및 related services가
+    # 포함된다.
+    #
+    # 단, mining 전체를 energy로 보면 안 되기 때문에
+    # 1000~1199는 materials로 남긴다.
+    #
+
+    energy_sic_ranges = [
+        (1200, 1399),
+        (2911, 2911),
+        (2999, 2999),
+    ]
+
+    for lo, hi in energy_sic_ranges:
+        if lo <= sic_num <= hi:
+            return "energy"
+
+    # --------------------------------------------------------
+    # MATERIALS
+    # --------------------------------------------------------
+
+    materials_sic_ranges = [
+        (1000, 1199),   # Metal / coal mining
+        (1400, 1499),   # Nonmetallic minerals
+        (2800, 2829),   # Chemicals
+        (2850, 2899),   # Chemical products
+        (3200, 3299),   # Stone / clay / glass
+        (3300, 3399),   # Primary metal industries
+    ]
+
+    for lo, hi in materials_sic_ranges:
+        if lo <= sic_num <= hi:
+            return "materials"
+
+    # --------------------------------------------------------
+    # CONSUMER
+    # --------------------------------------------------------
+    #
+    # 핵심:
+    #
+    # PG = 2840 → consumer
+    # PM = 2111 → consumer
+    #
+    # 기존 버전에서 5000~5999만 소비재로 잡았기 때문에
+    # PG / PM 같은 제조업 소비재가 other로 빠졌음.
+    #
+
+    consumer_sic_ranges = [
+        (2000, 2399),   # Food / tobacco / textile / apparel
+        (2500, 2599),   # Furniture
+        (2600, 2699),   # Paper products
+        (2700, 2799),   # Printing / publishing
+        (2840, 2849),   # Soap / cosmetics / personal products
+        (3100, 3199),   # Leather / footwear
+        (3900, 3999),   # Misc manufacturing
+        (5000, 5999),   # Wholesale / retail
+        (7000, 7999),   # Services / leisure / consumer services
+    ]
+
+    for lo, hi in consumer_sic_ranges:
+        if lo <= sic_num <= hi:
+            return "consumer"
+
+    # --------------------------------------------------------
+    # INDUSTRIALS
+    # --------------------------------------------------------
+    #
+    # Materials와 겹치는 SIC는 위에서 먼저 처리한다.
+    #
+
+    industrial_sic_ranges = [
+        (1500, 1799),   # Construction
+        (3000, 3099),   # Rubber / plastics
+        (3400, 3499),   # Fabricated metal
+        (3500, 3599),   # Machinery
+        (3600, 3669),   # Electrical equipment
+        (3700, 3799),   # Transportation equipment
+        (3800, 3839),   # Instruments / measurement
+    ]
+
+    for lo, hi in industrial_sic_ranges:
+        if lo <= sic_num <= hi:
+            return "industrials"
+
+    # --------------------------------------------------------
+    # DESCRIPTION FALLBACK
+    # --------------------------------------------------------
+
+    return _sector_from_description(desc)
+
+
+# ============================================================
+# 8. DESCRIPTION FALLBACK
+# ============================================================
+
+def _sector_from_description(desc: str) -> str:
+
+    if not desc:
+        return "other"
 
     # --------------------------------------------------------
     # Healthcare
     # --------------------------------------------------------
 
-    if 2833 <= sic <= 2836:
-        return "healthcare"
-
-    if 3841 <= sic <= 3851:
-        return "healthcare"
-
-    if 8000 <= sic <= 8099:
+    if _contains_any(
+        desc,
+        [
+            "pharmaceutical",
+            "medicinal",
+            "medical",
+            "surgical",
+            "health care",
+            "healthcare",
+            "hospital",
+            "diagnostic",
+            "laboratory",
+            "biological products",
+            "biotechnology",
+        ],
+    ):
         return "healthcare"
 
     # --------------------------------------------------------
     # Technology
     # --------------------------------------------------------
 
-    if 3570 <= sic <= 3579:
-        return "technology"
-
-    if 3670 <= sic <= 3679:
-        return "technology"
-
-    if 7370 <= sic <= 7379:
-        return "technology"
-
-    # Semiconductor description fallback
-    if "semiconductor" in desc:
-        return "technology"
-
-    # Software description fallback
-    if any(
-        word in desc
-        for word in (
+    if _contains_any(
+        desc,
+        [
+            "semiconductor",
             "software",
+            "computer",
+            "electronic",
+            "data processing",
+            "information retrieval",
             "prepackaged software",
             "computer programming",
-            "computer services",
-        )
+            "communication equipment",
+            "electronic component",
+        ],
     ):
         return "technology"
 
@@ -282,93 +449,189 @@ def common_sector_from_sic(
     # Energy
     # --------------------------------------------------------
 
-    energy_sics = {
-        1221, 1222,
-        1311,
-        1381, 1382, 1389,
-        2911,
-        2999,
-    }
-
-    if sic_in(sic, energy_sics):
+    if _contains_any(
+        desc,
+        [
+            "crude petroleum",
+            "natural gas",
+            "petroleum",
+            "oil and gas",
+            "oil & gas",
+            "petroleum refining",
+            "oilfield",
+            "drilling",
+            "exploration",
+        ],
+    ):
         return "energy"
 
-    if "crude petroleum" in desc:
-        return "energy"
+    # --------------------------------------------------------
+    # Utilities
+    # --------------------------------------------------------
 
-    if "natural gas" in desc:
-        return "energy"
+    if _contains_any(
+        desc,
+        [
+            "electric services",
+            "natural gas transmission",
+            "natural gas distribution",
+            "water supply",
+            "sanitary services",
+            "gas services",
+            "utility",
+        ],
+    ):
+        return "utilities"
 
-    if "petroleum refining" in desc:
-        return "energy"
+    # --------------------------------------------------------
+    # Communication
+    # --------------------------------------------------------
+
+    if _contains_any(
+        desc,
+        [
+            "telephone",
+            "telegraph",
+            "radio",
+            "television",
+            "broadcasting",
+            "cable",
+            "communications",
+            "telecommunications",
+        ],
+    ):
+        return "communication"
+
+    # --------------------------------------------------------
+    # Financials
+    # --------------------------------------------------------
+
+    if _contains_any(
+        desc,
+        [
+            "bank",
+            "commercial bank",
+            "savings institution",
+            "security broker",
+            "dealer",
+            "investment advice",
+            "investment company",
+            "asset management",
+            "insurance",
+            "credit",
+            "financial services",
+        ],
+    ):
+        return "financials"
+
+    # --------------------------------------------------------
+    # Real Estate
+    # --------------------------------------------------------
+
+    if _contains_any(
+        desc,
+        [
+            "real estate",
+            "reit",
+            "realty",
+            "real estate investment",
+        ],
+    ):
+        return "real_estate"
 
     # --------------------------------------------------------
     # Materials
     # --------------------------------------------------------
 
-    materials_ranges = (
-        (1000, 1499),
-        (2800, 2829),
-        (2850, 2899),
-        (3200, 3299),
-        (3300, 3399),
-        (3400, 3499),
-    )
-
-    if any(low <= sic <= high for low, high in materials_ranges):
+    if _contains_any(
+        desc,
+        [
+            "steel",
+            "aluminum",
+            "metal mining",
+            "gold",
+            "silver",
+            "copper",
+            "cement",
+            "building materials",
+            "chemicals",
+            "industrial chemicals",
+            "mineral",
+            "paper mill",
+            "paper products",
+        ],
+    ):
         return "materials"
-
-    # --------------------------------------------------------
-    # Industrials
-    # --------------------------------------------------------
-
-    industrial_ranges = (
-        (1500, 1799),
-        (3300, 3999),
-        (4000, 4799),
-    )
-
-    if any(low <= sic <= high for low, high in industrial_ranges):
-        return "industrials"
-
-    # Aircraft / aerospace
-    if sic == 3721:
-        return "industrials"
 
     # --------------------------------------------------------
     # Consumer
     # --------------------------------------------------------
 
-    if 5000 <= sic <= 5999:
-        return "consumer"
-
-    if 7000 <= sic <= 7999:
+    if _contains_any(
+        desc,
+        [
+            "cigarettes",
+            "tobacco",
+            "food",
+            "beverages",
+            "apparel",
+            "clothing",
+            "cosmetics",
+            "perfumes",
+            "soap",
+            "detergents",
+            "retail",
+            "restaurants",
+            "hotels",
+            "amusement",
+            "motion picture",
+            "consumer",
+        ],
+    ):
         return "consumer"
 
     # --------------------------------------------------------
-    # Fallback
+    # Industrials
     # --------------------------------------------------------
+
+    if _contains_any(
+        desc,
+        [
+            "construction",
+            "machinery",
+            "industrial machinery",
+            "aerospace",
+            "aircraft",
+            "defense",
+            "transportation equipment",
+            "fabricated metal",
+            "engineering",
+        ],
+    ):
+        return "industrials"
 
     return "other"
 
 
 # ============================================================
-# 8. COMPANY TYPE
+# 9. COMPANY TYPE
 # ============================================================
 
 def classify_company_type(
     ticker: str,
     company_name: str,
-    sic: int | None,
-    sic_desc: str,
+    sic: Optional[str | int],
+    sic_desc: Optional[str],
 ) -> str:
 
-    ticker = ticker.upper().strip()
-    name = (company_name or "").lower()
-    desc = (sic_desc or "").lower()
+    ticker = (ticker or "").upper().strip()
+    name = _normalize_text(company_name)
+    desc = _normalize_text(sic_desc)
+
+    sic_num = _sic_int(sic)
 
     # --------------------------------------------------------
-    # Manual override first
+    # Manual override
     # --------------------------------------------------------
 
     if ticker in TEST_OVERRIDES:
@@ -378,214 +641,328 @@ def classify_company_type(
     # REIT
     # --------------------------------------------------------
 
-    if sic == 6798:
+    if sic_num == 6798:
         return "reit"
 
-    if "real estate investment trust" in desc:
+    if _contains_any(
+        desc,
+        [
+            "real estate investment trust",
+            "reit",
+        ],
+    ):
         return "reit"
 
-    if " reit" in f" {name} " or name.endswith("reit"):
+    if re.search(r"\breit\b", name):
         return "reit"
 
     # --------------------------------------------------------
     # BDC
     # --------------------------------------------------------
 
-    if "business development company" in desc:
+    if _contains_any(
+        name,
+        [
+            "business development company",
+            "bdc",
+        ],
+    ):
         return "bdc"
 
-    if " bdc" in f" {name} ":
-        return "bdc"
+    # Common BDC wording
+    if _contains_any(
+        desc,
+        [
+            "business development",
+            "closed-end investment company",
+        ],
+    ):
+        if "capital" in name or "income" in name or "bdc" in name:
+            return "bdc"
 
     # --------------------------------------------------------
-    # Bank
+    # BANK
     # --------------------------------------------------------
 
-    bank_sics = {
-        6021, 6022, 6029,
-        6035, 6036,
+    bank_sic = {
+        6021,
+        6022,
+        6029,
+        6035,
+        6036,
     }
 
-    if sic_in(sic, bank_sics):
+    if sic_num in bank_sic:
         return "bank"
 
-    if "national commercial bank" in desc:
-        return "bank"
-
-    if "commercial bank" in desc:
-        return "bank"
-
-    if "savings institution" in desc:
+    if _contains_any(
+        desc,
+        [
+            "national commercial bank",
+            "commercial banks",
+            "state commercial banks",
+            "savings institutions",
+            "federal savings",
+        ],
+    ):
         return "bank"
 
     # --------------------------------------------------------
-    # Broker / Dealer
+    # BROKER / DEALER
     # --------------------------------------------------------
 
-    broker_sics = {
+    broker_sic = {
         6200,
         6211,
         6221,
     }
 
-    if sic_in(sic, broker_sics):
+    if sic_num in broker_sic:
         return "broker_dealer"
 
-    if "security broker" in desc:
+    if _contains_any(
+        desc,
+        [
+            "security brokers",
+            "security dealers",
+            "investment bankers",
+            "broker dealers",
+            "commodity contracts",
+        ],
+    ):
         return "broker_dealer"
 
-    if "commodity broker" in desc:
-        return "broker_dealer"
-
     # --------------------------------------------------------
-    # Asset Manager
+    # ASSET MANAGER
     # --------------------------------------------------------
 
-    if sic == 6282:
+    if sic_num == 6282:
         return "asset_manager"
 
-    if "investment advice" in desc:
+    if _contains_any(
+        desc,
+        [
+            "investment advice",
+            "asset management",
+            "investment management",
+            "portfolio management",
+        ],
+    ):
         return "asset_manager"
 
-    if "asset management" in name:
-        return "asset_manager"
-
-    if "investment management" in name:
+    if _contains_any(
+        name,
+        [
+            "asset management",
+            "capital management",
+            "investment management",
+        ],
+    ):
         return "asset_manager"
 
     # --------------------------------------------------------
-    # Insurance
+    # INSURANCE
     # --------------------------------------------------------
 
-    insurance_sics = {
-        6311, 6321, 6324,
-        6331, 6351, 6361,
-        6399, 6411,
+    insurance_sic = {
+        6311,
+        6321,
+        6324,
+        6331,
+        6351,
+        6361,
+        6399,
+        6411,
     }
 
-    if sic_in(sic, insurance_sics):
+    if sic_num in insurance_sic:
         return "insurance"
 
     if "insurance" in desc:
         return "insurance"
 
     # --------------------------------------------------------
-    # Utility
+    # UTILITY
     # --------------------------------------------------------
 
-    if 4900 <= (sic or -1) <= 4999:
+    if sic_num is not None and 4900 <= sic_num <= 4999:
+        return "utility"
+
+    if _contains_any(
+        desc,
+        [
+            "electric services",
+            "natural gas transmission",
+            "natural gas distribution",
+            "water supply",
+            "utility",
+        ],
+    ):
         return "utility"
 
     # --------------------------------------------------------
-    # Telecom
+    # TELECOM
     # --------------------------------------------------------
 
-    if 4800 <= (sic or -1) <= 4899:
+    if sic_num is not None and 4800 <= sic_num <= 4899:
         return "telecom"
 
-    if "telephone" in desc:
-        return "telecom"
-
-    if "telecommunications" in desc:
+    if _contains_any(
+        desc,
+        [
+            "telephone communications",
+            "telecommunications",
+            "telephone",
+            "cable television",
+            "broadcasting",
+        ],
+    ):
         return "telecom"
 
     # --------------------------------------------------------
-    # Oil / Gas
+    # OIL / GAS
     # --------------------------------------------------------
 
-    oil_gas_sics = {
+    oil_gas_sic = {
         1311,
-        1381, 1382, 1389,
+        1381,
+        1382,
+        1389,
         2911,
         2999,
     }
 
-    if sic_in(sic, oil_gas_sics):
+    if sic_num in oil_gas_sic:
         return "oil_gas"
 
-    if "crude petroleum" in desc:
-        return "oil_gas"
-
-    if "petroleum refining" in desc:
+    if _contains_any(
+        desc,
+        [
+            "crude petroleum",
+            "natural gas",
+            "petroleum refining",
+            "oil and gas",
+            "oil & gas",
+            "oilfield",
+            "drilling",
+        ],
+    ):
         return "oil_gas"
 
     # --------------------------------------------------------
-    # Midstream
+    # MIDSTREAM
     # --------------------------------------------------------
 
-    midstream_words = (
-        "pipeline",
-        "natural gas transmission",
-        "natural gas distribution",
-    )
+    if _contains_any(
+        name,
+        [
+            "midstream",
+            "pipeline",
+            "partners",
+        ],
+    ):
+        if _contains_any(
+            desc,
+            [
+                "natural gas",
+                "petroleum",
+                "pipeline",
+                "crude petroleum",
+            ],
+        ):
+            return "midstream"
 
-    if any(word in name for word in midstream_words):
-        return "midstream"
-
-    if any(word in desc for word in midstream_words):
+    if _contains_any(
+        desc,
+        [
+            "pipeline transportation",
+            "natural gas transmission",
+        ],
+    ):
         return "midstream"
 
     # --------------------------------------------------------
     # MLP
     # --------------------------------------------------------
 
-    if "limited partnership" in name:
-        return "mlp"
+    if _contains_any(
+        name,
+        [
+            "limited partnership",
+            "lp",
+        ],
+    ):
+        if "energy" in name or "midstream" in name or "pipeline" in name:
+            return "mlp"
 
     # --------------------------------------------------------
-    # Holding company
+    # HOLDING COMPANY
     # --------------------------------------------------------
 
     if "holding company" in desc:
+        return "holding"
+
+    if re.search(r"\bholdings?\b", name):
         return "holding"
 
     # --------------------------------------------------------
     # SPAC
     # --------------------------------------------------------
 
-    spac_words = (
-        "acquisition corp",
-        "acquisition company",
-        "blank check",
-    )
-
-    if any(word in name for word in spac_words):
+    if _contains_any(
+        name,
+        [
+            "acquisition corp",
+            "acquisition corporation",
+            "blank check",
+        ],
+    ):
         return "spac"
 
-    if "blank check" in desc:
+    if _contains_any(
+        desc,
+        [
+            "blank check",
+            "shell companies",
+        ],
+    ):
         return "spac"
 
     # --------------------------------------------------------
-    # Closed-end fund
+    # CLOSED-END FUND
     # --------------------------------------------------------
 
-    if "closed-end" in desc:
-        return "closed_end_fund"
-
-    if "closed end" in desc:
+    if _contains_any(
+        desc,
+        [
+            "closed-end management investment company",
+            "closed-end investment company",
+        ],
+    ):
         return "closed_end_fund"
 
     return "standard"
 
 
 # ============================================================
-# 9. FULL CLASSIFICATION
+# 10. COMPANY CLASSIFICATION
 # ============================================================
 
 def classify_company(
     ticker: str,
     company_name: str,
-    sic: int | None,
-    sic_desc: str,
-) -> dict[str, Any]:
+    sic: Optional[str | int],
+    sic_desc: Optional[str],
+) -> dict:
 
-    ticker = ticker.upper().strip()
+    ticker = (ticker or "").upper().strip()
 
     # --------------------------------------------------------
-    # 1. Override
+    # 1. Manual override
     # --------------------------------------------------------
 
     if ticker in TEST_OVERRIDES:
+
         override = TEST_OVERRIDES[ticker]
 
         sector_common = override["sector_common"]
@@ -593,17 +970,12 @@ def classify_company(
         scoring_profile = override["scoring_profile"]
 
         return {
-            "ticker": ticker,
-            "company_name": company_name,
-            "sic_code": sic,
-            "sector_source": "SEC SIC",
+            "sector_source": "SEC_SIC",
             "sector_raw": sic_desc,
             "sector_common": sector_common,
             "sector_common_ko": COMMON_SECTORS[sector_common],
             "company_type": company_type,
             "scoring_profile": scoring_profile,
-            "classification_reason": override["reason"],
-            "classification_source": "manual_test_override",
         }
 
     # --------------------------------------------------------
@@ -611,10 +983,10 @@ def classify_company(
     # --------------------------------------------------------
 
     company_type = classify_company_type(
-        ticker,
-        company_name,
-        sic,
-        sic_desc,
+        ticker=ticker,
+        company_name=company_name,
+        sic=sic,
+        sic_desc=sic_desc,
     )
 
     # --------------------------------------------------------
@@ -622,283 +994,319 @@ def classify_company(
     # --------------------------------------------------------
 
     sector_common = common_sector_from_sic(
-        sic,
-        sic_desc,
+        sic=sic,
+        sic_desc=sic_desc,
     )
 
     # --------------------------------------------------------
-    # 4. Profile
+    # 4. Financial special handling
     # --------------------------------------------------------
 
-    scoring_profile = COMPANY_TYPE_TO_PROFILE.get(
+    if company_type in {
+        "bank",
+        "insurance",
+        "asset_manager",
+        "broker_dealer",
+        "bdc",
+    }:
+        sector_common = "financials"
+
+    elif company_type in {
+        "reit",
+        "real_estate_company",
+    }:
+        sector_common = "real_estate"
+
+    elif company_type == "utility":
+        sector_common = "utilities"
+
+    elif company_type == "telecom":
+        sector_common = "communication"
+
+    elif company_type in {
+        "oil_gas",
+        "midstream",
+        "mlp",
+    }:
+        sector_common = "energy"
+
+    # --------------------------------------------------------
+    # 5. Scoring profile
+    # --------------------------------------------------------
+
+    scoring_profile = PROFILE_BY_COMPANY_TYPE.get(
         company_type,
         "standard",
     )
 
     return {
-        "ticker": ticker,
-        "company_name": company_name,
-        "sic_code": sic,
-        "sector_source": "SEC SIC",
+        "sector_source": "SEC_SIC",
         "sector_raw": sic_desc,
         "sector_common": sector_common,
-        "sector_common_ko": COMMON_SECTORS[sector_common],
+        "sector_common_ko": COMMON_SECTORS.get(
+            sector_common,
+            COMMON_SECTORS["other"],
+        ),
         "company_type": company_type,
         "scoring_profile": scoring_profile,
-        "classification_reason": "automatic SIC/name classification",
-        "classification_source": "automatic",
     }
 
 
 # ============================================================
-# 10. SEC CLIENT
+# 11. SEC HELPERS
 # ============================================================
 
 SEC_HEADERS = {
-    "User-Agent": "Fundamental-app contact@example.com",
-    "Accept-Encoding": "gzip, deflate",
+    "User-Agent": "Fundamental Korea research contact@example.com"
 }
 
 
-def fetch_json(
-    session: requests.Session,
-    url: str,
-    retries: int = 3,
-) -> dict:
+def get_sec_submissions(ticker: str) -> dict:
+    """
+    SEC submissions API에서 ticker → CIK → submission data 조회.
 
-    for attempt in range(retries):
-        response = session.get(
-            url,
-            headers=SEC_HEADERS,
-            timeout=30,
-        )
+    실제 실행은 requests가 설치된 환경에서 한다.
+    """
 
-        if response.status_code == 200:
-            return response.json()
+    import requests
 
-        if response.status_code in {
-            429, 500, 502, 503, 504
-        }:
-            time.sleep(1.5 * (attempt + 1))
-            continue
+    ticker = ticker.upper().strip()
 
-        response.raise_for_status()
+    headers = SEC_HEADERS
 
-    raise RuntimeError(
-        f"SEC request failed: {url}"
+    # --------------------------------------------------------
+    # SEC company tickers
+    # --------------------------------------------------------
+
+    tickers_url = "https://www.sec.gov/files/company_tickers.json"
+
+    response = requests.get(
+        tickers_url,
+        headers=headers,
+        timeout=30,
     )
+    response.raise_for_status()
 
+    data = response.json()
 
-def get_sec_company(
-    session: requests.Session,
-    cik: str,
-) -> dict:
-
-    cik10 = str(cik).zfill(10)
-
-    return fetch_json(
-        session,
-        f"https://data.sec.gov/submissions/CIK{cik10}.json",
-    )
-
-
-# ============================================================
-# 11. COMPANY TICKER MASTER
-# ============================================================
-
-def load_sec_ticker_master(
-    session: requests.Session,
-) -> dict[str, dict]:
-
-    data = fetch_json(
-        session,
-        "https://www.sec.gov/files/company_tickers.json",
-    )
-
-    result = {}
+    found = None
 
     for item in data.values():
-        ticker = str(
-            item.get("ticker", "")
-        ).upper().strip()
 
-        if not ticker:
-            continue
+        if item.get("ticker", "").upper() == ticker:
+            found = item
+            break
 
-        result[ticker] = {
-            "ticker": ticker,
-            "cik": str(item.get("cik_str", "")).zfill(10),
-            "company_name": item.get(
-                "title",
-                "",
-            ),
-        }
-
-    return result
-
-
-# ============================================================
-# 12. TEST 30
-# ============================================================
-
-def run_test30():
-
-    session = requests.Session()
-
-    print("=" * 110)
-    print("US CLASSIFICATION ENGINE v1 — 30 COMPANY DRY RUN")
-    print("=" * 110)
-
-    master = load_sec_ticker_master(session)
-
-    results = []
-
-    for ticker, korean_name in TEST_COMPANIES.items():
-
-        row = master.get(ticker)
-
-        if not row:
-            print(
-                f"[MISSING SEC MASTER] {ticker}"
-            )
-            continue
-
-        submissions = get_sec_company(
-            session,
-            row["cik"],
+    if not found:
+        raise ValueError(
+            f"SEC company ticker not found: {ticker}"
         )
 
-        sic_raw = submissions.get("sic")
+    cik = str(found["cik_str"]).zfill(10)
+
+    submissions_url = (
+        f"https://data.sec.gov/submissions/CIK{cik}.json"
+    )
+
+    response = requests.get(
+        submissions_url,
+        headers=headers,
+        timeout=30,
+    )
+    response.raise_for_status()
+
+    return response.json()
+
+
+# ============================================================
+# 12. SINGLE COMPANY TEST
+# ============================================================
+
+def run_single_test(ticker: str) -> None:
+
+    submissions = get_sec_submissions(ticker)
+
+    name = submissions.get("name") or ticker
+    sic = submissions.get("sic")
+    sic_desc = submissions.get("sicDescription")
+
+    result = classify_company(
+        ticker=ticker,
+        company_name=name,
+        sic=sic,
+        sic_desc=sic_desc,
+    )
+
+    print()
+    print("=" * 80)
+    print(f"{ticker.upper()} | {name}")
+    print("=" * 80)
+    print(f"SIC              : {sic}")
+    print(f"SIC description  : {sic_desc}")
+    print(f"sector_common    : {result['sector_common']}")
+    print(f"sector_common_ko : {result['sector_common_ko']}")
+    print(f"company_type     : {result['company_type']}")
+    print(f"scoring_profile  : {result['scoring_profile']}")
+    print()
+
+
+# ============================================================
+# 13. REPRESENTATIVE TEST
+# ============================================================
+
+def run_test30() -> None:
+
+    print("=" * 100)
+    print("US CLASSIFICATION REPRESENTATIVE TEST")
+    print(f"Companies: {len(TEST_COMPANIES)}")
+    print("=" * 100)
+
+    success = 0
+    failed = 0
+
+    for idx, ticker in enumerate(TEST_COMPANIES, start=1):
 
         try:
-            sic = int(sic_raw)
-        except (
-            TypeError,
-            ValueError,
-        ):
-            sic = None
 
-        sic_desc = (
-            submissions.get(
-                "sicDescription"
+            submissions = get_sec_submissions(ticker)
+
+            name = submissions.get("name") or ticker
+            sic = submissions.get("sic")
+            sic_desc = submissions.get("sicDescription")
+
+            result = classify_company(
+                ticker=ticker,
+                company_name=name,
+                sic=sic,
+                sic_desc=sic_desc,
             )
-            or ""
-        )
+
+            print(
+                f"[{idx:02d}/{len(TEST_COMPANIES)}] "
+                f"{ticker:<6} | "
+                f"{result['sector_common']:<13} | "
+                f"{result['company_type']:<18} | "
+                f"{result['scoring_profile']}"
+            )
+
+            success += 1
+
+        except Exception as e:
+
+            print(
+                f"[{idx:02d}/{len(TEST_COMPANIES)}] "
+                f"{ticker:<6} | FAILED | {e}"
+            )
+
+            failed += 1
+
+    print()
+    print("-" * 100)
+    print(f"Success : {success}")
+    print(f"Failed  : {failed}")
+    print("-" * 100)
+
+
+# ============================================================
+# 14. LOCAL SIC TEST
+# ============================================================
+
+def run_sic_tests() -> None:
+
+    cases = [
+        ("PG", "Procter & Gamble", 2840,
+         "Soap, Detergents, Cleaning Preparations, Perfumes, Cosmetics"),
+
+        ("PM", "Philip Morris", 2111,
+         "Cigarettes"),
+
+        ("CYATY", "China Yatai", 2834,
+         "Pharmaceutical Preparations"),
+
+        ("AAPL", "Apple", 3571,
+         "Electronic Computers"),
+
+        ("MSFT", "Microsoft", 7372,
+         "Services-Prepackaged Software"),
+
+        ("NVDA", "NVIDIA", 3674,
+         "Semiconductors & Related Devices"),
+
+        ("JPM", "JPMorgan Chase", 6021,
+         "National Commercial Banks"),
+
+        ("GS", "Goldman Sachs", 6211,
+         "Security Brokers, Dealers & Flot"),
+
+        ("MS", "Morgan Stanley", 6211,
+         "Security Brokers, Dealers & Flot"),
+
+        ("BLK", "BlackRock", 6211,
+         "Security Brokers, Dealers & Flot"),
+    ]
+
+    print("=" * 100)
+    print("LOCAL SIC MAPPING TEST")
+    print("=" * 100)
+
+    for ticker, name, sic, desc in cases:
 
         result = classify_company(
             ticker=ticker,
-            company_name=row["company_name"],
+            company_name=name,
             sic=sic,
-            sic_desc=sic_desc,
+            sic_desc=desc,
         )
-
-        result["company_name_ko"] = korean_name
-        result["cik"] = row["cik"]
-
-        results.append(result)
 
         print(
             f"{ticker:<6} | "
-            f"{korean_name:<16} | "
-            f"SIC {str(sic):<5} | "
-            f"{sic_desc[:32]:<32} | "
-            f"{result['sector_common_ko']:<8} | "
+            f"SIC {sic:<5} | "
+            f"{result['sector_common']:<13} | "
             f"{result['company_type']:<18} | "
             f"{result['scoring_profile']}"
         )
 
-        time.sleep(0.15)
-
-    print("=" * 110)
-    print(
-        f"Completed: {len(results)}/{len(TEST_COMPANIES)}"
-    )
-    print("=" * 110)
-
-    return results
-
 
 # ============================================================
-# 13. SINGLE TEST
-# ============================================================
-
-def run_single(ticker: str):
-
-    session = requests.Session()
-
-    master = load_sec_ticker_master(session)
-
-    ticker = ticker.upper().strip()
-
-    row = master.get(ticker)
-
-    if not row:
-        raise RuntimeError(
-            f"{ticker} not found in SEC company master"
-        )
-
-    submissions = get_sec_company(
-        session,
-        row["cik"],
-    )
-
-    sic_raw = submissions.get("sic")
-
-    try:
-        sic = int(sic_raw)
-    except (
-        TypeError,
-        ValueError,
-    ):
-        sic = None
-
-    sic_desc = (
-        submissions.get(
-            "sicDescription"
-        )
-        or ""
-    )
-
-    result = classify_company(
-        ticker,
-        row["company_name"],
-        sic,
-        sic_desc,
-    )
-
-    for key, value in result.items():
-        print(f"{key}: {value}")
-
-    return result
-
-
-# ============================================================
-# 14. CLI
+# 15. CLI
 # ============================================================
 
 def main():
 
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument(
-        "--test30",
-        action="store_true",
-        help="Run representative 30-company classification test",
+    parser = argparse.ArgumentParser(
+        description="US SEC/SIC company classification"
     )
 
     parser.add_argument(
         "--ticker",
-        help="Classify one ticker",
+        type=str,
+        help="Test a single ticker",
+    )
+
+    parser.add_argument(
+        "--test30",
+        action="store_true",
+        help="Run representative company test",
+    )
+
+    parser.add_argument(
+        "--test-sic",
+        action="store_true",
+        help="Run local SIC mapping tests",
     )
 
     args = parser.parse_args()
 
-    if args.test30:
-        run_test30()
+    if args.ticker:
+        run_single_test(args.ticker)
         return
 
-    if args.ticker:
-        run_single(args.ticker)
+    if args.test_sic:
+        run_sic_tests()
+        return
+
+    if args.test30:
+        run_test30()
         return
 
     parser.print_help()
