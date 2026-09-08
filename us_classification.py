@@ -158,6 +158,12 @@ TEST_COMPANIES = {
 #
 
 TEST_OVERRIDES = {
+    "BLK": {
+        "sector_common": "financials",
+        "company_type": "asset_manager",
+        "scoring_profile": "financial",
+        "reason": "SEC SIC 6211 but primary business is asset management",
+    },
     "GSBD": {
         "sector_common": "financials",
         "company_type": "bdc",
