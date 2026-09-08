@@ -934,13 +934,18 @@ def fetch_year_data(stock_code, year, use_ofs_for_manufacturing=True):
     return result
 
 
-def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_manufacturing=True, kospi_mdd_cache=None):
+def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_manufacturing=True, kospi_mdd_cache=None, downturn_defense_override=None):
     """
     periods(예: 1/3/5/10년)별로 '평균 기준'과 '최악 기준' 지표 세트를 각각 계산.
     - 비율 지표(opm, roic, debt_rate 등): 기간 내 연도별 값의 평균 / 최악값
     - 성장률 지표(revenue_growth, eps_growth): 기간 시작~종료 연도 CAGR (평균/최악 공통)
     - downturn_defense: 과거 특정 하락장 구간 기준 고정값이라 기간과 무관하게 모든 period에 동일 주입
     각 period는 CAGR 계산을 위해 (period + 1)개 연도 데이터가 필요.
+
+    downturn_defense_override: 이미 계산해둔 downturn_defense 값이 있으면 그대로 사용하고
+    calculate_downturn_defense()(fdr.DataReader 호출 필요)를 건너뛴다. KRX/fdr 없이 DART
+    데이터만으로 period_scores를 재계산해야 할 때(예: KRX 로그인 정책 변경으로 fdr이 막혔을
+    때) 사용 - sync_1y_only()의 기존값 재사용 패턴과 동일한 목적.
     """
     base_year = get_latest_annual_year()
     max_period = max(periods)
@@ -957,9 +962,10 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
         print(f"❌ [{stock_code}] 최신 확정연도({base_year}) 데이터가 없어 분석할 수 없습니다.")
         return None
 
-    # 하락장 실제 방어력 - 기간(1/3/5/10년)과 무관한 고정값이므로 한 번만 계산
-    downturn_defense = None
-    if kospi_mdd_cache:
+    # 하락장 실제 방어력 - 기간(1/3/5/10년)과 무관한 고정값이므로 한 번만 계산.
+    # override가 주어지면 재계산(fdr.DataReader 호출) 자체를 생략.
+    downturn_defense = downturn_defense_override
+    if downturn_defense is None and kospi_mdd_cache:
         downturn_defense = calculate_downturn_defense(stock_code, kospi_mdd_cache)
         print(f"  📉 하락장 실제 방어력(코스피 대비): {downturn_defense}%p" if downturn_defense is not None else "  📉 하락장 방어력: 데이터 부족으로 계산 불가")
 
