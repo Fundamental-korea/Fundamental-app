@@ -1279,18 +1279,86 @@ else:
         st.markdown("<br>", unsafe_allow_html=True)
 
         # 10개 지표별 표시용 메타데이터 (scoring.py의 METRIC_KEYS와 정확히 일치)
+        # 초보자 친화적 구조: title(한글 우선) / english / summary(한 줄 요약, 쉬운 말) /
+        # why(왜 중요한지, 비유 포함) / rule_of_thumb(이 정도면 좋다는 감 잡는 기준선)
         METRIC_DISPLAY = {
-            "revenue_growth": ("1. Revenue Growth", "매출액 성장률: 기업의 외형 성장세와 하락장 속 시장 점유율 유지 능력을 측정합니다."),
-            "eps_growth": ("2. EPS Growth", "순이익 성장률: 주주 가치 창출 능력의 핵심 지표로, 순이익의 실질적 증가세를 평가합니다."),
-            "opm": ("3. OPM", "영업이익률: 본업에서의 수익 창출 효율성 및 고금리/원가 상승 방어력을 나타냅니다."),
-            "roic": ("4. ROIC", "투하자본이익률: 차입금 레버리지를 배제하고 실제 영업투하자본 대비 순수익 창출력을 평가합니다."),
-            "debt_rate": ("5. Debt Rate", "부채비율: 하락장 및 고금리 환경에서 기업의 재무적 생존 가능성과 이자 부담 위험을 평가합니다."),
-            "quick_ratio": ("6. Quick Ratio", "당좌비율: 재고자산을 제외한 단기 채무 지급 능력을 측정하여 위기 시 유동성 방어력을 평가합니다."),
-            "interest_coverage": ("7. Interest Coverage", "이자보상배율: 영업이익으로 이자비용을 감당할 수 있는 수치로, 채무불이행 위험을 방어합니다."),
-            "ocf_ratio": ("8. OCF Ratio", "영업활동현금흐름/순이익 비율: 장부상 이익이 아닌 실제 유입되는 현금 체력의 우수성을 나타냅니다."),
-            "sga_ratio": ("9. SG&A Ratio", "판관비율: 매출 대비 판매관리비 비중으로, 기업의 비용 통제 및 경영 효율성을 보여줍니다."),
-            "downturn_defense": ("10. Downturn Defense", "하락장 실제 방어력: 과거 주요 하락장(코로나, 2022년 긴축 등)에서 코스피 지수 대비 덜 하락한 정도(%p)를 반영합니다."),
-            "roa": ("4-B. ROA (금융업 전용)", "총자산이익률: 금융업종은 레버리지 구조상 ROIC 대신 총자산 대비 순이익 창출력으로 대체 평가합니다."),
+            "revenue_growth": {
+                "title": "1. 매출 성장률",
+                "english": "Revenue Growth",
+                "summary": "회사가 파는 물건·서비스가 작년보다 얼마나 더 팔렸는지 보여줘요.",
+                "why": "매출이 꾸준히 늘어난다는 건 소비자들이 이 회사 제품·서비스를 계속 더 많이 찾는다는 뜻이에요. 특히 경기가 안 좋을 때도 매출을 지켜내는 회사는 그만큼 시장에서 입지가 탄탄하다고 볼 수 있어요.",
+                "rule_of_thumb": "연 8% 이상이면 준수, 25% 이상이면 매우 우수한 성장세예요.",
+            },
+            "eps_growth": {
+                "title": "2. 순이익 성장률 (EPS)",
+                "english": "EPS Growth",
+                "summary": "주식 1주당 회사가 벌어들인 돈이 작년보다 얼마나 늘었는지 보여줘요.",
+                "why": "매출이 늘어도 비용이 더 늘면 실속이 없겠죠. 이 지표는 '진짜로 주주 몫이 얼마나 커졌는지'를 보여주는 핵심 숫자예요. 결국 주가는 이 순이익 성장을 뒤따라가는 경향이 있어요.",
+                "rule_of_thumb": "연 6% 이상이면 양호, 20% 이상이면 매우 우수해요.",
+            },
+            "opm": {
+                "title": "3. 영업이익률",
+                "english": "OPM (Operating Profit Margin)",
+                "summary": "물건을 팔아서 남긴 매출 중, 본업으로 실제 남긴 이익이 몇 %인지 보여줘요.",
+                "why": "매출이 크더라도 남는 게 없으면 소용없죠. 영업이익률이 높다는 건 회사가 원가·비용을 잘 통제하며 돈을 벌고 있다는 뜻이에요. 금리가 오르거나 원자재값이 뛰어도 버틸 체력이 있다는 신호이기도 해요.",
+                "rule_of_thumb": "10% 이상이면 양호, 20% 이상이면 매우 우수한 수익성이에요.",
+            },
+            "roic": {
+                "title": "4. 투하자본이익률",
+                "english": "ROIC (Return on Invested Capital)",
+                "summary": "회사가 사업에 투입한 돈 대비 얼마나 효율적으로 이익을 냈는지 보여줘요.",
+                "why": "빚을 잔뜩 내서 이익을 낸 회사와, 자기 돈으로 효율적으로 이익을 낸 회사는 질이 달라요. ROIC는 '빌린 돈 효과'를 걷어내고 진짜 사업 실력만 보여주는 지표라, 장기투자자들이 특히 중요하게 보는 숫자예요.",
+                "rule_of_thumb": "7% 이상이면 양호, 15% 이상이면 매우 우수해요.",
+            },
+            "debt_rate": {
+                "title": "5. 부채비율",
+                "english": "Debt Rate",
+                "summary": "회사가 자기 돈(자본) 대비 빚(부채)을 얼마나 지고 있는지 보여줘요.",
+                "why": "빚이 너무 많으면 경기가 나빠지거나 금리가 오를 때 이자 갚기도 벅차서 회사가 휘청일 수 있어요. 하락장에서 살아남는 회사와 무너지는 회사를 가르는 대표적인 지표예요.",
+                "rule_of_thumb": "낮을수록 좋아요. 100% 이하면 안전한 편, 40% 이하면 매우 우수해요.",
+            },
+            "quick_ratio": {
+                "title": "6. 당좌비율",
+                "english": "Quick Ratio",
+                "summary": "당장 팔기 어려운 재고를 빼고도, 단기 빚을 갚을 현금성 자산이 충분한지 보여줘요.",
+                "why": "재고자산은 급하게 현금화하기 어려울 수 있어요. 이 지표가 높을수록 갑자기 돈이 필요한 위기 상황에서도 회사가 버틸 체력이 있다는 뜻이에요.",
+                "rule_of_thumb": "100% 이상이면 안전, 150% 이상이면 매우 우수해요.",
+            },
+            "interest_coverage": {
+                "title": "7. 이자보상배율",
+                "english": "Interest Coverage",
+                "summary": "회사가 벌어들인 영업이익으로 이자를 몇 배나 감당할 수 있는지 보여줘요.",
+                "why": "이 숫자가 1보다 작으면 번 돈으로 이자도 못 갚는다는 뜻이라 위험 신호예요. 숫자가 클수록 빚 부담에서 여유롭고 안전하다는 의미예요.",
+                "rule_of_thumb": "5배 이상이면 양호, 15배 이상이면 매우 안전한 수준이에요.",
+            },
+            "ocf_ratio": {
+                "title": "8. 영업현금흐름 비율",
+                "english": "OCF Ratio",
+                "summary": "장부상 이익이 아니라, 실제로 통장에 들어온 현금이 순이익 대비 얼마나 되는지 보여줘요.",
+                "why": "회계상 이익은 있는데 실제 현금은 잘 안 들어오는 '이익의 질'이 낮은 회사들이 있어요. 이 비율이 100% 이상이면 장부상 이익만큼(또는 그 이상) 실제 현금도 잘 들어오고 있다는 뜻이라 신뢰도가 높아요.",
+                "rule_of_thumb": "1.0(100%) 이상이면 양호, 1.3 이상이면 매우 우수해요.",
+            },
+            "sga_ratio": {
+                "title": "9. 판관비율",
+                "english": "SG&A Ratio",
+                "summary": "매출 대비 광고비·인건비 등 판매관리비를 얼마나 쓰고 있는지 보여줘요.",
+                "why": "비용을 효율적으로 관리하는 회사는 같은 매출로도 더 많은 이익을 남길 수 있어요. 이 비율이 낮을수록 비용 통제를 잘하고 있다는 뜻이에요.",
+                "rule_of_thumb": "낮을수록 좋아요. 20% 이하면 양호, 12% 이하면 매우 우수해요.",
+            },
+            "downturn_defense": {
+                "title": "10. 하락장 방어력",
+                "english": "Downturn Defense",
+                "summary": "코로나 폭락, 2022년 긴축장 같은 실제 하락장에서 이 종목이 코스피보다 덜 떨어졌는지 실측으로 보여줘요.",
+                "why": "재무제표 숫자와 별개로 '진짜 위기 때 이 주식이 얼마나 안 흔들렸는지'를 과거 데이터로 직접 확인하는 지표예요. 하락장 방어라는 이 앱의 핵심 컨셉과 가장 직결된 지표예요.",
+                "rule_of_thumb": "0%p 이상이면 코스피보다 덜 빠진 것(양호), 10%p 이상이면 매우 방어적이에요.",
+            },
+            "roa": {
+                "title": "4-B. 총자산이익률 (금융업 전용)",
+                "english": "ROA",
+                "summary": "은행·보험 등 금융회사가 가진 전체 자산 대비 얼마나 효율적으로 이익을 냈는지 보여줘요.",
+                "why": "금융회사는 예금·대출 구조가 일반 기업과 달라서, 이 앱은 ROIC 대신 이 지표로 금융업의 수익성을 평가해요.",
+                "rule_of_thumb": "0.6% 이상이면 양호, 1.2% 이상이면 매우 우수해요.",
+            },
         }
         METRIC_ORDER = list(METRIC_DISPLAY.keys())
 
@@ -1549,7 +1617,8 @@ else:
                             # roa는 금융업이 아닌 경우 metric_scores에 아예 없으므로 스킵
                             continue
 
-                        title, desc = METRIC_DISPLAY[metric_key]
+                        meta = METRIC_DISPLAY[metric_key]
+                        title = meta["title"]
                         value = entry.get("value")
                         score = entry.get("score")
                         excluded = entry.get("excluded_from_total", False)
@@ -1571,8 +1640,9 @@ else:
                             value_display = "N/A"
 
                         # revenue_growth/eps_growth가 raw_value로 표시된 경우, 왜 점수 계산에선
-                        # 제외됐는지 안내 (전년 기저값이 지나치게 작아 증가율이 왜곡되는 걸 막는
-                        # 안전장치: sanitize_growth, |증가율| > 500% 시 채점용 value만 None 처리)
+                        # 제외됐는지 안내 (구버전 데이터 - sanitize_growth가 값을 null 처리하던
+                        # 시절의 잔여 케이스). 새로 재수집된 종목은 이제 값이 null 처리되지 않고
+                        # 그대로 채점되며, 대신 아래 is_extreme 플래그로 "이례적 수치" 안내만 붙는다.
                         growth_guard_note = ""
                         if metric_key in ("revenue_growth", "eps_growth") and value is None and entry.get("raw_value") is not None:
                             growth_guard_note = (
@@ -1586,6 +1656,14 @@ else:
                                 "<br><span style='font-size:12px; color:#92400E;'>"
                                 "ℹ️ 전년 동기 데이터 자체가 없어 증가율을 계산할 수 없습니다."
                                 "</span>"
+                            )
+                        elif metric_key in ("revenue_growth", "eps_growth") and entry.get("is_extreme"):
+                            # 500% 초과 등 이례적으로 큰(혹은 작은) 수치 - 점수 자체는 정상적으로
+                            # 반영됨(구간표가 이미 상/하한을 캡 처리), 참고용 안내만 표시
+                            growth_guard_note = (
+                                "<br><span style='font-size:12px; color:#92400E;'>"
+                                "ℹ️ 전년 동기 대비 변동폭이 매우 커서(기저효과 등) 수치가 이례적으로 "
+                                "크게 나왔습니다. 점수에는 정상 반영되었습니다.</span>"
                             )
                         # 이자비용을 못 찾아 금융비용(포괄 비용)으로 근사 계산된 경우 안내
                         if metric_key == "interest_coverage" and entry.get("is_approximate"):
@@ -1612,7 +1690,13 @@ else:
                         expander_label = f"{title}   |   실측값 {value_display}   |   {score_emoji} {score_display}"
 
                         with st.expander(expander_label):
-                            st.markdown(f"{desc}{growth_guard_note}", unsafe_allow_html=True)
+                            st.caption(meta["english"])
+                            st.markdown(f"**{meta['summary']}**")
+                            st.markdown(
+                                f"💡 **왜 중요할까요?**<br>{meta['why']}{growth_guard_note}",
+                                unsafe_allow_html=True,
+                            )
+                            st.markdown(f"📊 **기준선**: {meta['rule_of_thumb']}")
                             st.markdown("---")
 
 
