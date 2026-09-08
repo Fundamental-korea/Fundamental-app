@@ -122,9 +122,13 @@ def classify_from_sec(
 
     submissions = fetch_sec_submissions(cik)
 
-    sic_raw = submissions.get("sic")
-    sic_desc = submissions.get("sicDescription") or ""
+    sic = submissions.get("sic")
 
+# SEC submissions에 SIC가 없으면 US_Companies의 기존 SIC 사용
+    if not sic:
+    sic = row.get("sic_code")
+
+    sic_description = submissions.get("sicDescription")
     try:
         sic = int(sic_raw) if sic_raw is not None else None
     except (TypeError, ValueError):
@@ -185,7 +189,7 @@ def get_eligible_companies() -> list[dict[str, Any]]:
             supabase
             .table("US_Companies")
             .select(
-                "ticker,cik,company_name"
+                "ticker,cik,company_name,sic_code"
             )
             .eq(
                 "is_fundamental_eligible",
