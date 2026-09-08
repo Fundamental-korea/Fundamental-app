@@ -59,15 +59,13 @@ SECTOR_COMMON_KO = {
 # ============================================================
 
 # SEC submissions와 US_Companies 양쪽에서 SIC가 없는
-# 일부 기업을 위한 최소한의 수동 override.
+# 일부 기업을 위한 수동 override.
 #
 # CYATY:
 # Contemporary Amperex Technology Co., Limited/ADR
-# SEC submissions에 SIC가 제공되지 않음.
 #
-# SIC 2834 = Pharmaceutical Preparations
-#
-# 실제 분류 목적상 healthcare로 처리한다.
+# SEC submissions에는 SIC가 제공되지 않기 때문에
+# SIC 2834를 사용하여 healthcare로 분류한다.
 MANUAL_SIC_OVERRIDES = {
     "CYATY": 2834,
 }
@@ -139,6 +137,15 @@ def classify_from_sec(
     cik: str,
     existing_sic: Any = None,
 ) -> dict[str, Any]:
+    """
+    SEC metadata를 기반으로 기업 classification을 수행한다.
+
+    SIC 우선순위:
+
+    1. SEC submissions SIC
+    2. US_Companies 기존 sic_code
+    3. MANUAL_SIC_OVERRIDES
+    """
 
     submissions = fetch_sec_submissions(cik)
 
@@ -151,7 +158,7 @@ def classify_from_sec(
     sector_source = "SEC_SIC"
 
     # --------------------------------------------------------
-    # 2. US_Companies에 이미 존재하는 SIC fallback
+    # 2. 기존 US_Companies SIC fallback
     # --------------------------------------------------------
 
     if not sic_raw and existing_sic is not None:
@@ -175,7 +182,7 @@ def classify_from_sec(
     except (TypeError, ValueError):
         sic = None
 
-    # 숫자 변환 실패 후에도 manual override가 필요한 경우
+    # 변환 실패 후에도 manual override 적용
     if sic is None and ticker in MANUAL_SIC_OVERRIDES:
         sic = MANUAL_SIC_OVERRIDES[ticker]
         sector_source = "MANUAL_OVERRIDE"
@@ -197,7 +204,6 @@ def classify_from_sec(
         sic_desc=sic_desc,
     )
 
-    # classify_company() 결과가 dict인지 확인
     if not isinstance(result, dict):
         raise RuntimeError(
             f"{ticker}: classify_company()가 dict를 반환하지 않았습니다: "
@@ -213,7 +219,7 @@ def classify_from_sec(
         "기타",
     )
 
-    # SIC가 완전히 없는 경우
+    # SIC를 최종적으로 얻지 못한 경우
     if sic is None:
         sector_source = "UNAVAILABLE"
 
@@ -308,13 +314,37 @@ def save_classification(
 
 def run(
     limit: int | None = None,
+    ticker_filter: str | None = None,
 ) -> None:
 
     companies = get_eligible_companies()
 
     total = len(companies)
 
-    if limit is not None:
+    # --------------------------------------------------------
+    # 특정 ticker만 실행
+    # --------------------------------------------------------
+
+    if ticker_filter:
+
+        ticker_filter = ticker_filter.strip().upper()
+
+        companies = [
+            company
+            for company in companies
+            if (
+                company.get("ticker")
+                or ""
+            ).strip().upper()
+            == ticker_filter
+        ]
+
+    # --------------------------------------------------------
+    # limit 실행
+    # --------------------------------------------------------
+
+    elif limit is not None:
+
         companies = companies[:limit]
 
     print("=" * 70)
@@ -324,6 +354,13 @@ def run(
     print(f"Eligible companies : {total:,}")
     print(f"Companies to run   : {len(companies):,}")
     print()
+
+    if ticker_filter and not companies:
+        print(
+            f"Ticker not found in eligible companies: "
+            f"{ticker_filter}"
+        )
+        return
 
     success = 0
     failed = 0
@@ -413,8 +450,16 @@ if __name__ == "__main__":
         help="테스트용. 지정하면 앞에서부터 N개만 실행.",
     )
 
+    parser.add_argument(
+        "--ticker",
+        type=str,
+        default=None,
+        help="특정 ticker 하나만 테스트.",
+    )
+
     args = parser.parse_args()
 
     run(
         limit=args.limit,
+        ticker_filter=args.ticker,
     )
