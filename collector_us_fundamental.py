@@ -150,6 +150,19 @@ def ratio(numerator, denominator, multiplier=1.0):
     return numerator / denominator * multiplier
 
 
+def debt_rate(liabilities, equity):
+    """Return liabilities/equity only when equity is positive.
+
+    Negative or zero equity means the conventional liabilities/equity ratio is
+    not economically meaningful. Treat it as unavailable instead of emitting a
+    misleading negative or infinite debt rate.
+    """
+    liabilities, equity = clean_number(liabilities), clean_number(equity)
+    if liabilities is None or equity is None or equity <= 0:
+        return None
+    return liabilities / equity * 100.0
+
+
 def annual_metrics(index, year):
     revenue = latest_annual_value(index, "revenue", year)
     opinc = latest_annual_value(index, "operating_income", year)
@@ -176,7 +189,7 @@ def annual_metrics(index, year):
     return {
         "revenue": revenue, "eps": eps, "revenue_growth": None, "eps_growth": None,
         "opm": ratio(opinc, revenue, 100.0), "roic": ratio(nopat, invested_capital, 100.0),
-        "debt_rate": ratio(liabilities, equity, 100.0), "quick_ratio": ratio(quick_assets, current_liabilities),
+        "debt_rate": debt_rate(liabilities, equity), "quick_ratio": ratio(quick_assets, current_liabilities),
         "interest_coverage": ratio(opinc, interest), "ocf_ratio": ratio(ocf, net_income),
         "sga_ratio": ratio(sga, revenue, 100.0), "downturn_defense": None,
         "roa": ratio(net_income, assets, 100.0), "net_income": net_income, "assets": assets,
