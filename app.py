@@ -476,6 +476,34 @@ st.markdown(
     .status-pill.tier-a { background:#ECFDF5; color:#047857 !important; border:1px solid #A7F3D0; }
     .status-pill.tier-b { background:#F1F5F9; color:#334155 !important; border:1px solid #E2E8F0; }
     .status-pill.tier-c { background:#FFF7ED; color:#9A3412 !important; border:1px solid #FED7AA; }
+
+    .finstat-grid {
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 12px;
+        margin-top: 10px;
+        margin-bottom: 6px;
+    }
+    .finstat-item {
+        background-color: #FAFAFA;
+        border: 1.5px solid #E5E5E5;
+        border-radius: 10px;
+        padding: 12px 16px;
+    }
+    .finstat-label {
+        font-size: 12px;
+        color: #6B7280 !important;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    .finstat-value {
+        font-size: 16px;
+        color: #111827 !important;
+        font-weight: 800;
+    }
+    @media (max-width: 900px) {
+        .finstat-grid { grid-template-columns: repeat(2, 1fr); }
+    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -1049,6 +1077,64 @@ if selected_code and view_mode_param == "chart":
         )
         st.caption("차트 제공: TradingView")
 
+        # --- 기업 기본 재무제표 스냅샷 (Supabase Fundamental 테이블 기반) ---
+        # 기존 팝업엔 차트만 있었고 재무 데이터가 없었어서 새로 추가하는 부분.
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.markdown("#### 📋 기본 재무제표 스냅샷")
+
+        chart_page_data = get_stock_data(selected_code)
+        chart_supabase_data = chart_page_data.get("supabase_data")
+
+        if not chart_supabase_data:
+            st.info(
+                "⚠️ 아직 이 종목의 재무제표 데이터가 없습니다. "
+                "collector.py로 수집되면 매출/영업이익/순이익 등 재무 정보가 여기에 표시됩니다. "
+                "(국내(KR) 종목만 DART 기반 데이터를 지원합니다)"
+            )
+        else:
+            def _fmt_won(v):
+                if v is None:
+                    return "N/A"
+                return f"{v:,.0f}원"
+
+            fin_revenue = chart_supabase_data.get("revenue")
+            fin_op_income = chart_supabase_data.get("operating_income")
+            fin_net_income = chart_supabase_data.get("net_income")
+            fin_total_liab = chart_supabase_data.get("total_liabilities")
+            fin_total_equity = chart_supabase_data.get("total_equity")
+            fin_debt_rate = (
+                round(fin_total_liab / fin_total_equity * 100, 1)
+                if (fin_total_liab is not None and fin_total_equity)
+                else None
+            )
+            fin_per = chart_supabase_data.get("per")
+            fin_pbr = chart_supabase_data.get("pbr")
+            fin_price = chart_supabase_data.get("stock_price")
+            fin_base_year = chart_supabase_data.get("base_year")
+            fin_wics = chart_supabase_data.get("wics_sector")
+
+            finstat_items = [
+                ("현재가(기준일 종가)", _fmt_won(fin_price)),
+                ("기준 회계연도", str(fin_base_year) if fin_base_year else "N/A"),
+                ("업종(WICS)", fin_wics or "N/A"),
+                ("매출액", _fmt_won(fin_revenue)),
+                ("영업이익", _fmt_won(fin_op_income)),
+                ("순이익", _fmt_won(fin_net_income)),
+                ("총부채", _fmt_won(fin_total_liab)),
+                ("총자본", _fmt_won(fin_total_equity)),
+                ("부채비율", f"{fin_debt_rate}%" if fin_debt_rate is not None else "N/A"),
+                ("PER", f"{fin_per}" if fin_per is not None else "N/A"),
+                ("PBR", f"{fin_pbr}" if fin_pbr is not None else "N/A"),
+            ]
+
+            finstat_items_html = "".join(
+                f'<div class="finstat-item"><div class="finstat-label">{label}</div>'
+                f'<div class="finstat-value">{value}</div></div>'
+                for label, value in finstat_items
+            )
+            st.markdown(f'<div class="finstat-grid">{finstat_items_html}</div>', unsafe_allow_html=True)
+            st.caption("ℹ️ 위 재무 수치는 DART 공시 기준 최신 확정 연간 사업보고서(기준 회계연도) 데이터입니다.")
+
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
@@ -1262,11 +1348,31 @@ else:
         st.markdown(f"## 📊 [{data.get('stock_name', selected_code)}] 펀더멘탈 방어력 분석")
 
         st.markdown("#### 📉 Live Chart")
-        hist_df = data.get("hist", pd.DataFrame())
-        if not hist_df.empty:
-            st.line_chart(hist_df["Close"])
-        else:
-            st.info("실시간 차트 데이터를 불러올 수 없습니다.")
+        # 기존 st.line_chart(정적 종가 라인)를 TradingView 미니 위젯으로 업그레이드.
+        # 팝업(view=chart)에서 이미 쓰고 있는 것과 동일한 TradingView 심볼 규칙(KRX:코드)을 그대로 재사용.
+        tv_symbol_preview = f"KRX:{selected_code}" if selected_code.isdigit() else selected_code
+        components.html(
+            f"""
+            <div class="tradingview-widget-container">
+              <div class="tradingview-widget-container__widget"></div>
+              <script type="text/javascript"
+                src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
+              {{
+                "symbol": "{tv_symbol_preview}",
+                "width": "100%",
+                "height": "220",
+                "locale": "kr",
+                "dateRange": "12M",
+                "colorTheme": "light",
+                "isTransparent": true,
+                "autosize": false,
+                "largeChartUrl": ""
+              }}
+              </script>
+            </div>
+            """,
+            height=240,
+        )
 
         # 차트를 새 탭에서 크게 보기 - 클릭에서 바로 실행되는 target="_blank" 링크라
         # 팝업 차단에 안 걸림 (검색창의 window.open 패턴과 동일한 원리).
