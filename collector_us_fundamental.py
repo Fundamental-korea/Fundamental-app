@@ -17,6 +17,7 @@ from supabase import create_client
 
 from scoring import worst_value
 from us_scoring import calculate_us_score
+from downturn_us import calculate_downturn_defense
 
 try:
     from us_classification import classify_company as classify_us_company
@@ -223,7 +224,7 @@ def period_metrics(index, latest_year, period):
     return latest_year, metrics, base_year
 
 
-def build_result(ticker, cik, company_name, facts, submissions, universe_row=None):
+def build_result(ticker, cik, company_name, facts, submissions, universe_row=None, market_prices=None):
     universe_row = universe_row or {}
     index = build_fact_index(facts)
     all_years = sorted({y for rows in index.values() for y in rows.keys()})
@@ -232,18 +233,44 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
     flow_years = sorted(set(index.get("revenue", {}).keys()) | set(index.get("operating_income", {}).keys()) | set(index.get("net_income", {}).keys()))
     latest_year = max(flow_years) if flow_years else max(all_years)
     profile = universe_row.get("scoring_profile") or "standard"
+
+    # Downturn is a market-price characteristic, not an SEC metric. Calculate it once
+    # and reuse the same value across the 1/3/5/10-year fundamental periods.
+    downturn_value, downturn_detail = calculate_downturn_defense(
+        ticker,
+        market=(market_prices or {}).get("market"),
+        stock=(market_prices or {}).get("stock"),
+    )
+
     period_scores, latest_score, latest_grade, latest_missing = {}, None, None, 0
     for period in PERIODS:
         used_year, metrics, base_year = period_metrics(index, latest_year, period)
         if not metrics:
             continue
+        metrics["downturn_defense"] = downturn_value
         scored = calculate_us_score(metrics, profile=profile)
         period_scores[str(period)] = {"base_year": base_year, "metrics": metrics, "scores": scored}
         if period == 1:
             latest_score, latest_grade = scored["total_score"], scored["grade"]
             latest_missing = scored["missing_metric_count"]
+
     reliability = "high" if len(period_scores) >= 3 else ("medium" if period_scores else "low")
-    return {"ticker": ticker, "cik": str(cik), "company_name": company_name, "sector": universe_row.get("sector_common") or classify_company(submissions), "base_year": latest_year, "period_scores": period_scores, "total_score": int(round(latest_score)) if latest_score is not None else None, "grade": latest_grade, "data_unavailable": not bool(period_scores), "data_reliability": reliability, "missing_metric_count": latest_missing, "updated_at": datetime.now(timezone.utc).isoformat()}
+    return {
+        "ticker": ticker,
+        "cik": str(cik),
+        "company_name": company_name,
+        "sector": universe_row.get("sector_common") or classify_company(submissions),
+        "base_year": latest_year,
+        "period_scores": period_scores,
+        "total_score": int(round(latest_score)) if latest_score is not None else None,
+        "grade": latest_grade,
+        "data_unavailable": not bool(period_scores),
+        "data_reliability": reliability,
+        "missing_metric_count": latest_missing,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "downturn_defense": downturn_value,
+        "downturn_detail": downturn_detail,
+    }
 
 
 def get_universe(sb, tickers=None, limit=None, all_rows=False):
@@ -270,13 +297,32 @@ def main():
     rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
     session = requests.Session()
     session.headers.update({"User-Agent": SEC_USER_AGENT})
+    market = None
+    stock_cache = {}
+    try:
+        import yfinance as yf
+        from downturn_us import _close_series, BENCHMARK
+        market = _close_series(BENCHMARK)
+    except Exception as exc:
+        print(f"[US] downturn market data unavailable: {exc}")
+
     success = failed = 0
     for row in rows:
         try:
             facts, submissions = load_company(session, row["ticker"], row["cik"])
-            result = build_result(row["ticker"], row["cik"], row["company_name"], facts, submissions, universe_row=row)
+            stock = None
+            try:
+                from downturn_us import _close_series
+                stock = _close_series(row["ticker"])
+            except Exception as exc:
+                print(f"[US] {row['ticker']}: downturn price data unavailable: {exc}")
+            result = build_result(
+                row["ticker"], row["cik"], row["company_name"], facts, submissions,
+                universe_row=row,
+                market_prices={"market": market, "stock": stock},
+            )
             sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
-            print(f"[US] {row['ticker']}: profile={row.get('scoring_profile') or 'standard'} score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} missing={result['missing_metric_count']}")
+            print(f"[US] {row['ticker']}: profile={row.get('scoring_profile') or 'standard'} score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} missing={result['missing_metric_count']} downturn={result['downturn_defense']}")
             success += 1
             time.sleep(0.15)
         except Exception as exc:
