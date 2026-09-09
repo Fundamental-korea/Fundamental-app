@@ -1528,43 +1528,44 @@ else:
                                 "성장성 2개 지표를 제외한 나머지 8개 지표(수익성/재무건전성/현금흐름/"
                                 "하락장 방어력)의 가중점수 합산"
                             )
-                        sub_badges += (
+                            sub_badges += (
                                 f'<span class="mini-stat-badge" title="{defense_tip}">'
                                 f'🛡️ 방어 서브스코어 {defense_v}</span>'
                             )
-                        if financial_adjusted:    
-                            sub_badges += (
-                                '<span class="mini-stat-badge" title="금융업(은행/보험/증권)은 매출액/영업이익 '
-                                '개념이 일반기업과 달라 OPM/ROIC/SG&A비율 3개 지표를 제외하고, 대신 ROA(총자산이익률)로 '
-                                '대체 채점한 뒤 100점 만점으로 환산했습니다.">🏦 금융업 보정 적용</span>'
-                            )
 
-                        growth_excluded_keys = [
-                            k for k in ("revenue_growth", "eps_growth")
-                            if (metric_scores.get(k) or {}).get("excluded_from_total")
-                        ]
+                    if financial_adjusted:
+                        sub_badges += (
+                            '<span class="mini-stat-badge" title="금융업(은행/보험/증권)은 매출액/영업이익 '
+                            '개념이 일반기업과 달라 OPM/ROIC/SG&A비율 3개 지표를 제외하고, 대신 ROA(총자산이익률)로 '
+                            '대체 채점한 뒤 100점 만점으로 환산했습니다.">🏦 금융업 보정 적용</span>'
+                        )
 
-                        if growth_excluded_keys:
-                            if len(growth_excluded_keys) == 2:
-                                growth_note = (
-                                    "매출·EPS 성장률 수치가 급변하여 전년 대비 비교가 불가능해 두 지표를 "
-                                    "제외하고, 나머지 8개 지표 기준으로 재환산한 점수입니다."
-                                )
-                            else:
-                                label = "매출" if growth_excluded_keys[0] == "revenue_growth" else "EPS"
-                                growth_note = (
-                                    f"{label} 성장률 수치가 급변하여 전년 대비 비교가 불가능해 이 지표를 "
-                                    f"제외하고, 나머지 9개 지표 기준으로 재환산한 점수입니다."
-                                )
-                            sub_badges += (
-                                f'<span class="mini-stat-badge" title="{growth_note}">⚡ 급변 보정 적용</span>'
-                            )
+                    growth_excluded_keys = [
+                        k for k in ("revenue_growth", "eps_growth")
+                        if (metric_scores.get(k) or {}).get("excluded_from_total")
+                    ]
 
-                        if period_missing_count is not None:
-                            sub_badges += (
-                                f'<span class="mini-stat-badge" title="DART 공시 데이터에서 값을 찾지 못해 '
-                                f'0점 처리된 지표 수입니다.">🧩 결측 {period_missing_count}개</span>'
+                    if growth_excluded_keys:
+                        if len(growth_excluded_keys) == 2:
+                            growth_note = (
+                                "매출·EPS 성장률 수치가 급변하여 전년 대비 비교가 불가능해 두 지표를 "
+                                "제외하고, 나머지 8개 지표 기준으로 재환산한 점수입니다."
                             )
+                        else:
+                            label = "매출" if growth_excluded_keys[0] == "revenue_growth" else "EPS"
+                            growth_note = (
+                                f"{label} 성장률 수치가 급변하여 전년 대비 비교가 불가능해 이 지표를 "
+                                f"제외하고, 나머지 9개 지표 기준으로 재환산한 점수입니다."
+                            )
+                        sub_badges += (
+                            f'<span class="mini-stat-badge" title="{growth_note}">⚡ 급변 보정 적용</span>'
+                        )
+
+                    if period_missing_count is not None:
+                        sub_badges += (
+                            f'<span class="mini-stat-badge" title="DART 공시 데이터에서 값을 찾지 못해 '
+                            f'0점 처리된 지표 수입니다.">🧩 결측 {period_missing_count}개</span>'
+                        )
 
                     st.markdown(
                         f"""
