@@ -11,7 +11,6 @@ import base64
 
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 import requests
-import streamlit as st
 
 # GitHub의 실제 Raw 이미지 URL
 RAW_LOGO_URL = "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/logo.png"
@@ -496,8 +495,39 @@ def init_supabase():
     except Exception:
         return None
 
-
 supabase = init_supabase()
+
+# ==========================================
+# [추가됨] 중앙 팝업을 위한 오버레이 모달 컴포넌트
+# ==========================================
+@st.dialog("✨ 사용자 지정 컴포넌트", width="large")
+def empty_center_popup():
+    # 사용자가 원하시는 기능을 나중에 이곳에 추가할 수 있도록 네모난 빈 컨테이너 뼈대만 남깁니다.
+    # 뒷배경(기존 UI, 광고, 명언 등)은 그대로 유지되면서 중앙에만 이 창이 포커스됩니다.
+    st.markdown(
+        """
+        <div style="
+            border: 2px dashed #F4A261; 
+            border-radius: 12px; 
+            padding: 50px; 
+            text-align: center; 
+            background-color: #FAFAFA; 
+            min-height: 350px; 
+            display: flex; 
+            flex-direction: column; 
+            justify-content: center; 
+            align-items: center;">
+            <h3 style="color: #D97706; margin-bottom: 15px;">이곳은 빈 공간입니다.</h3>
+            <p style="color: #6B7280; font-size: 16px;">
+                여기에 추후 원하시는 추가 요소 (기타 위젯, 광고, 상세 데이터 등)를 자유롭게 코딩해 넣으세요.
+            </p>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+    # 추후 사용될 사용자 정의 위젯 삽입 영역
+    # st.write("여기에 컨텐츠를 작성하세요!")
+
 
 def get_investor_quotes():
     """investor_quotes 테이블에서 active=true인 명언 전체를 가져옴
@@ -1009,6 +1039,9 @@ if selected_code and view_mode_param == "chart":
     with col_login:
         st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
         st.link_button("📊 리포트로 돌아가기", f"?code={selected_code}", use_container_width=True)
+        # [추가됨] 차트 화면에서도 팝업창을 열 수 있는 버튼 추가
+        if st.button("💡 팝업창 열기", use_container_width=True, key="popup_chart"):
+            empty_center_popup()
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1070,6 +1103,9 @@ elif not selected_code:
         )
         if st.button("Log in", use_container_width=True):
             st.toast("로그인 기능 준비 중입니다!")
+        # [추가됨] 메인 화면 팝업창을 열 수 있는 버튼 추가
+        if st.button("💡 팝업창 열기", use_container_width=True, key="popup_main"):
+            empty_center_popup()
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1250,6 +1286,9 @@ else:
         if st.button("⬅️ 메인으로", use_container_width=True):
             st.query_params.clear()
             st.rerun()
+        # [추가됨] 상세 분석 리포트 화면에서도 팝업창을 열 수 있는 버튼 추가
+        if st.button("💡 팝업창 열기", use_container_width=True, key="popup_detail"):
+            empty_center_popup()
 
     st.markdown("<br>", unsafe_allow_html=True)
 
