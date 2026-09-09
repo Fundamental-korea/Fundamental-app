@@ -8,6 +8,8 @@ import streamlit.components.v1 as components
 from supabase import create_client
 import yfinance as yf
 import base64
+
+from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 import requests
 import streamlit as st
 
@@ -1582,6 +1584,11 @@ else:
                         """,
                         unsafe_allow_html=True,
                     )
+                    st.caption(
+                        "※ 지표마다 총점에서 차지하는 배점이 달라요 — 하락장 방어력 20점, "
+                        "매출·EPS 성장률 각 5점, 나머지 7개 지표는 각 10점. 아래 각 지표의 "
+                        "'총점 기여'가 그 지표의 실제 배점 대비 획득 점수예요."
+                    )
 
                     # 지표별 표시 단위 (차트 y축 라벨용)
                     METRIC_UNITS = {
@@ -1710,7 +1717,19 @@ else:
                             score_display = "N/A"
                             score_emoji = "⚪"
 
-                        expander_label = f"{title}   |   실측값 {value_display}   |   {score_emoji} {score_display}"
+                        # 지표별 배점(가중치)이 서로 달라서(하락장 방어력 20점, 성장률 2개 각 5점,
+                        # 나머지 각 10점) 원점수(X/10)만 보면 총점 기여도를 오해하기 쉬움 - 그래서
+                        # "총점 기여 N.N/배점" 형태로 실제 100점 만점 중 얼마를 받았는지 같이 표시
+                        metric_weight = ROA_WEIGHT if metric_key == "roa" else METRIC_WEIGHTS.get(metric_key, 10)
+                        weighted_score_val = entry.get("weighted_score")
+                        if excluded:
+                            contribution_display = "총점 제외"
+                        elif weighted_score_val is not None:
+                            contribution_display = f"총점 기여 {weighted_score_val:.1f}/{metric_weight}점"
+                        else:
+                            contribution_display = f"총점 기여 -/{metric_weight}점"
+
+                        expander_label = f"{title}   |   실측값 {value_display}   |   {score_emoji} {score_display}   |   {contribution_display}"
 
                         with st.expander(expander_label):
                             st.caption(meta["english"])
