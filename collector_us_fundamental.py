@@ -1,15 +1,16 @@
-"""
-US fundamental collector (MVP)
+"""US fundamental collector.
 
-SEC Company Facts -> annual financials -> shared scoring.py -> one row/company.
+SEC Company Facts -> compact annual metrics -> shared scoring.py -> one row/company.
 Raw SEC JSON is never written to Supabase.
 
-Usage:
-  python collector_us_fundamental.py --ticker AAPL
-  python collector_us_fundamental.py --tickers AAPL,MSFT,NVDA
-  python collector_us_fundamental.py --limit 5
-  python collector_us_fundamental.py --all
+This version deliberately keeps SEC extraction conservative:
+- choose the best annual record per fiscal year/end
+- choose a fact tag based on latest-year coverage, not total historical row count
+- never fabricate a 5Y/10Y base year when that period is unavailable
+- preserve missing SEC metrics as None
 """
+
+from __future__ import annotations
 
 import argparse
 import math
@@ -22,8 +23,13 @@ from supabase import create_client
 
 from scoring import calculate_fundamental_score, worst_value
 
+try:
+    from us_classification import classify_company as classify_us_company
+except ImportError:
+    classify_us_company = None
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_KEY", "")
 SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "Fundamental-app contact@example.com")
 
 SEC_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
@@ -89,8 +95,28 @@ def sanitize_growth(value):
     return value
 
 
+def _record_quality(record):
+    """Higher tuple = better annual SEC record."""
+    form = record.get("form") or ""
+    # Prefer an original annual filing over an amendment when all else is equal.
+    form_rank = 1 if form.endswith("/A") else 2
+    frame = record.get("frame") or ""
+    # FY frames are useful confirmation but not required.
+    frame_rank = 1 if frame.startswith("CY") else 0
+    return (
+        record.get("end", ""),
+        record.get("filed", ""),
+        form_rank,
+        frame_rank,
+    )
+
+
 def annual_records(fact):
-    """Return one best annual record per fiscal year."""
+    """Return one conservative annual record per fiscal year.
+
+    Flow facts are restricted to annual 10-K/20-F/40-F durations. Balance-sheet
+    facts have no start date and are accepted from annual filings.
+    """
     units = fact.get("units") or {}
     records = []
 
@@ -101,7 +127,7 @@ def annual_records(fact):
             fy = r.get("fy")
             form = r.get("form")
             end = r.get("end")
-            filed = r.get("filed")
+            filed = r.get("filed") or ""
             if not fy or not end or form not in FLOW_FORMS:
                 continue
 
@@ -124,39 +150,64 @@ def annual_records(fact):
             records.append({
                 "fy": int(fy),
                 "end": end,
-                "filed": filed or "",
+                "filed": filed,
                 "val": value,
                 "form": form,
                 "frame": r.get("frame"),
                 "unit": unit,
             })
 
-    # Prefer the latest filing for a fiscal year/end. If several units exist,
-    # the last record is only used after sorting deterministically.
-    records.sort(key=lambda x: (x["fy"], x["end"], x["filed"], x["unit"]))
-
+    # A fiscal year can have multiple facts from different units/filings.
+    # Choose the latest fiscal-period end and latest filing, deterministically.
     by_fy = {}
-    for r in records:
-        by_fy[r["fy"]] = r
+    for record in records:
+        fy = record["fy"]
+        previous = by_fy.get(fy)
+        if previous is None or _record_quality(record) > _record_quality(previous):
+            by_fy[fy] = record
     return by_fy
 
 
 def build_fact_index(companyfacts):
+    """Build logical metric -> annual records with latest-year-aware tag choice."""
     facts = (companyfacts.get("facts") or {}).get("us-gaap") or {}
     index = {}
 
+    # First determine the latest annual year represented by the company.
+    all_tag_rows = {}
+    all_years = set()
+    for tag, fact in facts.items():
+        rows = annual_records(fact)
+        if rows:
+            all_tag_rows[tag] = rows
+            all_years.update(rows.keys())
+    latest_year = max(all_years) if all_years else None
+
     for logical_name, aliases in FACT_ALIASES.items():
-        best = {}
-        best_tag = None
-        for tag in aliases:
-            fact = facts.get(tag)
-            if not fact:
+        candidates = []
+        for priority, tag in enumerate(aliases):
+            rows = all_tag_rows.get(tag)
+            if not rows:
                 continue
-            rows = annual_records(fact)
-            if len(rows) > len(best):
-                best = rows
-                best_tag = tag
-        index[logical_name] = best
+            latest_present = max(rows.keys())
+            coverage = len(rows)
+            latest_distance = (latest_year - latest_present) if latest_year is not None else 999
+            # Latest-year coverage is the primary criterion. Historical coverage
+            # is secondary; alias order is the final tie-breaker.
+            candidates.append((
+                1 if latest_year is not None and latest_present == latest_year else 0,
+                -latest_distance,
+                coverage,
+                -priority,
+                tag,
+                rows,
+            ))
+
+        if candidates:
+            candidates.sort(reverse=True)
+            index[logical_name] = candidates[0][5]
+        else:
+            index[logical_name] = {}
 
     return index
 
@@ -171,10 +222,8 @@ def growth_cagr(current, base, years):
     base = clean_number(base)
     if current is None or base is None or years <= 0 or base == 0:
         return None
-
     if current > 0 and base > 0:
         return sanitize_growth(((current / base) ** (1.0 / years) - 1.0) * 100.0)
-
     return sanitize_growth((current / base - 1.0) * 100.0)
 
 
@@ -193,9 +242,11 @@ def annual_metrics(index, year):
     assets = latest_annual_value(index, "assets", year)
     equity = latest_annual_value(index, "equity", year)
     liabilities = latest_annual_value(index, "liabilities", year)
+    current_assets = latest_annual_value(index, "current_assets", year)
     current_liabilities = latest_annual_value(index, "current_liabilities", year)
     cash = latest_annual_value(index, "cash", year)
     receivables = latest_annual_value(index, "receivables", year)
+    inventory = latest_annual_value(index, "inventory", year)
     interest = latest_annual_value(index, "interest_expense", year)
     ocf = latest_annual_value(index, "operating_cash_flow", year)
     sga = latest_annual_value(index, "sga", year)
@@ -208,8 +259,12 @@ def annual_metrics(index, year):
         if invested_capital <= 0:
             invested_capital = None
 
+    # Prefer the reported current-assets figure for quick-ratio construction.
+    # If it is unavailable, use the conservative cash + receivables fallback.
     quick_assets = None
-    if cash is not None or receivables is not None:
+    if current_assets is not None:
+        quick_assets = current_assets - (inventory or 0.0)
+    elif cash is not None or receivables is not None:
         quick_assets = (cash or 0.0) + (receivables or 0.0)
 
     return {
@@ -220,7 +275,7 @@ def annual_metrics(index, year):
         "opm": ratio(opinc, revenue, 100.0),
         "roic": ratio(nopat, invested_capital, 100.0),
         "debt_rate": ratio(liabilities, equity, 100.0),
-        "quick_ratio": ratio(quick_assets, current_liabilities, 100.0),
+        "quick_ratio": ratio(quick_assets, current_liabilities),
         "interest_coverage": ratio(opinc, interest),
         "ocf_ratio": ratio(ocf, net_income),
         "sga_ratio": ratio(sga, revenue, 100.0),
@@ -239,13 +294,13 @@ def classify_company(submissions):
 
 def fetch_json(session, url, retries=3):
     for attempt in range(retries):
-        r = session.get(url, timeout=30)
-        if r.status_code == 200:
-            return r.json()
-        if r.status_code in (429, 500, 502, 503, 504):
+        response = session.get(url, timeout=30)
+        if response.status_code == 200:
+            return response.json()
+        if response.status_code in (429, 500, 502, 503, 504):
             time.sleep(1.5 * (attempt + 1))
             continue
-        r.raise_for_status()
+        response.raise_for_status()
     raise RuntimeError(f"SEC request failed after {retries} retries: {url}")
 
 
@@ -257,45 +312,30 @@ def load_company(session, ticker, cik):
 
 
 def period_metrics(index, latest_year, period):
-    """Build a period using the nearest available annual base year.
-
-    We do not require revenue AND EPS to exist for the same year just to create
-    a period. Each growth metric is independently allowed to be missing.
-    """
+    """Build an exact period; return None if the requested base year is unavailable."""
     all_years = sorted({y for rows in index.values() for y in rows.keys()})
     if latest_year not in all_years:
         return None, {}, None
 
     target_base = latest_year - period
-    prior_years = [y for y in all_years if y <= target_base and y < latest_year]
-    if prior_years:
-        base_year = max(prior_years)
-    else:
-        earlier = [y for y in all_years if y < latest_year]
-        if not earlier:
-            base_year = None
-        else:
-            base_year = min(earlier)
+    if target_base not in all_years:
+        return None, {}, None
 
-    candidate_years = [y for y in all_years if base_year is not None and base_year <= y <= latest_year]
-    if not candidate_years:
-        candidate_years = [latest_year]
+    base_year = target_base
+    candidate_years = [y for y in all_years if base_year <= y <= latest_year]
+    if base_year not in candidate_years:
+        return None, {}, None
 
     yearly = {y: annual_metrics(index, y) for y in candidate_years}
     latest = yearly[latest_year]
-    base = yearly.get(base_year) if base_year is not None else None
+    base = yearly[base_year]
 
-    actual_years = (latest_year - base_year) if base_year is not None else 0
     metrics = dict(latest)
     metrics["revenue_growth"] = growth_cagr(
-        latest.get("revenue"),
-        base.get("revenue") if base else None,
-        actual_years,
+        latest.get("revenue"), base.get("revenue"), period
     )
     metrics["eps_growth"] = growth_cagr(
-        latest.get("eps"),
-        base.get("eps") if base else None,
-        actual_years,
+        latest.get("eps"), base.get("eps"), period
     )
 
     ratio_keys = (
@@ -308,7 +348,21 @@ def period_metrics(index, latest_year, period):
     return latest_year, metrics, base_year
 
 
-def build_result(ticker, cik, company_name, facts, submissions):
+def _profile_for_row(row):
+    profile = row.get("scoring_profile") or "standard"
+    return profile
+
+
+def _scoring_flags(row):
+    profile = _profile_for_row(row)
+    return {
+        "leverage_exempt": profile in {"financial", "bdc", "reit", "utility"},
+        "is_financial": profile == "financial",
+    }
+
+
+def build_result(ticker, cik, company_name, facts, submissions, universe_row=None):
+    universe_row = universe_row or {}
     index = build_fact_index(facts)
     all_years = sorted({y for rows in index.values() for y in rows.keys()})
 
@@ -328,7 +382,6 @@ def build_result(ticker, cik, company_name, facts, submissions):
             "updated_at": datetime.now(timezone.utc).isoformat(),
         }
 
-    # Prefer the latest year for which an actual income-statement flow exists.
     flow_years = sorted(
         set(index.get("revenue", {}).keys())
         | set(index.get("operating_income", {}).keys())
@@ -336,6 +389,7 @@ def build_result(ticker, cik, company_name, facts, submissions):
     )
     latest_year = max(flow_years) if flow_years else max(all_years)
 
+    flags = _scoring_flags(universe_row)
     period_scores = {}
     latest_score = None
     latest_grade = None
@@ -348,15 +402,13 @@ def build_result(ticker, cik, company_name, facts, submissions):
 
         scored = calculate_fundamental_score(
             metrics,
-            leverage_exempt=False,
-            is_financial=False,
+            leverage_exempt=flags["leverage_exempt"],
+            is_financial=flags["is_financial"],
         )
 
         score_entries = scored.get("scores", {})
         missing = sum(
-            1
-            for key in score_entries
-            if score_entries[key].get("value") is None
+            1 for key in score_entries if score_entries[key].get("value") is None
         )
 
         period_scores[str(period)] = {
@@ -376,7 +428,7 @@ def build_result(ticker, cik, company_name, facts, submissions):
         "ticker": ticker,
         "cik": str(cik),
         "company_name": company_name,
-        "sector": classify_company(submissions),
+        "sector": universe_row.get("sector_common") or classify_company(submissions),
         "base_year": latest_year,
         "period_scores": period_scores,
         "total_score": int(round(latest_score)) if latest_score is not None else None,
@@ -389,25 +441,26 @@ def build_result(ticker, cik, company_name, facts, submissions):
 
 
 def get_universe(sb, tickers=None, limit=None, all_rows=False):
+    columns = "ticker,cik,company_name,sector_common,company_type,scoring_profile"
     if tickers:
         return (
             sb.table("US_Companies")
-            .select("ticker,cik,company_name")
+            .select(columns)
             .in_("ticker", tickers)
             .eq("is_fundamental_eligible", True)
             .execute()
             .data
         )
 
-    q = (
+    query = (
         sb.table("US_Companies")
-        .select("ticker,cik,company_name")
+        .select(columns)
         .eq("is_fundamental_eligible", True)
         .order("ticker")
     )
     if not all_rows:
-        q = q.limit(limit or 5)
-    return q.execute().data
+        query = query.limit(limit or 5)
+    return query.execute().data
 
 
 def main():
@@ -419,7 +472,7 @@ def main():
     args = parser.parse_args()
 
     if not SUPABASE_KEY:
-        raise RuntimeError("SUPABASE_KEY is required")
+        raise RuntimeError("SUPABASE_SECRET_KEY or SUPABASE_KEY is required")
 
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
     tickers = None
@@ -430,15 +483,10 @@ def main():
 
     rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
     session = requests.Session()
-    session.headers.update({
-        "User-Agent": SEC_USER_AGENT,
-        "Accept-Encoding": "gzip, deflate",
-        "Host": "data.sec.gov",
-    })
+    session.headers.update({"User-Agent": SEC_USER_AGENT})
 
     success = 0
     failed = 0
-
     for row in rows:
         ticker = row["ticker"]
         try:
@@ -449,21 +497,19 @@ def main():
                 row["company_name"],
                 facts,
                 submissions,
+                universe_row=row,
             )
-
             sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
-
             print(
                 f"[US] {ticker}: score={result['total_score']} "
                 f"grade={result['grade']} periods={len(result['period_scores'])} "
                 f"missing={result['missing_metric_count']}"
             )
             success += 1
+            time.sleep(0.15)
         except Exception as exc:
             failed += 1
-            print(f"[US] {ticker}: FAILED - {type(exc).__name__}: {exc}")
-
-        time.sleep(0.15)
+            print(f"[US] {ticker}: FAILED: {exc}")
 
     print(f"Completed. success={success}, failed={failed}, total={len(rows)}")
 
