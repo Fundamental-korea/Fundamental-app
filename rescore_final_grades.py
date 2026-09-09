@@ -5,10 +5,11 @@
 # 시점에 이미 정확히 계산해둔 값)를 절대 건드리지 않고, 그 분포를 기준으로
 # grade(S+~D 13단계) / sector_percentile / data_reliability만 덮어씀.
 #
-# ⚠️ rescore_a_group.py와 다른 점: 그 스크립트는 total_score까지 재계산했었지만,
-#    지금은 scoring.py가 이미 최종 로직(가중치재배분/금융ROA보정)으로 total_score를
-#    정확히 계산해서 저장하므로, 이 스크립트는 total_score/metric_scores를 절대
-#    건드리지 않는다. grade/sector_percentile/data_reliability만 갱신.
+# ⚠️ 2026-09: .update()가 Supabase RLS(UPDATE 정책 없음/UPSERT만 허용)에 막혀
+#    에러 없이 0건 처리되고 "완료"로 잘못 보고되던 버그를 발견 (rescore_metric_
+#    percentiles.py와 동일 버그). 실측 결과 2,591개 중 27개만 13단계 등급이
+#    반영되어 있었고 나머지는 전부 수집 시점 5단계 임시 등급 그대로였음.
+#    .upsert()로 변경 + 실제 반영 건수 검증 로직 추가.
 #
 # 실행 전 꼭 확인:
 #   1. DRY_RUN = True 로 먼저 돌려서 등급 컷오프/분포를 콘솔로 확인
@@ -75,7 +76,6 @@ def fetch_all_rows():
                     raise
                 attempt_size = max(25, attempt_size // 2)
                 print(f"   ⚠️ 타임아웃 발생, 페이지 크기를 {attempt_size}로 줄여 재시도합니다... ({e})")
-
         rows = res.data
         if not rows:
             break
@@ -131,9 +131,9 @@ def main():
     for key, scores in score_pool.items():
         cutoffs = compute_grade_cutoffs(scores)
         cutoffs_by_key[key] = cutoffs
-        print(f"\n   {key} (n={len(scores)}):")
+        print(f"\n  {key} (n={len(scores)}):")
         for grade, _ in GRADE_TIERS:
-            print(f"      {grade}: ≥{cutoffs[grade]}")
+            print(f"    {grade}: ≥{cutoffs[grade]}")
 
     # ---- 섹터별 total_score 리스트 (1y avg 기준 대표 백분위) ----
     sector_scores = defaultdict(list)
@@ -141,6 +141,7 @@ def main():
         pdata = (row["period_scores"] or {}).get("1y")
         if pdata and pdata.get("avg", {}).get("total_score") is not None:
             sector_scores[row.get("wics_sector")].append(pdata["avg"]["total_score"])
+
     for sector in sector_scores:
         sector_scores[sector].sort()
 
@@ -174,11 +175,10 @@ def main():
                 cutoffs = cutoffs_by_key[(period, mode)]
                 new_grade = assign_grade(ts, cutoffs)
                 mdata["grade"] = new_grade  # total_score/metric_scores는 절대 안 건드림
-
                 if period == "1y" and mode == "avg":
                     grade_dist_check[new_grade] += 1
                     missing_1y = mdata.get("missing_metric_count")
-                    mdata["sector_percentile"] = sector_percentile(row.get("wics_sector"), ts)
+                mdata["sector_percentile"] = sector_percentile(row.get("wics_sector"), ts)
 
         if missing_1y is None:
             reliability = None
@@ -196,6 +196,7 @@ def main():
         })
 
     print(f"\n✅ 재계산 완료: {len(updates)}개 종목")
+
     print("\n📊 1y avg 등급 분포 (검증용):")
     for grade, _ in GRADE_TIERS:
         cnt = grade_dist_check.get(grade, 0)
@@ -217,18 +218,41 @@ def main():
         return
 
     print("\n💾 Supabase에 반영 중...")
+    actually_updated = 0
+    zero_row_codes = []
     for i, u in enumerate(updates, 1):
-        try:
-            supabase.table("Fundamental").update({
-                "period_scores": u["period_scores"],
-                "data_reliability": u["data_reliability"],
-            }).eq("stock_code", u["stock_code"]).execute()
-        except Exception as e:
-            print(f"   ⚠️ [{u['stock_code']}] 업데이트 실패: {e}")
+        for attempt in range(3):
+            try:
+                # ⚠️ .update()에서 .upsert()로 변경 (RLS가 UPDATE는 막고 UPSERT만
+                # 허용하는 경우 .update()가 에러 없이 0건 처리되던 버그 수정)
+                res = (
+                    supabase.table("Fundamental")
+                    .upsert(
+                        {
+                            "stock_code": u["stock_code"],
+                            "period_scores": u["period_scores"],
+                            "data_reliability": u["data_reliability"],
+                        },
+                        on_conflict="stock_code",
+                    )
+                    .execute()
+                )
+                if res.data:
+                    actually_updated += 1
+                else:
+                    zero_row_codes.append(u["stock_code"])
+                break
+            except Exception as e:
+                if attempt == 2:
+                    print(f"   ⚠️ [{u['stock_code']}] 업데이트 실패(3회 재시도 후 포기): {e}")
+                else:
+                    print(f"   ⚠️ [{u['stock_code']}] 업데이트 재시도 중... ({e})")
         if i % 200 == 0:
-            print(f"   {i}/{len(updates)} 완료...")
+            print(f"   {i}/{len(updates)} 완료... (실제 반영 확인 {actually_updated}건)")
 
-    print(f"\n🎉 전체 {len(updates)}개 종목 최종 등급 반영 완료!")
+    print(f"\n🎉 전체 {len(updates)}개 종목 중 실제 반영 확인된 건: {actually_updated}개")
+    if zero_row_codes:
+        print(f"⚠️ 응답이 비어있던(실제 반영 안 됐을 가능성) 종목 {len(zero_row_codes)}개, 예시: {zero_row_codes[:10]}")
 
 
 if __name__ == "__main__":
