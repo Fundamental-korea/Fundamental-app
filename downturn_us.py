@@ -28,32 +28,20 @@ def _close_series(ticker, start=START_DATE):
     if isinstance(close, pd.DataFrame):
         close = close.iloc[:, 0]
     close = pd.to_numeric(close, errors="coerce").dropna()
+    if close.empty:
+        return None
     close.index = pd.to_datetime(close.index).tz_localize(None)
     return close
 
 
 def _bear_episodes(market):
-    """Detect S&P 500 bear-market episodes from running drawdown.
-
-    The important distinction is that an episode starts at the prior market
-    peak, not at the day the drawdown first crosses -20%.
-
-    Start = peak immediately preceding the first <= -20% drawdown.
-    End   = first recovery above -5% drawdown after entering the bear market.
-
-    Keeping the prior peak in the window makes the measured market drawdown
-    represent the actual bear-market loss rather than only the remaining loss
-    after the -20% threshold was crossed.
-    """
     if market is None or len(market) < 30:
         return []
-
     peak_values = market.cummax()
     dd = market / peak_values - 1.0
     in_bear = False
     bear_start = None
     episodes = []
-
     for date, value in dd.items():
         if not in_bear and value <= BEAR_THRESHOLD:
             prior = market.loc[:date]
@@ -61,37 +49,38 @@ def _bear_episodes(market):
             peak_candidates = prior[prior == peak_value]
             bear_start = peak_candidates.index[-1]
             in_bear = True
-
         elif in_bear and value >= RECOVERY_THRESHOLD:
             end = date
             if bear_start is not None and (end - bear_start).days >= 20:
                 episodes.append((bear_start, end))
             in_bear = False
             bear_start = None
-
     if in_bear and bear_start is not None:
         episodes.append((bear_start, market.index[-1]))
-
     return episodes
 
 
 def _max_drawdown(series):
     if series is None or len(series) < 2:
         return None, None
+    series = pd.to_numeric(series, errors="coerce").dropna()
+    if len(series) < 2:
+        return None, None
     peak = series.cummax()
-    dd = series / peak - 1.0
+    dd = (series / peak - 1.0).dropna()
+    if dd.empty:
+        return None, None
     trough_date = dd.idxmin()
+    if pd.isna(trough_date):
+        return None, None
     return float(dd.min() * 100.0), trough_date
 
 
 def _recovery_days(series, trough_date, recovery_end=None):
-    """Days from trough until 90% of the pre-trough loss is recovered.
-
-    Recovery is intentionally allowed to continue after the bear episode's
-    -5% drawdown end date. The episode window defines the stress event; it
-    should not artificially truncate the subsequent recovery measurement.
-    """
-    if series is None or trough_date is None:
+    if series is None or trough_date is None or pd.isna(trough_date):
+        return None
+    series = pd.to_numeric(series, errors="coerce").dropna()
+    if series.empty or trough_date not in series.index:
         return None
     pre = series.loc[:trough_date]
     if pre.empty:
@@ -111,14 +100,6 @@ def _recovery_days(series, trough_date, recovery_end=None):
 
 
 def calculate_downturn_defense(ticker, market=None, stock=None):
-    """Return (defense_value, detail).
-
-    Defense value combines:
-      70% relative maximum-drawdown advantage
-      30% recovery-speed advantage
-    Both components are expressed in percentage-point units so the final value
-    can be passed directly to scoring.py's downturn_defense bands.
-    """
     if market is None:
         market = _close_series(BENCHMARK)
     if stock is None:
@@ -128,7 +109,6 @@ def calculate_downturn_defense(ticker, market=None, stock=None):
 
     episodes = _bear_episodes(market)
     results = []
-
     for start, end in episodes:
         m = market.loc[start:end]
         s = stock.loc[start:end].dropna()
@@ -138,21 +118,13 @@ def calculate_downturn_defense(ticker, market=None, stock=None):
         s_dd, s_trough = _max_drawdown(s)
         if m_dd is None or s_dd is None:
             continue
-
         relative_advantage = s_dd - m_dd
-        # Recovery speed is measured beyond the stress-event end if necessary.
-        # This avoids turning a valid recovery into None merely because the
-        # market crossed the -5% episode boundary before reaching 90% recovery.
         m_recovery = _recovery_days(market, m_trough)
         s_recovery = _recovery_days(stock, s_trough)
         if m_recovery and m_recovery > 0 and s_recovery is not None:
-            recovery_advantage = max(
-                -20.0,
-                min(20.0, (m_recovery - s_recovery) / m_recovery * 20.0),
-            )
+            recovery_advantage = max(-20.0, min(20.0, (m_recovery - s_recovery) / m_recovery * 20.0))
         else:
             recovery_advantage = 0.0
-
         combined = 0.70 * relative_advantage + 0.30 * recovery_advantage
         results.append({
             "start": start.strftime("%Y-%m-%d"),
@@ -168,11 +140,6 @@ def calculate_downturn_defense(ticker, market=None, stock=None):
 
     if not results:
         return None, {"status": "no_bear_episode", "episodes": []}
-
     value = sum(x["combined"] for x in results) / len(results)
     value = max(-50.0, min(30.0, value))
-    return round(value, 2), {
-        "status": "ok",
-        "episodes": results,
-        "episodes_used": len(results),
-    }
+    return round(value, 2), {"status": "ok", "episodes": results, "episodes_used": len(results)}
