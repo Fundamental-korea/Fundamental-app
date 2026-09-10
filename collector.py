@@ -1138,8 +1138,16 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             f"(금융업: {financial_sector} / 지주회사: {holding_company} / 레버리지 예외: {leverage_exempt})"
         )
 
-        # 금융지주/보험/은행/비금융 지주회사는 별도재무제표(OFS)가 사실상 빈 껍데기라, 연결재무제표(CFS)를 써야 실질적인 사업이 보임
-        effective_use_ofs = use_ofs_for_manufacturing and not (financial_sector or holding_company)
+        # ✅ 2026-09 수정: 예전엔 금융/지주회사만 CFS(연결)를 쓰고 나머지는 OFS(별도)가 기본값이었는데,
+        # 이게 네이버증권 등 시장 표준(PER/PBR/EPS/BPS는 연결 기준)과 어긋나는 원인이었음
+        # (SK하이닉스처럼 해외 생산법인 비중이 큰 대형 제조업체는 OFS 기준 순이익/자본이 실제
+        # 사업 규모보다 훨씬 작게 잡혀서 PER/PBR이 몇 배씩 벌어지는 걸 실제로 확인함).
+        # → 모든 종목에 대해 CFS를 우선 시도하고, CFS 자체가 없는 경우(=종속회사가 없는 회사)에만
+        # OFS로 폴백하도록 통일. use_ofs_for_manufacturing이 외부에서 어떤 값으로 넘어오든
+        # 항상 False로 고정해 CFS-first 동작을 예외 없이 보장함 (Report_Metrics_Cache는
+        # use_ofs 값을 키에 포함하므로, 이 값이 바뀌면 자동으로 새 캐시로 재계산됨 - 옛날
+        # OFS 기준으로 저장된 캐시가 실수로 재사용될 위험 없음).
+        effective_use_ofs = False
 
         multi = fetch_multi_year_metrics(stock_code, use_ofs_for_manufacturing=effective_use_ofs, kospi_mdd_cache=kospi_mdd_cache)
         if multi is None:
@@ -1591,7 +1599,9 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
     try:
         financial_sector = is_financial_sector(sector, wics_sector=wics_sector)
         leverage_exempt = financial_sector or holding_company or (wics_sector in LEVERAGE_EXEMPT_WICS_SECTORS)
-        effective_use_ofs = use_ofs_for_manufacturing and not (financial_sector or holding_company)
+        # ✅ 2026-09 수정: sync_kor_stock_fundamental과 동일한 이유로 CFS-first를 여기서도 통일
+        # 적용 (분기 자동갱신 경로가 별도로 이 exemption 로직을 갖고 있었어서 따로 고쳐야 했음).
+        effective_use_ofs = False
 
         latest_report = fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=effective_use_ofs)
         if latest_report is None:
