@@ -1468,9 +1468,19 @@ else:
                         f"20일 평균 대비 {vol_ratio:.0f}% · {vol_desc}</div>"
                     )
             overview["거래량"] = (volume_value_html, "neutral")
-            overview["거래대금(추정)"] = (_format_krw_compact(today_volume * live_price), "neutral")
-            overview["52주 최고"] = (f"{recent_52w['High'].max():,.0f}{won}", "neutral")
-            overview["52주 최저"] = (f"{recent_52w['Low'].min():,.0f}{won}", "neutral")
+            w52_high = float(recent_52w["High"].max())
+            w52_low = float(recent_52w["Low"].min())
+            overview["52주 최고"] = (f"{w52_high:,.0f}{won}", "neutral")
+            overview["52주 최저"] = (f"{w52_low:,.0f}{won}", "neutral")
+
+            # '하락장 방어력'이라는 사이트 성격에 맞게, 오늘 등락률 대신 "52주 고점 대비
+            # 지금 얼마나 빠져있는지"를 기본 정보로 보여줌 (0% 이상이면 52주 신고가 갱신).
+            if w52_high > 0:
+                pct_from_high = (live_price - w52_high) / w52_high * 100
+                overview["52주 고점 대비"] = (
+                    f"{pct_from_high:+.1f}%",
+                    "up" if pct_from_high >= 0 else "down",
+                )
 
         # PER/PBR/배당은 Supabase의 재무제표 기반 값을 그대로 재사용 (추후 원본 재무제표와
         # 바로 연결될 예정인 값들 - 여기서는 새로 계산하지 않고 있는 값만 가져다 씀).
