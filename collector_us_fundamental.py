@@ -33,6 +33,7 @@ SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
 PERIODS = (1, 3, 5, 10)
 FLOW_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
+# Primary aliases for domestic US-GAAP filers.
 FACT_ALIASES = {
     "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax", "Revenues", "SalesRevenueNet", "SalesRevenueGoodsNet"],
     "operating_income": ["OperatingIncomeLoss"],
@@ -49,6 +50,31 @@ FACT_ALIASES = {
     "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
     "sga": ["SellingGeneralAndAdministrativeExpense", "SellingGeneralAndAdministrativeExpenseIncludingDepreciationAmortization"],
     "eps": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
+}
+
+# IFRS aliases used by SEC foreign/private issuers. These are fallback sources
+# for years where the same logical metric is not available in us-gaap.
+IFRS_FACT_ALIASES = {
+    "revenue": ["Revenue", "RevenueFromContractsWithCustomers"],
+    "operating_income": ["ProfitLossFromOperatingActivities", "OperatingIncomeLoss"],
+    "net_income": ["ProfitLoss", "ProfitLossAttributableToOwnersOfParent"],
+    "assets": ["Assets"],
+    "equity": ["Equity", "EquityAttributableToOwnersOfParent"],
+    "liabilities": ["Liabilities"],
+    "current_assets": ["CurrentAssets"],
+    "current_liabilities": ["CurrentLiabilities"],
+    "inventory": ["Inventories"],
+    "cash": ["CashAndCashEquivalents"],
+    "receivables": ["TradeAndOtherReceivables", "TradeReceivables"],
+    "interest_expense": ["FinanceCosts", "InterestExpense"],
+    "operating_cash_flow": ["CashFlowsFromUsedInOperatingActivities"],
+    "sga": ["SellingGeneralAndAdministrativeExpense"],
+    "eps": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
+}
+
+FACT_NAMESPACE_ALIASES = {
+    "us-gaap": FACT_ALIASES,
+    "ifrs-full": IFRS_FACT_ALIASES,
 }
 
 
@@ -76,14 +102,7 @@ def _record_quality(record):
 
 
 def annual_records(fact):
-    """Return one best annual observation per period-end year.
-
-    SEC's ``fy`` field is the fiscal year associated with the filing, not
-    necessarily the year represented by an individual fact row. In a 10-K,
-    comparative prior-year values can therefore have ``fy`` equal to the
-    current filing year. The period-end date is the reliable year key for
-    comparing annual observations across filings.
-    """
+    """Return one best annual observation per period-end year."""
     units = fact.get("units") or {}
     records = []
     for unit, rows in units.items():
@@ -118,26 +137,46 @@ def annual_records(fact):
 
 
 def build_fact_index(companyfacts):
-    facts = (companyfacts.get("facts") or {}).get("us-gaap") or {}
-    all_tag_rows, all_years = {}, set()
-    for tag, fact in facts.items():
-        rows = annual_records(fact)
-        if rows:
-            all_tag_rows[tag] = rows
-            all_years.update(rows.keys())
-    latest_year = max(all_years) if all_years else None
+    """Build normalized metric rows across supported SEC namespaces.
+
+    The same logical metric may exist in both us-gaap and ifrs-full, especially
+    for companies that transitioned from foreign/private issuer reporting to
+    domestic US reporting. Selection is done per year, not per whole tag, so a
+    company can safely use IFRS for older years and US-GAAP for newer years.
+    """
+    facts_root = companyfacts.get("facts") or {}
+    candidates_by_metric = {name: [] for name in FACT_NAMESPACE_ALIASES["us-gaap"]}
+
+    namespace_rank = {"us-gaap": 2, "ifrs-full": 1}
+    for namespace, aliases_map in FACT_NAMESPACE_ALIASES.items():
+        facts = facts_root.get(namespace) or {}
+        for logical_name, aliases in aliases_map.items():
+            for priority, tag in enumerate(aliases):
+                fact = facts.get(tag)
+                rows = annual_records(fact) if fact else {}
+                if not rows:
+                    continue
+                for year, row in rows.items():
+                    candidates_by_metric[logical_name].append(
+                        (year, namespace_rank.get(namespace, 0), -priority, row, namespace, tag)
+                    )
+
     index = {}
-    for logical_name, aliases in FACT_ALIASES.items():
-        candidates = []
-        for priority, tag in enumerate(aliases):
-            rows = all_tag_rows.get(tag)
-            if not rows:
-                continue
-            latest_present = max(rows.keys())
-            coverage = len(rows)
-            latest_distance = (latest_year - latest_present) if latest_year is not None else 999
-            candidates.append((1 if latest_present == latest_year else 0, -latest_distance, coverage, -priority, tag, rows))
-        index[logical_name] = sorted(candidates, reverse=True)[0][5] if candidates else {}
+    for logical_name, candidates in candidates_by_metric.items():
+        by_year = {}
+        for year, ns_rank, alias_rank, row, namespace, tag in candidates:
+            candidate = (ns_rank, alias_rank, _record_quality(row), row, namespace, tag)
+            previous = by_year.get(year)
+            if previous is None or candidate[:3] > previous[:3]:
+                by_year[year] = candidate
+        index[logical_name] = {
+            year: {
+                **selected[3],
+                "namespace": selected[4],
+                "tag": selected[5],
+            }
+            for year, selected in by_year.items()
+        }
     return index
 
 
@@ -253,7 +292,13 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
     flow_years = sorted(set(index.get("revenue", {}).keys()) | set(index.get("operating_income", {}).keys()) | set(index.get("net_income", {}).keys()))
     latest_year = max(flow_years) if flow_years else max(all_years)
     profile = universe_row.get("scoring_profile") or "standard"
-    downturn_value, downturn_detail = calculate_downturn_defense(ticker, market=(market_prices or {}).get("market"), stock=(market_prices or {}).get("stock"))
+
+    downturn_value, downturn_detail = calculate_downturn_defense(
+        ticker,
+        market=(market_prices or {}).get("market"),
+        stock=(market_prices or {}).get("stock"),
+    )
+
     period_scores, latest_score, latest_grade, latest_missing = {}, None, None, 0
     for period in PERIODS:
         used_year, metrics, base_year = period_metrics(index, latest_year, period)
@@ -265,8 +310,24 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
         if period == 1:
             latest_score, latest_grade = scored["total_score"], scored["grade"]
             latest_missing = scored["missing_metric_count"]
+
     reliability = "high" if len(period_scores) >= 3 else ("medium" if period_scores else "low")
-    return {"ticker": ticker, "cik": str(cik), "company_name": company_name, "sector": universe_row.get("sector_common") or classify_company(submissions), "base_year": latest_year, "period_scores": period_scores, "total_score": int(round(latest_score)) if latest_score is not None else None, "grade": latest_grade, "data_unavailable": not bool(period_scores), "data_reliability": reliability, "missing_metric_count": latest_missing, "updated_at": datetime.now(timezone.utc).isoformat(), "downturn_defense": downturn_value, "downturn_detail": downturn_detail}
+    return {
+        "ticker": ticker,
+        "cik": str(cik),
+        "company_name": company_name,
+        "sector": universe_row.get("sector_common") or classify_company(submissions),
+        "base_year": latest_year,
+        "period_scores": period_scores,
+        "total_score": int(round(latest_score)) if latest_score is not None else None,
+        "grade": latest_grade,
+        "data_unavailable": not bool(period_scores),
+        "data_reliability": reliability,
+        "missing_metric_count": latest_missing,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "downturn_defense": downturn_value,
+        "downturn_detail": downturn_detail,
+    }
 
 
 def get_universe(sb, tickers=None, limit=None, all_rows=False):
@@ -285,7 +346,6 @@ def main():
     parser.add_argument("--tickers")
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--all", action="store_true", dest="all_rows")
-    parser.add_argument("--debug-sec", action="store_true")
     args = parser.parse_args()
     if not SUPABASE_KEY:
         raise RuntimeError("SUPABASE_SECRET_KEY or SUPABASE_KEY is required")
@@ -294,30 +354,41 @@ def main():
     rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
     session = requests.Session()
     session.headers.update({"User-Agent": SEC_USER_AGENT})
-    for row in rows:
-        ticker, cik = row.get("ticker"), row.get("cik")
-        if not cik:
-            print(f"[US] {ticker}: missing CIK")
-            continue
+    market = None
+    stock_cache = {}
+    try:
+        import yfinance as yf
+        from downturn_us import _close_series, BENCHMARK
+        market = _close_series(BENCHMARK)
+    except Exception as exc:
+        print(f"[US] downturn market data unavailable: {exc}")
+
+    for i, row in enumerate(rows, 1):
+        ticker = row["ticker"]
+        cik = row["cik"]
         try:
             facts, submissions = load_company(session, ticker, cik)
-            if args.debug_sec:
-                from debug_dec_sec import run_debug
-                run_debug(ticker, str(cik).zfill(10), facts, submissions)
-                continue
-            market_prices = {}
-            try:
-                import yfinance as yf
-                from downturn_us import _close_series, BENCHMARK
-                market_prices["market"] = _close_series(BENCHMARK)
-                market_prices["stock"] = _close_series(ticker)
-            except Exception:
-                pass
-            result = build_result(ticker, cik, row.get("company_name") or ticker, facts, submissions, row, market_prices)
+            if ticker not in stock_cache:
+                try:
+                    import yfinance as yf
+                    stock_cache[ticker] = _close_series(ticker)
+                except Exception:
+                    stock_cache[ticker] = None
+            result = build_result(
+                ticker,
+                cik,
+                row.get("company_name") or submissions.get("name") or ticker,
+                facts,
+                submissions,
+                universe_row=row,
+                market_prices={"market": market, "stock": stock_cache.get(ticker)},
+            )
             sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
-            print(f"[US] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])}")
+            print(f"[{i}/{len(rows)}] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} reliability={result['data_reliability']}")
         except Exception as exc:
-            print(f"[US] {ticker}: FAILED: {exc}")
+            print(f"[{i}/{len(rows)}] {ticker}: FAILED: {exc}")
+
+    print("Completed.")
 
 
 if __name__ == "__main__":
