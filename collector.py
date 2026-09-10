@@ -880,6 +880,100 @@ def extract_treasury_shares(df):
     return int(val) if val is not None else 0
 
 
+def fetch_stock_total_count_info(stock_code, year):
+    """
+    주식의 총수 현황 조회 (dart.report 키워드 '주식총수' / DART API명 'stockTotqySttus').
+
+    ⚠️ 2026-09 추가, 미검증: fetch_dividend_info/fetch_treasury_stock_info와 달리 실제 응답
+    필드를 라이브로 확인 못 한 상태로 작성함 (fdr.StockListing('KRX')가 CSV URL 404로
+    완전히 죽어서 issued_shares 대체 소스가 급하게 필요해졌음 - DART 공식 API 문서 구조
+    기준으로 작성. 실전 투입 전 diagnose_stock_total_count.py로 실제 se/컬럼 라벨을
+    먼저 확인할 것).
+    """
+    cached = _get_cached_raw(stock_code, year, "11011", fs_div="N/A", source="report_stock_total")
+    if cached is not None:
+        return cached
+    df = None
+    for kw in ["주식의 총수", "주식총수", "stockTotqySttus"]:
+        try:
+            candidate = dart.report(stock_code, kw, year)
+            if candidate is not None and not candidate.empty:
+                df = candidate
+                break
+        except Exception:
+            continue
+    if df is not None and not df.empty:
+        _set_cached_raw(stock_code, year, "11011", "N/A", "report_stock_total", df)
+    return df
+
+
+def extract_issued_shares(df):
+    """
+    주식총수 리포트 df -> 발행주식의 총수(보통주, int).
+    ⚠️ 미검증(위 fetch_stock_total_count_info 주석 참고): se 라벨이 회사마다 'Ⅳ.발행주식의총수(Ⅱ-Ⅲ)'
+    처럼 공백/기호가 섞여있을 수 있어, 공백 제거 후 '발행주식의총수' 부분일치로 탐색함.
+    조회 자체 실패(None)/원하는 행을 못 찾음 -> None (호출부에서 0으로 안전 처리).
+    """
+    if df is None or df.empty:
+        return None
+    if "se" not in df.columns or "thstrm" not in df.columns:
+        return None
+
+    se_normalized = df["se"].astype(str).str.replace(r"\s+", "", regex=True)
+    match = df[se_normalized.str.contains("발행주식의총수", na=False)]
+
+    stock_knd_col = "istock_knd" if "istock_knd" in df.columns else ("stock_knd" if "stock_knd" in df.columns else None)
+    if stock_knd_col and not match.empty:
+        common = match[match[stock_knd_col].astype(str).str.contains("보통주", na=False)]
+        if not common.empty:
+            match = common
+
+    if match.empty:
+        return None
+    val = _parse_dart_number(match.iloc[0]["thstrm"])
+    return int(val) if val is not None else None
+
+
+def fetch_current_price_via_datareader(stock_code):
+    """
+    fdr.StockListing('KRX')가 CSV URL 404로 죽어서(2026-09 진단 확인) 현재가 조회를
+    fdr.DataReader로 대체. DataReader는 완전히 별도 경로라 정상 작동 확인됨.
+    """
+    try:
+        df = fdr.DataReader(stock_code)
+        if df is None or df.empty:
+            return None
+        return int(df.iloc[-1]["Close"])
+    except Exception as e:
+        print(f"  ⚠️ [{stock_code}] 현재가 조회 실패(fdr.DataReader): {e}")
+        return None
+
+
+def get_kr_stock_universe():
+    """
+    fdr.StockListing('KRX')가 죽어서(CSV URL 404) 대체: Supabase Fundamental 테이블에 이미
+    쌓여있는 stock_code/stock_name을 종목 유니버스로 사용 (app.py의 get_combined_stock_db()와
+    동일한 우회 전략). df_krx와 동일하게 'Code'/'Name' 컬럼을 가진 DataFrame을 반환해서
+    기존 배치 함수들(targets["Code"], row.Name 등)을 그대로 쓸 수 있게 함.
+
+    ⚠️ 한계: 이 방식으로는 Supabase에 한 번도 저장된 적 없는 신규 상장 종목은 발견되지
+    않음 - fdr.StockListing이 복구되거나 다른 신규상장 소스가 생기기 전까지는 '기존에
+    이미 알고 있던 종목을 재수집'하는 용도로만 정확함.
+    """
+    try:
+        res = supabase.table("Fundamental").select("stock_code, stock_name").execute()
+        if not res.data:
+            return pd.DataFrame(columns=["Code", "Name"])
+        df = pd.DataFrame(res.data).rename(columns={"stock_code": "Code", "stock_name": "Name"})
+        return df.dropna(subset=["Code"]).drop_duplicates(subset=["Code"]).reset_index(drop=True)
+    except Exception as e:
+        print(f"⚠️ Supabase 기반 종목 유니버스 조회 실패: {e}")
+        return pd.DataFrame(columns=["Code", "Name"])
+
+
+
+
+
 def fetch_recent_quarters_metrics(stock_code, latest_report=None, n_more=3, use_ofs_for_manufacturing=True):
     """
     1년(단기) 탭의 '최근 4분기 추이' 표시용 - 최신 보고서 포함 최근 n_more+1개 시점을
@@ -1111,8 +1205,10 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
     try:
         print(f"🔄 [{stock_name} ({stock_code})] 데이터 수집 및 분석 시작...")
 
-        if df_krx is None or df_krx.empty:
-            df_krx = fdr.StockListing("KRX")
+        # ⚠️ 2026-09: fdr.StockListing('KRX')가 CSV URL 404로 완전히 죽어서(진단 확인됨),
+        # df_krx는 더 이상 현재가/발행주식수 조회에 쓰지 않음 (get_kr_stock_universe()가 넘겨주는
+        # Code/Name만 있는 대체 DataFrame이라 애초에 Close/Stocks 컬럼도 없음). 현재가는
+        # fdr.DataReader로, 발행주식수는 DART '주식의 총수 현황' 공시로 각각 대체.
         if sector_map is None:
             sector_map = get_sector_map()
         if wics_sector_map is None:
@@ -1120,13 +1216,15 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         if kospi_mdd_cache is None:
             kospi_mdd_cache = get_kospi_mdd_cache()
 
-        target_stock = df_krx[df_krx["Code"] == stock_code]
-        if target_stock.empty:
-            print(f"❌ [{stock_name}] KRX 상장 정보를 찾을 수 없습니다.")
+        current_price = fetch_current_price_via_datareader(stock_code)
+        if current_price is None:
+            print(f"❌ [{stock_name}] 현재가를 가져올 수 없습니다 (fdr.DataReader 실패) - 스킵합니다.")
             return
 
-        current_price = int(target_stock.iloc[0]["Close"])
-        issued_shares = int(target_stock.iloc[0]["Stocks"])
+        stock_total_df = fetch_stock_total_count_info(stock_code, get_latest_annual_year())
+        issued_shares = extract_issued_shares(stock_total_df) or 0
+        if issued_shares <= 0:
+            print(f"  ⚠️ [{stock_name}] 발행주식총수를 DART에서 가져오지 못함 - EPS/BPS/PER/PBR이 비어있을 수 있음 (⚠️ fetch_stock_total_count_info는 아직 실측 미검증 상태).")
 
         sector = sector_map.get(stock_code)
         wics_sector = wics_sector_map.get(stock_code)
@@ -1358,7 +1456,7 @@ def sync_all_kor_stocks(limit=None, sleep_sec=0.5, resume=True, use_ofs_for_manu
     ⚠️ 최초 전체 수집용 함수. B그룹 버그 수정 후 전체 재수집이 목적이면
     sync_all_kor_stocks_b_group()을 대신 사용할 것 (이미 저장된 종목도 다시 처리해야 하므로).
     """
-    df_krx = fdr.StockListing("KRX")
+    df_krx = get_kr_stock_universe()  # 2026-09: fdr.StockListing 붕괴로 Supabase 기반 유니버스로 대체
     sector_map = get_sector_map()
     wics_sector_map = get_wics_sector_map()
     kospi_mdd_cache = get_kospi_mdd_cache()
@@ -1462,7 +1560,7 @@ def resync_bugfix_affected_stocks(limit=None, sleep_sec=0.5, use_ofs_for_manufac
     이건 일회성 패치 재수집이라, 이 함수를 다시 돌리면 매번 같은 대상 목록을 다시 계산해서
     돈다(이미 고쳐진 종목은 다음 실행 때 판정 기준에 안 걸려 자동으로 목록에서 빠짐).
     """
-    df_krx = fdr.StockListing("KRX")
+    df_krx = get_kr_stock_universe()  # 2026-09: fdr.StockListing 붕괴로 Supabase 기반 유니버스로 대체
     sector_map = get_sector_map()
     wics_sector_map = get_wics_sector_map()
     kospi_mdd_cache = get_kospi_mdd_cache()
@@ -1514,7 +1612,7 @@ def sync_all_kor_stocks_b_group(limit=None, sleep_sec=0.1, use_ofs_for_manufactu
     늘어나면 이 값을 낮춰서 재시도할 것. USE_DART_CACHE=False 상태에서 처음 도는 대량
     수집엔 이 병렬화가 가장 효과적인 속도 개선책.
     """
-    df_krx = fdr.StockListing("KRX")
+    df_krx = get_kr_stock_universe()  # 2026-09: fdr.StockListing 붕괴로 Supabase 기반 유니버스로 대체
     sector_map = get_sector_map()
     wics_sector_map = get_wics_sector_map()
     kospi_mdd_cache = get_kospi_mdd_cache()
@@ -1790,7 +1888,7 @@ if __name__ == "__main__":
     ]
 
     print("🌐 KRX 상장 종목 데이터 불러오는 중...")
-    df_krx_all = fdr.StockListing("KRX")
+    df_krx_all = get_kr_stock_universe()  # 2026-09: fdr.StockListing 붕괴로 Supabase 기반 유니버스로 대체
     sector_map_all = get_sector_map()
 
     for code, name in target_stocks:
