@@ -84,7 +84,15 @@ def main():
 
     print(f"[DEEP SEC] {TICKER} CIK={CIK}")
     print(f"[DEEP SEC] namespaces={list((facts.get('facts') or {}).keys())}")
-    print(f"[DEEP SEC] submissions_forms_recent={[(x.get('form'), x.get('filingDate'), x.get('reportDate')) for x in (submissions.get('filings', {}).get('recent') or [])[:20]]}")
+    recent = (submissions.get('filings', {}).get('recent') or {})
+    if isinstance(recent, dict):
+        forms = recent.get('form') or []
+        filing_dates = recent.get('filingDate') or []
+        report_dates = recent.get('reportDate') or []
+        recent_rows = list(zip(forms, filing_dates, report_dates))[:20]
+    else:
+        recent_rows = []
+    print(f"[DEEP SEC] submissions_forms_recent={recent_rows}")
 
     us_gaap = (facts.get("facts") or {}).get("us-gaap") or {}
     all_accepted_years = set()
@@ -109,7 +117,6 @@ def main():
     for logical, rows in idx.items():
         print(f"  {logical}: {sorted(rows.keys())}")
 
-    # Show every us-gaap tag that has accepted annual rows in older years.
     older = []
     for tag, fact in us_gaap.items():
         rows = annual_records(fact)
