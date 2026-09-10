@@ -531,6 +531,13 @@ st.markdown(
     }
     .overview-value.value-up { color: #D93025 !important; }
     .overview-value.value-down { color: #2563EB !important; }
+    .overview-subvalue {
+        font-size: 11.5px;
+        font-weight: 700;
+        margin-top: 4px;
+    }
+    .overview-subvalue.vol-high { color: #D97706 !important; }
+    .overview-subvalue.vol-low { color: #64748B !important; }
     @media (max-width: 900px) {
         .overview-grid { grid-template-columns: repeat(2, 1fr); }
     }
@@ -1382,7 +1389,7 @@ else:
             "📌 실시간 차트는 별도 서비스로 분리해 준비 중입니다. 지금은 최신 시세와 투자지표 스냅샷만 보여드려요."
         )
 
-        @st.cache_data(ttl=900, show_spinner=False)
+        @st.cache_data(ttl=3600, show_spinner=False)  # 일봉 데이터라 15분보다 1시간 캐시가 더 합리적
         def _get_recent_ohlcv_for_overview(code):
             """전일/시가/고가/저가/거래량/52주 범위 계산용 OHLCV. 국내는 fdr.DataReader
             (fdr.StockListing('KRX')와 달리 KRX 로그인월 이슈와 무관 - collector.py의
@@ -1409,6 +1416,23 @@ else:
                 return "down"
             return "neutral"
 
+        def _format_krw_compact(value):
+            """1억 미만은 원 단위 그대로, 그 이상은 조/억 단위로 축약 표시 (예: 2조 5,875억원)."""
+            if value is None:
+                return "N/A"
+            sign = "-" if value < 0 else ""
+            v = abs(value)
+            JO = 1_0000_0000_0000   # 1조
+            EOK = 1_0000_0000       # 1억
+            if v >= JO:
+                jo_part = int(v // JO)
+                eok_part = int((v % JO) // EOK)
+                return f"{sign}{jo_part:,}조 {eok_part:,}억원" if eok_part else f"{sign}{jo_part:,}조원"
+            elif v >= EOK:
+                eok_part = int(v // EOK)
+                return f"{sign}{eok_part:,}억원"
+            return f"{sign}{v:,.0f}원"
+
         ohlcv_overview_df = _get_recent_ohlcv_for_overview(selected_code)
         is_kr_stock = str(selected_code).isdigit()
         won = "원" if is_kr_stock else "$"
@@ -1422,13 +1446,29 @@ else:
             recent_52w = ohlcv_overview_df.tail(252)
             prev_close = float(prev_row["Close"])
             live_price = float(last_row["Close"])
+            today_volume = float(last_row["Volume"])
 
             overview["전일"] = (f"{prev_close:,.0f}{won}", "neutral")
             overview["시가"] = (f"{last_row['Open']:,.0f}{won}", _tone(last_row["Open"], prev_close))
             overview["고가"] = (f"{last_row['High']:,.0f}{won}", _tone(last_row["High"], prev_close))
             overview["저가"] = (f"{last_row['Low']:,.0f}{won}", _tone(last_row["Low"], prev_close))
-            overview["거래량"] = (f"{last_row['Volume']:,.0f}", "neutral")
-            overview["거래대금(추정)"] = (f"{last_row['Volume'] * last_row['Close']:,.0f}{won}", "neutral")
+
+            # 거래량 옆에 '평소보다 많은 거래인지'를 보여주기 위해 최근 20거래일(오늘 제외)
+            # 평균 거래량 대비 비율을 함께 표시.
+            volume_value_html = f"{today_volume:,.0f}"
+            prior_20d = ohlcv_overview_df["Volume"].iloc[:-1].tail(20)
+            if len(prior_20d) >= 5:  # 데이터가 너무 적으면(신규상장 등) 비교 자체를 생략
+                avg_volume_20d = float(prior_20d.mean())
+                if avg_volume_20d > 0:
+                    vol_ratio = today_volume / avg_volume_20d * 100
+                    vol_badge_cls = "vol-high" if vol_ratio >= 100 else "vol-low"
+                    vol_desc = "평소보다 많음" if vol_ratio >= 100 else "평소보다 적음"
+                    volume_value_html += (
+                        f"<div class='overview-subvalue {vol_badge_cls}'>"
+                        f"20일 평균 대비 {vol_ratio:.0f}% · {vol_desc}</div>"
+                    )
+            overview["거래량"] = (volume_value_html, "neutral")
+            overview["거래대금(추정)"] = (_format_krw_compact(today_volume * live_price), "neutral")
             overview["52주 최고"] = (f"{recent_52w['High'].max():,.0f}{won}", "neutral")
             overview["52주 최저"] = (f"{recent_52w['Low'].min():,.0f}{won}", "neutral")
 
@@ -1448,7 +1488,7 @@ else:
             overview["EPS(추정)"] = (f"{eps_est:,.0f}{won}", "neutral")
             if ov_net_income and eps_est:
                 shares_est = ov_net_income / eps_est
-                overview["시가총액(추정)"] = (f"{shares_est * live_price:,.0f}{won}", "neutral")
+                overview["시가총액(추정)"] = (_format_krw_compact(shares_est * live_price), "neutral")
         if ov_pbr is not None and ov_pbr > 0 and live_price:
             bps_est = live_price / ov_pbr
             overview["BPS(추정)"] = (f"{bps_est:,.0f}{won}", "neutral")
