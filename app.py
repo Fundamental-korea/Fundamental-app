@@ -1482,34 +1482,53 @@ else:
                     "up" if pct_from_high >= 0 else "down",
                 )
 
-        # PER/PBR/배당은 Supabase의 재무제표 기반 값을 그대로 재사용 (추후 원본 재무제표와
-        # 바로 연결될 예정인 값들 - 여기서는 새로 계산하지 않고 있는 값만 가져다 씀).
+        # collector.py가 이미 DART 공시 기준 EPS/BPS/주당배당금을 원시값으로 저장해두고 있어서
+        # (PER/PBR을 거꾸로 나눠서 추정할 필요 없이) 그 원시값을 그대로 쓰고, PER/PBR/배당수익률은
+        # '오늘 주가 ÷ 원시값'으로 매일 갱신되는 라이브 값을 계산한다. 아직 CFS 재수집 전이라
+        # eps/bps 원시값이 없는 종목만 예전 방식(저장된 per/pbr에서 역산)으로 폴백한다.
         overview_supabase_data = data.get("supabase_data") or {}
-        ov_per = overview_supabase_data.get("per")
-        ov_pbr = overview_supabase_data.get("pbr")
-        ov_dividend_yield = overview_supabase_data.get("dividend_yield")
+        ov_per_stored = overview_supabase_data.get("per")
+        ov_pbr_stored = overview_supabase_data.get("pbr")
+        ov_eps = overview_supabase_data.get("eps")
+        ov_bps = overview_supabase_data.get("bps")
+        ov_dps = overview_supabase_data.get("dividend_per_share")
+        ov_dividend_yield_stored = overview_supabase_data.get("dividend_yield")
         ov_net_income = overview_supabase_data.get("net_income")
 
         if live_price is None:
             live_price = overview_supabase_data.get("stock_price")
 
-        if ov_per is not None and ov_per > 0 and live_price:
-            eps_est = live_price / ov_per
+        if ov_eps is not None:
+            overview["EPS"] = (f"{ov_eps:,.0f}{won}", "neutral")
+            if live_price and ov_eps != 0:
+                overview["PER"] = (f"{live_price / ov_eps:.2f}", "neutral")
+                if ov_net_income:
+                    shares_est = ov_net_income / ov_eps
+                    if shares_est > 0:
+                        overview["시가총액(추정)"] = (_format_krw_compact(shares_est * live_price), "neutral")
+        elif ov_per_stored is not None and ov_per_stored > 0 and live_price:
+            # 폴백: 아직 재수집 전이라 eps 원시값이 없는 종목만 예전처럼 역산 + '(추정)' 라벨
+            eps_est = live_price / ov_per_stored
             overview["EPS(추정)"] = (f"{eps_est:,.0f}{won}", "neutral")
-            if ov_net_income and eps_est:
-                shares_est = ov_net_income / eps_est
-                overview["시가총액(추정)"] = (_format_krw_compact(shares_est * live_price), "neutral")
-        if ov_pbr is not None and ov_pbr > 0 and live_price:
-            bps_est = live_price / ov_pbr
+            overview["PER"] = (f"{ov_per_stored}", "neutral")
+
+        if ov_bps is not None:
+            overview["BPS"] = (f"{ov_bps:,.0f}{won}", "neutral")
+            if live_price and ov_bps > 0:
+                overview["PBR"] = (f"{live_price / ov_bps:.2f}", "neutral")
+        elif ov_pbr_stored is not None and ov_pbr_stored > 0 and live_price:
+            bps_est = live_price / ov_pbr_stored
             overview["BPS(추정)"] = (f"{bps_est:,.0f}{won}", "neutral")
-        if ov_per is not None:
-            overview["PER"] = (f"{ov_per}", "neutral")
-        if ov_pbr is not None:
-            overview["PBR"] = (f"{ov_pbr}", "neutral")
-        if ov_dividend_yield is not None:
-            overview["배당수익률"] = (f"{ov_dividend_yield}%", "neutral")
+            overview["PBR"] = (f"{ov_pbr_stored}", "neutral")
+
+        if ov_dps is not None:
+            overview["주당배당금"] = (f"{ov_dps:,.0f}{won}", "neutral")
             if live_price:
-                dps_est = ov_dividend_yield / 100 * live_price
+                overview["배당수익률"] = (f"{ov_dps / live_price * 100:.2f}%", "neutral")
+        elif ov_dividend_yield_stored is not None:
+            overview["배당수익률"] = (f"{ov_dividend_yield_stored}%", "neutral")
+            if live_price:
+                dps_est = ov_dividend_yield_stored / 100 * live_price
                 overview["주당배당금(추정)"] = (f"{dps_est:,.0f}{won}", "neutral")
 
         # 아직 소스가 없는 항목은 값 대신 "준비 중"으로 명시 (없는 척 숨기지 않고 투명하게 표시)
