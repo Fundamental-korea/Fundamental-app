@@ -16,7 +16,14 @@ from datetime import datetime, timezone
 import requests
 from supabase import create_client
 
-from collector_us_fundamental import build_fact_index, build_result, load_company
+from collector_us_fundamental import (
+    FACT_ALIASES,
+    annual_records,
+    build_fact_index,
+    build_result,
+    load_company,
+    period_metrics,
+)
 from downturn_us import calculate_downturn_defense, _close_series, BENCHMARK
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
@@ -58,6 +65,83 @@ def normalize_latest_score(result):
     return result
 
 
+def debug_sec_company(ticker, cik, facts):
+    """Print a compact SEC -> alias -> annual_records -> period diagnostic.
+
+    This is intentionally read-only and never writes raw SEC data anywhere.
+    """
+    print(f"\n[DEBUG SEC] ticker={ticker} cik={str(cik).zfill(10)}")
+    namespaces = facts.get("facts") or {}
+    print(f"[DEBUG SEC] namespaces={sorted(namespaces.keys())}")
+
+    us_gaap = namespaces.get("us-gaap") or {}
+    print(f"[DEBUG SEC] us-gaap tags={len(us_gaap)}")
+
+    all_tag_rows = {}
+    all_years = set()
+    for tag, fact in us_gaap.items():
+        rows = annual_records(fact)
+        if rows:
+            all_tag_rows[tag] = rows
+            all_years.update(rows.keys())
+
+    print(f"[DEBUG SEC] tags_with_annual_records={len(all_tag_rows)}")
+    print(f"[DEBUG SEC] all_years={sorted(all_years)}")
+
+    for logical_name, aliases in FACT_ALIASES.items():
+        print(f"[DEBUG SEC] alias={logical_name}")
+        found = False
+        for tag in aliases:
+            raw_fact = us_gaap.get(tag)
+            raw_units = list((raw_fact or {}).get("units", {}).keys()) if raw_fact else []
+            rows = all_tag_rows.get(tag, {})
+            if raw_fact:
+                print(
+                    f"    {tag}: present=yes units={raw_units} "
+                    f"annual_years={sorted(rows.keys())} annual_count={len(rows)}"
+                )
+                found = True
+            else:
+                print(f"    {tag}: present=no")
+        if not found:
+            print("    -> no alias tag present in us-gaap")
+
+    index = build_fact_index(facts)
+    selected = {k: sorted(v.keys()) for k, v in index.items() if v}
+    print(f"[DEBUG SEC] selected_alias_years={selected}")
+
+    if not any(index.values()):
+        print("[DEBUG SEC] RESULT: build_fact_index is empty -> unavailable before period_metrics")
+        return
+
+    flow_years = sorted(
+        set(index.get("revenue", {}).keys())
+        | set(index.get("operating_income", {}).keys())
+        | set(index.get("net_income", {}).keys())
+    )
+    latest_year = max(flow_years) if flow_years else max(
+        y for rows in index.values() for y in rows.keys()
+    )
+    print(f"[DEBUG SEC] flow_years={flow_years}")
+    print(f"[DEBUG SEC] latest_year={latest_year}")
+
+    for period in (1, 3, 5, 10):
+        used_year, metrics, base_year = period_metrics(index, latest_year, period)
+        if metrics:
+            present = [k for k, v in metrics.items() if v is not None]
+            missing = [k for k, v in metrics.items() if v is None]
+            print(
+                f"[DEBUG SEC] period={period}: OK base_year={base_year} "
+                f"present={present} missing={missing}"
+            )
+        else:
+            print(
+                f"[DEBUG SEC] period={period}: SKIP "
+                f"(required latest_year={latest_year} or base_year={latest_year-period} absent)"
+            )
+    print("[DEBUG SEC] END\n")
+
+
 def fetch_pages(sb, table, columns, eligible=True):
     rows, start = [], 0
     while True:
@@ -83,6 +167,7 @@ def main():
     p.add_argument("--limit", type=int)
     p.add_argument("--all", action="store_true", dest="all_rows")
     p.add_argument("--refresh-existing", action="store_true")
+    p.add_argument("--debug-sec", action="store_true", help="Print SEC fact/alias/annual-record diagnostics; no DB write")
     args = p.parse_args()
 
     if not SUPABASE_KEY:
@@ -103,10 +188,10 @@ def main():
 
     existing = fetch_existing(sb)
     candidates = len(rows)
-    if not args.refresh_existing:
+    if not args.refresh_existing and not args.debug_sec:
         rows = [r for r in rows if r["ticker"] not in existing]
 
-    print(f"[US v5] candidates={candidates} existing={len(existing)} to_process={len(rows)} refresh_existing={args.refresh_existing}")
+    print(f"[US v5] candidates={candidates} existing={len(existing)} to_process={len(rows)} refresh_existing={args.refresh_existing} debug_sec={args.debug_sec}")
 
     market = None
     try:
@@ -125,6 +210,9 @@ def main():
                 facts, submissions = load_company(session, ticker, row["cik"])
             except requests.HTTPError as exc:
                 if getattr(exc.response, "status_code", None) == 404:
+                    if args.debug_sec:
+                        print(f"[{i}/{len(rows)}] {ticker}: SEC 404")
+                        continue
                     dv, dd = calculate_downturn_defense(ticker, market=market, stock=None)
                     result = unavailable_result(row, dv, dd)
                     sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
@@ -132,6 +220,11 @@ def main():
                     print(f"[{i}/{len(rows)}] {ticker}: SEC 404 -> unavailable")
                     continue
                 raise
+
+            if args.debug_sec:
+                debug_sec_company(ticker, row["cik"], facts)
+                print(f"[{i}/{len(rows)}] {ticker}: debug complete (no DB write)")
+                continue
 
             try:
                 stock = _close_series(ticker)
