@@ -504,6 +504,36 @@ st.markdown(
     @media (max-width: 900px) {
         .finstat-grid { grid-template-columns: repeat(2, 1fr); }
     }
+
+    .overview-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 10px;
+        margin-top: 8px;
+        margin-bottom: 6px;
+    }
+    .overview-cell {
+        background-color: #FAFAFA;
+        border: 1.5px solid #E5E5E5;
+        border-radius: 10px;
+        padding: 10px 14px;
+    }
+    .overview-label {
+        font-size: 12px;
+        color: #6B7280 !important;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    .overview-value {
+        font-size: 15px;
+        color: #111827 !important;
+        font-weight: 800;
+    }
+    .overview-value.value-up { color: #D93025 !important; }
+    .overview-value.value-down { color: #2563EB !important; }
+    @media (max-width: 900px) {
+        .overview-grid { grid-template-columns: repeat(2, 1fr); }
+    }
     </style>
 """,
     unsafe_allow_html=True,
@@ -1347,41 +1377,110 @@ else:
     with main_content:
         st.markdown(f"## 📊 [{data.get('stock_name', selected_code)}] 펀더멘탈 방어력 분석")
 
-        st.markdown("#### 📉 Live Chart")
-        # 기존 st.line_chart(정적 종가 라인)를 TradingView 미니 위젯으로 업그레이드.
-        # 팝업(view=chart)에서 이미 쓰고 있는 것과 동일한 TradingView 심볼 규칙(KRX:코드)을 그대로 재사용.
-        tv_symbol_preview = f"KRX:{selected_code}" if selected_code.isdigit() else selected_code
-        components.html(
-            f"""
-            <div class="tradingview-widget-container">
-              <div class="tradingview-widget-container__widget"></div>
-              <script type="text/javascript"
-                src="https://s3.tradingview.com/external-embedding/embed-widget-mini-symbol-overview.js" async>
-              {{
-                "symbol": "{tv_symbol_preview}",
-                "width": "100%",
-                "height": "220",
-                "locale": "kr",
-                "dateRange": "12M",
-                "colorTheme": "light",
-                "isTransparent": true,
-                "autosize": false,
-                "largeChartUrl": ""
-              }}
-              </script>
-            </div>
-            """,
-            height=240,
+        st.markdown("#### 📈 시세 스냅샷 (MVP)")
+        st.caption(
+            "📌 실시간 차트는 별도 서비스로 분리해 준비 중입니다. 지금은 최신 시세와 투자지표 스냅샷만 보여드려요."
         )
 
-        # 차트를 새 탭에서 크게 보기 - 클릭에서 바로 실행되는 target="_blank" 링크라
-        # 팝업 차단에 안 걸림 (검색창의 window.open 패턴과 동일한 원리).
-        # 새 탭 = 별도 페이지뷰라 애드센스 광고 노출도 그만큼 늘어남.
-        st.markdown(
-            f"<a href='?code={selected_code}&view=chart&name={data.get('stock_name', selected_code)}' target='_blank' "
-            f"style='font-size:13px; color:#D97706; text-decoration:none; font-weight:700;'>"
-            f"🔍 차트 크게 보기 (새 탭)</a>",
-            unsafe_allow_html=True,
+        @st.cache_data(ttl=900, show_spinner=False)
+        def _get_recent_ohlcv_for_overview(code):
+            """전일/시가/고가/저가/거래량/52주 범위 계산용 OHLCV. 국내는 fdr.DataReader
+            (fdr.StockListing('KRX')와 달리 KRX 로그인월 이슈와 무관 - collector.py의
+            downturn_defense 계산에도 계속 쓰이고 있는 경로라 이 함수도 동일하게 사용),
+            해외는 yfinance 사용."""
+            is_kr = str(code).isdigit()
+            try:
+                if is_kr:
+                    df = fdr.DataReader(code)
+                else:
+                    df = yf.Ticker(code).history(period="1y")
+                if df is None or df.empty:
+                    return pd.DataFrame()
+                return df.tail(400).reset_index()
+            except Exception:
+                return pd.DataFrame()
+
+        def _tone(value, ref):
+            if value is None or ref is None:
+                return "neutral"
+            if value > ref:
+                return "up"
+            if value < ref:
+                return "down"
+            return "neutral"
+
+        ohlcv_overview_df = _get_recent_ohlcv_for_overview(selected_code)
+        is_kr_stock = str(selected_code).isdigit()
+        won = "원" if is_kr_stock else "$"
+
+        overview = {}  # label -> (value_str, tone)
+        live_price = None
+
+        if not ohlcv_overview_df.empty and len(ohlcv_overview_df) >= 2:
+            last_row = ohlcv_overview_df.iloc[-1]
+            prev_row = ohlcv_overview_df.iloc[-2]
+            recent_52w = ohlcv_overview_df.tail(252)
+            prev_close = float(prev_row["Close"])
+            live_price = float(last_row["Close"])
+
+            overview["전일"] = (f"{prev_close:,.0f}{won}", "neutral")
+            overview["시가"] = (f"{last_row['Open']:,.0f}{won}", _tone(last_row["Open"], prev_close))
+            overview["고가"] = (f"{last_row['High']:,.0f}{won}", _tone(last_row["High"], prev_close))
+            overview["저가"] = (f"{last_row['Low']:,.0f}{won}", _tone(last_row["Low"], prev_close))
+            overview["거래량"] = (f"{last_row['Volume']:,.0f}", "neutral")
+            overview["거래대금(추정)"] = (f"{last_row['Volume'] * last_row['Close']:,.0f}{won}", "neutral")
+            overview["52주 최고"] = (f"{recent_52w['High'].max():,.0f}{won}", "neutral")
+            overview["52주 최저"] = (f"{recent_52w['Low'].min():,.0f}{won}", "neutral")
+
+        # PER/PBR/배당은 Supabase의 재무제표 기반 값을 그대로 재사용 (추후 원본 재무제표와
+        # 바로 연결될 예정인 값들 - 여기서는 새로 계산하지 않고 있는 값만 가져다 씀).
+        overview_supabase_data = data.get("supabase_data") or {}
+        ov_per = overview_supabase_data.get("per")
+        ov_pbr = overview_supabase_data.get("pbr")
+        ov_dividend_yield = overview_supabase_data.get("dividend_yield")
+        ov_net_income = overview_supabase_data.get("net_income")
+
+        if live_price is None:
+            live_price = overview_supabase_data.get("stock_price")
+
+        if ov_per is not None and ov_per > 0 and live_price:
+            eps_est = live_price / ov_per
+            overview["EPS(추정)"] = (f"{eps_est:,.0f}{won}", "neutral")
+            if ov_net_income and eps_est:
+                shares_est = ov_net_income / eps_est
+                overview["시가총액(추정)"] = (f"{shares_est * live_price:,.0f}{won}", "neutral")
+        if ov_pbr is not None and ov_pbr > 0 and live_price:
+            bps_est = live_price / ov_pbr
+            overview["BPS(추정)"] = (f"{bps_est:,.0f}{won}", "neutral")
+        if ov_per is not None:
+            overview["PER"] = (f"{ov_per}", "neutral")
+        if ov_pbr is not None:
+            overview["PBR"] = (f"{ov_pbr}", "neutral")
+        if ov_dividend_yield is not None:
+            overview["배당수익률"] = (f"{ov_dividend_yield}%", "neutral")
+            if live_price:
+                dps_est = ov_dividend_yield / 100 * live_price
+                overview["주당배당금(추정)"] = (f"{dps_est:,.0f}{won}", "neutral")
+
+        # 아직 소스가 없는 항목은 값 대신 "준비 중"으로 명시 (없는 척 숨기지 않고 투명하게 표시)
+        overview["외인소진율"] = ("준비 중", "neutral")
+        overview["추정PER / 추정EPS"] = ("준비 중", "neutral")
+
+        if overview:
+            tone_class_map = {"up": "value-up", "down": "value-down", "neutral": ""}
+            overview_cells_html = "".join(
+                f"<div class='overview-cell'><div class='overview-label'>{label}</div>"
+                f"<div class='overview-value {tone_class_map.get(tone, '')}'>{value}</div></div>"
+                for label, (value, tone) in overview.items()
+            )
+            st.markdown(f"<div class='overview-grid'>{overview_cells_html}</div>", unsafe_allow_html=True)
+        else:
+            st.info("시세 스냅샷 데이터를 불러올 수 없습니다.")
+
+        st.caption(
+            "ℹ️ '(추정)' 표시 항목은 최신 시세와 최근 확정 재무제표를 이용한 근사치입니다. "
+            "외인소진율·추정PER/추정EPS(컨센서스)는 아직 연동된 데이터 소스가 없어 추후 지원 예정입니다. "
+            "정식 서비스 오픈 시 각 수치를 DART 재무제표 원문과 직접 연결할 계획입니다."
         )
 
         st.markdown("<br>", unsafe_allow_html=True)
