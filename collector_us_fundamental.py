@@ -76,6 +76,14 @@ def _record_quality(record):
 
 
 def annual_records(fact):
+    """Return one best annual observation per period-end year.
+
+    SEC's ``fy`` field is the fiscal year associated with the filing, not
+    necessarily the year represented by an individual fact row. In a 10-K,
+    comparative prior-year values can therefore have ``fy`` equal to the
+    current filing year. The period-end date is the reliable year key for
+    comparing annual observations across filings.
+    """
     units = fact.get("units") or {}
     records = []
     for unit, rows in units.items():
@@ -84,6 +92,10 @@ def annual_records(fact):
         for r in rows:
             fy, form, end = r.get("fy"), r.get("form"), r.get("end")
             if not fy or not end or form not in FLOW_FORMS:
+                continue
+            try:
+                period_end_year = datetime.fromisoformat(end).date().year
+            except ValueError:
                 continue
             start = r.get("start")
             if start:
@@ -96,13 +108,13 @@ def annual_records(fact):
             value = clean_number(r.get("val"))
             if value is None:
                 continue
-            records.append({"fy": int(fy), "end": end, "filed": r.get("filed") or "", "val": value, "form": form, "frame": r.get("frame"), "unit": unit})
-    by_fy = {}
+            records.append({"fy": int(fy), "year": period_end_year, "end": end, "filed": r.get("filed") or "", "val": value, "form": form, "frame": r.get("frame"), "unit": unit})
+    by_year = {}
     for record in records:
-        previous = by_fy.get(record["fy"])
+        previous = by_year.get(record["year"])
         if previous is None or _record_quality(record) > _record_quality(previous):
-            by_fy[record["fy"]] = record
-    return by_fy
+            by_year[record["year"]] = record
+    return by_year
 
 
 def build_fact_index(companyfacts):
@@ -151,12 +163,7 @@ def ratio(numerator, denominator, multiplier=1.0):
 
 
 def debt_rate(liabilities, equity):
-    """Return liabilities/equity only when equity is positive.
-
-    Negative or zero equity means the conventional liabilities/equity ratio is
-    not economically meaningful. Treat it as unavailable instead of emitting a
-    misleading negative or infinite debt rate.
-    """
+    """Return liabilities/equity only when equity is positive."""
     liabilities, equity = clean_number(liabilities), clean_number(equity)
     if liabilities is None or equity is None or equity <= 0:
         return None
@@ -246,15 +253,7 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
     flow_years = sorted(set(index.get("revenue", {}).keys()) | set(index.get("operating_income", {}).keys()) | set(index.get("net_income", {}).keys()))
     latest_year = max(flow_years) if flow_years else max(all_years)
     profile = universe_row.get("scoring_profile") or "standard"
-
-    # Downturn is a market-price characteristic, not an SEC metric. Calculate it once
-    # and reuse the same value across the 1/3/5/10-year fundamental periods.
-    downturn_value, downturn_detail = calculate_downturn_defense(
-        ticker,
-        market=(market_prices or {}).get("market"),
-        stock=(market_prices or {}).get("stock"),
-    )
-
+    downturn_value, downturn_detail = calculate_downturn_defense(ticker, market=(market_prices or {}).get("market"), stock=(market_prices or {}).get("stock"))
     period_scores, latest_score, latest_grade, latest_missing = {}, None, None, 0
     for period in PERIODS:
         used_year, metrics, base_year = period_metrics(index, latest_year, period)
@@ -266,24 +265,8 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
         if period == 1:
             latest_score, latest_grade = scored["total_score"], scored["grade"]
             latest_missing = scored["missing_metric_count"]
-
     reliability = "high" if len(period_scores) >= 3 else ("medium" if period_scores else "low")
-    return {
-        "ticker": ticker,
-        "cik": str(cik),
-        "company_name": company_name,
-        "sector": universe_row.get("sector_common") or classify_company(submissions),
-        "base_year": latest_year,
-        "period_scores": period_scores,
-        "total_score": int(round(latest_score)) if latest_score is not None else None,
-        "grade": latest_grade,
-        "data_unavailable": not bool(period_scores),
-        "data_reliability": reliability,
-        "missing_metric_count": latest_missing,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "downturn_defense": downturn_value,
-        "downturn_detail": downturn_detail,
-    }
+    return {"ticker": ticker, "cik": str(cik), "company_name": company_name, "sector": universe_row.get("sector_common") or classify_company(submissions), "base_year": latest_year, "period_scores": period_scores, "total_score": int(round(latest_score)) if latest_score is not None else None, "grade": latest_grade, "data_unavailable": not bool(period_scores), "data_reliability": reliability, "missing_metric_count": latest_missing, "updated_at": datetime.now(timezone.utc).isoformat(), "downturn_defense": downturn_value, "downturn_detail": downturn_detail}
 
 
 def get_universe(sb, tickers=None, limit=None, all_rows=False):
@@ -302,6 +285,7 @@ def main():
     parser.add_argument("--tickers")
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--all", action="store_true", dest="all_rows")
+    parser.add_argument("--debug-sec", action="store_true")
     args = parser.parse_args()
     if not SUPABASE_KEY:
         raise RuntimeError("SUPABASE_SECRET_KEY or SUPABASE_KEY is required")
@@ -310,38 +294,30 @@ def main():
     rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
     session = requests.Session()
     session.headers.update({"User-Agent": SEC_USER_AGENT})
-    market = None
-    stock_cache = {}
-    try:
-        import yfinance as yf
-        from downturn_us import _close_series, BENCHMARK
-        market = _close_series(BENCHMARK)
-    except Exception as exc:
-        print(f"[US] downturn market data unavailable: {exc}")
-
-    success = failed = 0
     for row in rows:
+        ticker, cik = row.get("ticker"), row.get("cik")
+        if not cik:
+            print(f"[US] {ticker}: missing CIK")
+            continue
         try:
-            facts, submissions = load_company(session, row["ticker"], row["cik"])
-            stock = None
+            facts, submissions = load_company(session, ticker, cik)
+            if args.debug_sec:
+                from debug_dec_sec import run_debug
+                run_debug(ticker, str(cik).zfill(10), facts, submissions)
+                continue
+            market_prices = {}
             try:
-                from downturn_us import _close_series
-                stock = _close_series(row["ticker"])
-            except Exception as exc:
-                print(f"[US] {row['ticker']}: downturn price data unavailable: {exc}")
-            result = build_result(
-                row["ticker"], row["cik"], row["company_name"], facts, submissions,
-                universe_row=row,
-                market_prices={"market": market, "stock": stock},
-            )
+                import yfinance as yf
+                from downturn_us import _close_series, BENCHMARK
+                market_prices["market"] = _close_series(BENCHMARK)
+                market_prices["stock"] = _close_series(ticker)
+            except Exception:
+                pass
+            result = build_result(ticker, cik, row.get("company_name") or ticker, facts, submissions, row, market_prices)
             sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
-            print(f"[US] {row['ticker']}: profile={row.get('scoring_profile') or 'standard'} score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} missing={result['missing_metric_count']} downturn={result['downturn_defense']}")
-            success += 1
-            time.sleep(0.15)
+            print(f"[US] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])}")
         except Exception as exc:
-            failed += 1
-            print(f"[US] {row['ticker']}: FAILED: {exc}")
-    print(f"Completed. success={success}, failed={failed}, total={len(rows)}")
+            print(f"[US] {ticker}: FAILED: {exc}")
 
 
 if __name__ == "__main__":
