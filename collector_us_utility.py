@@ -36,6 +36,20 @@ from us_utility_extraction import (
 SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 PERIODS = (1, 3, 5, 10)
 
+# A small number of complex utilities present consolidated capital investment
+# as several investing-activity lines instead of a single standard XBRL capex
+# concept. Keep these as explicit, auditable annual cash-use overrides rather
+# than using accrual commitments. Values are USD millions.
+UTILITY_CAPEX_OVERRIDES = {
+    "NEE": {
+        2021: 16077.0,
+        2022: 19283.0,
+        2023: 25113.0,
+        2024: 24729.0,
+        2025: 24606.0,
+    },
+}
+
 
 def ticker_cik(session, ticker: str) -> str:
     data = fetch_json(session, SEC_TICKERS)
@@ -56,6 +70,13 @@ def value(facts, picker, year, tags=None):
     return row["val"] if row else None
 
 
+def capex_value(ticker: str, facts, year: int):
+    override = UTILITY_CAPEX_OVERRIDES.get(ticker, {}).get(year)
+    if override is not None:
+        return override
+    return value(facts, pick_capex, year)
+
+
 def growth(cur, base, years):
     if cur is None or base in (None, 0) or years <= 0:
         return None
@@ -64,7 +85,7 @@ def growth(cur, base, years):
     return (cur / base - 1.0) * 100.0
 
 
-def period_metrics(facts, latest_year: int, period: int):
+def period_metrics(ticker, facts, latest_year: int, period: int):
     base_year = latest_year - period
     revenue_now = value(facts, pick_flow, latest_year, REVENUE_TAGS)
     revenue_base = value(facts, pick_flow, base_year, REVENUE_TAGS)
@@ -76,7 +97,7 @@ def period_metrics(facts, latest_year: int, period: int):
     equity_now = value(facts, pick_instant, latest_year, ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "Equity", "EquityAttributableToOwnersOfParent"])
     debt_row = pick_debt(facts, latest_year)
     ocf_now = value(facts, pick_ocf, latest_year)
-    capex_now = value(facts, pick_capex, latest_year)
+    capex_now = capex_value(ticker, facts, latest_year)
     div_now = value(facts, pick_dividend, latest_year)
     interest_row = pick_interest(facts, latest_year)
     interest_now = interest_row["val"] if interest_row else None
@@ -113,7 +134,7 @@ def build_result(ticker, cik, company_name, facts, submissions, market, stock):
 
     period_scores = {}
     for period in PERIODS:
-        metrics, base_year = period_metrics(facts, latest_year, period)
+        metrics, base_year = period_metrics(ticker, facts, latest_year, period)
         if metrics is None:
             continue
         metrics["downturn_defense"] = downturn_value
