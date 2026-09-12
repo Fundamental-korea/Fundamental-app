@@ -1,9 +1,7 @@
 """Utility-specific SEC extraction helpers.
 
-These helpers are intentionally separate from the production scorer until the
-utility dry-run passes. They handle SEC annual facts that are sometimes tagged
-without a start date (notably EPS and some interest facts) by accepting an
-annual CY frame on a 10-K/20-F/40-F row. They never persist raw SEC JSON.
+These helpers normalize annual utility facts across US-GAAP and IFRS issuers,
+including Canadian 40-F filers. Raw SEC JSON is never persisted.
 """
 from __future__ import annotations
 
@@ -15,6 +13,9 @@ FLOW_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 REVENUE_TAGS = [
     "RevenueFromContractWithCustomerExcludingAssessedTax",
     "RevenueFromContractWithCustomerIncludingAssessedTax",
+    "RevenueFromContractsWithCustomers",
+    "RevenueFromContractsWithCustomer",
+    "Revenue",
     "Revenues",
     "RegulatedOperatingRevenue",
     "ElectricUtilityRevenue",
@@ -25,9 +26,6 @@ REVENUE_TAGS = [
     "SalesRevenueGoodsNet",
 ]
 
-# SEC concept names are case-sensitive. Keep common capitalization variants.
-# InterestAndDebtExpense / InterestExpenseBorrowings are especially important
-# for utilities such as D, SO and EXC where generic InterestExpense is absent.
 INTEREST_TAGS = [
     "InterestExpense",
     "InterestExpenseBorrowings",
@@ -38,29 +36,27 @@ INTEREST_TAGS = [
     "InterestExpenseDebt",
     "InterestExpenseNonOperatingAndOther",
     "FinanceCosts",
+    "InterestExpenseOnBorrowings",
 ]
-
-# InterestPaidNet is a cash-interest fallback only. It is intentionally last:
-# it is not identical to P&L interest expense and should not outrank expense tags.
-INTEREST_FALLBACK_TAGS = ["InterestPaidNet"]
+INTEREST_FALLBACK_TAGS = ["InterestPaidNet", "InterestPaidClassifiedAsOperatingActivities"]
 
 EPS_TAGS = [
     "EarningsPerShareDiluted",
     "EarningsPerShareBasic",
     "EarningsPerShareBasicAndDiluted",
 ]
-
 EPS_NET_INCOME_TAGS = [
     "NetIncomeLossAvailableToCommonStockholdersBasic",
     "NetIncomeLossAttributableToParent",
+    "ProfitLossAttributableToOrdinaryEquityHoldersOfParentEntity",
     "ProfitLossAttributableToOwnersOfParent",
     "NetIncomeLoss",
     "ProfitLoss",
 ]
-
 EPS_DILUTED_SHARE_TAGS = [
     "WeightedAverageNumberOfDilutedSharesOutstanding",
     "WeightedAverageNumberOfShareOutstandingBasicAndDiluted",
+    "WeightedAverageShares",
 ]
 
 OCF_TAGS = [
@@ -73,30 +69,32 @@ DEBT_CURRENT_TAGS = [
     "LongTermDebtCurrent",
     "LongTermDebtAndCapitalLeaseObligationsCurrent",
     "DebtAndCapitalLeaseObligationsCurrent",
+    "CurrentBorrowings",
+    "CurrentPortionOfLongtermBorrowings",
 ]
-
 DEBT_NONCURRENT_TAGS = [
     "LongTermDebtNoncurrent",
     "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
     "DebtAndCapitalLeaseObligationsNoncurrent",
     "LongTermDebtAndCapitalLeaseObligations",
     "LongTermDebt",
+    "NoncurrentBorrowings",
+    "LongtermBorrowings",
+    "Borrowings",
 ]
-
 DEBT_TOTAL_TAGS = [
     "DebtAndCapitalLeaseObligations",
     "LongTermDebtCurrentAndNoncurrent",
     "DebtInstrumentCarryingAmount",
+    "LiabilitiesArisingFromFinancingActivities",
 ]
 
-# Cash capex only. PaymentsForProceedsFromProductiveAssets is a net productive-
-# asset cash-flow concept (purchases less proceeds), so it is a safe last-resort
-# proxy when a utility does not expose a dedicated capex concept.
 CAPEX_TAGS = [
     "PaymentsToAcquirePropertyPlantAndEquipment",
     "PaymentsToAcquireProductiveAssets",
     "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssets",
     "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssetsNet",
+    "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
     "PaymentsForProceedsFromProductiveAssets",
 ]
 
@@ -106,6 +104,7 @@ DIVIDEND_TAGS = [
     "PaymentsOfDividendsCommonStock",
     "PaymentsOfOrdinaryDividends",
     "PaymentsOfDividends",
+    "DividendsPaid",
     "PaymentsOfDividendsMinorityInterest",
 ]
 
@@ -119,7 +118,6 @@ def clean_number(value):
 
 
 def _annual_row(r):
-    """Return normalized annual metadata or None."""
     form, end = r.get("form"), r.get("end")
     if form not in FLOW_FORMS or not end:
         return None
@@ -232,10 +230,6 @@ def pick_eps(facts, year):
     direct = pick_flow(facts, EPS_TAGS, year)
     if direct:
         return direct
-
-    # Some large utilities expose annual EPS only in filing tables while the
-    # company-facts concept is sparse. A GAAP fallback can reconstruct diluted
-    # EPS from attributable net income and weighted diluted shares.
     income = pick_flow(facts, EPS_NET_INCOME_TAGS, year)
     shares = pick_flow(facts, EPS_DILUTED_SHARE_TAGS, year)
     if income and shares and shares["val"] != 0:
@@ -250,7 +244,7 @@ def pick_eps(facts, year):
             "fy": income.get("fy"),
             "namespace": income.get("namespace"),
             "tag": "derived:net_income_attributable_to_common/weighted_diluted_shares",
-            "unit": "USD-per-shares",
+            "unit": "currency-per-share",
             "derived": True,
         }
     return None
@@ -268,29 +262,15 @@ def pick_interest(facts, year):
 
 
 def pick_debt(facts, year):
-    """Prefer current + non-current debt; otherwise use a total-debt tag."""
     current = pick_instant(facts, DEBT_CURRENT_TAGS, year)
     noncurrent = pick_instant(facts, DEBT_NONCURRENT_TAGS, year)
     if current or noncurrent:
         current_value = current["val"] if current else 0.0
         noncurrent_value = noncurrent["val"] if noncurrent else 0.0
-        return {
-            "year": year,
-            "val": current_value + noncurrent_value,
-            "current": current,
-            "noncurrent": noncurrent,
-            "total": None,
-        }
-
+        return {"year": year, "val": current_value + noncurrent_value, "current": current, "noncurrent": noncurrent, "total": None}
     total = pick_instant(facts, DEBT_TOTAL_TAGS, year)
     if total:
-        return {
-            "year": year,
-            "val": total["val"],
-            "current": None,
-            "noncurrent": None,
-            "total": total,
-        }
+        return {"year": year, "val": total["val"], "current": None, "noncurrent": None, "total": total}
     return None
 
 
