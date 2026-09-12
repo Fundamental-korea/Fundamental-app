@@ -882,26 +882,19 @@ def extract_treasury_shares(df):
 
 def fetch_stock_total_count_info(stock_code, year):
     """
-    주식의 총수 현황 조회 (dart.report 키워드 '주식총수' / DART API명 'stockTotqySttus').
-
-    ⚠️ 2026-09 추가, 미검증: fetch_dividend_info/fetch_treasury_stock_info와 달리 실제 응답
-    필드를 라이브로 확인 못 한 상태로 작성함 (fdr.StockListing('KRX')가 CSV URL 404로
-    완전히 죽어서 issued_shares 대체 소스가 급하게 필요해졌음 - DART 공식 API 문서 구조
-    기준으로 작성. 실전 투입 전 diagnose_stock_total_count.py로 실제 se/컬럼 라벨을
-    먼저 확인할 것).
+    주식의 총수 현황 조회 (dart.report 키워드 '주식총수' - 유일하게 유효한 키워드, 다른
+    후보('주식의 총수'/'stockTotqySttus')는 dart.report()가 ValueError로 거부함을 확인함).
     """
     cached = _get_cached_raw(stock_code, year, "11011", fs_div="N/A", source="report_stock_total")
     if cached is not None:
         return cached
     df = None
-    for kw in ["주식의 총수", "주식총수", "stockTotqySttus"]:
-        try:
-            candidate = dart.report(stock_code, kw, year)
-            if candidate is not None and not candidate.empty:
-                df = candidate
-                break
-        except Exception:
-            continue
+    try:
+        candidate = dart.report(stock_code, "주식총수", year)
+        if candidate is not None and not candidate.empty:
+            df = candidate
+    except Exception as e:
+        print(f"  ⚠️ [{stock_code}] 주식총수 리포트 조회 실패: {e}")
     if df is not None and not df.empty:
         _set_cached_raw(stock_code, year, "11011", "N/A", "report_stock_total", df)
     return df
@@ -909,29 +902,31 @@ def fetch_stock_total_count_info(stock_code, year):
 
 def extract_issued_shares(df):
     """
-    주식총수 리포트 df -> 발행주식의 총수(보통주, int).
-    ⚠️ 미검증(위 fetch_stock_total_count_info 주석 참고): se 라벨이 회사마다 'Ⅳ.발행주식의총수(Ⅱ-Ⅲ)'
-    처럼 공백/기호가 섞여있을 수 있어, 공백 제거 후 '발행주식의총수' 부분일치로 탐색함.
-    조회 자체 실패(None)/원하는 행을 못 찾음 -> None (호출부에서 0으로 안전 처리).
+    주식총수 리포트 df -> (발행주식의 총수, 유통주식수) 튜플, 둘 다 보통주 기준(int or None).
+    ✅ 2026-09 실측 확인됨(000660 SK하이닉스 샘플): 이 리포트는 dividend/treasury 리포트와
+    컬럼 스키마가 완전히 다름(se/thstrm 방식 아님) - se는 '보통주'/'우선주'/'합계'/'비고' 4행이고,
+    발행주식의 총수(Ⅳ=Ⅱ-Ⅲ)는 'istc_totqy' 컬럼, 유통주식수(Ⅵ=Ⅳ-Ⅴ)는 'distb_stock_co'
+    컬럼에 이미 계산되어 들어있음 (thstrm처럼 별도 파싱/계산 불필요).
+    조회 자체 실패(None)/필요한 컬럼·행이 없음 -> (None, None) (호출부에서 0으로 안전 처리).
     """
     if df is None or df.empty:
-        return None
-    if "se" not in df.columns or "thstrm" not in df.columns:
-        return None
+        return None, None
+    if "se" not in df.columns or "istc_totqy" not in df.columns:
+        return None, None
 
-    se_normalized = df["se"].astype(str).str.replace(r"\s+", "", regex=True)
-    match = df[se_normalized.str.contains("발행주식의총수", na=False)]
+    common = df[df["se"].astype(str).str.strip() == "보통주"]
+    if common.empty:
+        return None, None
 
-    stock_knd_col = "istock_knd" if "istock_knd" in df.columns else ("stock_knd" if "stock_knd" in df.columns else None)
-    if stock_knd_col and not match.empty:
-        common = match[match[stock_knd_col].astype(str).str.contains("보통주", na=False)]
-        if not common.empty:
-            match = common
+    issued = _parse_dart_number(common.iloc[0]["istc_totqy"])
+    distributed = None
+    if "distb_stock_co" in df.columns:
+        distributed = _parse_dart_number(common.iloc[0]["distb_stock_co"])
 
-    if match.empty:
-        return None
-    val = _parse_dart_number(match.iloc[0]["thstrm"])
-    return int(val) if val is not None else None
+    return (
+        int(issued) if issued is not None else None,
+        int(distributed) if distributed is not None else None,
+    )
 
 
 def fetch_current_price_via_datareader(stock_code):
@@ -1222,9 +1217,10 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             return
 
         stock_total_df = fetch_stock_total_count_info(stock_code, get_latest_annual_year())
-        issued_shares = extract_issued_shares(stock_total_df) or 0
+        issued_shares, distributed_shares = extract_issued_shares(stock_total_df)
+        issued_shares = issued_shares or 0
         if issued_shares <= 0:
-            print(f"  ⚠️ [{stock_name}] 발행주식총수를 DART에서 가져오지 못함 - EPS/BPS/PER/PBR이 비어있을 수 있음 (⚠️ fetch_stock_total_count_info는 아직 실측 미검증 상태).")
+            print(f"  ⚠️ [{stock_name}] 발행주식총수를 DART에서 가져오지 못함 - EPS/BPS/PER/PBR이 비어있을 수 있음.")
 
         sector = sector_map.get(stock_code)
         wics_sector = wics_sector_map.get(stock_code)
@@ -1290,8 +1286,11 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             eps = reported_eps
             eps_is_reported = True
         else:
-            float_shares = issued_shares - (treasury_shares or 0)
-            eps = (net_income / float_shares) if float_shares > 0 else None
+            # 유통주식수는 '주식총수 현황' 리포트의 distb_stock_co(Ⅵ=Ⅳ-Ⅴ)를 우선 사용 -
+            # DART가 이미 계산해서 공시하는 값이라, 별도재무제표 자기주식 리포트를 다시 빼서
+            # 근사하는 것보다 정확함. 그 리포트 자체가 없을 때만 issued - treasury로 폴백.
+            float_shares = distributed_shares if distributed_shares else (issued_shares - (treasury_shares or 0))
+            eps = (net_income / float_shares) if float_shares and float_shares > 0 else None
             eps_is_reported = False
         # BPS는 K-IFRS 표준 공시 계정이 따로 없어 계속 자본총계÷발행주식수로 근사
         bps = (total_equity / issued_shares) if issued_shares > 0 else None
