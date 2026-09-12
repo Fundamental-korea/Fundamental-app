@@ -37,10 +37,18 @@ SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 PERIODS = (1, 3, 5, 10)
 
 # A small number of complex utilities present consolidated capital investment
-# as several investing-activity lines instead of a single standard XBRL capex
-# concept. Keep these as explicit, auditable annual cash-use overrides rather
-# than using accrual commitments. Values are USD millions.
+# as utility-specific investing-activity lines rather than a single standard
+# XBRL capex concept. Keep these as explicit, auditable annual cash-use
+# overrides rather than using accrual commitments.
+# Values are USD millions and are taken from the companies' annual filings.
 UTILITY_CAPEX_OVERRIDES = {
+    "ED": {
+        2021: 3630.0,
+        2022: 3824.0,
+        2023: 4353.0,
+        2024: 4770.0,
+        2025: 4764.0,
+    },
     "NEE": {
         2021: 16077.0,
         2022: 19283.0,
@@ -73,7 +81,7 @@ def value(facts, picker, year, tags=None):
 def capex_value(ticker: str, facts, year: int):
     override = UTILITY_CAPEX_OVERRIDES.get(ticker, {}).get(year)
     if override is not None:
-        return override
+        return override * 1_000_000.0
     return value(facts, pick_capex, year)
 
 
