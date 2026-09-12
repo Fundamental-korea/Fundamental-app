@@ -50,6 +50,19 @@ EPS_TAGS = [
     "EarningsPerShareBasicAndDiluted",
 ]
 
+EPS_NET_INCOME_TAGS = [
+    "NetIncomeLossAvailableToCommonStockholdersBasic",
+    "NetIncomeLossAttributableToParent",
+    "ProfitLossAttributableToOwnersOfParent",
+    "NetIncomeLoss",
+    "ProfitLoss",
+]
+
+EPS_DILUTED_SHARE_TAGS = [
+    "WeightedAverageNumberOfDilutedSharesOutstanding",
+    "WeightedAverageNumberOfShareOutstandingBasicAndDiluted",
+]
+
 OCF_TAGS = [
     "NetCashProvidedByUsedInOperatingActivities",
     "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
@@ -62,9 +75,6 @@ DEBT_CURRENT_TAGS = [
     "DebtAndCapitalLeaseObligationsCurrent",
 ]
 
-# These concepts represent the non-current portion in common utility filings.
-# LongTermDebt and LongTermDebtAndCapitalLeaseObligations are deliberately
-# included here because many utilities do not expose a separate *Noncurrent tag.
 DEBT_NONCURRENT_TAGS = [
     "LongTermDebtNoncurrent",
     "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
@@ -73,25 +83,23 @@ DEBT_NONCURRENT_TAGS = [
     "LongTermDebt",
 ]
 
-# Total-debt concepts are a fallback when a filer does not expose the current
-# and non-current components separately. Do not combine a total with components.
 DEBT_TOTAL_TAGS = [
     "DebtAndCapitalLeaseObligations",
     "LongTermDebtCurrentAndNoncurrent",
     "DebtInstrumentCarryingAmount",
 ]
 
-# Cash capex only. Never use CapitalExpendituresIncurredButNotYetPaid: that is
-# an accrual disclosure, not the cash flow used for FCF.
+# Cash capex only. PaymentsForProceedsFromProductiveAssets is a net productive-
+# asset cash-flow concept (purchases less proceeds), so it is a safe last-resort
+# proxy when a utility does not expose a dedicated capex concept.
 CAPEX_TAGS = [
     "PaymentsToAcquirePropertyPlantAndEquipment",
     "PaymentsToAcquireProductiveAssets",
     "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssets",
     "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssetsNet",
+    "PaymentsForProceedsFromProductiveAssets",
 ]
 
-# Prefer actual cash dividend payments. Taxonomy varies across filers/years;
-# notably Duke uses PaymentsOfOrdinaryDividends for recent years.
 DIVIDEND_TAGS = [
     "DividendsCommonStockCash",
     "PaymentsOfDividendsCommonStockCash",
@@ -221,7 +229,31 @@ def pick_instant(facts, tags, year):
 
 
 def pick_eps(facts, year):
-    return pick_flow(facts, EPS_TAGS, year)
+    direct = pick_flow(facts, EPS_TAGS, year)
+    if direct:
+        return direct
+
+    # Some large utilities expose annual EPS only in filing tables while the
+    # company-facts concept is sparse. A GAAP fallback can reconstruct diluted
+    # EPS from attributable net income and weighted diluted shares.
+    income = pick_flow(facts, EPS_NET_INCOME_TAGS, year)
+    shares = pick_flow(facts, EPS_DILUTED_SHARE_TAGS, year)
+    if income and shares and shares["val"] != 0:
+        return {
+            "year": year,
+            "val": income["val"] / shares["val"],
+            "end": income.get("end"),
+            "start": income.get("start"),
+            "filed": income.get("filed", ""),
+            "form": income.get("form"),
+            "frame": income.get("frame"),
+            "fy": income.get("fy"),
+            "namespace": income.get("namespace"),
+            "tag": "derived:net_income_attributable_to_common/weighted_diluted_shares",
+            "unit": "USD-per-shares",
+            "derived": True,
+        }
+    return None
 
 
 def pick_interest(facts, year):
