@@ -20,7 +20,7 @@ from collector_us_fundamental import (
     fetch_json,
 )
 from downturn_us import BENCHMARK, _close_series, calculate_downturn_defense
-from us_scoring import calculate_us_score
+from us_scoring_v2 import calculate_us_utility_score_v2
 from us_utility_extraction import (
     REVENUE_TAGS,
     pick_flow,
@@ -36,26 +36,13 @@ from us_utility_extraction import (
 SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 PERIODS = (1, 3, 5, 10)
 
-# A small number of complex utilities present consolidated capital investment
-# as utility-specific investing-activity lines rather than a single standard
-# XBRL capex concept. Keep these as explicit, auditable annual cash-use
-# overrides rather than using accrual commitments.
-# Values are USD millions and are taken from the companies' annual filings.
+# Auditable annual filing-based capital-expenditure overrides for utilities
+# whose consolidated filing presents the relevant cash-use line in a way that
+# is not reliably captured by a single standard XBRL capex concept.
+# Values are USD millions.
 UTILITY_CAPEX_OVERRIDES = {
-    "ED": {
-        2021: 3630.0,
-        2022: 3824.0,
-        2023: 4353.0,
-        2024: 4770.0,
-        2025: 4764.0,
-    },
-    "NEE": {
-        2021: 16077.0,
-        2022: 19283.0,
-        2023: 25113.0,
-        2024: 24729.0,
-        2025: 24606.0,
-    },
+    "ED": {2021: 3630.0, 2022: 3824.0, 2023: 4353.0, 2024: 4770.0, 2025: 4764.0},
+    "NEE": {2021: 16077.0, 2022: 19283.0, 2023: 25113.0, 2024: 24729.0, 2025: 24606.0},
 }
 
 
@@ -122,6 +109,7 @@ def period_metrics(ticker, facts, latest_year: int, period: int):
         "ocf_debt": (ocf_now / debt_now * 100.0) if ocf_now is not None and debt_now not in (None, 0) else None,
         "fcf_debt": ((ocf_now - abs(capex_now)) / debt_now * 100.0) if ocf_now is not None and capex_now is not None and debt_now not in (None, 0) else None,
         "dividend_coverage": (ocf_now / abs(div_now)) if ocf_now is not None and div_now not in (None, 0) else None,
+        "dividend_payout": (abs(div_now) / ni_now * 100.0) if div_now not in (None, 0) and ni_now is not None and ni_now > 0 else None,
         "interest_coverage": (op_now / abs(interest_now)) if op_now is not None and interest_now not in (None, 0) else None,
     }
     return metrics, base_year
@@ -146,13 +134,13 @@ def build_result(ticker, cik, company_name, facts, submissions, market, stock):
         if metrics is None:
             continue
         metrics["downturn_defense"] = downturn_value
-        scored = calculate_us_score(metrics, profile="utility")
+        scored = calculate_us_utility_score_v2(metrics)
         period_scores[str(period)] = {"base_year": base_year, "metrics": metrics, "scores": scored}
 
     latest = period_scores.get("1")
     latest_score = latest["scores"]["total_score"] if latest else None
     latest_grade = latest["scores"]["grade"] if latest else None
-    latest_missing = latest["scores"]["missing_metric_count"] if latest else 10
+    latest_missing = latest["scores"]["missing_metric_count"] if latest else 11
     reliability = "high" if len(period_scores) >= 3 else ("medium" if period_scores else "low")
 
     return {
