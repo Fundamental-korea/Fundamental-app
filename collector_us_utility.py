@@ -6,7 +6,6 @@ Raw SEC JSON is never persisted. Writes only compact US_Fundamental rows.
 from __future__ import annotations
 
 import argparse
-import os
 from datetime import datetime, timezone
 
 import requests
@@ -16,7 +15,6 @@ from collector_us_fundamental import (
     SUPABASE_URL,
     SUPABASE_KEY,
     SEC_USER_AGENT,
-    SEC_TICKERS,
     SEC_FACTS_URL,
     SEC_SUBMISSIONS_URL,
     fetch_json,
@@ -35,6 +33,7 @@ from us_utility_extraction import (
     pick_dividend,
 )
 
+SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
 PERIODS = (1, 3, 5, 10)
 
 
@@ -119,11 +118,7 @@ def build_result(ticker, cik, company_name, facts, submissions, market, stock):
             continue
         metrics["downturn_defense"] = downturn_value
         scored = calculate_us_score(metrics, profile="utility")
-        period_scores[str(period)] = {
-            "base_year": base_year,
-            "metrics": metrics,
-            "scores": scored,
-        }
+        period_scores[str(period)] = {"base_year": base_year, "metrics": metrics, "scores": scored}
 
     latest = period_scores.get("1")
     latest_score = latest["scores"]["total_score"] if latest else None
