@@ -13,23 +13,25 @@ import math
 FLOW_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 REVENUE_TAGS = [
+    "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "RevenueFromContractWithCustomerIncludingAssessedTax",
+    "Revenues",
     "RegulatedOperatingRevenue",
-    "RegulatedOperatingRevenueWater",
     "ElectricUtilityRevenue",
     "ElectricUtilityOperatingRevenue",
     "NaturalGasUtilityRevenue",
     "NaturalGasUtilityOperatingRevenue",
-    "Revenues",
-    "RevenueFromContractWithCustomerExcludingAssessedTax",
-    "RevenueFromContractWithCustomerIncludingAssessedTax",
     "SalesRevenueNet",
     "SalesRevenueGoodsNet",
 ]
 
 # SEC concept names are case-sensitive. Keep common capitalization variants.
+# InterestAndDebtExpense / InterestExpenseBorrowings are especially important
+# for utilities such as D, SO and EXC where generic InterestExpense is absent.
 INTEREST_TAGS = [
     "InterestExpense",
     "InterestExpenseBorrowings",
+    "InterestAndDebtExpense",
     "InterestExpenseNonoperating",
     "InterestExpenseNonOperating",
     "InterestExpenseNonOperatingNet",
@@ -37,6 +39,10 @@ INTEREST_TAGS = [
     "InterestExpenseNonOperatingAndOther",
     "FinanceCosts",
 ]
+
+# InterestPaidNet is a cash-interest fallback only. It is intentionally last:
+# it is not identical to P&L interest expense and should not outrank expense tags.
+INTEREST_FALLBACK_TAGS = ["InterestPaidNet"]
 
 EPS_TAGS = [
     "EarningsPerShareDiluted",
@@ -56,22 +62,27 @@ DEBT_CURRENT_TAGS = [
     "DebtAndCapitalLeaseObligationsCurrent",
 ]
 
+# These concepts represent the non-current portion in common utility filings.
+# LongTermDebt and LongTermDebtAndCapitalLeaseObligations are deliberately
+# included here because many utilities do not expose a separate *Noncurrent tag.
 DEBT_NONCURRENT_TAGS = [
     "LongTermDebtNoncurrent",
     "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
     "DebtAndCapitalLeaseObligationsNoncurrent",
+    "LongTermDebtAndCapitalLeaseObligations",
+    "LongTermDebt",
 ]
 
 # Total-debt concepts are a fallback when a filer does not expose the current
 # and non-current components separately. Do not combine a total with components.
 DEBT_TOTAL_TAGS = [
-    "LongTermDebt",
-    "LongTermDebtAndCapitalLeaseObligations",
     "DebtAndCapitalLeaseObligations",
     "LongTermDebtCurrentAndNoncurrent",
     "DebtInstrumentCarryingAmount",
 ]
 
+# Cash capex only. Never use CapitalExpendituresIncurredButNotYetPaid: that is
+# an accrual disclosure, not the cash flow used for FCF.
 CAPEX_TAGS = [
     "PaymentsToAcquirePropertyPlantAndEquipment",
     "PaymentsToAcquireProductiveAssets",
@@ -214,11 +225,18 @@ def pick_eps(facts, year):
 
 
 def pick_interest(facts, year):
-    return pick_flow(facts, INTEREST_TAGS, year)
+    row = pick_flow(facts, INTEREST_TAGS, year)
+    if row:
+        return row
+    row = pick_flow(facts, INTEREST_FALLBACK_TAGS, year)
+    if row:
+        row = dict(row)
+        row["interest_fallback"] = True
+    return row
 
 
 def pick_debt(facts, year):
-    """Prefer current+noncurrent components; otherwise use a total-debt tag."""
+    """Prefer current + non-current debt; otherwise use a total-debt tag."""
     current = pick_instant(facts, DEBT_CURRENT_TAGS, year)
     noncurrent = pick_instant(facts, DEBT_NONCURRENT_TAGS, year)
     if current or noncurrent:
