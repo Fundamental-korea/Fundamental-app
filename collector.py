@@ -714,6 +714,15 @@ def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufact
     같은 4개 분기 보고서를 매번 새로 DART 조회하던 문제(20분->2~3시간)를 여기서 해결함."""
     cached = _get_cached_report_metrics(stock_code, year, reprt_code, use_ofs_for_manufacturing)
     if cached is not None:
+        # ⚠️ 2026-09 버그 수정: fetch_year_data()가 동일한 Report_Metrics_Cache 테이블/키
+        # (stock_code, year, reprt_code="11011", use_ofs)를 공유해서 캐싱하는데, 그쪽 결과엔
+        # _report_year/_report_code가 없음(_parse_year_financials는 이 두 키를 안 넣음).
+        # fetch_recent_quarters_metrics가 이전 분기로 거슬러 올라가다 우연히 그 캐시와
+        # 같은 (year, reprt_code="11011") 조합을 조회하면 이 두 키가 빠진 채로 반환돼서
+        # 나중에 q['_report_year'] 접근에서 KeyError가 났었음. 캐시 히트/미스와 무관하게
+        # 이 함수를 호출한 시점에 이미 알고 있는 (year, reprt_code)로 항상 덮어써서 보장함.
+        cached["_report_year"] = year
+        cached["_report_code"] = reprt_code
         return cached
 
     fin_data = _dart_finstate_cached(stock_code, year, reprt_code)
