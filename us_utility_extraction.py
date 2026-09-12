@@ -1,0 +1,207 @@
+"""Utility-specific SEC extraction helpers.
+
+These helpers are intentionally separate from the production scorer until the
+utility dry-run passes. They handle SEC annual facts that are sometimes tagged
+without a start date (notably EPS and some interest facts) by accepting an
+annual CY frame on a 10-K/20-F/40-F row. They never persist raw SEC JSON.
+"""
+from __future__ import annotations
+
+from datetime import datetime
+import math
+
+FLOW_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+
+REVENUE_TAGS = [
+    "Revenues",
+    "RevenueFromContractWithCustomerExcludingAssessedTax",
+    "RevenueFromContractWithCustomerIncludingAssessedTax",
+    "SalesRevenueNet",
+    "SalesRevenueGoodsNet",
+]
+INTEREST_TAGS = [
+    "InterestExpense",
+    "InterestExpenseNonOperating",
+    "InterestExpenseNonOperatingNet",
+    "InterestExpenseDebt",
+    "InterestExpenseNonOperatingAndOther",
+    "FinanceCosts",
+]
+EPS_TAGS = ["EarningsPerShareDiluted", "EarningsPerShareBasic"]
+OCF_TAGS = ["NetCashProvidedByUsedInOperatingActivities", "CashFlowsFromUsedInOperatingActivities"]
+DEBT_CURRENT_TAGS = [
+    "LongTermDebtCurrent",
+    "LongTermDebtAndCapitalLeaseObligationsCurrent",
+    "DebtAndCapitalLeaseObligationsCurrent",
+]
+DEBT_NONCURRENT_TAGS = [
+    "LongTermDebtNoncurrent",
+    "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
+    "DebtAndCapitalLeaseObligationsNoncurrent",
+]
+CAPEX_TAGS = [
+    "PaymentsToAcquirePropertyPlantAndEquipment",
+    "PaymentsToAcquireProductiveAssets",
+    "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssets",
+]
+DIVIDEND_TAGS = [
+    "PaymentsOfDividends",
+    "PaymentsOfDividendsCommonStock",
+    "PaymentsOfDividendsCommonStockCash",
+]
+
+
+def clean_number(value):
+    try:
+        x = float(value)
+        return x if math.isfinite(x) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _annual_row(r):
+    """Return normalized annual metadata or None.
+
+    Normal annual flow facts have a 300-380 day start/end interval. Some SEC
+    facts, especially EPS and selected interest facts, omit ``start`` while
+    carrying an annual CY frame. Those are valid annual observations and must
+    not be discarded merely because start is absent.
+    """
+    form, end = r.get("form"), r.get("end")
+    if form not in FLOW_FORMS or not end:
+        return None
+    try:
+        end_date = datetime.fromisoformat(end).date()
+    except ValueError:
+        return None
+
+    start = r.get("start")
+    if start:
+        try:
+            days = (end_date - datetime.fromisoformat(start).date()).days
+        except ValueError:
+            return None
+        if not 300 <= days <= 380:
+            return None
+    else:
+        frame = str(r.get("frame") or "")
+        fy = r.get("fy")
+        # No-start observations are accepted only when SEC itself identifies
+        # them as an annual calendar-year frame or fiscal year.
+        if not (frame.startswith("CY") and frame[2:].isdigit() or fy is not None):
+            return None
+
+    value = clean_number(r.get("val"))
+    if value is None:
+        return None
+    return {
+        "year": end_date.year,
+        "val": value,
+        "end": end,
+        "start": start,
+        "filed": r.get("filed") or "",
+        "form": form,
+        "frame": r.get("frame"),
+        "fy": r.get("fy"),
+    }
+
+
+def _rows(facts, tag, instant=False):
+    root = facts.get("facts", facts)
+    out = []
+    for namespace in ("us-gaap", "ifrs-full"):
+        fact = (root.get(namespace) or {}).get(tag)
+        if not fact:
+            continue
+        for unit, rows in (fact.get("units") or {}).items():
+            if not isinstance(rows, list):
+                continue
+            for r in rows:
+                if instant:
+                    if r.get("form") not in FLOW_FORMS or not r.get("end"):
+                        continue
+                    try:
+                        year = datetime.fromisoformat(r["end"]).date().year
+                    except ValueError:
+                        continue
+                    value = clean_number(r.get("val"))
+                    if value is None:
+                        continue
+                    row = {"year": year, "val": value, "end": r["end"], "start": None,
+                           "filed": r.get("filed") or "", "form": r.get("form"),
+                           "frame": r.get("frame"), "fy": r.get("fy")}
+                else:
+                    row = _annual_row(r)
+                    if row is None:
+                        continue
+                row.update({"namespace": namespace, "tag": tag, "unit": unit})
+                out.append(row)
+    return out
+
+
+def _dedupe(rows):
+    by_year = {}
+    for row in rows:
+        key = (
+            row.get("end", ""),
+            row.get("filed", ""),
+            0 if str(row.get("form", "")).endswith("/A") else 1,
+            1 if str(row.get("frame", "")).startswith("CY") else 0,
+        )
+        prev = by_year.get(row["year"])
+        if prev is None or key > prev[0]:
+            by_year[row["year"]] = (key, row)
+    return {year: row for year, (_, row) in by_year.items()}
+
+
+def pick_flow(facts, tags, year):
+    # Tag priority is intentional. For consolidated utilities, Revenues is
+    # preferred over segment-specific contract revenue when available.
+    for tag in tags:
+        row = _dedupe(_rows(facts, tag)).get(year)
+        if row:
+            return row
+    return None
+
+
+def pick_instant(facts, tags, year):
+    for tag in tags:
+        row = _dedupe(_rows(facts, tag, instant=True)).get(year)
+        if row:
+            return row
+    return None
+
+
+def pick_eps(facts, year):
+    return pick_flow(facts, EPS_TAGS, year)
+
+
+def pick_interest(facts, year):
+    return pick_flow(facts, INTEREST_TAGS, year)
+
+
+def pick_debt(facts, year):
+    current = pick_instant(facts, DEBT_CURRENT_TAGS, year)
+    noncurrent = pick_instant(facts, DEBT_NONCURRENT_TAGS, year)
+    if not current and not noncurrent:
+        return None
+    current_value = current["val"] if current else 0.0
+    noncurrent_value = noncurrent["val"] if noncurrent else 0.0
+    return {
+        "year": year,
+        "val": current_value + noncurrent_value,
+        "current": current,
+        "noncurrent": noncurrent,
+    }
+
+
+def pick_ocf(facts, year):
+    return pick_flow(facts, OCF_TAGS, year)
+
+
+def pick_capex(facts, year):
+    return pick_flow(facts, CAPEX_TAGS, year)
+
+
+def pick_dividend(facts, year):
+    return pick_flow(facts, DIVIDEND_TAGS, year)
