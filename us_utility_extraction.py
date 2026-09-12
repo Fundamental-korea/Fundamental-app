@@ -77,9 +77,12 @@ CAPEX_TAGS = [
     "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssetsNet",
 ]
 
+# Prefer actual cash dividend payments. Taxonomy varies across filers/years;
+# notably Duke uses PaymentsOfOrdinaryDividends for recent years.
 DIVIDEND_TAGS = [
     "PaymentsOfDividendsCommonStockCash",
     "PaymentsOfDividendsCommonStock",
+    "PaymentsOfOrdinaryDividends",
     "PaymentsOfDividends",
     "PaymentsOfDividendsMinorityInterest",
 ]
