@@ -13,15 +13,20 @@ import math
 FLOW_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 REVENUE_TAGS = [
+    "RegulatedOperatingRevenue",
+    "RegulatedOperatingRevenueWater",
+    "ElectricUtilityRevenue",
+    "ElectricUtilityOperatingRevenue",
+    "NaturalGasUtilityRevenue",
+    "NaturalGasUtilityOperatingRevenue",
     "Revenues",
     "RevenueFromContractWithCustomerExcludingAssessedTax",
     "RevenueFromContractWithCustomerIncludingAssessedTax",
     "SalesRevenueNet",
     "SalesRevenueGoodsNet",
 ]
-# SEC concept names are case-sensitive. AWR, for example, reports the exact
-# concept as InterestExpenseNonoperating (lowercase o), not the similarly
-# named InterestExpenseNonOperating. Keep both spellings/fallbacks.
+
+# SEC concept names are case-sensitive. Keep common capitalization variants.
 INTEREST_TAGS = [
     "InterestExpense",
     "InterestExpenseNonoperating",
@@ -31,27 +36,52 @@ INTEREST_TAGS = [
     "InterestExpenseNonOperatingAndOther",
     "FinanceCosts",
 ]
-EPS_TAGS = ["EarningsPerShareDiluted", "EarningsPerShareBasic"]
-OCF_TAGS = ["NetCashProvidedByUsedInOperatingActivities", "CashFlowsFromUsedInOperatingActivities"]
+
+EPS_TAGS = [
+    "EarningsPerShareDiluted",
+    "EarningsPerShareBasic",
+    "EarningsPerShareBasicAndDiluted",
+]
+
+OCF_TAGS = [
+    "NetCashProvidedByUsedInOperatingActivities",
+    "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations",
+    "CashFlowsFromUsedInOperatingActivities",
+]
+
 DEBT_CURRENT_TAGS = [
     "LongTermDebtCurrent",
     "LongTermDebtAndCapitalLeaseObligationsCurrent",
     "DebtAndCapitalLeaseObligationsCurrent",
 ]
+
 DEBT_NONCURRENT_TAGS = [
     "LongTermDebtNoncurrent",
     "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
     "DebtAndCapitalLeaseObligationsNoncurrent",
 ]
+
+# Total-debt concepts are a fallback when a filer does not expose the current
+# and non-current components separately. Do not combine a total with components.
+DEBT_TOTAL_TAGS = [
+    "LongTermDebt",
+    "LongTermDebtAndCapitalLeaseObligations",
+    "DebtAndCapitalLeaseObligations",
+    "LongTermDebtCurrentAndNoncurrent",
+]
+
 CAPEX_TAGS = [
     "PaymentsToAcquirePropertyPlantAndEquipment",
     "PaymentsToAcquireProductiveAssets",
     "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssets",
+    "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssetsNet",
 ]
+
 DIVIDEND_TAGS = [
-    "PaymentsOfDividends",
-    "PaymentsOfDividendsCommonStock",
     "PaymentsOfDividendsCommonStockCash",
+    "PaymentsOfDividendsCommonStock",
+    "PaymentsOfDividends",
+    "PaymentsOfDividendsMinorityInterest",
 ]
 
 
@@ -91,9 +121,14 @@ def _annual_row(r):
     if value is None:
         return None
     return {
-        "year": end_date.year, "val": value, "end": end,
-        "start": start, "filed": r.get("filed") or "", "form": form,
-        "frame": r.get("frame"), "fy": r.get("fy"),
+        "year": end_date.year,
+        "val": value,
+        "end": end,
+        "start": start,
+        "filed": r.get("filed") or "",
+        "form": form,
+        "frame": r.get("frame"),
+        "fy": r.get("fy"),
     }
 
 
@@ -118,9 +153,16 @@ def _rows(facts, tag, instant=False):
                     value = clean_number(r.get("val"))
                     if value is None:
                         continue
-                    row = {"year": year, "val": value, "end": r["end"], "start": None,
-                           "filed": r.get("filed") or "", "form": r.get("form"),
-                           "frame": r.get("frame"), "fy": r.get("fy")}
+                    row = {
+                        "year": year,
+                        "val": value,
+                        "end": r["end"],
+                        "start": None,
+                        "filed": r.get("filed") or "",
+                        "form": r.get("form"),
+                        "frame": r.get("frame"),
+                        "fy": r.get("fy"),
+                    }
                 else:
                     row = _annual_row(r)
                     if row is None:
@@ -134,7 +176,8 @@ def _dedupe(rows):
     by_year = {}
     for row in rows:
         key = (
-            row.get("end", ""), row.get("filed", ""),
+            row.get("end", ""),
+            row.get("filed", ""),
             0 if str(row.get("form", "")).endswith("/A") else 1,
             1 if str(row.get("frame", "")).startswith("CY") else 0,
         )
@@ -169,14 +212,30 @@ def pick_interest(facts, year):
 
 
 def pick_debt(facts, year):
+    """Prefer current+noncurrent components; otherwise use a total-debt tag."""
     current = pick_instant(facts, DEBT_CURRENT_TAGS, year)
     noncurrent = pick_instant(facts, DEBT_NONCURRENT_TAGS, year)
-    if not current and not noncurrent:
-        return None
-    current_value = current["val"] if current else 0.0
-    noncurrent_value = noncurrent["val"] if noncurrent else 0.0
-    return {"year": year, "val": current_value + noncurrent_value,
-            "current": current, "noncurrent": noncurrent}
+    if current or noncurrent:
+        current_value = current["val"] if current else 0.0
+        noncurrent_value = noncurrent["val"] if noncurrent else 0.0
+        return {
+            "year": year,
+            "val": current_value + noncurrent_value,
+            "current": current,
+            "noncurrent": noncurrent,
+            "total": None,
+        }
+
+    total = pick_instant(facts, DEBT_TOTAL_TAGS, year)
+    if total:
+        return {
+            "year": year,
+            "val": total["val"],
+            "current": None,
+            "noncurrent": None,
+            "total": total,
+        }
+    return None
 
 
 def pick_ocf(facts, year):
