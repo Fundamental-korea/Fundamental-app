@@ -29,6 +29,7 @@ REVENUE_TAGS = [
 # SEC concept names are case-sensitive. Keep common capitalization variants.
 INTEREST_TAGS = [
     "InterestExpense",
+    "InterestExpenseBorrowings",
     "InterestExpenseNonoperating",
     "InterestExpenseNonOperating",
     "InterestExpenseNonOperatingNet",
@@ -68,6 +69,7 @@ DEBT_TOTAL_TAGS = [
     "LongTermDebtAndCapitalLeaseObligations",
     "DebtAndCapitalLeaseObligations",
     "LongTermDebtCurrentAndNoncurrent",
+    "DebtInstrumentCarryingAmount",
 ]
 
 CAPEX_TAGS = [
@@ -80,6 +82,7 @@ CAPEX_TAGS = [
 # Prefer actual cash dividend payments. Taxonomy varies across filers/years;
 # notably Duke uses PaymentsOfOrdinaryDividends for recent years.
 DIVIDEND_TAGS = [
+    "DividendsCommonStockCash",
     "PaymentsOfDividendsCommonStockCash",
     "PaymentsOfDividendsCommonStock",
     "PaymentsOfOrdinaryDividends",
