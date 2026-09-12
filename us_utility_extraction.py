@@ -19,8 +19,12 @@ REVENUE_TAGS = [
     "SalesRevenueNet",
     "SalesRevenueGoodsNet",
 ]
+# SEC concept names are case-sensitive. AWR, for example, reports the exact
+# concept as InterestExpenseNonoperating (lowercase o), not the similarly
+# named InterestExpenseNonOperating. Keep both spellings/fallbacks.
 INTEREST_TAGS = [
     "InterestExpense",
+    "InterestExpenseNonoperating",
     "InterestExpenseNonOperating",
     "InterestExpenseNonOperatingNet",
     "InterestExpenseDebt",
@@ -60,13 +64,7 @@ def clean_number(value):
 
 
 def _annual_row(r):
-    """Return normalized annual metadata or None.
-
-    Normal annual flow facts have a 300-380 day start/end interval. Some SEC
-    facts, especially EPS and selected interest facts, omit ``start`` while
-    carrying an annual CY frame. Those are valid annual observations and must
-    not be discarded merely because start is absent.
-    """
+    """Return normalized annual metadata or None."""
     form, end = r.get("form"), r.get("end")
     if form not in FLOW_FORMS or not end:
         return None
@@ -86,23 +84,16 @@ def _annual_row(r):
     else:
         frame = str(r.get("frame") or "")
         fy = r.get("fy")
-        # No-start observations are accepted only when SEC itself identifies
-        # them as an annual calendar-year frame or fiscal year.
-        if not (frame.startswith("CY") and frame[2:].isdigit() or fy is not None):
+        if not ((frame.startswith("CY") and frame[2:].isdigit()) or fy is not None):
             return None
 
     value = clean_number(r.get("val"))
     if value is None:
         return None
     return {
-        "year": end_date.year,
-        "val": value,
-        "end": end,
-        "start": start,
-        "filed": r.get("filed") or "",
-        "form": form,
-        "frame": r.get("frame"),
-        "fy": r.get("fy"),
+        "year": end_date.year, "val": value, "end": end,
+        "start": start, "filed": r.get("filed") or "", "form": form,
+        "frame": r.get("frame"), "fy": r.get("fy"),
     }
 
 
@@ -143,8 +134,7 @@ def _dedupe(rows):
     by_year = {}
     for row in rows:
         key = (
-            row.get("end", ""),
-            row.get("filed", ""),
+            row.get("end", ""), row.get("filed", ""),
             0 if str(row.get("form", "")).endswith("/A") else 1,
             1 if str(row.get("frame", "")).startswith("CY") else 0,
         )
@@ -155,8 +145,6 @@ def _dedupe(rows):
 
 
 def pick_flow(facts, tags, year):
-    # Tag priority is intentional. For consolidated utilities, Revenues is
-    # preferred over segment-specific contract revenue when available.
     for tag in tags:
         row = _dedupe(_rows(facts, tag)).get(year)
         if row:
@@ -187,12 +175,8 @@ def pick_debt(facts, year):
         return None
     current_value = current["val"] if current else 0.0
     noncurrent_value = noncurrent["val"] if noncurrent else 0.0
-    return {
-        "year": year,
-        "val": current_value + noncurrent_value,
-        "current": current,
-        "noncurrent": noncurrent,
-    }
+    return {"year": year, "val": current_value + noncurrent_value,
+            "current": current, "noncurrent": noncurrent}
 
 
 def pick_ocf(facts, year):
