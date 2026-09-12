@@ -1,4 +1,4 @@
-"""US Utility scoring v2.1 (dry-run candidate).
+"""US Utility scoring v2.2 (dry-run candidate).
 
 This module intentionally does not replace the production utility scorer yet.
 It is used to compare a revised 100-point utility model against the current
@@ -20,10 +20,10 @@ PROFILE_METRICS = {
         "ocf_debt": 10,
         "fcf_debt": 10,
         "interest_coverage": 10,
-        "dividend_coverage": 5,
-        "fcf_dividend": 3,
-        "dividend_payout": 3,
-        "downturn_defense": 12,
+        "dividend_coverage": 4,
+        "fcf_dividend": 4,
+        "dividend_payout": 2,
+        "downturn_defense": 13,
     },
 }
 
@@ -57,7 +57,7 @@ def _score(metric: str, value):
 
 
 def calculate_us_utility_score_v2(metrics: dict) -> dict:
-    """Return the revised utility score without changing production scoring."""
+    """Return the revised utility v2.2 score without changing production scoring."""
     weights = PROFILE_METRICS["utility"]
     total_weight = float(sum(weights.values()))
     scores = {}
@@ -102,7 +102,7 @@ def calculate_us_utility_score_v2(metrics: dict) -> dict:
         )
 
     return {
-        "profile": "utility_v2_1",
+        "profile": "utility_v2_2",
         "metric_scores": scores,
         "total_score": total,
         "grade": grade,
@@ -122,4 +122,4 @@ def calculate_us_utility_score_v2(metrics: dict) -> dict:
 
 
 if __name__ == "__main__":
-    print("utility_v2_1 weight total:", sum(PROFILE_METRICS["utility"].values()))
+    print("utility_v2_2 weight total:", sum(PROFILE_METRICS["utility"].values()))
