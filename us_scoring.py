@@ -11,60 +11,61 @@ from scoring import METRIC_SCORE_BANDS, calculate_metric_score, evaluate_defense
 US_PROFILES = {"standard", "financial", "reit", "bdc", "defense", "utility"}
 
 PROFILE_METRICS = {
-    # General operating companies.
     "standard": {
         "revenue_growth": 5, "eps_growth": 5, "opm": 10, "roic": 10,
         "debt_rate": 10, "quick_ratio": 10, "interest_coverage": 10,
         "ocf_ratio": 10, "sga_ratio": 10, "downturn_defense": 20,
     },
-    # Financial institutions: do not use ordinary-company OPM, ROIC, SG&A,
-    # quick ratio, interest coverage or OCF/NI as primary health measures.
-    # Those ratios are not economically comparable for banks/insurers/asset
-    # managers. ROA is the common profitability anchor available today.
     "financial": {
-        "revenue_growth": 15,
-        "eps_growth": 25,
-        "roa": 25,
+        "revenue_growth": 15, "eps_growth": 25, "roa": 25,
         "downturn_defense": 35,
     },
-    # REIT profile is deliberately conservative until FFO/AFFO extraction is
-    # added. Leverage and cash generation remain useful proxies.
     "reit": {
         "revenue_growth": 10, "eps_growth": 10, "roa": 10,
         "debt_rate": 15, "ocf_ratio": 15, "interest_coverage": 10,
         "downturn_defense": 30,
     },
-    # BDC profile remains a provisional proxy until NII/NAV-specific facts are
-    # collected. It avoids ordinary-company margin metrics.
     "bdc": {
         "eps_growth": 10, "roa": 15, "debt_rate": 15,
         "ocf_ratio": 15, "interest_coverage": 10, "downturn_defense": 35,
     },
-    # Defense / aerospace: backlog and book-to-bill are future additions, so
-    # v2 uses the best currently collected operating proxies without treating
-    # defense companies as generic industrials.
     "defense": {
         "revenue_growth": 10, "eps_growth": 10, "opm": 15, "roic": 15,
         "debt_rate": 10, "interest_coverage": 10, "ocf_ratio": 15,
         "downturn_defense": 15,
     },
-    # Utility scoring is intentionally left unchanged for this phase.
+    # Utility metrics are utility-specific rather than generic-company proxies.
+    # Debt service and cash funding capacity matter more than absolute leverage.
     "utility": {
-        "revenue_growth": 5, "eps_growth": 5, "opm": 10, "roic": 10,
-        "debt_rate": 15, "interest_coverage": 10, "ocf_ratio": 15,
-        "sga_ratio": 5, "downturn_defense": 25,
+        "revenue_growth": 5,
+        "eps_growth": 5,
+        "opm": 10,
+        "roa": 10,
+        "debt_capital": 15,
+        "ocf_debt": 15,
+        "fcf_debt": 10,
+        "dividend_coverage": 10,
+        "interest_coverage": 10,
+        "downturn_defense": 10,
     },
 }
 
-# Structural exemptions are limited to metrics that are clearly inappropriate
-# for the profile. Missing values still remain missing and never receive 10/10.
+UTILITY_BANDS = {
+    "revenue_growth": [(20,10),(15,9),(10,8),(5,7),(0,6),(-5,5),(-10,4),(-20,3),(-35,2),(-50,1)],
+    "eps_growth": [(20,10),(15,9),(10,8),(5,7),(0,6),(-5,5),(-10,4),(-20,3),(-35,2),(-50,1)],
+    "opm": [(35,10),(30,9),(25,8),(20,7),(15,6),(10,5),(5,4),(0,3),(-5,2),(-15,1)],
+    "roa": [(8,10),(6,9),(5,8),(4,7),(3,6),(2,5),(1,4),(0,3),(-2,2),(-5,1)],
+    "debt_capital": [(35,10),(40,9),(45,8),(50,7),(55,6),(60,5),(65,4),(70,3),(80,2),(90,1)],
+    "ocf_debt": [(25,10),(20,9),(15,8),(12,7),(10,6),(8,5),(6,4),(4,3),(2,2),(1,1)],
+    "fcf_debt": [(10,10),(8,9),(6,8),(4,7),(3,6),(2,5),(1,4),(0,3),(-2,2),(-5,1)],
+    "dividend_coverage": [(2.5,10),(2,9),(1.75,8),(1.5,7),(1.25,6),(1,5),(.9,4),(.8,3),(.7,2),(.5,1)],
+    "interest_coverage": [(8,10),(6,9),(5,8),(4,7),(3,6),(2.5,5),(2,4),(1.5,3),(1,2),(.5,1)],
+    "downturn_defense": [(20,10),(15,9),(10,8),(5,7),(0,6),(-5,5),(-10,4),(-15,3),(-25,2),(-40,1)],
+}
+
 LEVERAGE_EXEMPT = {
-    "standard": set(),
-    "financial": set(),
-    "reit": set(),
-    "bdc": set(),
-    "defense": set(),
-    "utility": set(),
+    "standard": set(), "financial": set(), "reit": set(),
+    "bdc": set(), "defense": set(), "utility": set(),
 }
 
 
@@ -80,12 +81,19 @@ def _score(metric, value, profile):
     return calculate_metric_score(metric, value, leverage_exempt=False)
 
 
-def _coverage_cap(available_weight: float, total_weight: float) -> float:
-    """Cap scores when too much of the profile is missing.
+def _score_utility_metric(metric, value):
+    if value is None:
+        return 0
+    for threshold, score in UTILITY_BANDS[metric]:
+        if metric == "debt_capital":
+            if value <= threshold:
+                return score
+        elif value >= threshold:
+            return score
+    return 0
 
-    This keeps the score comparable without rewarding sparse SEC extraction.
-    Full coverage has no cap; sparse coverage gets a transparent ceiling.
-    """
+
+def _coverage_cap(available_weight: float, total_weight: float) -> float:
     if not total_weight:
         return 0.0
     coverage = available_weight / total_weight
@@ -98,26 +106,18 @@ def _coverage_cap(available_weight: float, total_weight: float) -> float:
     return 70.0
 
 
-def calculate_us_score(metrics: dict, profile: str = "standard") -> dict:
-    """Return a US 0-100 score plus coverage metadata."""
-    profile = profile if profile in US_PROFILES else "standard"
+def _calculate_profile_score(metrics: dict, profile: str, scorer):
     weights = PROFILE_METRICS[profile]
     total_weight = float(sum(weights.values()))
-
     scores = {}
     weighted_total = 0.0
     available_weight = 0.0
 
     for metric, weight in weights.items():
         value = metrics.get(metric)
-        raw = _score(metric, value, profile)
+        raw = scorer(metric, value)
         weighted = raw * (weight / 10.0)
-        entry = {
-            "value": value,
-            "score": raw,
-            "weight": weight,
-            "weighted_score": round(weighted, 2),
-        }
+        entry = {"value": value, "score": raw, "weight": weight, "weighted_score": round(weighted, 2)}
         if value is None:
             entry["excluded_from_total"] = True
         else:
@@ -125,32 +125,16 @@ def calculate_us_score(metrics: dict, profile: str = "standard") -> dict:
             available_weight += weight
         scores[metric] = entry
 
-    if available_weight:
-        normalized = weighted_total / available_weight * 100.0
-    else:
-        normalized = 0.0
-
+    normalized = weighted_total / available_weight * 100.0 if available_weight else 0.0
     cap = _coverage_cap(available_weight, total_weight)
     total = round(min(normalized, cap), 1)
     grade, grade_desc = evaluate_defense_grade(total)
 
     growth_keys = {"revenue_growth", "eps_growth"}
-    growth_weighted = sum(
-        entry["weighted_score"]
-        for metric, entry in scores.items()
-        if metric in growth_keys and not entry.get("excluded_from_total")
-    )
-    defense_weighted = sum(
-        entry["weighted_score"]
-        for metric, entry in scores.items()
-        if metric not in growth_keys and not entry.get("excluded_from_total")
-    )
+    growth_weighted = sum(e["weighted_score"] for m, e in scores.items() if m in growth_keys and not e.get("excluded_from_total"))
+    defense_weighted = sum(e["weighted_score"] for m, e in scores.items() if m not in growth_keys and not e.get("excluded_from_total"))
     scale = 100.0 / available_weight if available_weight else 0.0
-    growth = round(growth_weighted * scale, 1)
-    defense = round(defense_weighted * scale, 1)
-
     missing = sum(1 for metric in weights if metrics.get(metric) is None)
-    coverage_pct = round((available_weight / total_weight) * 100.0, 1) if total_weight else 0.0
 
     return {
         "profile": profile,
@@ -158,12 +142,20 @@ def calculate_us_score(metrics: dict, profile: str = "standard") -> dict:
         "total_score": total,
         "grade": grade,
         "grade_desc": grade_desc,
-        "sub_scores": {"growth": growth, "defense": defense},
+        "sub_scores": {"growth": round(growth_weighted * scale, 1), "defense": round(defense_weighted * scale, 1)},
         "available_weight": available_weight,
-        "coverage_pct": coverage_pct,
+        "coverage_pct": round((available_weight / total_weight) * 100.0, 1) if total_weight else 0.0,
         "score_cap": cap,
         "missing_metric_count": missing,
     }
+
+
+def calculate_us_score(metrics: dict, profile: str = "standard") -> dict:
+    """Return a US 0-100 score plus coverage metadata."""
+    profile = profile if profile in US_PROFILES else "standard"
+    if profile == "utility":
+        return _calculate_profile_score(metrics, profile, _score_utility_metric)
+    return _calculate_profile_score(metrics, profile, lambda metric, value: _score(metric, value, profile))
 
 
 def validate_profiles() -> dict:
