@@ -113,6 +113,18 @@ def is_extreme_growth(value):
     return value is not None and abs(value) > GROWTH_EXTREME_DISPLAY_THRESHOLD
 
 
+def _count_missing_metrics(score_result):
+    """
+    ⚠️ 2026-09: scoring.py v4 리팩터링으로 calculate_fundamental_score()의 반환 키가
+    'metric_scores'->'scores'로 바뀌었고, collector.py가 참조하던 'sub_scores'/
+    'financial_adjusted'/'missing_metric_count'는 v4 반환값에 아예 없어졌음(app.py 필드
+    정렬 미완료 이슈와 같은 계열의 통합 문제). missing_metric_count만 이렇게 직접
+    계산해서 메꿈 - sub_scores는 v4에 대응 데이터 자체가 없어 빈 dict로 남겨둠
+    (scoring.py에 카테고리별 하위점수 로직이 추가되면 그때 실제 값으로 교체 필요).
+    """
+    return sum(1 for entry in score_result["scores"].values() if entry.get("value") is None)
+
+
 def sanitize_growth(value):
     """⚠️ 이름은 하위 호환을 위해 유지하지만 더 이상 값을 null 처리하지 않고 그대로
     반환한다 (identity function). 예전엔 500% 초과 시 None 처리했으나, score band가
@@ -1315,10 +1327,10 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
 
             # 이자비용이 근사치(금융비용 기준, 버그8)로 계산된 기간이면 metric_scores에 표시해서
             # app.py가 "이 값은 근사치입니다" 안내를 붙일 수 있게 함
-            if pdata["avg_metrics"].get("interest_coverage_is_approx") and "interest_coverage" in avg_score["metric_scores"]:
-                avg_score["metric_scores"]["interest_coverage"]["is_approximate"] = True
-            if pdata["worst_metrics"].get("interest_coverage_is_approx") and "interest_coverage" in worst_score["metric_scores"]:
-                worst_score["metric_scores"]["interest_coverage"]["is_approximate"] = True
+            if pdata["avg_metrics"].get("interest_coverage_is_approx") and "interest_coverage" in avg_score["scores"]:
+                avg_score["scores"]["interest_coverage"]["is_approximate"] = True
+            if pdata["worst_metrics"].get("interest_coverage_is_approx") and "interest_coverage" in worst_score["scores"]:
+                worst_score["scores"]["interest_coverage"]["is_approximate"] = True
 
             # revenue_growth/eps_growth 값이 이례적으로 크면(기저효과 등) 화면에 참고 뱃지를
             # 붙일 수 있도록 표시만 해둠 - 값 자체는 이미 그대로 저장되고 있고(더 이상 null
@@ -1327,10 +1339,10 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             for growth_key in ("revenue_growth", "eps_growth"):
                 avg_val = pdata["avg_metrics"].get(growth_key)
                 if is_extreme_growth(avg_val):
-                    avg_score["metric_scores"][growth_key]["is_extreme"] = True
+                    avg_score["scores"][growth_key]["is_extreme"] = True
                 worst_val = pdata["worst_metrics"].get(growth_key)
                 if is_extreme_growth(worst_val):
-                    worst_score["metric_scores"][growth_key]["is_extreme"] = True
+                    worst_score["scores"][growth_key]["is_extreme"] = True
 
             period_scores[f"{period}y"] = {
                 "years_used": pdata["years_used"],
@@ -1338,18 +1350,18 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
                 "avg": {
                     "total_score": avg_score["total_score"],
                     "grade": avg_score["grade"],  # 잠정 등급 - 전체 수집 완료 후 재산정 예정
-                    "metric_scores": avg_score["metric_scores"],
-                    "sub_scores": avg_score["sub_scores"],
-                    "financial_adjusted": avg_score["financial_adjusted"],
-                    "missing_metric_count": avg_score["missing_metric_count"],
+                    "metric_scores": avg_score["scores"],
+                    "sub_scores": {},  # ⚠️ scoring.py v4엔 카테고리별 하위점수가 아직 없음
+                    "financial_adjusted": financial_sector,
+                    "missing_metric_count": _count_missing_metrics(avg_score),
                 },
                 "worst": {
                     "total_score": worst_score["total_score"],
                     "grade": worst_score["grade"],  # 잠정 등급 - 전체 수집 완료 후 재산정 예정
-                    "metric_scores": worst_score["metric_scores"],
-                    "sub_scores": worst_score["sub_scores"],
-                    "financial_adjusted": worst_score["financial_adjusted"],
-                    "missing_metric_count": worst_score["missing_metric_count"],
+                    "metric_scores": worst_score["scores"],
+                    "sub_scores": {},  # ⚠️ scoring.py v4엔 카테고리별 하위점수가 아직 없음
+                    "financial_adjusted": financial_sector,
+                    "missing_metric_count": _count_missing_metrics(worst_score),
                 },
             }
             print(
@@ -1740,16 +1752,16 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         metrics_1y["interest_coverage_is_approx"] = latest_report.get("interest_exp_is_approx", False)
 
         score = calculate_fundamental_score(metrics_1y, leverage_exempt=leverage_exempt, is_financial=financial_sector)
-        if metrics_1y.get("interest_coverage_is_approx") and "interest_coverage" in score["metric_scores"]:
-            score["metric_scores"]["interest_coverage"]["is_approximate"] = True
+        if metrics_1y.get("interest_coverage_is_approx") and "interest_coverage" in score["scores"]:
+            score["scores"]["interest_coverage"]["is_approximate"] = True
 
         # revenue_growth/eps_growth 값이 이례적으로 크면(기저효과 등) 화면에 참고 뱃지를
         # 붙일 수 있도록 표시만 해둠 - sync_kor_stock_fundamental과 동일한 처리
-        # (값 자체는 이미 None 처리 없이 그대로 score["metric_scores"]에 들어있음)
+        # (값 자체는 이미 None 처리 없이 그대로 score["scores"]에 들어있음)
         for growth_key in ("revenue_growth", "eps_growth"):
             val = metrics_1y.get(growth_key)
-            if is_extreme_growth(val) and growth_key in score["metric_scores"]:
-                score["metric_scores"][growth_key]["is_extreme"] = True
+            if is_extreme_growth(val) and growth_key in score["scores"]:
+                score["scores"][growth_key]["is_extreme"] = True
 
         report_year = latest_report["_report_year"]
         report_code = latest_report["_report_code"]
@@ -1767,6 +1779,7 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
             for metric in RATIO_METRICS + ["revenue_growth", "eps_growth"]:
                 quarterly_breakdown.setdefault(metric, {})[q_label] = q.get(metric)
 
+        score_missing_count = _count_missing_metrics(score)
         merged_period_scores = dict(existing_period_scores or {})
         merged_period_scores["1y"] = {
             "years_used": [f"{report_year} {report_label}"],
@@ -1774,18 +1787,18 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
             "avg": {
                 "total_score": score["total_score"],
                 "grade": score["grade"],  # 잠정 등급 - 등급 재산정 패스에서 최종 반영됨
-                "metric_scores": score["metric_scores"],
-                "sub_scores": score["sub_scores"],
-                "financial_adjusted": score["financial_adjusted"],
-                "missing_metric_count": score["missing_metric_count"],
+                "metric_scores": score["scores"],
+                "sub_scores": {},  # ⚠️ scoring.py v4엔 카테고리별 하위점수가 아직 없음
+                "financial_adjusted": financial_sector,
+                "missing_metric_count": score_missing_count,
             },
             "worst": {  # 보고서 1개뿐이라 평균=최악
                 "total_score": score["total_score"],
                 "grade": score["grade"],
-                "metric_scores": score["metric_scores"],
-                "sub_scores": score["sub_scores"],
-                "financial_adjusted": score["financial_adjusted"],
-                "missing_metric_count": score["missing_metric_count"],
+                "metric_scores": score["scores"],
+                "sub_scores": {},  # ⚠️ scoring.py v4엔 카테고리별 하위점수가 아직 없음
+                "financial_adjusted": financial_sector,
+                "missing_metric_count": score_missing_count,
             },
         }
 
