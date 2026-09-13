@@ -12,6 +12,8 @@ import requests
 
 INSTANCE_EXCLUDE={"filingsummary.xml","filingsummary.json","metalinks.json"}
 ANNUAL_FORMS={"10-K","10-K/A","20-F","20-F/A","40-F","40-F/A"}
+XLINK="http://www.w3.org/1999/xlink"
+
 
 def _local(tag): return tag.rsplit("}",1)[-1]
 def _namespace(tag): return tag[1:].split("}",1)[0] if tag.startswith("{") and "}" in tag else ""
@@ -71,19 +73,19 @@ def _parse_labels(xml_text):
     for e in root.iter():
         n=_local(e.tag)
         if n=="loc":
-            label=e.attrib.get("{http://www.w3.org/1999/xlink}label") or e.attrib.get("label")
-            href=e.attrib.get("{http://www.w3.org/1999/xlink}href") or e.attrib.get("href")
+            label=e.attrib.get(f"{{{XLINK}}}label") or e.attrib.get("label")
+            href=e.attrib.get(f"{{{XLINK}}}href") or e.attrib.get("href")
             if label and href:locs[label]=href.split("#")[-1]
         elif n=="label":
-            label=e.attrib.get("{http://www.w3.org/1999/xlink}label") or e.attrib.get("label")
-            role=e.attrib.get("{http://www.w3.org/1999/xlink}role") or e.attrib.get("role") or ""
+            label=e.attrib.get(f"{{{XLINK}}}label") or e.attrib.get("label")
+            role=e.attrib.get(f"{{{XLINK}}}role") or e.attrib.get("role") or ""
             text=" ".join("".join(e.itertext()).split())
             if label and text:
                 priority=2 if role==standard_roles[0] else 1 if role in standard_roles[1:] else 0
                 labels[label]=(priority,text)
         elif n=="labelArc":
-            frm=e.attrib.get("{http://www.w3.org/1999/xlink}from") or e.attrib.get("from")
-            to=e.attrib.get("{http://www.w3.org/1999/xlink}to") or e.attrib.get("to")
+            frm=e.attrib.get(f"{{{XLINK}}}from") or e.attrib.get("from")
+            to=e.attrib.get(f"{{{XLINK}}}to") or e.attrib.get("to")
             if frm and to:rels.append((frm,to))
     out={}
     for frm,to in rels:
@@ -93,6 +95,51 @@ def _parse_labels(xml_text):
             prev=out.get(concept)
             if prev is None or priority>prev[0]:out[concept]=(priority,text)
     return {k:v[1] for k,v in out.items()}
+
+def _context_has_dimension(context):
+    """Return True when an XBRL context contains an explicit or typed dimension."""
+    for e in context.iter():
+        if _local(e.tag) in {"explicitMember","typedMember"}:
+            return True
+    return False
+
+def _parse_instance(xml_text,label_map=None):
+    root=ET.fromstring(xml_text);contexts={};units={};facts={}
+    label_map=label_map or {}
+    for e in root.iter():
+        local=_local(e.tag)
+        if local=="context":
+            cid=e.attrib.get("id")
+            if not cid:continue
+            instant=start=end=None
+            for c in e.iter():
+                n=_local(c.tag);t=(c.text or "").strip()
+                if n=="instant" and t:instant=t
+                elif n=="startDate" and t:start=t
+                elif n=="endDate" and t:end=t
+            contexts[cid]={"instant":instant,"start":start,"end":end,"has_dimension":_context_has_dimension(e)}
+        elif local=="unit":
+            uid=e.attrib.get("id")
+            if uid:
+                measure=None
+                for c in e.iter():
+                    if _local(c.tag)=="measure" and (c.text or "").strip():measure=(c.text or "").strip();break
+                units[uid]=measure
+    for e in root.iter():
+        cref=e.attrib.get("contextRef")
+        if not cref:continue
+        ctx=contexts.get(cref);local=_local(e.tag);ns=_namespace(e.tag)
+        if not ctx or not ns or local in {"context","unit"}:continue
+        text=(e.text or "").strip()
+        try:val=float(text.replace(",",""))
+        except ValueError:continue
+        row={"val":val,"form":"10-K","filed":"","frame":None,"fy":None,"end":ctx.get("instant") or ctx.get("end"),"start":ctx.get("start"),"filing_annual":bool(ctx.get("start") and ctx.get("end")),"has_dimension":bool(ctx.get("has_dimension"))}
+        row["days"]=_duration_days(ctx.get("start"),ctx.get("end")) if row["filing_annual"] else None
+        unit=units.get(e.attrib.get("unitRef")) or "USD"
+        label=label_map.get(local,"")
+        for alias in _semantic_aliases(local,label):facts.setdefault(alias,[]).append((unit,row.copy()))
+        facts.setdefault(local,[]).append((unit,row.copy()))
+    return facts
 
 def _semantic_aliases(local,label=""):
     """Map custom concept names/labels to extractor candidate tags."""
@@ -126,44 +173,6 @@ def _semantic_aliases(local,label=""):
     if any(x in combined for x in ("dilutedearningspershare","basicearningspershare","earningspershare")):
         aliases += ["EarningsPerShareDiluted","EarningsPerShareBasic","EarningsPerShareBasicAndDiluted"]
     return list(dict.fromkeys(aliases))
-
-def _parse_instance(xml_text,label_map=None):
-    root=ET.fromstring(xml_text);contexts={};units={};facts={}
-    label_map=label_map or {}
-    for e in root.iter():
-        local=_local(e.tag)
-        if local=="context":
-            cid=e.attrib.get("id")
-            if not cid:continue
-            instant=start=end=None
-            for c in e.iter():
-                n=_local(c.tag);t=(c.text or "").strip()
-                if n=="instant" and t:instant=t
-                elif n=="startDate" and t:start=t
-                elif n=="endDate" and t:end=t
-            contexts[cid]={"instant":instant,"start":start,"end":end}
-        elif local=="unit":
-            uid=e.attrib.get("id")
-            if uid:
-                measure=None
-                for c in e.iter():
-                    if _local(c.tag)=="measure" and (c.text or "").strip():measure=(c.text or "").strip();break
-                units[uid]=measure
-    for e in root.iter():
-        cref=e.attrib.get("contextRef")
-        if not cref:continue
-        ctx=contexts.get(cref);local=_local(e.tag);ns=_namespace(e.tag)
-        if not ctx or not ns or local in {"context","unit"}:continue
-        text=(e.text or "").strip()
-        try:val=float(text.replace(",",""))
-        except ValueError:continue
-        row={"val":val,"form":"10-K","filed":"","frame":None,"fy":None,"end":ctx.get("instant") or ctx.get("end"),"start":ctx.get("start"),"filing_annual":bool(ctx.get("start") and ctx.get("end"))}
-        row["days"]=_duration_days(ctx.get("start"),ctx.get("end")) if row["filing_annual"] else None
-        unit=units.get(e.attrib.get("unitRef")) or "USD"
-        label=label_map.get(local,"")
-        for alias in _semantic_aliases(local,label):facts.setdefault(alias,[]).append((unit,row.copy()))
-        facts.setdefault(local,[]).append((unit,row.copy()))
-    return facts
 
 def augment_with_latest_filing(session:requests.Session,cik,submissions,facts):
     try:
