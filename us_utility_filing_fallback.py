@@ -166,10 +166,10 @@ def _parse_instance(xml_text,label_map=None):
         text=(e.text or "").strip()
         try:val=float(text.replace(",",""))
         except ValueError:continue
-        row={"val":val,"form":"10-K","filed":"","frame":None,"fy":None,"end":ctx.get("instant") or ctx.get("end"),"start":ctx.get("start"),"filing_annual":bool(ctx.get("start") and ctx.get("end")),"has_dimension":bool(ctx.get("has_dimension"))}
+        row={"val":val,"form":"10-K","filed":"","frame":None,"fy":None,"end":ctx.get("instant") or ctx.get("end"),"start":ctx.get("start"),"filing_annual":bool(ctx.get("start") and ctx.get("end")),"has_dimension":bool(ctx.get("has_dimension")),"source_tag":local,"label":label_map.get(local,"")}
         row["days"]=_duration_days(ctx.get("start"),ctx.get("end")) if row["filing_annual"] else None
         unit=units.get(e.attrib.get("unitRef")) or "USD"
-        label=label_map.get(local,"")
+        label=row["label"]
         for alias in _semantic_aliases(local,label):facts.setdefault(alias,[]).append((unit,row.copy()))
         facts.setdefault(local,[]).append((unit,row.copy()))
     return facts
