@@ -36,8 +36,9 @@ def _date(v):
 def _annual_row(r):
     end=_date(r.get("end")); val=clean_number(r.get("val"))
     if not end or val is None:return None
+    dimension=bool(r.get("has_dimension"))
     if r.get("filing_annual"):
-        return {"year":end.year,"val":val,"end":r.get("end"),"start":r.get("start"),"days":r.get("days"),"filed":"","form":"10-K","frame":None,"fy":None}
+        return {"year":end.year,"val":val,"end":r.get("end"),"start":r.get("start"),"days":r.get("days"),"filed":"","form":"10-K","frame":None,"fy":None,"has_dimension":dimension}
     if r.get("form") not in FLOW_FORMS:return None
     start=r.get("start")
     if start:
@@ -49,7 +50,7 @@ def _annual_row(r):
         frame=str(r.get("frame") or ""); fy=r.get("fy")
         if not ((frame.startswith("CY") and frame[2:].isdigit()) or fy is not None):return None
         days=None
-    return {"year":end.year,"val":val,"end":r.get("end"),"start":start,"days":days,"filed":r.get("filed") or "","form":r.get("form"),"frame":r.get("frame"),"fy":r.get("fy")}
+    return {"year":end.year,"val":val,"end":r.get("end"),"start":start,"days":days,"filed":r.get("filed") or "","form":r.get("form"),"frame":r.get("frame"),"fy":r.get("fy"),"has_dimension":dimension}
 
 def _rows(facts,tag,instant=False):
     root=facts.get("facts",facts);out=[]
@@ -64,7 +65,7 @@ def _rows(facts,tag,instant=False):
                     if ns!="filing-xbrl" and r.get("form") not in FLOW_FORMS:continue
                     end=_date(r.get("end"));val=clean_number(r.get("val"))
                     if not end or val is None:continue
-                    row={"year":end.year,"val":val,"end":r.get("end"),"start":None,"days":None,"filed":r.get("filed") or "","form":r.get("form") or "10-K","frame":r.get("frame"),"fy":r.get("fy")}
+                    row={"year":end.year,"val":val,"end":r.get("end"),"start":None,"days":None,"filed":r.get("filed") or "","form":r.get("form") or "10-K","frame":r.get("frame"),"fy":r.get("fy"),"has_dimension":bool(r.get("has_dimension"))}
                 else:
                     row=_annual_row(r)
                     if row is None:continue
@@ -75,9 +76,13 @@ def _quality(row,tags,instant=False):
     days=row.get("days");annual=30 if instant or days is None or 340<=days<=370 else 0
     duration=10 if days is not None else 0;form=FORM_PRIORITY.get(row.get("form"),0)*2
     ns=NAMESPACE_PRIORITY.get(row.get("namespace"),0)*3;frame=1 if str(row.get("frame") or "").startswith("CY") else 0
+    # Filing-level XBRL can contain segment/dimensional facts. For the
+    # company-wide balance-sheet/capital value, prefer the non-dimensional
+    # context. This is intentionally neutral for Company Facts primary rows.
+    dimension=100 if row.get("namespace")=="filing-xbrl" and not row.get("has_dimension",False) else 0
     try:tag=len(tags)-tags.index(row.get("tag"))
     except ValueError:tag=0
-    return (annual+duration+form+ns+frame+tag,row.get("filed") or "",row.get("end",""))
+    return (dimension+annual+duration+form+ns+frame+tag,row.get("filed") or "",row.get("end",""))
 
 def _pick_best(facts,tags,year,instant=False):
     c=[r for tag in tags for r in _rows(facts,tag,instant) if r.get("year")==year]
