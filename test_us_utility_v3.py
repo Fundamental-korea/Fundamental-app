@@ -11,13 +11,12 @@ import requests
 from collector_us_fundamental import (
     SEC_FACTS_URL,
     SEC_SUBMISSIONS_URL,
-    SEC_TICKERS,
-    SEC_USER_AGENT,
     fetch_json,
 )
 from collector_us_utility import (
     PERIODS,
-    capex_value,
+    SEC_TICKERS,
+    SEC_USER_AGENT,
     period_metrics,
 )
 from downturn_us import BENCHMARK, _close_series, calculate_downturn_defense
@@ -81,7 +80,6 @@ def run_ticker(session, ticker: str, market):
         ))
 
         if period == 1:
-            # Latest period should be usable for a normal utility regression case.
             if coverage < 90:
                 print("  RESULT: WARN - latest-period coverage below 90%")
                 passed = False
