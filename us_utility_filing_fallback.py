@@ -60,29 +60,39 @@ def _choose_label(index_json):
     return c[0] if c else None
 
 def _parse_labels(xml_text):
-    """Return concept-id -> human label text from an XBRL label linkbase."""
+    """Return concept-id -> preferred human label text from an XBRL label linkbase."""
     root=ET.fromstring(xml_text)
     locs={};labels={};rels=[]
+    standard_roles=(
+        "http://www.xbrl.org/2003/role/label",
+        "http://www.xbrl.org/2003/role/terseLabel",
+        "http://www.xbrl.org/2003/role/verboseLabel",
+    )
     for e in root.iter():
         n=_local(e.tag)
         if n=="loc":
-            label=e.attrib.get("xlink:label") or e.attrib.get("label")
+            label=e.attrib.get("{http://www.w3.org/1999/xlink}label") or e.attrib.get("label")
             href=e.attrib.get("{http://www.w3.org/1999/xlink}href") or e.attrib.get("href")
             if label and href:locs[label]=href.split("#")[-1]
         elif n=="label":
-            label=e.attrib.get("xlink:label") or e.attrib.get("label")
+            label=e.attrib.get("{http://www.w3.org/1999/xlink}label") or e.attrib.get("label")
             role=e.attrib.get("{http://www.w3.org/1999/xlink}role") or e.attrib.get("role") or ""
             text=" ".join("".join(e.itertext()).split())
-            if label and text and (not role or role.endswith("/label")):labels[label]=text
+            if label and text:
+                priority=2 if role==standard_roles[0] else 1 if role in standard_roles[1:] else 0
+                labels[label]=(priority,text)
         elif n=="labelArc":
-            frm=e.attrib.get("xlink:from") or e.attrib.get("from")
-            to=e.attrib.get("xlink:to") or e.attrib.get("to")
+            frm=e.attrib.get("{http://www.w3.org/1999/xlink}from") or e.attrib.get("from")
+            to=e.attrib.get("{http://www.w3.org/1999/xlink}to") or e.attrib.get("to")
             if frm and to:rels.append((frm,to))
     out={}
     for frm,to in rels:
-        concept=locs.get(frm);text=labels.get(to)
-        if concept and text:out[concept]=text
-    return out
+        concept=locs.get(frm);item=labels.get(to)
+        if concept and item:
+            priority,text=item
+            prev=out.get(concept)
+            if prev is None or priority>prev[0]:out[concept]=(priority,text)
+    return {k:v[1] for k,v in out.items()}
 
 def _semantic_aliases(local,label=""):
     """Map custom concept names/labels to extractor candidate tags."""
@@ -90,11 +100,18 @@ def _semantic_aliases(local,label=""):
     l=re.sub(r"[^a-z0-9]","",label.lower())
     aliases=[]
     combined=s+" "+l
-    if "equity" in s or any(x in l for x in ("totalshareholdersequity","totalstockholdersequity","proprietarycapital","totalcapital")):
-        aliases += ["Equity","StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]
+    if (
+        "proprietarycapital" in combined
+        or "totalproprietarycapital" in combined
+        or "proprietaryfundcapital" in combined
+        or "totalshareholdersequity" in combined
+        or "totalstockholdersequity" in combined
+        or "equity" in s
+    ):
+        aliases += ["ProprietaryCapital","Equity","StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]
     if "earningspershare" in s or "eps" in s or "earningspershare" in l or "pershare" in l:
         aliases += ["EarningsPerShareDiluted","EarningsPerShareBasic","EarningsPerShareBasicAndDiluted"]
-    if "dividend" in s or "dividend" in l or "commonshareholderdividend" in l:
+    if "dividend" in s or "dividend" in l or "commonshareholderdividend" in l or "commonstockdividend" in l:
         aliases += ["PaymentsOfDividendsCommonStock","PaymentsOfOrdinaryDividends","DividendsPaid","PaymentsOfDividends"]
     if "longtermdebt" in s and "current" in s:aliases += ["LongTermDebtCurrent"]
     elif "longtermdebt" in s or ("debt" in s and "noncurrent" in s):aliases += ["LongTermDebtNoncurrent"]
