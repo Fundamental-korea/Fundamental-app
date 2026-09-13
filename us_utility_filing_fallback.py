@@ -59,19 +59,22 @@ def _semantic_aliases(local):
     """Map common custom utility concepts to extractor candidate tags."""
     s=re.sub(r"[^a-z0-9]","",local.lower())
     aliases=[]
-    if "equity" in s and ("total" in s or "shareholder" in s or "stockholder" in s): aliases += ["Equity","StockholdersEquity"]
-    if ("netincome" in s or "profitloss" in s) and ("common" in s or "shareholder" in s or "parent" in s): aliases += ["NetIncomeLossAttributableToCommonStockholders","NetIncomeLossAttributableToParent"]
-    if "eps" in s or ("earningspershare" in s): aliases += ["EarningsPerShareDiluted","EarningsPerShareBasic"]
-    if "dividend" in s and ("common" in s or "ordinary" in s or "share" in s): aliases += ["PaymentsOfDividendsCommonStock","PaymentsOfOrdinaryDividends"]
+    if "equity" in s:
+        aliases += ["Equity","StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]
+    if "earningspershare" in s or s.endswith("eps") or "eps" in s:
+        aliases += ["EarningsPerShareDiluted","EarningsPerShareBasic","EarningsPerShareBasicAndDiluted"]
+    if "dividend" in s:
+        aliases += ["PaymentsOfDividendsCommonStock","PaymentsOfOrdinaryDividends","DividendsPaid","PaymentsOfDividends"]
     if "longtermdebt" in s and "current" in s: aliases += ["LongTermDebtCurrent"]
     elif "longtermdebt" in s or ("debt" in s and "noncurrent" in s): aliases += ["LongTermDebtNoncurrent"]
     elif "borrowings" in s and "current" in s: aliases += ["CurrentBorrowings"]
     elif "borrowings" in s: aliases += ["Borrowings"]
     if "operatingcashflow" in s or "netcashprovided" in s: aliases += ["NetCashProvidedByUsedInOperatingActivities"]
     if "interest" in s and ("expense" in s or "financecost" in s): aliases += ["InterestAndDebtExpense","InterestExpense"]
-    if "capitalexpenditure" in s or "capex" in s or "propertyplantandequipment" in s and "payment" in s: aliases += ["PaymentsToAcquirePropertyPlantAndEquipment"]
+    if "capitalexpenditure" in s or "capex" in s or ("propertyplantandequipment" in s and "payment" in s): aliases += ["PaymentsToAcquirePropertyPlantAndEquipment"]
     if "operatingincome" in s: aliases += ["OperatingIncomeLoss"]
     if "revenue" in s and "operating" in s: aliases += ["RegulatedAndUnregulatedOperatingRevenue","RegulatedOperatingRevenue","Revenues"]
+    if ("netincome" in s or "profitloss" in s) and ("common" in s or "shareholder" in s or "parent" in s): aliases += ["NetIncomeLossAttributableToCommonStockholders","NetIncomeLossAttributableToParent"]
     return list(dict.fromkeys(aliases))
 
 def _parse_instance(xml_text):
@@ -107,7 +110,6 @@ def _parse_instance(xml_text):
         row["days"]=_duration_days(ctx.get("start"),ctx.get("end")) if row["filing_annual"] else None
         unit=units.get(e.attrib.get("unitRef")) or "USD"
         for alias in _semantic_aliases(local): facts.setdefault(alias,[]).append((unit,row.copy()))
-        # Preserve exact local concept too for future diagnostics.
         facts.setdefault(local,[]).append((unit,row.copy()))
     return facts
 
