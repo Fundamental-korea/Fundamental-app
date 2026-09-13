@@ -8,7 +8,8 @@ REVENUE_TAGS=["RevenueFromContractWithCustomerExcludingAssessedTax","RevenueFrom
 OPERATING_INCOME_TAGS=["OperatingIncomeLoss","ProfitLossFromOperatingActivities","OperatingIncomeLossFromContinuingOperations"]
 NET_INCOME_TAGS=["NetIncomeLoss","ProfitLoss","ProfitLossAttributableToOwnersOfParent","NetIncomeLossAttributableToParent","NetIncomeLossAttributableToCommonStockholders"]
 ASSETS_TAGS=["Assets"]
-EQUITY_TAGS=["ProprietaryCapital","TotalProprietaryCapital","StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest","Equity","EquityAttributableToOwnersOfParent"]
+# Prefer the exact company-wide total capital concept before generic equity concepts.
+EQUITY_TAGS=["TotalProprietaryCapital","ProprietaryCapital","StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest","Equity","EquityAttributableToOwnersOfParent"]
 INTEREST_TAGS=["InterestAndDebtExpense","InterestExpense","InterestExpenseBorrowings","InterestExpenseNonoperating","InterestExpenseNonOperating","InterestExpenseNonOperatingNet","InterestExpenseDebt","InterestExpenseNonOperatingAndOther","FinanceCosts","InterestExpenseOnBorrowings"]
 INTEREST_FALLBACK_TAGS=["InterestPaidNet","InterestPaidClassifiedAsOperatingActivities"]
 EPS_TAGS=["EarningsPerShareDiluted","EarningsPerShareBasic","EarningsPerShareBasicAndDiluted"]
@@ -76,9 +77,8 @@ def _quality(row,tags,instant=False):
     days=row.get("days");annual=30 if instant or days is None or 340<=days<=370 else 0
     duration=10 if days is not None else 0;form=FORM_PRIORITY.get(row.get("form"),0)*2
     ns=NAMESPACE_PRIORITY.get(row.get("namespace"),0)*3;frame=1 if str(row.get("frame") or "").startswith("CY") else 0
-    # Filing-level XBRL can contain segment/dimensional facts. For the
-    # company-wide balance-sheet/capital value, prefer the non-dimensional
-    # context. This is intentionally neutral for Company Facts primary rows.
+    # Filing-level XBRL can contain segment/dimensional facts. For company-wide
+    # balance-sheet/capital values, strongly prefer a non-dimensional context.
     dimension=100 if row.get("namespace")=="filing-xbrl" and not row.get("has_dimension",False) else 0
     try:tag=len(tags)-tags.index(row.get("tag"))
     except ValueError:tag=0
