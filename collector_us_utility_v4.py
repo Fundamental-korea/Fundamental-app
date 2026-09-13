@@ -15,7 +15,7 @@ from supabase import create_client
 from collector_us_fundamental import SUPABASE_URL, SUPABASE_KEY, SEC_USER_AGENT, SEC_FACTS_URL, SEC_SUBMISSIONS_URL, fetch_json
 from downturn_us import BENCHMARK, _close_series, calculate_downturn_defense
 from us_scoring_v2 import calculate_us_utility_score_v2
-from us_utility_extraction_v4 import REVENUE_TAGS, OPERATING_INCOME_TAGS, NET_INCOME_TAGS, ASSETS_TAGS, EQUITY_TAGS, pick_flow, pick_instant, pick_eps, pick_interest, pick_debt, pick_ocf, pick_capex, pick_dividend, core_years
+from us_utility_extraction_v4 import REVENUE_TAGS, OPERATING_INCOME_TAGS, NET_INCOME_TAGS, ASSETS_TAGS, pick_flow, pick_instant, pick_equity, pick_eps, pick_interest, pick_debt, pick_ocf, pick_capex, pick_dividend, core_years
 from us_utility_filing_fallback import augment_with_latest_filing
 
 SEC_TICKERS="https://www.sec.gov/files/company_tickers.json"
@@ -50,14 +50,14 @@ def period_metrics(ticker,facts,latest_year,period):
     if revenue_now is None or revenue_base is None:return None,None
     eps_now=value(facts,pick_eps,latest_year);eps_base=value(facts,pick_eps,base_year)
     op_now=value(facts,pick_flow,latest_year,OPERATING_INCOME_TAGS);ni_now=value(facts,pick_flow,latest_year,NET_INCOME_TAGS)
-    assets_now=value(facts,pick_instant,latest_year,ASSETS_TAGS);equity_now=value(facts,pick_instant,latest_year,EQUITY_TAGS)
+    assets_now=value(facts,pick_instant,latest_year,ASSETS_TAGS);equity_now=value(facts,pick_equity,latest_year)
     debt_row=pick_debt(facts,latest_year);debt_now=debt_row["val"] if debt_row else None
     ocf_now=value(facts,pick_ocf,latest_year);capex_now=capex_value(ticker,facts,latest_year);div_now=value(facts,pick_dividend,latest_year)
     interest_row=pick_interest(facts,latest_year);interest_now=interest_row["val"] if interest_row else None
     return {"revenue_growth":growth(revenue_now,revenue_base,period),"eps_growth":growth(eps_now,eps_base,period),"opm":op_now/revenue_now*100.0 if op_now is not None and revenue_now else None,"roa":ni_now/assets_now*100.0 if ni_now is not None and assets_now else None,"debt_capital":debt_now/(debt_now+equity_now)*100.0 if debt_now is not None and equity_now not in (None,0) and debt_now+equity_now>0 else None,"ocf_debt":ocf_now/debt_now*100.0 if ocf_now is not None and debt_now not in (None,0) else None,"fcf_debt":(ocf_now-abs(capex_now))/debt_now*100.0 if ocf_now is not None and capex_now is not None and debt_now not in (None,0) else None,"dividend_coverage":ocf_now/abs(div_now) if ocf_now is not None and div_now not in (None,0) else None,"dividend_payout":abs(div_now)/ni_now*100.0 if div_now not in (None,0) and ni_now is not None and ni_now>0 else None,"interest_coverage":op_now/abs(interest_now) if op_now is not None and interest_now not in (None,0) else None},base_year
 
 def _suspicious(facts,latest):
-    debt=pick_debt(facts,latest);equity=value(facts,pick_instant,latest,EQUITY_TAGS);eps=pick_eps(facts,latest);div=pick_dividend(facts,latest)
+    debt=pick_debt(facts,latest);equity=pick_equity(facts,latest);eps=pick_eps(facts,latest);div=pick_dividend(facts,latest)
     if equity is None or eps is None or div is None or debt is None:return True
     if debt.get("method")=="components" and ((debt.get("current") and debt.get("current",{}).get("namespace")=="filing-xbrl") or (debt.get("noncurrent") and debt.get("noncurrent",{}).get("namespace")=="filing-xbrl")):return True
     d=debt.get("val");ocf=value(facts,pick_ocf,latest)
