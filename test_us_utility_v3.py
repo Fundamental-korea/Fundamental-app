@@ -21,6 +21,29 @@ from collector_us_utility import (
 )
 from downturn_us import BENCHMARK, _close_series, calculate_downturn_defense
 from us_scoring_v2 import calculate_us_utility_score_v2
+from us_utility_extraction import (
+    ASSETS_TAGS,
+    DEBT_CURRENT_TAGS,
+    DEBT_NONCURRENT_TAGS,
+    DEBT_TOTAL_TAGS,
+    DIVIDEND_TAGS,
+    EPS_DILUTED_SHARE_TAGS,
+    EPS_NET_INCOME_TAGS,
+    EPS_TAGS,
+    EQUITY_TAGS,
+    INTEREST_FALLBACK_TAGS,
+    INTEREST_TAGS,
+    NET_INCOME_TAGS,
+    OCF_TAGS,
+    OPERATING_INCOME_TAGS,
+    REVENUE_TAGS,
+    core_years,
+    pick_debt,
+    pick_eps,
+    pick_flow,
+    pick_instant,
+    pick_dividend,
+)
 
 
 def ticker_cik(session, ticker: str) -> str:
@@ -38,11 +61,48 @@ def load_facts(session, ticker: str):
     return cik, facts, submissions
 
 
+def describe(row):
+    if not row:
+        return "None"
+    return (
+        f"{row.get('namespace')}:{row.get('tag')} "
+        f"value={row.get('val')} end={row.get('end')} form={row.get('form')} "
+        f"unit={row.get('unit')} derived={row.get('derived', False)}"
+    )
+
+
+def debug_latest_extraction(facts, year: int):
+    print("  SELECTED FACTS (latest year):")
+    print(f"    revenue       -> {describe(pick_flow(facts, REVENUE_TAGS, year))}")
+    print(f"    op_income     -> {describe(pick_flow(facts, OPERATING_INCOME_TAGS, year))}")
+    print(f"    net_income    -> {describe(pick_flow(facts, NET_INCOME_TAGS, year))}")
+    print(f"    assets        -> {describe(pick_instant(facts, ASSETS_TAGS, year))}")
+    print(f"    equity        -> {describe(pick_instant(facts, EQUITY_TAGS, year))}")
+    print(f"    eps           -> {describe(pick_eps(facts, year))}")
+    debt = pick_debt(facts, year)
+    if debt:
+        print(f"    debt          -> method={debt.get('method')} total={debt.get('val')}")
+        print(f"      current     -> {describe(debt.get('current'))}")
+        print(f"      noncurrent  -> {describe(debt.get('noncurrent'))}")
+        print(f"      total_fb    -> {describe(debt.get('total'))}")
+    else:
+        print("    debt          -> None")
+    print(f"    ocf           -> {describe(pick_flow(facts, OCF_TAGS, year))}")
+    print(f"    interest      -> {describe(pick_flow(facts, INTEREST_TAGS, year) or pick_flow(facts, INTEREST_FALLBACK_TAGS, year))}")
+    print(f"    dividend      -> {describe(pick_dividend(facts, year))}")
+    print("  CANDIDATE TAG ORDER:")
+    print(f"    debt current -> {', '.join(DEBT_CURRENT_TAGS)}")
+    print(f"    debt noncur  -> {', '.join(DEBT_NONCURRENT_TAGS)}")
+    print(f"    debt total   -> {', '.join(DEBT_TOTAL_TAGS)}")
+    print(f"    eps direct   -> {', '.join(EPS_TAGS)}")
+    print(f"    eps income   -> {', '.join(EPS_NET_INCOME_TAGS)}")
+    print(f"    eps shares   -> {', '.join(EPS_DILUTED_SHARE_TAGS)}")
+    print(f"    dividend     -> {', '.join(DIVIDEND_TAGS)}")
+
+
 def run_ticker(session, ticker: str, market):
     cik, facts, submissions = load_facts(session, ticker)
 
-    # V3 core-year selection: revenue + operating income must both exist.
-    from us_utility_extraction import core_years
     years = sorted(y for y in core_years(facts) if 2018 <= y <= 2026)
     if not years:
         print(f"{ticker}: FAIL - no core annual years")
@@ -54,6 +114,7 @@ def run_ticker(session, ticker: str, market):
 
     print(f"\n=== {ticker} | CIK {cik} | latest={latest_year} ===")
     print(f"core_years={years} downturn={downturn}")
+    debug_latest_extraction(facts, latest_year)
 
     passed = True
     for period in PERIODS:
@@ -79,10 +140,9 @@ def run_ticker(session, ticker: str, market):
             )
         ))
 
-        if period == 1:
-            if coverage < 90:
-                print("  RESULT: WARN - latest-period coverage below 90%")
-                passed = False
+        if period == 1 and coverage < 90:
+            print("  RESULT: WARN - latest-period coverage below 90%")
+            passed = False
 
     return passed
 
