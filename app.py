@@ -1543,6 +1543,10 @@ else:
                 for label, (value, tone) in overview.items()
             )
             st.markdown(f"<div class='overview-grid'>{overview_cells_html}</div>", unsafe_allow_html=True)
+
+            data_basis_label = overview_supabase_data.get("data_basis_label")
+            if data_basis_label:
+                st.caption(f"📅 EPS/BPS/PER/PBR/매출/순이익 등 재무 수치 기준: **{data_basis_label}** (최신 공시가 나오면 자동 갱신됩니다)")
         else:
             st.info("시세 스냅샷 데이터를 불러올 수 없습니다.")
 
