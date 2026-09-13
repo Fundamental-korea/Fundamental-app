@@ -1,8 +1,8 @@
-"""Utility-specific SEC extraction v3.
+"""Utility-specific SEC extraction v3.1.
 
 Normalizes annual utility facts across US-GAAP and IFRS by collecting all
-candidate concepts first and ranking the candidates independently for each
-year. Raw SEC JSON is never persisted.
+candidate concepts first and ranking candidates independently for each year.
+Raw SEC JSON is never persisted.
 """
 from __future__ import annotations
 
@@ -11,9 +11,6 @@ import math
 
 FLOW_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
-# Candidate order is also a semantic prior: standard consolidated concepts are
-# preferred, while utility-specific concepts are retained for issuers that do
-# not expose the standard revenue taxonomy consistently.
 REVENUE_TAGS = [
     "RevenueFromContractWithCustomerExcludingAssessedTax",
     "RevenueFromContractWithCustomerIncludingAssessedTax",
@@ -31,7 +28,6 @@ REVENUE_TAGS = [
     "SalesRevenueNet",
     "SalesRevenueGoodsNet",
 ]
-
 OPERATING_INCOME_TAGS = [
     "OperatingIncomeLoss",
     "ProfitLossFromOperatingActivities",
@@ -52,31 +48,24 @@ EQUITY_TAGS = [
 ]
 
 INTEREST_TAGS = [
-    "InterestAndDebtExpense",
-    "InterestExpense",
-    "InterestExpenseBorrowings",
-    "InterestExpenseNonoperating",
-    "InterestExpenseNonOperating",
-    "InterestExpenseNonOperatingNet",
-    "InterestExpenseDebt",
-    "InterestExpenseNonOperatingAndOther",
-    "FinanceCosts",
+    "InterestAndDebtExpense", "InterestExpense", "InterestExpenseBorrowings",
+    "InterestExpenseNonoperating", "InterestExpenseNonOperating",
+    "InterestExpenseNonOperatingNet", "InterestExpenseDebt",
+    "InterestExpenseNonOperatingAndOther", "FinanceCosts",
     "InterestExpenseOnBorrowings",
 ]
 INTEREST_FALLBACK_TAGS = ["InterestPaidNet", "InterestPaidClassifiedAsOperatingActivities"]
 
 EPS_TAGS = [
-    "EarningsPerShareDiluted",
-    "EarningsPerShareBasic",
+    "EarningsPerShareDiluted", "EarningsPerShareBasic",
     "EarningsPerShareBasicAndDiluted",
 ]
 EPS_NET_INCOME_TAGS = [
     "NetIncomeLossAvailableToCommonStockholdersBasic",
+    "NetIncomeLossAttributableToCommonStockholders",
     "NetIncomeLossAttributableToParent",
     "ProfitLossAttributableToOrdinaryEquityHoldersOfParentEntity",
-    "ProfitLossAttributableToOwnersOfParent",
-    "NetIncomeLoss",
-    "ProfitLoss",
+    "ProfitLossAttributableToOwnersOfParent", "NetIncomeLoss", "ProfitLoss",
 ]
 EPS_DILUTED_SHARE_TAGS = [
     "WeightedAverageNumberOfDilutedSharesOutstanding",
@@ -90,51 +79,45 @@ OCF_TAGS = [
     "CashFlowsFromUsedInOperatingActivities",
 ]
 
+# Debt v3.1: current/non-current components are preferred over ambiguous total
+# concepts. The total list is fallback-only to avoid accidentally selecting a
+# debt-like subtotal that is not comparable with equity.
 DEBT_CURRENT_TAGS = [
-    "LongTermDebtCurrent",
-    "LongTermDebtAndCapitalLeaseObligationsCurrent",
-    "DebtAndCapitalLeaseObligationsCurrent",
-    "CurrentBorrowings",
+    "LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent",
+    "DebtAndCapitalLeaseObligationsCurrent", "CurrentBorrowings",
     "CurrentPortionOfLongtermBorrowings",
 ]
 DEBT_NONCURRENT_TAGS = [
-    "LongTermDebtNoncurrent",
-    "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
-    "DebtAndCapitalLeaseObligationsNoncurrent",
-    "LongTermDebtAndCapitalLeaseObligations",
-    "NoncurrentBorrowings",
-    "LongtermBorrowings",
-    "Borrowings",
+    "LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
+    "NoncurrentBorrowings", "LongtermBorrowings", "Borrowings",
 ]
 DEBT_TOTAL_TAGS = [
-    "DebtAndCapitalLeaseObligations",
-    "LongTermDebtCurrentAndNoncurrent",
-    "DebtInstrumentCarryingAmount",
-    "LongTermDebt",
+    "LongTermDebt", "DebtAndCapitalLeaseObligations",
+    "LongTermDebtCurrentAndNoncurrent", "DebtInstrumentCarryingAmount",
     "LiabilitiesArisingFromFinancingActivities",
 ]
 
 CAPEX_TAGS = [
-    "PaymentsToAcquirePropertyPlantAndEquipment",
-    "PaymentsToAcquireProductiveAssets",
+    "PaymentsToAcquirePropertyPlantAndEquipment", "PaymentsToAcquireProductiveAssets",
     "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssets",
     "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssetsNet",
     "PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities",
     "PaymentsForProceedsFromProductiveAssets",
 ]
 
+# Dividend v3.1: prefer explicit common-stock cash distributions. Generic
+# dividend concepts are fallback-only because they may include non-common or
+# special distributions with a different economic meaning.
 DIVIDEND_TAGS = [
-    "DividendsCommonStockCash",
     "PaymentsOfDividendsCommonStockCash",
+    "DividendsCommonStockCash",
     "PaymentsOfDividendsCommonStock",
     "PaymentsOfOrdinaryDividends",
-    "PaymentsOfDividends",
     "DividendsPaid",
+    "PaymentsOfDividends",
     "PaymentsOfDividendsMinorityInterest",
 ]
 
-# Namespace priority follows SEC standard-taxonomy preference. IFRS is still
-# fully supported and can win when us-gaap is unavailable.
 NAMESPACE_PRIORITY = {"us-gaap": 2, "ifrs-full": 1}
 FORM_PRIORITY = {"10-K": 4, "10-K/A": 3, "20-F": 2, "20-F/A": 1, "40-F": 2, "40-F/A": 1}
 
@@ -163,7 +146,6 @@ def _annual_row(r):
     end_date = _date(end)
     if end_date is None:
         return None
-
     start = r.get("start")
     days = None
     if start:
@@ -178,21 +160,12 @@ def _annual_row(r):
         fy = r.get("fy")
         if not ((frame.startswith("CY") and frame[2:].isdigit()) or fy is not None):
             return None
-
     value = clean_number(r.get("val"))
     if value is None:
         return None
-    return {
-        "year": end_date.year,
-        "val": value,
-        "end": end,
-        "start": start,
-        "days": days,
-        "filed": r.get("filed") or "",
-        "form": form,
-        "frame": r.get("frame"),
-        "fy": r.get("fy"),
-    }
+    return {"year": end_date.year, "val": value, "end": end, "start": start,
+            "days": days, "filed": r.get("filed") or "", "form": form,
+            "frame": r.get("frame"), "fy": r.get("fy")}
 
 
 def _rows(facts, tag, instant=False):
@@ -209,21 +182,12 @@ def _rows(facts, tag, instant=False):
                 if instant:
                     if r.get("form") not in FLOW_FORMS or not r.get("end"):
                         continue
-                    end_date = _date(r.get("end"))
-                    value = clean_number(r.get("val"))
+                    end_date = _date(r.get("end")); value = clean_number(r.get("val"))
                     if end_date is None or value is None:
                         continue
-                    row = {
-                        "year": end_date.year,
-                        "val": value,
-                        "end": r["end"],
-                        "start": None,
-                        "days": None,
-                        "filed": r.get("filed") or "",
-                        "form": r.get("form"),
-                        "frame": r.get("frame"),
-                        "fy": r.get("fy"),
-                    }
+                    row = {"year": end_date.year, "val": value, "end": r["end"],
+                           "start": None, "days": None, "filed": r.get("filed") or "",
+                           "form": r.get("form"), "frame": r.get("frame"), "fy": r.get("fy")}
                 else:
                     row = _annual_row(r)
                     if row is None:
@@ -241,7 +205,6 @@ def _tag_rank(tags, tag):
 
 
 def _quality(row, tags, instant=False):
-    """Rank a fact without assuming one concept is valid for every issuer/year."""
     days = row.get("days")
     annual_bonus = 30 if instant or days is None or 340 <= days <= 370 else 0
     duration_bonus = 10 if days is not None else 0
@@ -249,23 +212,13 @@ def _quality(row, tags, instant=False):
     namespace_bonus = NAMESPACE_PRIORITY.get(row.get("namespace"), 0) * 3
     frame_bonus = 1 if str(row.get("frame") or "").startswith("CY") else 0
     tag_bonus = _tag_rank(tags, row.get("tag"))
-    filed = row.get("filed") or ""
-    return (
-        annual_bonus + duration_bonus + form_bonus + namespace_bonus + frame_bonus + tag_bonus,
-        filed,
-        row.get("end", ""),
-    )
+    return (annual_bonus + duration_bonus + form_bonus + namespace_bonus + frame_bonus + tag_bonus,
+            row.get("filed") or "", row.get("end", ""))
 
 
 def _pick_best(facts, tags, year, instant=False):
-    candidates = []
-    for tag in tags:
-        for row in _rows(facts, tag, instant=instant):
-            if row.get("year") == year:
-                candidates.append(row)
-    if not candidates:
-        return None
-    return max(candidates, key=lambda r: _quality(r, tags, instant=instant))
+    candidates = [r for tag in tags for r in _rows(facts, tag, instant=instant) if r.get("year") == year]
+    return max(candidates, key=lambda r: _quality(r, tags, instant=instant)) if candidates else None
 
 
 def pick_flow(facts, tags, year):
@@ -283,21 +236,13 @@ def pick_eps(facts, year):
     income = pick_flow(facts, EPS_NET_INCOME_TAGS, year)
     shares = pick_flow(facts, EPS_DILUTED_SHARE_TAGS, year)
     if income and shares and shares["val"] != 0:
-        return {
-            "year": year,
-            "val": income["val"] / shares["val"],
-            "end": income.get("end"),
-            "start": income.get("start"),
-            "days": income.get("days"),
-            "filed": income.get("filed", ""),
-            "form": income.get("form"),
-            "frame": income.get("frame"),
-            "fy": income.get("fy"),
-            "namespace": income.get("namespace"),
-            "tag": "derived:net_income_attributable_to_common/weighted_diluted_shares",
-            "unit": "currency-per-share",
-            "derived": True,
-        }
+        return {"year": year, "val": income["val"] / shares["val"],
+                "end": income.get("end"), "start": income.get("start"),
+                "days": income.get("days"), "filed": income.get("filed", ""),
+                "form": income.get("form"), "frame": income.get("frame"),
+                "fy": income.get("fy"), "namespace": income.get("namespace"),
+                "tag": "derived:net_income_attributable_to_common/weighted_diluted_shares",
+                "unit": "currency-per-share", "derived": True}
     return None
 
 
@@ -307,41 +252,23 @@ def pick_interest(facts, year):
         return row
     row = pick_flow(facts, INTEREST_FALLBACK_TAGS, year)
     if row:
-        row = dict(row)
-        row["interest_fallback"] = True
+        row = dict(row); row["interest_fallback"] = True
     return row
 
 
 def pick_debt(facts, year):
     current = pick_instant(facts, DEBT_CURRENT_TAGS, year)
     noncurrent = pick_instant(facts, DEBT_NONCURRENT_TAGS, year)
-    if current and noncurrent:
-        return {
-            "year": year,
-            "val": current["val"] + noncurrent["val"],
-            "current": current,
-            "noncurrent": noncurrent,
-            "total": None,
-        }
-    if noncurrent:
-        return {
-            "year": year,
-            "val": noncurrent["val"],
-            "current": None,
-            "noncurrent": noncurrent,
-            "total": None,
-        }
-    if current:
-        return {
-            "year": year,
-            "val": current["val"],
-            "current": current,
-            "noncurrent": None,
-            "total": None,
-        }
+    if current or noncurrent:
+        current_value = current["val"] if current else 0.0
+        noncurrent_value = noncurrent["val"] if noncurrent else 0.0
+        return {"year": year, "val": current_value + noncurrent_value,
+                "current": current, "noncurrent": noncurrent, "total": None,
+                "method": "components"}
     total = pick_instant(facts, DEBT_TOTAL_TAGS, year)
     if total:
-        return {"year": year, "val": total["val"], "current": None, "noncurrent": None, "total": total}
+        return {"year": year, "val": total["val"], "current": None,
+                "noncurrent": None, "total": total, "method": "total_fallback"}
     return None
 
 
@@ -358,7 +285,6 @@ def pick_dividend(facts, year):
 
 
 def core_years(facts):
-    """Return years where both revenue and operating income are available."""
     revenue_years = {r["year"] for tag in REVENUE_TAGS for r in _rows(facts, tag)}
     operating_years = {r["year"] for tag in OPERATING_INCOME_TAGS for r in _rows(facts, tag)}
     return revenue_years & operating_years
