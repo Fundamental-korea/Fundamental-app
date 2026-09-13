@@ -84,7 +84,7 @@ def build_result(ticker,cik,company_name,facts,submissions,market,stock,session)
         metrics["downturn_defense"]=downturn_value
         period_scores[str(period)]={"base_year":base,"metrics":metrics,"scores":calculate_us_utility_score_v2(metrics)}
     latest_row=period_scores.get("1"); score=latest_row["scores"]["total_score"] if latest_row else None
-    return {"ticker":ticker,"cik":str(cik),"company_name":company_name,"sector":"utilities","base_year":latest,"period_scores":period_scores,"total_score":int(round(score)) if score is not None else None,"grade":latest_row["scores"]["grade"] if latest_row else None,"data_unavailable":not bool(period_scores),"data_reliability":"high" if len(period_scores)>=3 else ("medium" if period_scores else "low"),"missing_metric_count":latest_row["scores"]["missing_metric_count"] if latest_row else None,"updated_at":datetime.now(timezone.utc).isoformat(),"downturn_defense":downturn_value,"downturn_detail":downturn_detail,"extraction_version":"utility_xbrl_v4","filing_fallback":fallback_meta}
+    return {"ticker":ticker,"cik":str(cik),"company_name":company_name,"sector":"utilities","base_year":latest,"period_scores":period_scores,"total_score":int(round(score)) if score is not None else None,"grade":latest_row["scores"]["grade"] if latest_row else None,"data_unavailable":not bool(period_scores),"data_reliability":"high" if len(period_scores)>=3 else ("medium" if period_scores else "low"),"missing_metric_count":latest_row["scores"]["missing_metric_count"] if latest_row else None,"updated_at":datetime.now(timezone.utc).isoformat(),"downturn_defense":downturn_value,"downturn_detail":downturn_detail}
 
 def main():
     p=argparse.ArgumentParser(); p.add_argument("--ticker"); p.add_argument("--tickers"); p.add_argument("--all",action="store_true",dest="all_rows"); a=p.parse_args()
@@ -101,7 +101,7 @@ def main():
             result=build_result(ticker,cik,subs.get("name") or ticker,facts,subs,market,stock,session)
             if result is None: print(f"[{i}/{len(tickers)}] {ticker}: no core annual facts"); continue
             sb.table("US_Fundamental").upsert(result,on_conflict="ticker").execute()
-            print(f"[{i}/{len(tickers)}] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} missing={result['missing_metric_count']} fallback={result['filing_fallback'].get('used',False)}")
+            print(f"[{i}/{len(tickers)}] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} missing={result['missing_metric_count']}")
         except Exception as exc: print(f"[{i}/{len(tickers)}] {ticker}: FAILED: {exc}")
     print("Completed: utility production collector v4")
 
