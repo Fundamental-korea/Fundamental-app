@@ -1,0 +1,118 @@
+"""Utility SEC extraction v4: Company Facts + filing-level fallback facts."""
+from __future__ import annotations
+
+from datetime import datetime
+import math
+
+FLOW_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+REVENUE_TAGS = ["RevenueFromContractWithCustomerExcludingAssessedTax","RevenueFromContractWithCustomerIncludingAssessedTax","RevenueFromContractsWithCustomers","RevenueFromContractsWithCustomer","Revenue","Revenues","RegulatedAndUnregulatedOperatingRevenue","RegulatedOperatingRevenue","OperatingRevenues","ElectricUtilityRevenue","ElectricUtilityOperatingRevenue","NaturalGasUtilityRevenue","NaturalGasUtilityOperatingRevenue","SalesRevenueNet","SalesRevenueGoodsNet"]
+OPERATING_INCOME_TAGS = ["OperatingIncomeLoss","ProfitLossFromOperatingActivities","OperatingIncomeLossFromContinuingOperations"]
+NET_INCOME_TAGS = ["NetIncomeLoss","ProfitLoss","ProfitLossAttributableToOwnersOfParent","NetIncomeLossAttributableToParent","NetIncomeLossAttributableToCommonStockholders"]
+ASSETS_TAGS = ["Assets"]
+EQUITY_TAGS = ["StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest","Equity","EquityAttributableToOwnersOfParent"]
+INTEREST_TAGS = ["InterestAndDebtExpense","InterestExpense","InterestExpenseBorrowings","InterestExpenseNonoperating","InterestExpenseNonOperating","InterestExpenseNonOperatingNet","InterestExpenseDebt","InterestExpenseNonOperatingAndOther","FinanceCosts","InterestExpenseOnBorrowings"]
+INTEREST_FALLBACK_TAGS = ["InterestPaidNet","InterestPaidClassifiedAsOperatingActivities"]
+EPS_TAGS = ["EarningsPerShareDiluted","EarningsPerShareBasic","EarningsPerShareBasicAndDiluted"]
+EPS_NET_INCOME_TAGS = ["NetIncomeLossAvailableToCommonStockholdersBasic","NetIncomeLossAttributableToCommonStockholders","NetIncomeLossAttributableToParent","ProfitLossAttributableToOrdinaryEquityHoldersOfParentEntity","ProfitLossAttributableToOwnersOfParent","NetIncomeLoss","ProfitLoss"]
+EPS_DILUTED_SHARE_TAGS = ["WeightedAverageNumberOfDilutedSharesOutstanding","WeightedAverageNumberOfShareOutstandingBasicAndDiluted","WeightedAverageShares"]
+OCF_TAGS = ["NetCashProvidedByUsedInOperatingActivities","NetCashProvidedByUsedInOperatingActivitiesContinuingOperations","CashFlowsFromUsedInOperatingActivities"]
+DEBT_CURRENT_TAGS = ["LongTermDebtCurrent","LongTermDebtAndCapitalLeaseObligationsCurrent","DebtAndCapitalLeaseObligationsCurrent","CurrentBorrowings","CurrentPortionOfLongtermBorrowings"]
+DEBT_NONCURRENT_TAGS = ["LongTermDebtNoncurrent","LongTermDebtAndCapitalLeaseObligationsNoncurrent","NoncurrentBorrowings","LongtermBorrowings","Borrowings"]
+DEBT_TOTAL_TAGS = ["LongTermDebt","DebtAndCapitalLeaseObligations","LongTermDebtCurrentAndNoncurrent","DebtInstrumentCarryingAmount","LiabilitiesArisingFromFinancingActivities"]
+CAPEX_TAGS = ["PaymentsToAcquirePropertyPlantAndEquipment","PaymentsToAcquireProductiveAssets","PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssets","PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssetsNet","PurchaseOfPropertyPlantAndEquipmentClassifiedAsInvestingActivities","PaymentsForProceedsFromProductiveAssets"]
+DIVIDEND_TAGS = ["PaymentsOfDividendsCommonStockCash","DividendsCommonStockCash","PaymentsOfDividendsCommonStock","PaymentsOfOrdinaryDividends","DividendsPaid","PaymentsOfDividends","PaymentsOfDividendsMinorityInterest"]
+NAMESPACE_PRIORITY = {"us-gaap": 2, "ifrs-full": 1, "filing-xbrl": 0}
+FORM_PRIORITY = {"10-K": 4, "10-K/A": 3, "20-F": 2, "20-F/A": 1, "40-F": 2, "40-F/A": 1}
+
+
+def clean_number(v):
+    try:
+        x=float(v); return x if math.isfinite(x) else None
+    except (TypeError,ValueError): return None
+
+def _date(v):
+    if not v: return None
+    try: return datetime.fromisoformat(str(v)[:10]).date()
+    except ValueError: return None
+
+def _annual_row(r):
+    end=_date(r.get("end")); val=clean_number(r.get("val"))
+    if not end or val is None: return None
+    if r.get("filing_annual"):
+        return {"year":end.year,"val":val,"end":r.get("end"),"start":r.get("start"),"days":r.get("days"),"filed":"","form":"10-K","frame":None,"fy":None}
+    if r.get("form") not in FLOW_FORMS: return None
+    start=r.get("start")
+    if start:
+        s=_date(start)
+        if not s: return None
+        days=(end-s).days
+        if not 300<=days<=380: return None
+    else:
+        frame=str(r.get("frame") or ""); fy=r.get("fy")
+        if not ((frame.startswith("CY") and frame[2:].isdigit()) or fy is not None): return None
+        days=None
+    return {"year":end.year,"val":val,"end":r.get("end"),"start":start,"days":days,"filed":r.get("filed") or "","form":r.get("form"),"frame":r.get("frame"),"fy":r.get("fy")}
+
+def _rows(facts,tag,instant=False):
+    root=facts.get("facts",facts); out=[]
+    for ns, nsfacts in root.items():
+        fact=(nsfacts or {}).get(tag)
+        if not fact: continue
+        for unit, rows in (fact.get("units") or {}).items():
+            if not isinstance(rows,list): continue
+            for r in rows:
+                if ns=="filing-xbrl" and not r.get("filing_annual"): continue
+                if instant:
+                    if ns!="filing-xbrl" and r.get("form") not in FLOW_FORMS: continue
+                    end=_date(r.get("end")); val=clean_number(r.get("val"))
+                    if not end or val is None: continue
+                    row={"year":end.year,"val":val,"end":r.get("end"),"start":None,"days":None,"filed":r.get("filed") or "","form":r.get("form") or "10-K","frame":r.get("frame"),"fy":r.get("fy")}
+                else:
+                    row=_annual_row(r)
+                    if row is None: continue
+                row.update({"namespace":ns,"tag":tag,"unit":unit}); out.append(row)
+    return out
+
+def _quality(row,tags,instant=False):
+    days=row.get("days"); annual=30 if instant or days is None or 340<=days<=370 else 0
+    duration=10 if days is not None else 0; form=FORM_PRIORITY.get(row.get("form"),0)*2
+    ns=NAMESPACE_PRIORITY.get(row.get("namespace"),0)*3; frame=1 if str(row.get("frame") or "").startswith("CY") else 0
+    try: tag=len(tags)-tags.index(row.get("tag"))
+    except ValueError: tag=0
+    return (annual+duration+form+ns+frame+tag,row.get("filed") or "",row.get("end", ""))
+
+def _pick_best(facts,tags,year,instant=False):
+    c=[r for tag in tags for r in _rows(facts,tag,instant) if r.get("year")==year]
+    return max(c,key=lambda r:_quality(r,tags,instant)) if c else None
+
+def pick_flow(facts,tags,year): return _pick_best(facts,tags,year,False)
+def pick_instant(facts,tags,year): return _pick_best(facts,tags,year,True)
+
+def pick_eps(facts,year):
+    r=pick_flow(facts,EPS_TAGS,year)
+    if r: return r
+    income=pick_flow(facts,EPS_NET_INCOME_TAGS,year); shares=pick_flow(facts,EPS_DILUTED_SHARE_TAGS,year)
+    if income and shares and shares["val"]:
+        return {**income,"val":income["val"]/shares["val"],"tag":"derived:net_income_attributable_to_common/weighted_diluted_shares","unit":"currency-per-share","derived":True}
+    return None
+
+def pick_interest(facts,year):
+    r=pick_flow(facts,INTEREST_TAGS,year)
+    if r: return r
+    r=pick_flow(facts,INTEREST_FALLBACK_TAGS,year)
+    if r: r={**r,"interest_fallback":True}
+    return r
+
+def pick_debt(facts,year):
+    cur=pick_instant(facts,DEBT_CURRENT_TAGS,year); non=pick_instant(facts,DEBT_NONCURRENT_TAGS,year)
+    if cur or non: return {"year":year,"val":(cur["val"] if cur else 0)+(non["val"] if non else 0),"current":cur,"noncurrent":non,"total":None,"method":"components"}
+    total=pick_instant(facts,DEBT_TOTAL_TAGS,year)
+    if total: return {"year":year,"val":total["val"],"current":None,"noncurrent":None,"total":total,"method":"total_fallback"}
+    return None
+
+def pick_ocf(facts,year): return pick_flow(facts,OCF_TAGS,year)
+def pick_capex(facts,year): return pick_flow(facts,CAPEX_TAGS,year)
+def pick_dividend(facts,year): return pick_flow(facts,DIVIDEND_TAGS,year)
+def core_years(facts):
+    rev={r["year"] for t in REVENUE_TAGS for r in _rows(facts,t)}; op={r["year"] for t in OPERATING_INCOME_TAGS for r in _rows(facts,t)}
+    return rev & op
