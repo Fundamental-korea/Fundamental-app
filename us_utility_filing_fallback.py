@@ -103,6 +103,39 @@ def _context_has_dimension(context):
             return True
     return False
 
+def _semantic_aliases(local,label=""):
+    """Map custom concept names/labels to extractor candidate tags."""
+    s=re.sub(r"[^a-z0-9]","",local.lower())
+    l=re.sub(r"[^a-z0-9]","",label.lower())
+    aliases=[]
+    combined=s+" "+l
+    if (
+        "proprietarycapital" in combined
+        or "totalproprietarycapital" in combined
+        or "proprietaryfundcapital" in combined
+        or "totalshareholdersequity" in combined
+        or "totalstockholdersequity" in combined
+        or "equity" in s
+    ):
+        aliases += ["TotalProprietaryCapital","ProprietaryCapital","Equity","StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]
+    if "earningspershare" in s or "eps" in s or "earningspershare" in l or "pershare" in l:
+        aliases += ["EarningsPerShareDiluted","EarningsPerShareBasic","EarningsPerShareBasicAndDiluted"]
+    if "dividend" in s or "dividend" in l or "commonshareholderdividend" in l or "commonstockdividend" in l:
+        aliases += ["PaymentsOfDividendsCommonStock","PaymentsOfOrdinaryDividends","DividendsPaid","PaymentsOfDividends"]
+    if "longtermdebt" in s and "current" in s:aliases += ["LongTermDebtCurrent"]
+    elif "longtermdebt" in s or ("debt" in s and "noncurrent" in s):aliases += ["LongTermDebtNoncurrent"]
+    elif "borrowings" in s and "current" in s:aliases += ["CurrentBorrowings"]
+    elif "borrowings" in s:aliases += ["Borrowings"]
+    if "operatingcashflow" in s or "netcashprovided" in s or "cashflowfromoperating" in l:aliases += ["NetCashProvidedByUsedInOperatingActivities"]
+    if "interest" in s and ("expense" in s or "financecost" in s):aliases += ["InterestAndDebtExpense","InterestExpense"]
+    if "capitalexpenditure" in s or "capex" in s or ("propertyplantandequipment" in s and "payment" in s):aliases += ["PaymentsToAcquirePropertyPlantAndEquipment"]
+    if "operatingincome" in s or "operatingincome" in l:aliases += ["OperatingIncomeLoss"]
+    if "revenue" in s and "operating" in s:aliases += ["RegulatedAndUnregulatedOperatingRevenue","RegulatedOperatingRevenue","Revenues"]
+    if ("netincome" in s or "profitloss" in s) and ("common" in s or "shareholder" in s or "parent" in s):aliases += ["NetIncomeLossAttributableToCommonStockholders","NetIncomeLossAttributableToParent"]
+    if any(x in combined for x in ("dilutedearningspershare","basicearningspershare","earningspershare")):
+        aliases += ["EarningsPerShareDiluted","EarningsPerShareBasic","EarningsPerShareBasicAndDiluted"]
+    return list(dict.fromkeys(aliases))
+
 def _parse_instance(xml_text,label_map=None):
     root=ET.fromstring(xml_text);contexts={};units={};facts={}
     label_map=label_map or {}
@@ -140,39 +173,6 @@ def _parse_instance(xml_text,label_map=None):
         for alias in _semantic_aliases(local,label):facts.setdefault(alias,[]).append((unit,row.copy()))
         facts.setdefault(local,[]).append((unit,row.copy()))
     return facts
-
-def _semantic_aliases(local,label=""):
-    """Map custom concept names/labels to extractor candidate tags."""
-    s=re.sub(r"[^a-z0-9]","",local.lower())
-    l=re.sub(r"[^a-z0-9]","",label.lower())
-    aliases=[]
-    combined=s+" "+l
-    if (
-        "proprietarycapital" in combined
-        or "totalproprietarycapital" in combined
-        or "proprietaryfundcapital" in combined
-        or "totalshareholdersequity" in combined
-        or "totalstockholdersequity" in combined
-        or "equity" in s
-    ):
-        aliases += ["ProprietaryCapital","Equity","StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"]
-    if "earningspershare" in s or "eps" in s or "earningspershare" in l or "pershare" in l:
-        aliases += ["EarningsPerShareDiluted","EarningsPerShareBasic","EarningsPerShareBasicAndDiluted"]
-    if "dividend" in s or "dividend" in l or "commonshareholderdividend" in l or "commonstockdividend" in l:
-        aliases += ["PaymentsOfDividendsCommonStock","PaymentsOfOrdinaryDividends","DividendsPaid","PaymentsOfDividends"]
-    if "longtermdebt" in s and "current" in s:aliases += ["LongTermDebtCurrent"]
-    elif "longtermdebt" in s or ("debt" in s and "noncurrent" in s):aliases += ["LongTermDebtNoncurrent"]
-    elif "borrowings" in s and "current" in s:aliases += ["CurrentBorrowings"]
-    elif "borrowings" in s:aliases += ["Borrowings"]
-    if "operatingcashflow" in s or "netcashprovided" in s or "cashflowfromoperating" in l:aliases += ["NetCashProvidedByUsedInOperatingActivities"]
-    if "interest" in s and ("expense" in s or "financecost" in s):aliases += ["InterestAndDebtExpense","InterestExpense"]
-    if "capitalexpenditure" in s or "capex" in s or ("propertyplantandequipment" in s and "payment" in s):aliases += ["PaymentsToAcquirePropertyPlantAndEquipment"]
-    if "operatingincome" in s or "operatingincome" in l:aliases += ["OperatingIncomeLoss"]
-    if "revenue" in s and "operating" in s:aliases += ["RegulatedAndUnregulatedOperatingRevenue","RegulatedOperatingRevenue","Revenues"]
-    if ("netincome" in s or "profitloss" in s) and ("common" in s or "shareholder" in s or "parent" in s):aliases += ["NetIncomeLossAttributableToCommonStockholders","NetIncomeLossAttributableToParent"]
-    if any(x in combined for x in ("dilutedearningspershare","basicearningspershare","earningspershare")):
-        aliases += ["EarningsPerShareDiluted","EarningsPerShareBasic","EarningsPerShareBasicAndDiluted"]
-    return list(dict.fromkeys(aliases))
 
 def augment_with_latest_filing(session:requests.Session,cik,submissions,facts):
     try:
