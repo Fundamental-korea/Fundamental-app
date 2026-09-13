@@ -1,207 +1,129 @@
 """Filing-level XBRL fallback for utility extraction.
 
 Downloads the latest annual SEC filing's XBRL instance in memory and converts
-its contexts/facts into a compact internal fact namespace. Nothing is stored.
+standard/custom concepts into a compact filing-xbrl fact namespace. Nothing
+is stored.
 """
 from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
-
 import requests
 
-
-INSTANCE_EXCLUDE = {
-    "filingsummary.xml", "filingsummary.json", "metaLinks.json".lower(),
-}
+INSTANCE_EXCLUDE = {"filingsummary.xml", "filingsummary.json", "metalinks.json"}
+ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 
-def _local(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
-
-
-def _namespace(tag: str) -> str:
-    if tag.startswith("{") and "}" in tag:
-        return tag[1:].split("}", 1)[0]
-    return ""
-
-
-def _date(value):
-    if not value:
-        return None
-    value = str(value)[:10]
-    try:
-        from datetime import date
-        return date.fromisoformat(value)
-    except ValueError:
-        return None
-
+def _local(tag): return tag.rsplit("}", 1)[-1]
+def _namespace(tag): return tag[1:].split("}", 1)[0] if tag.startswith("{") and "}" in tag else ""
+def _date(v):
+    if not v: return None
+    from datetime import date
+    try: return date.fromisoformat(str(v)[:10])
+    except ValueError: return None
 
 def _duration_days(start, end):
-    s, e = _date(start), _date(end)
-    if not s or not e:
-        return None
-    return (e - s).days
+    s,e=_date(start),_date(end)
+    return (e-s).days if s and e else None
 
-
-def _is_instance_candidate(name: str) -> bool:
-    low = name.lower()
-    if not low.endswith(".xml"):
-        return False
-    if low in INSTANCE_EXCLUDE:
-        return False
-    if any(x in low for x in ("_cal.xml", "_def.xml", "_lab.xml", "_pre.xml", "_ref.xml")):
-        return False
-    return True
-
+def _is_instance_candidate(name):
+    low=name.lower()
+    return low.endswith(".xml") and low not in INSTANCE_EXCLUDE and not any(x in low for x in ("_cal.xml","_def.xml","_lab.xml","_pre.xml","_ref.xml"))
 
 def _accession(submissions):
-    recent = submissions.get("filings", {}).get("recent", {})
-    forms = recent.get("form", [])
-    accs = recent.get("accessionNumber", [])
-    docs = recent.get("primaryDocument", [])
-    for i, form in enumerate(forms):
-        if form not in {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}:
-            continue
-        acc = accs[i] if i < len(accs) else None
-        doc = docs[i] if i < len(docs) else None
-        if acc:
-            return acc, doc
-    return None, None
+    recent=submissions.get("filings",{}).get("recent",{})
+    for i,form in enumerate(recent.get("form",[])):
+        if form in ANNUAL_FORMS:
+            acc=recent.get("accessionNumber",[])[i] if i < len(recent.get("accessionNumber",[])) else None
+            doc=recent.get("primaryDocument",[])[i] if i < len(recent.get("primaryDocument",[])) else None
+            if acc: return acc,doc
+    return None,None
 
+def _filing_index(session,cik,accession):
+    compact=accession.replace("-","")
+    url=f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{compact}/index.json"
+    r=session.get(url,timeout=30); r.raise_for_status()
+    return r.json(),compact
 
-def _filing_index(session, cik, accession):
-    acc_compact = accession.replace("-", "")
-    url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_compact}/index.json"
-    r = session.get(url, timeout=30)
-    r.raise_for_status()
-    return r.json(), acc_compact
+def _choose_instance(index_json,primary_document):
+    names=[x.get("name") for x in index_json.get("directory",{}).get("item",[]) if x.get("name")]
+    candidates=[n for n in names if _is_instance_candidate(n)]
+    stem=re.sub(r"\.[^.]+$","",primary_document or "").lower()
+    p=[n for n in candidates if stem and n.lower().startswith(stem)]
+    if p: return p[0]
+    p=[n for n in candidates if "instance" in n.lower() or "xbrl" in n.lower()]
+    if p: return p[0]
+    return max(candidates,key=len) if candidates else None
 
+def _semantic_aliases(local):
+    """Map common custom utility concepts to extractor candidate tags."""
+    s=re.sub(r"[^a-z0-9]","",local.lower())
+    aliases=[]
+    if "equity" in s and ("total" in s or "shareholder" in s or "stockholder" in s): aliases += ["Equity","StockholdersEquity"]
+    if ("netincome" in s or "profitloss" in s) and ("common" in s or "shareholder" in s or "parent" in s): aliases += ["NetIncomeLossAttributableToCommonStockholders","NetIncomeLossAttributableToParent"]
+    if "eps" in s or ("earningspershare" in s): aliases += ["EarningsPerShareDiluted","EarningsPerShareBasic"]
+    if "dividend" in s and ("common" in s or "ordinary" in s or "share" in s): aliases += ["PaymentsOfDividendsCommonStock","PaymentsOfOrdinaryDividends"]
+    if "longtermdebt" in s and "current" in s: aliases += ["LongTermDebtCurrent"]
+    elif "longtermdebt" in s or ("debt" in s and "noncurrent" in s): aliases += ["LongTermDebtNoncurrent"]
+    elif "borrowings" in s and "current" in s: aliases += ["CurrentBorrowings"]
+    elif "borrowings" in s: aliases += ["Borrowings"]
+    if "operatingcashflow" in s or "netcashprovided" in s: aliases += ["NetCashProvidedByUsedInOperatingActivities"]
+    if "interest" in s and ("expense" in s or "financecost" in s): aliases += ["InterestAndDebtExpense","InterestExpense"]
+    if "capitalexpenditure" in s or "capex" in s or "propertyplantandequipment" in s and "payment" in s: aliases += ["PaymentsToAcquirePropertyPlantAndEquipment"]
+    if "operatingincome" in s: aliases += ["OperatingIncomeLoss"]
+    if "revenue" in s and "operating" in s: aliases += ["RegulatedAndUnregulatedOperatingRevenue","RegulatedOperatingRevenue","Revenues"]
+    return list(dict.fromkeys(aliases))
 
-def _choose_instance(index_json, primary_document):
-    items = index_json.get("directory", {}).get("item", [])
-    names = [x.get("name") for x in items if x.get("name")]
-    # Prefer a file that looks like the filing's XBRL instance and is not a
-    # taxonomy/support file. Primary-document stem is a useful tie breaker.
-    stem = re.sub(r"\.[^.]+$", "", primary_document or "").lower()
-    candidates = [n for n in names if _is_instance_candidate(n)]
-    preferred = [n for n in candidates if stem and n.lower().startswith(stem)]
-    if preferred:
-        return preferred[0]
-    preferred = [n for n in candidates if "instance" in n.lower() or "xbrl" in n.lower()]
-    if preferred:
-        return preferred[0]
-    # Last resort: largest-looking XML name; filing instances commonly contain
-    # the registrant ticker/date in the filename.
-    return max(candidates, key=len) if candidates else None
-
-
-def _parse_instance(xml_text: str):
-    root = ET.fromstring(xml_text)
-    contexts = {}
-    units = {}
-
-    for elem in root.iter():
-        local = _local(elem.tag)
-        if local == "context":
-            cid = elem.attrib.get("id")
-            if not cid:
-                continue
-            instant = None
-            start = end = None
-            for child in elem.iter():
-                name = _local(child.tag)
-                text = (child.text or "").strip()
-                if name == "instant" and text:
-                    instant = text
-                elif name == "startDate" and text:
-                    start = text
-                elif name == "endDate" and text:
-                    end = text
-            contexts[cid] = {"instant": instant, "start": start, "end": end}
-        elif local == "unit":
-            uid = elem.attrib.get("id")
-            if not uid:
-                continue
-            measure = None
-            for child in elem.iter():
-                if _local(child.tag) == "measure" and (child.text or "").strip():
-                    measure = (child.text or "").strip()
-                    break
-            units[uid] = measure
-
-    facts = {}
-    for elem in root.iter():
-        if not elem.attrib.get("contextRef"):
-            continue
-        local = _local(elem.tag)
-        ns = _namespace(elem.tag)
-        if not local or local in {"context", "unit"} or not ns:
-            continue
-        text = (elem.text or "").strip()
-        if not text:
-            continue
-        try:
-            value = float(text.replace(",", ""))
-        except ValueError:
-            continue
-        ctx = contexts.get(elem.attrib.get("contextRef"))
-        if not ctx:
-            continue
-        uid = elem.attrib.get("unitRef")
-        unit = units.get(uid) if uid else None
-        row = {
-            "val": value,
-            "form": "10-K",
-            "filed": "",
-            "frame": None,
-            "fy": None,
-            "end": ctx.get("instant") or ctx.get("end"),
-            "start": ctx.get("start"),
-        }
-        # Only annual-looking facts are useful to the current extractor. Keep
-        # instant facts separate by their absence of start date.
-        if ctx.get("start") and ctx.get("end"):
-            row["days"] = _duration_days(ctx["start"], ctx["end"])
-        else:
-            row["days"] = None
-        facts.setdefault(local, []).append((unit, row))
+def _parse_instance(xml_text):
+    root=ET.fromstring(xml_text); contexts={}; units={}; facts={}
+    for e in root.iter():
+        local=_local(e.tag)
+        if local=="context":
+            cid=e.attrib.get("id")
+            if not cid: continue
+            instant=start=end=None
+            for c in e.iter():
+                n=_local(c.tag); t=(c.text or "").strip()
+                if n=="instant" and t: instant=t
+                elif n=="startDate" and t: start=t
+                elif n=="endDate" and t: end=t
+            contexts[cid]={"instant":instant,"start":start,"end":end}
+        elif local=="unit":
+            uid=e.attrib.get("id")
+            if uid:
+                measure=None
+                for c in e.iter():
+                    if _local(c.tag)=="measure" and (c.text or "").strip(): measure=(c.text or "").strip(); break
+                units[uid]=measure
+    for e in root.iter():
+        cref=e.attrib.get("contextRef")
+        if not cref: continue
+        ctx=contexts.get(cref); local=_local(e.tag); ns=_namespace(e.tag)
+        if not ctx or not ns or local in {"context","unit"}: continue
+        text=(e.text or "").strip()
+        try: val=float(text.replace(",",""))
+        except ValueError: continue
+        row={"val":val,"form":"10-K","filed":"","frame":None,"fy":None,"end":ctx.get("instant") or ctx.get("end"),"start":ctx.get("start"),"filing_annual":bool(ctx.get("start") and ctx.get("end"))}
+        row["days"]=_duration_days(ctx.get("start"),ctx.get("end")) if row["filing_annual"] else None
+        unit=units.get(e.attrib.get("unitRef")) or "USD"
+        for alias in _semantic_aliases(local): facts.setdefault(alias,[]).append((unit,row.copy()))
+        # Preserve exact local concept too for future diagnostics.
+        facts.setdefault(local,[]).append((unit,row.copy()))
     return facts
 
-
-def augment_with_latest_filing(session: requests.Session, cik: str, submissions: dict, facts: dict):
-    """Augment facts in memory with filing-instance concepts.
-
-    Returns (augmented_facts, metadata). On any failure, the original facts are
-    returned unchanged so the production collector remains resilient.
-    """
+def augment_with_latest_filing(session: requests.Session,cik,submissions,facts):
     try:
-        accession, primary_document = _accession(submissions)
-        if not accession:
-            return facts, {"used": False, "reason": "no_annual_filing"}
-        index_json, acc_compact = _filing_index(session, cik, accession)
-        instance = _choose_instance(index_json, primary_document)
-        if not instance:
-            return facts, {"used": False, "reason": "no_xbrl_instance", "accession": accession}
-        url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{acc_compact}/{instance}"
-        r = session.get(url, timeout=45)
-        r.raise_for_status()
-        parsed = _parse_instance(r.text)
-        merged = dict(facts)
-        root = dict((facts or {}).get("facts", facts or {}))
-        root.setdefault("filing-xbrl", {})
-        for tag, rows in parsed.items():
-            units = root["filing-xbrl"].setdefault(tag, {}).setdefault("units", {})
-            for unit, row in rows:
-                unit_key = unit or "USD"
-                units.setdefault(unit_key, []).append(row)
-        merged["facts"] = root
-        return merged, {
-            "used": True,
-            "accession": accession,
-            "primary_document": primary_document,
-            "instance": instance,
-            "concept_count": len(parsed),
-        }
+        accession,doc=_accession(submissions)
+        if not accession: return facts,{"used":False,"reason":"no_annual_filing"}
+        idx,compact=_filing_index(session,cik,accession); instance=_choose_instance(idx,doc)
+        if not instance: return facts,{"used":False,"reason":"no_xbrl_instance","accession":accession}
+        url=f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{compact}/{instance}"
+        r=session.get(url,timeout=45); r.raise_for_status(); parsed=_parse_instance(r.text)
+        merged=dict(facts); root=dict((facts or {}).get("facts",facts or {})); fx=root.setdefault("filing-xbrl",{})
+        for tag,rows in parsed.items():
+            units=fx.setdefault(tag,{}).setdefault("units",{})
+            for unit,row in rows: units.setdefault(unit,[]).append(row)
+        merged["facts"]=root
+        return merged,{"used":True,"accession":accession,"primary_document":doc,"instance":instance,"concept_count":len(parsed)}
     except Exception as exc:
-        return facts, {"used": False, "reason": type(exc).__name__, "error": str(exc)[:240]}
+        return facts,{"used":False,"reason":type(exc).__name__,"error":str(exc)[:240]}
