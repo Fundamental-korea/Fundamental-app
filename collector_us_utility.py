@@ -1,6 +1,6 @@
 """Production collector for US utility companies.
 
-Uses the hardened utility-specific SEC extraction and utility scoring profile.
+Uses the utility-specific SEC extraction v3 and utility scoring profile.
 Raw SEC JSON is never persisted. Writes only compact US_Fundamental rows.
 """
 from __future__ import annotations
@@ -23,6 +23,10 @@ from downturn_us import BENCHMARK, _close_series, calculate_downturn_defense
 from us_scoring_v2 import calculate_us_utility_score_v2
 from us_utility_extraction import (
     REVENUE_TAGS,
+    OPERATING_INCOME_TAGS,
+    NET_INCOME_TAGS,
+    ASSETS_TAGS,
+    EQUITY_TAGS,
     pick_flow,
     pick_instant,
     pick_eps,
@@ -31,6 +35,7 @@ from us_utility_extraction import (
     pick_ocf,
     pick_capex,
     pick_dividend,
+    core_years,
 )
 
 SEC_TICKERS = "https://www.sec.gov/files/company_tickers.json"
@@ -86,16 +91,17 @@ def period_metrics(ticker, facts, latest_year: int, period: int):
     revenue_base = value(facts, pick_flow, base_year, REVENUE_TAGS)
     eps_now = value(facts, pick_eps, latest_year)
     eps_base = value(facts, pick_eps, base_year)
-    op_now = value(facts, pick_flow, latest_year, ["OperatingIncomeLoss", "ProfitLossFromOperatingActivities"])
-    ni_now = value(facts, pick_flow, latest_year, ["NetIncomeLoss", "ProfitLoss", "ProfitLossAttributableToOwnersOfParent"])
-    assets_now = value(facts, pick_instant, latest_year, ["Assets"])
-    equity_now = value(facts, pick_instant, latest_year, ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "Equity", "EquityAttributableToOwnersOfParent"])
+    op_now = value(facts, pick_flow, latest_year, OPERATING_INCOME_TAGS)
+    ni_now = value(facts, pick_flow, latest_year, NET_INCOME_TAGS)
+    assets_now = value(facts, pick_instant, latest_year, ASSETS_TAGS)
+    equity_now = value(facts, pick_instant, latest_year, EQUITY_TAGS)
     debt_row = pick_debt(facts, latest_year)
     ocf_now = value(facts, pick_ocf, latest_year)
     capex_now = capex_value(ticker, facts, latest_year)
     div_now = value(facts, pick_dividend, latest_year)
     interest_row = pick_interest(facts, latest_year)
     interest_now = interest_row["val"] if interest_row else None
+
     if revenue_now is None or revenue_base is None:
         return None, None
 
@@ -116,13 +122,8 @@ def period_metrics(ticker, facts, latest_year: int, period: int):
 
 
 def build_result(ticker, cik, company_name, facts, submissions, market, stock):
-    root = facts.get("facts", facts)
-    candidate_years = set()
-    for namespace in ("us-gaap", "ifrs-full"):
-        for tag in (root.get(namespace) or {}):
-            for y in range(2018, 2027):
-                if pick_flow(facts, [tag], y) or pick_instant(facts, [tag], y):
-                    candidate_years.add(y)
+    valid_core_years = core_years(facts)
+    candidate_years = {y for y in valid_core_years if 2018 <= y <= 2026}
     if not candidate_years:
         return None
     latest_year = max(candidate_years)
@@ -140,7 +141,8 @@ def build_result(ticker, cik, company_name, facts, submissions, market, stock):
     latest = period_scores.get("1")
     latest_score = latest["scores"]["total_score"] if latest else None
     latest_grade = latest["scores"]["grade"] if latest else None
-    latest_missing = latest["scores"]["missing_metric_count"] if latest else 11
+    latest_missing = latest["scores"]["missing_metric_count"] if latest else None
+    period_unavailable = latest is None
     reliability = "high" if len(period_scores) >= 3 else ("medium" if period_scores else "low")
 
     return {
@@ -158,6 +160,10 @@ def build_result(ticker, cik, company_name, facts, submissions, market, stock):
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "downturn_defense": downturn_value,
         "downturn_detail": downturn_detail,
+        # Kept inside period_scores/result JSON rather than adding a schema
+        # column so this remains backward-compatible with the compact table.
+        "extraction_version": "utility_xbrl_v3",
+        "period_unavailable": period_unavailable,
     }
 
 
@@ -192,14 +198,14 @@ def main():
             stock = _close_series(ticker)
             result = build_result(ticker, cik, submissions.get("name") or ticker, facts, submissions, market, stock)
             if result is None:
-                print(f"[{i}/{len(tickers)}] {ticker}: no annual facts")
+                print(f"[{i}/{len(tickers)}] {ticker}: no core annual facts")
                 continue
             sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
             print(f"[{i}/{len(tickers)}] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} missing={result['missing_metric_count']}")
         except Exception as exc:
             print(f"[{i}/{len(tickers)}] {ticker}: FAILED: {exc}")
 
-    print("Completed: utility production collector")
+    print("Completed: utility production collector v3")
 
 
 if __name__ == "__main__":
