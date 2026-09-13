@@ -8,7 +8,6 @@ REVENUE_TAGS=["RevenueFromContractWithCustomerExcludingAssessedTax","RevenueFrom
 OPERATING_INCOME_TAGS=["OperatingIncomeLoss","ProfitLossFromOperatingActivities","OperatingIncomeLossFromContinuingOperations"]
 NET_INCOME_TAGS=["NetIncomeLoss","ProfitLoss","ProfitLossAttributableToOwnersOfParent","NetIncomeLossAttributableToParent","NetIncomeLossAttributableToCommonStockholders"]
 ASSETS_TAGS=["Assets"]
-# Prefer the exact company-wide total capital concept before generic equity concepts.
 EQUITY_TAGS=["TotalProprietaryCapital","ProprietaryCapital","StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest","Equity","EquityAttributableToOwnersOfParent"]
 INTEREST_TAGS=["InterestAndDebtExpense","InterestExpense","InterestExpenseBorrowings","InterestExpenseNonoperating","InterestExpenseNonOperating","InterestExpenseNonOperatingNet","InterestExpenseDebt","InterestExpenseNonOperatingAndOther","FinanceCosts","InterestExpenseOnBorrowings"]
 INTEREST_FALLBACK_TAGS=["InterestPaidNet","InterestPaidClassifiedAsOperatingActivities"]
@@ -39,7 +38,7 @@ def _annual_row(r):
     if not end or val is None:return None
     dimension=bool(r.get("has_dimension"))
     if r.get("filing_annual"):
-        return {"year":end.year,"val":val,"end":r.get("end"),"start":r.get("start"),"days":r.get("days"),"filed":"","form":"10-K","frame":None,"fy":None,"has_dimension":dimension}
+        return {"year":end.year,"val":val,"end":r.get("end"),"start":r.get("start"),"days":r.get("days"),"filed":"","form":"10-K","frame":None,"fy":None,"has_dimension":dimension,"source_tag":r.get("source_tag"),"label":r.get("label","")}
     if r.get("form") not in FLOW_FORMS:return None
     start=r.get("start")
     if start:
@@ -51,7 +50,7 @@ def _annual_row(r):
         frame=str(r.get("frame") or ""); fy=r.get("fy")
         if not ((frame.startswith("CY") and frame[2:].isdigit()) or fy is not None):return None
         days=None
-    return {"year":end.year,"val":val,"end":r.get("end"),"start":start,"days":days,"filed":r.get("filed") or "","form":r.get("form"),"frame":r.get("frame"),"fy":r.get("fy"),"has_dimension":dimension}
+    return {"year":end.year,"val":val,"end":r.get("end"),"start":start,"days":days,"filed":r.get("filed") or "","form":r.get("form"),"frame":r.get("frame"),"fy":r.get("fy"),"has_dimension":dimension,"source_tag":r.get("source_tag"),"label":r.get("label","")}
 
 def _rows(facts,tag,instant=False):
     root=facts.get("facts",facts);out=[]
@@ -66,7 +65,7 @@ def _rows(facts,tag,instant=False):
                     if ns!="filing-xbrl" and r.get("form") not in FLOW_FORMS:continue
                     end=_date(r.get("end"));val=clean_number(r.get("val"))
                     if not end or val is None:continue
-                    row={"year":end.year,"val":val,"end":r.get("end"),"start":None,"days":None,"filed":r.get("filed") or "","form":r.get("form") or "10-K","frame":r.get("frame"),"fy":r.get("fy"),"has_dimension":bool(r.get("has_dimension"))}
+                    row={"year":end.year,"val":val,"end":r.get("end"),"start":None,"days":None,"filed":r.get("filed") or "","form":r.get("form") or "10-K","frame":r.get("frame"),"fy":r.get("fy"),"has_dimension":bool(r.get("has_dimension")),"source_tag":r.get("source_tag"),"label":r.get("label","")}
                 else:
                     row=_annual_row(r)
                     if row is None:continue
@@ -77,8 +76,6 @@ def _quality(row,tags,instant=False):
     days=row.get("days");annual=30 if instant or days is None or 340<=days<=370 else 0
     duration=10 if days is not None else 0;form=FORM_PRIORITY.get(row.get("form"),0)*2
     ns=NAMESPACE_PRIORITY.get(row.get("namespace"),0)*3;frame=1 if str(row.get("frame") or "").startswith("CY") else 0
-    # Filing-level XBRL can contain segment/dimensional facts. For company-wide
-    # balance-sheet/capital values, strongly prefer a non-dimensional context.
     dimension=100 if row.get("namespace")=="filing-xbrl" and not row.get("has_dimension",False) else 0
     try:tag=len(tags)-tags.index(row.get("tag"))
     except ValueError:tag=0
@@ -95,6 +92,40 @@ def _pick_prefer_primary(facts,tags,year,instant=False):
 
 def pick_flow(facts,tags,year):return _pick_prefer_primary(facts,tags,year,False)
 def pick_instant(facts,tags,year):return _pick_prefer_primary(facts,tags,year,True)
+
+def pick_equity(facts,year):
+    """Select company-wide equity/proprietary capital, with TVA-style custom XBRL support."""
+    exact_order=[
+        "TotalProprietaryCapital",
+        "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+        "StockholdersEquity",
+        "EquityAttributableToOwnersOfParent",
+        "Equity",
+        "ProprietaryCapital",
+    ]
+    # First let normal Company Facts win when it has a usable value.
+    primary=[r for tag in exact_order for r in _rows(facts,tag,True) if r.get("year")==year and r.get("namespace")!="filing-xbrl" and r.get("val",0)>=0]
+    if primary:
+        return max(primary,key=lambda r:_quality(r,exact_order,True))
+    # Filing fallback: rank by original concept and, critically, by the human
+    # label so a custom fact labelled "Total proprietary capital" beats a
+    # small component such as "Proprietary capital".
+    filing=[r for tag in exact_order for r in _rows(facts,tag,True) if r.get("year")==year and r.get("namespace")=="filing-xbrl" and r.get("val",0)>=0]
+    if not filing:return None
+    def score(r):
+        source=str(r.get("source_tag") or "").lower().replace("_","")
+        label=str(r.get("label") or "").lower()
+        exact=0
+        if source=="totalproprietarycapital":exact=1000
+        elif "totalproprietarycapital" in source:exact=900
+        elif "total proprietary capital" in label:exact=950
+        elif source=="stockholdersequityincludingportionattributabletononcontrollinginterest":exact=850
+        elif source=="stockholdersequity":exact=800
+        elif source=="equityattributabletoownersofparent":exact=750
+        elif source=="equity":exact=700
+        elif source=="proprietarycapital":exact=100
+        return exact+_quality(r,exact_order,True)[0]
+    return max(filing,key=score)
 
 def pick_eps(facts,year):
     r=_pick_prefer_primary(facts,EPS_TAGS,year,False)
