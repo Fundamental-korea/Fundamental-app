@@ -60,7 +60,9 @@ def _rows(facts,tag,instant=False):
         for unit,rows in (fact.get("units") or {}).items():
             if not isinstance(rows,list):continue
             for r in rows:
-                if ns=="filing-xbrl" and not r.get("filing_annual"):continue
+                # Filing-level facts can represent either duration or instant
+                # contexts. Do not discard instant balance-sheet facts simply
+                # because they naturally have no start/end dates.
                 if instant:
                     if ns!="filing-xbrl" and r.get("form") not in FLOW_FORMS:continue
                     end=_date(r.get("end"));val=clean_number(r.get("val"))
@@ -95,21 +97,9 @@ def pick_instant(facts,tags,year):return _pick_prefer_primary(facts,tags,year,Tr
 
 def pick_equity(facts,year):
     """Select company-wide equity/proprietary capital, with TVA-style custom XBRL support."""
-    exact_order=[
-        "TotalProprietaryCapital",
-        "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
-        "StockholdersEquity",
-        "EquityAttributableToOwnersOfParent",
-        "Equity",
-        "ProprietaryCapital",
-    ]
-    # First let normal Company Facts win when it has a usable value.
+    exact_order=["TotalProprietaryCapital","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest","StockholdersEquity","EquityAttributableToOwnersOfParent","Equity","ProprietaryCapital"]
     primary=[r for tag in exact_order for r in _rows(facts,tag,True) if r.get("year")==year and r.get("namespace")!="filing-xbrl" and r.get("val",0)>=0]
-    if primary:
-        return max(primary,key=lambda r:_quality(r,exact_order,True))
-    # Filing fallback: rank by original concept and, critically, by the human
-    # label so a custom fact labelled "Total proprietary capital" beats a
-    # small component such as "Proprietary capital".
+    if primary:return max(primary,key=lambda r:_quality(r,exact_order,True))
     filing=[r for tag in exact_order for r in _rows(facts,tag,True) if r.get("year")==year and r.get("namespace")=="filing-xbrl" and r.get("val",0)>=0]
     if not filing:return None
     def score(r):
@@ -131,8 +121,7 @@ def pick_eps(facts,year):
     r=_pick_prefer_primary(facts,EPS_TAGS,year,False)
     if r:return r
     income=_pick_prefer_primary(facts,EPS_NET_INCOME_TAGS,year,False);shares=_pick_prefer_primary(facts,EPS_DILUTED_SHARE_TAGS,year,False)
-    if income and shares and shares["val"]:
-        return {**income,"val":income["val"]/shares["val"],"tag":"derived:net_income_attributable_to_common/weighted_diluted_shares","unit":"currency-per-share","derived":True}
+    if income and shares and shares["val"]:return {**income,"val":income["val"]/shares["val"],"tag":"derived:net_income_attributable_to_common/weighted_diluted_shares","unit":"currency-per-share","derived":True}
     return None
 
 def pick_interest(facts,year):
