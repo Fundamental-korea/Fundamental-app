@@ -1174,6 +1174,7 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
         }
 
     # 1년(단기) 기간은 연간 사업보고서 대신 '지금 시점 가장 최신' 분기/반기 보고서로 대체 (최신성 우선)
+    latest_report = None
     if 1 in periods:
         latest_report = fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=use_ofs_for_manufacturing)
         if latest_report:
@@ -1214,7 +1215,12 @@ def fetch_multi_year_metrics(stock_code, periods=DEFAULT_PERIODS, use_ofs_for_ma
         else:
             print("  ⚠️ 1년 기간: 최신 분기/반기 보고서를 가져오지 못해 연간 사업보고서 기준으로 대체합니다.")
 
-    return {"base_year": base_year, "yearly_data": yearly_data, "period_results": period_results}
+    return {
+        "base_year": base_year,
+        "yearly_data": yearly_data,
+        "period_results": period_results,
+        "latest_report": latest_report,  # 메인 페이로드(현재가 기준 재무 스냅샷)를 '최신 확정 공시' 기준으로 쓰기 위해 노출
+    }
 
 
 def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=None, wics_sector_map=None, kospi_mdd_cache=None, use_ofs_for_manufacturing=True):
@@ -1285,7 +1291,25 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             return
 
         base_year = multi["base_year"]
-        latest = multi["yearly_data"][base_year]
+        latest_annual = multi["yearly_data"][base_year]
+        latest_report = multi.get("latest_report")
+
+        # ✅ 2026-09: 메인 스냅샷 필드(revenue/net_income/eps/bps/per/pbr 등)를 '연간 확정
+        # 사업보고서(base_year)' 대신 '지금 시점 가장 최신 확정 공시(분기/반기/연간)' 기준으로
+        # 전환 - 네이버증권처럼 최신 분기가 나오면 자동으로 그걸 반영하기 위함(예: 지금
+        # 2026년 반기보고서까지 나왔으면 그 기준, 3분기보고서가 나오면 다음 수집 때 그걸로
+        # 자동 갱신됨). 3y/5y/10y 추세 점수는 연간 데이터가 꼭 필요해서 계속 latest_annual
+        # 기준으로 계산하고(위 period_scores 루프), 이 전환은 '현재 스냅샷' 필드에만 적용.
+        if latest_report:
+            latest = latest_report
+            data_basis_label = (
+                f"{latest_report['_report_year']}년 "
+                f"{REPORT_CODE_LABEL.get(latest_report['_report_code'], latest_report['_report_code'])}"
+            )
+        else:
+            latest = latest_annual
+            data_basis_label = f"{base_year}년 사업보고서(연간)"
+            print(f"  ⚠️ [{stock_name}] 최신 분기/반기 공시를 못 가져와서 연간({base_year}) 기준으로 폴백합니다.")
 
         net_income = latest["net_income"]
         total_equity = latest["total_equity"]
@@ -1376,7 +1400,8 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "sector": sector,
             "wics_sector": wics_sector,
             "holding_company": holding_company,
-            "base_year": base_year,
+            "base_year": base_year,  # 3/5/10y 추세 점수 계산 기준 연도 (연간 데이터 필요)
+            "data_basis_label": data_basis_label,  # 현재 스냅샷(revenue~pbr)이 어느 시점 공시 기준인지 (예: "2026년 반기보고서")
             "stock_price": current_price,
             "per": per,
             "pbr": pbr,
@@ -1400,7 +1425,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         payload = _sanitize_json(payload)
         supabase.table("Fundamental").upsert(payload, on_conflict="stock_code").execute()
 
-        print(f"✅ [{stock_name}] 완료! (주가: {current_price:,}원, 기준연도: {base_year})")
+        print(f"✅ [{stock_name}] 완료! (주가: {current_price:,}원, 스냅샷 기준: {data_basis_label} / 추세점수 기준연도: {base_year})")
 
     except Exception as e:
         print(f"❌ [{stock_name}] 업데이트 에러: {e}")
@@ -1766,6 +1791,51 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         report_year = latest_report["_report_year"]
         report_code = latest_report["_report_code"]
         report_label = REPORT_CODE_LABEL.get(report_code, report_code)
+        data_basis_label = f"{report_year}년 {report_label}"
+
+        # ✅ 2026-09 추가: sync_1y_only가 지금까지는 period_scores만 갱신하고 메인 스냅샷
+        # 필드(revenue/net_income/eps/bps/per/pbr/stock_price)는 건드리지 않았음. 근데 이
+        # 함수가 바로 "새 분기 공시가 나오면 최신 시점 기준으로 정보를 갱신"해야 할 경로라서,
+        # 여기서도 같이 최신화하도록 추가함 (사용자 요청: "우리의 정보는 2026년 제2분기에
+        # 맞춰야지, 또 업데이트되면 3분기에 맞추고"). 배당 정보는 연 1회성 공시라 여기선
+        # 갱신하지 않고 최근 annual sync 때 저장된 값을 그대로 둠.
+        current_price = fetch_current_price_via_datareader(stock_code)
+        stock_total_df = fetch_stock_total_count_info(stock_code, get_latest_annual_year())
+        issued_shares, distributed_shares = extract_issued_shares(stock_total_df)
+        issued_shares = issued_shares or 0
+
+        snapshot_fields = {}
+        if current_price is not None and issued_shares > 0:
+            net_income = latest_report["net_income"]
+            total_equity = latest_report["total_equity"]
+            reported_eps = latest_report.get("reported_eps")
+            if reported_eps is not None:
+                eps = reported_eps
+                eps_is_reported = True
+            else:
+                float_shares = distributed_shares if distributed_shares else issued_shares
+                eps = (net_income / float_shares) if float_shares and float_shares > 0 else None
+                eps_is_reported = False
+            bps = (total_equity / issued_shares) if issued_shares > 0 else None
+            per = round(current_price / eps, 2) if eps else None
+            pbr = round(current_price / bps, 2) if (bps and bps > 0) else None
+
+            snapshot_fields = {
+                "stock_price": current_price,
+                "per": per,
+                "pbr": pbr,
+                "eps": round(eps, 2) if eps is not None else None,
+                "eps_is_reported": eps_is_reported,
+                "bps": round(bps, 2) if bps is not None else None,
+                "revenue": int(latest_report["revenue"]),
+                "operating_income": int(latest_report["operating_income"]),
+                "net_income": int(latest_report["net_income"]),
+                "total_liabilities": int(latest_report["total_liabilities"]),
+                "total_equity": int(latest_report["total_equity"]),
+                "data_basis_label": data_basis_label,
+            }
+        else:
+            print(f"  ⚠️ [{stock_name}] 현재가/발행주식수를 못 가져와서 스냅샷 필드는 이번엔 갱신 못 함 (점수는 정상 갱신).")
 
         # 최근 4분기(최신 포함) 추이 - 매일 자동갱신 때도 같이 최신화 (DART 호출 종목당 +3회,
         # 사용자 확인 후 도입 - 비용 증가 감수)
@@ -1809,6 +1879,7 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
             "period_scores": merged_period_scores,
             "capital_impairment": capital_impairment,
             "last_1y_updated_at": datetime.utcnow().isoformat(),
+            **snapshot_fields,
         })
         supabase.table("Fundamental").upsert(payload, on_conflict="stock_code").execute()
 
