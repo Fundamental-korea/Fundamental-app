@@ -971,16 +971,35 @@ def get_kr_stock_universe():
     쌓여있는 stock_code/stock_name을 종목 유니버스로 사용 (app.py의 get_combined_stock_db()와
     동일한 우회 전략). df_krx와 동일하게 'Code'/'Name' 컬럼을 가진 DataFrame을 반환해서
     기존 배치 함수들(targets["Code"], row.Name 등)을 그대로 쓸 수 있게 함.
+    PostgREST 기본 1000행 제한 페이지네이션 처리 (get_already_synced_codes()와 동일한 패턴 -
+    ⚠️ 2026-09: 이걸 빼먹어서 2,876개 중 1,000개만 가져오는 버그가 있었음, 여기서 수정).
 
     ⚠️ 한계: 이 방식으로는 Supabase에 한 번도 저장된 적 없는 신규 상장 종목은 발견되지
     않음 - fdr.StockListing이 복구되거나 다른 신규상장 소스가 생기기 전까지는 '기존에
     이미 알고 있던 종목을 재수집'하는 용도로만 정확함.
     """
     try:
-        res = supabase.table("Fundamental").select("stock_code, stock_name").execute()
-        if not res.data:
+        all_rows = []
+        page_size = 1000
+        start = 0
+        while True:
+            res = (
+                supabase.table("Fundamental")
+                .select("stock_code, stock_name")
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            rows = res.data
+            if not rows:
+                break
+            all_rows.extend(rows)
+            if len(rows) < page_size:
+                break
+            start += page_size
+
+        if not all_rows:
             return pd.DataFrame(columns=["Code", "Name"])
-        df = pd.DataFrame(res.data).rename(columns={"stock_code": "Code", "stock_name": "Name"})
+        df = pd.DataFrame(all_rows).rename(columns={"stock_code": "Code", "stock_name": "Name"})
         return df.dropna(subset=["Code"]).drop_duplicates(subset=["Code"]).reset_index(drop=True)
     except Exception as e:
         print(f"⚠️ Supabase 기반 종목 유니버스 조회 실패: {e}")
