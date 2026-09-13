@@ -21,9 +21,45 @@ SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.s
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
 DART_API_KEY = os.environ.get("DART_API_KEY", "")
 
+# ⚠️ 2026-09 수정: supabase/dart를 전역(global) 인스턴스 하나로 두고 ThreadPoolExecutor의
+# 여러 워커 스레드가 동시에 공유했더니, 병렬 재수집(max_workers=4) 도중 "캐시 조회/저장 실패"가
+# 대량 발생하고 심지어 응답이 뒤섞여서 완전히 틀린(며칠 전 캐시값) 데이터가 저장되는 사고가
+# 실제로 발생함 (SK하이닉스 재현 확인). supabase-py/opendartreader 둘 다 멀티스레드 안전성을
+# 보장하지 않는 걸로 보임. -> 스레드마다 자기만의 클라이언트 인스턴스를 쓰도록 스레드-로컬
+# 프록시로 교체. 기존에 파일 전체에서 쓰던 `supabase.xxx(...)`/`dart.xxx(...)` 호출부는
+# 문법적으로 전혀 안 바뀌어도 되게(투명하게) __getattr__ 위임으로 구현함.
+_thread_local = threading.local()
+
+
+def _get_supabase_client():
+    if not hasattr(_thread_local, "supabase"):
+        _thread_local.supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+    return _thread_local.supabase
+
+
+def _get_dart_client():
+    if not hasattr(_thread_local, "dart"):
+        _thread_local.dart = OpenDartReader(DART_API_KEY)
+    return _thread_local.dart
+
+
+class _ThreadLocalClientProxy:
+    """supabase.table(...)/dart.finstate(...) 같은 기존 호출 문법을 그대로 유지하면서,
+    실제로는 스레드마다 별도의 클라이언트 인스턴스로 위임(delegate)하는 투명 프록시."""
+
+    def __init__(self, getter):
+        self._getter = getter
+
+    def __getattr__(self, name):
+        return getattr(self._getter(), name)
+
+
 try:
-    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    dart = OpenDartReader(DART_API_KEY)
+    supabase = _ThreadLocalClientProxy(_get_supabase_client)
+    dart = _ThreadLocalClientProxy(_get_dart_client)
+    # 메인 스레드에서 바로 초기화 에러(잘못된 키 등)를 조기에 발견하기 위해 한 번 강제 접근
+    _get_supabase_client()
+    _get_dart_client()
 except Exception as e:
     print(f"❌ 초기 설정 에러: {e}")
 
