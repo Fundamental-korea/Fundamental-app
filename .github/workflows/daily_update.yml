@@ -22,11 +22,15 @@ jobs:
       - name: 필수 라이브러리 설치
         run: |
           pip install -r requirements.txt
+        # ⚠️ 2026-09 수정: 예전엔 pip install pandas opendartreader supabase만 설치해서
+        # collector.py가 import 단계에서부터 FinanceDataReader/requests 없어서 실패했음
+        # (update_dart.py 자체가 없었던 것과 별개로, 있었어도 이 상태로는 못 돌았을 것).
+        # requirements.txt를 그대로 설치해서 로컬/Colab이랑 항상 동일한 의존성을 쓰게 함.
 
-      - name: 1y 지표 자동 갱신 스크립트 실행
+      - name: 파이썬 업데이트 스크립트 실행
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
-          python update_1y.py
+          python update_dart.py
