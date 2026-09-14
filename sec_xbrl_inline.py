@@ -26,7 +26,6 @@ def _num(text: str | None, scale: str | None = None, sign: str | None = None) ->
     s = "".join(text.split()).replace(",", "")
     if s in {"", "-", "—", "–"}:
         return None
-    # Inline XBRL can contain currency/unit symbols and parentheses.
     s = re.sub(r"[$€£¥]", "", s)
     negative = s.startswith("(") and s.endswith(")")
     s = s.strip("()")
@@ -51,11 +50,18 @@ def _dimensioned(context) -> bool:
     return False
 
 
-def parse_inline_xbrl(document_text: str, labels: dict[str, str] | None = None,
+def parse_inline_xbrl(document_text: str | bytes, labels: dict[str, str] | None = None,
                       filed: str | None = None, form: str = "10-K") -> list[dict[str, Any]]:
-    """Extract ix:nonFraction facts and their context periods from inline XBRL HTML."""
+    """Extract ix:nonFraction facts and their context periods from inline XBRL HTML.
+
+    SEC Inline XBRL documents commonly contain an XML encoding declaration.
+    lxml rejects such declarations when given a Unicode string, so pass bytes
+    whenever the input is text. This preserves the document's declared encoding
+    and avoids the "Unicode strings with encoding declaration" failure.
+    """
     labels = labels or {}
-    root = html.fromstring(document_text)
+    payload = document_text.encode("utf-8") if isinstance(document_text, str) else document_text
+    root = html.fromstring(payload)
 
     contexts: dict[str, dict[str, Any]] = {}
     for e in root.xpath("//*[local-name()='context']"):
@@ -77,7 +83,7 @@ def parse_inline_xbrl(document_text: str, labels: dict[str, str] | None = None,
         uid = e.get("id")
         if not uid:
             continue
-        measure = next((x.text.strip() for x in e.xpath(".//*[local-name()='measure']") if x.text), "")
+        measure = next((x.text.strip() for x in e.xpath(".//*[local-name()='measure"]") if x.text), "")
         units[uid] = measure
 
     rows: list[dict[str, Any]] = []
