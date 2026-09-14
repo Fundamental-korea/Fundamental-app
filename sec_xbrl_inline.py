@@ -13,7 +13,12 @@ from lxml import html
 
 
 def _local(tag: str) -> str:
-    return tag.rsplit("}", 1)[-1]
+    """Return a case-insensitive local element name.
+
+    lxml's HTML parser lowercases element names, so XBRL names such as
+    nonFraction/startDate/endDate become nonfraction/startdate/enddate.
+    """
+    return tag.rsplit("}", 1)[-1].lower()
 
 
 def _namespace(tag: str) -> str:
@@ -45,7 +50,7 @@ def _num(text: str | None, scale: str | None = None, sign: str | None = None) ->
 
 def _dimensioned(context) -> bool:
     for e in context.iter():
-        if _local(e.tag) in {"explicitMember", "typedMember"}:
+        if _local(e.tag) in {"explicitmember", "typedmember"}:
             return True
     return False
 
@@ -56,8 +61,8 @@ def parse_inline_xbrl(document_text: str | bytes, labels: dict[str, str] | None 
 
     SEC Inline XBRL documents commonly contain an XML encoding declaration.
     lxml rejects such declarations when given a Unicode string, so pass bytes
-    whenever the input is text. This preserves the document's declared encoding
-    and avoids the "Unicode strings with encoding declaration" failure.
+    whenever the input is text. The HTML parser also lowercases element names,
+    therefore local-name comparisons are case-insensitive.
     """
     labels = labels or {}
     payload = document_text.encode("utf-8") if isinstance(document_text, str) else document_text
@@ -69,8 +74,8 @@ def parse_inline_xbrl(document_text: str | bytes, labels: dict[str, str] | None 
         if not cid:
             continue
         instant = next((x.text.strip() for x in e.xpath(".//*[local-name()='instant']") if x.text), None)
-        starts = next((x.text.strip() for x in e.xpath(".//*[local-name()='startDate']") if x.text), None)
-        ends = next((x.text.strip() for x in e.xpath(".//*[local-name()='endDate']") if x.text), None)
+        starts = next((x.text.strip() for x in e.xpath(".//*[local-name()='startdate']") if x.text), None)
+        ends = next((x.text.strip() for x in e.xpath(".//*[local-name()='enddate']") if x.text), None)
         contexts[cid] = {
             "instant": instant,
             "start": starts,
@@ -83,11 +88,11 @@ def parse_inline_xbrl(document_text: str | bytes, labels: dict[str, str] | None 
         uid = e.get("id")
         if not uid:
             continue
-        measure = next((x.text.strip() for x in e.xpath(".//*[local-name()='measure"]") if x.text), "")
+        measure = next((x.text.strip() for x in e.xpath(".//*[local-name()='measure']") if x.text), "")
         units[uid] = measure
 
     rows: list[dict[str, Any]] = []
-    for e in root.xpath("//*[local-name()='nonFraction']"):
+    for e in root.xpath("//*[local-name()='nonfraction']"):
         context_ref = e.get("contextRef")
         if not context_ref or context_ref not in contexts:
             continue
