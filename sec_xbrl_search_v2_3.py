@@ -1,8 +1,8 @@
 """SEC XBRL resolver V2.3.
 
-Adds stricter semantic validation and, importantly, requires Company Facts
-candidates to belong to the target annual filing/fiscal year rather than
-merely sharing the same calendar end year. Raw SEC payloads remain in memory.
+Adds stricter semantic validation and annual provenance. Company Facts rows must
+come from the target annual fiscal year; filing-level XBRL is used only when
+Company Facts has no credible candidate. Raw SEC payloads remain in memory.
 """
 from __future__ import annotations
 
@@ -18,7 +18,6 @@ from sec_xbrl_search_v2_2 import (
     LABEL_PRIORS,
     _date,
     _norm,
-    _safe_float,
     _annual_duration,
     _latest_annual_fy,
     XBRLCandidate,
@@ -28,7 +27,7 @@ ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 HARD_EXCLUDE = {
     "liabilities": (
-        "liabilitiesandstockholdersequity", "liabilitiescurrent",
+        "liabilitiesandstockholdersequity", "liabilitiescurrent", "currentliabilities",
         "liabilitiesofdisposalgroupincludingdiscontinuedoperationcurrent",
         "deferredcreditsandotherliabilitiesnoncurrent", "liabilitiesfairvaluedisclosure",
         "accruedliabilities", "deferredincometaxliabilities", "longtermdebt",
@@ -95,6 +94,32 @@ def _label_quality(metric: str, label: str, concept: str) -> tuple[int, list[str
     return points, reasons
 
 
+def _infer_latest_annual_fy_from_companyfacts(companyfacts: dict[str, Any]) -> int | None:
+    """Infer latest annual FY when the caller omits year.
+
+    This is only a convenience fallback. resolve() uses SEC submissions as the
+    authoritative source for the target annual fiscal year.
+    """
+    best: tuple[str, int | None] | None = None
+    facts = companyfacts.get("facts") or {}
+    for concepts in facts.values():
+        for fact in (concepts or {}).values():
+            for rows in (fact.get("units") or {}).values():
+                if not isinstance(rows, list):
+                    continue
+                for row in rows:
+                    if str(row.get("form") or "").upper() not in ANNUAL_FORMS:
+                        continue
+                    try:
+                        fy = int(row.get("fy")) if row.get("fy") is not None else None
+                    except (TypeError, ValueError):
+                        fy = None
+                    filed = str(row.get("filed") or "")
+                    if fy is not None and (best is None or filed > best[0]):
+                        best = (filed, fy)
+    return best[1] if best else None
+
+
 def _annual_company_fact(row: dict[str, Any], target_year: int, metric: str) -> bool:
     """Require a Company Facts row to belong to the target annual filing."""
     form = str(row.get("form") or "").upper()
@@ -103,29 +128,20 @@ def _annual_company_fact(row: dict[str, Any], target_year: int, metric: str) -> 
 
     if form not in ANNUAL_FORMS:
         return False
-
     if fy is not None:
         try:
             if int(fy) != int(target_year):
                 return False
         except (TypeError, ValueError):
             return False
-
     if end is None:
         return False
 
-    # Duration metrics must be annual duration facts.
     if metric in DURATION_METRICS and metric != "eps":
-        if not row.get("start"):
+        if not row.get("start") or not _annual_duration(row.get("start"), row.get("end")):
             return False
-        if not _annual_duration(row.get("start"), row.get("end")):
-            return False
-
-    # Instant metrics must have an instant fact from the annual filing.
-    if metric in INSTANT_METRICS:
-        if row.get("start"):
-            return False
-
+    if metric in INSTANT_METRICS and row.get("start"):
+        return False
     return True
 
 
@@ -141,15 +157,15 @@ class SECXBRLSearchV2_3(SECXBRLSearchV2_2):
         if concept in EXACT_CONCEPTS.get(metric, set()):
             return True
         label_score, _ = _label_quality(metric, label, concept)
-        if source == "filing-xbrl":
-            return label_score >= 30
         return label_score >= 30
 
     def search_company_facts(self, companyfacts: dict[str, Any], metric: str, year: int | None = None,
                              aliases: list[str] | None = None, limit: int = 20):
-        target_year = year
+        # V2.3 callers may omit year. Infer the latest annual FY instead of
+        # falling back to calendar-end/quarterly selection.
+        target_year = year if year is not None else _infer_latest_annual_fy_from_companyfacts(companyfacts)
         if target_year is None:
-            raise ValueError("V2.3 search_company_facts requires target annual FY")
+            raise ValueError("V2.3 could not infer target annual FY from Company Facts")
 
         rows = super().search_company_facts(
             companyfacts, metric, year=None, aliases=aliases, limit=limit * 10
@@ -215,6 +231,9 @@ class SECXBRLSearchV2_3(SECXBRLSearchV2_2):
                 aliases: list[str] | None = None, suspicious: bool = False, limit: int = 10):
         submissions = self.submissions(cik)
         target_year = year if year is not None else self._latest_annual_fy(submissions)
+        if target_year is None:
+            raise ValueError("V2.3 could not determine target annual FY")
+
         facts = self.company_facts(cik)
         direct = self.search_company_facts(facts, metric, year=target_year, aliases=aliases, limit=limit)
         credible = [x for x in direct if x.score >= 90]
@@ -231,10 +250,8 @@ class SECXBRLSearchV2_3(SECXBRLSearchV2_2):
             )
             fmeta["target_fy"] = target_year
             meta = fmeta
-        if filing and (not credible or filing[0].score > credible[0].score):
-            pool = filing
-        else:
-            pool = credible or direct
+
+        pool = filing if filing and (not credible or filing[0].score > credible[0].score) else (credible or direct)
         return {
             "metric": metric,
             "year": target_year,
