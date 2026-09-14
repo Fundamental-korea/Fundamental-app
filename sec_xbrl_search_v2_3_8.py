@@ -1,7 +1,7 @@
 """SEC XBRL resolver V2.3.8.
 
 Targeted Standard-sector fallbacks validated against 2025 SEC filings:
-- Newmont total inventory uses InventoryOtherThanOreStockpilesNetOfReserves ($1.512B).
+- Newmont total inventory uses the disclosed non-ore inventory components ($1.512B).
 - Newmont interest expense can fall back to InterestIncomeExpenseNonoperatingNet;
   a negative net value is normalized to positive expense.
 - Newmont SG&A uses GeneralAndAdministrativeExpense as a validated proxy.
@@ -99,18 +99,19 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
 
     @staticmethod
     def _derive_validated_newmont_inventory(rows, year):
-        """Derive NEM's non-ore inventory total from its three disclosed components.
+        """Derive NEM's non-ore inventory total from its four disclosed components.
 
-        Newmont's 2025 filing exposes the components but not the total concept
-        through the Inline XBRL rows consumed here. The three components are
-        all non-dimensional instant facts in the same balance-sheet context:
-        concentrate, materials/supplies/other, and precious metals. Their sum
-        is the reported $1.512B inventory total. Ore stockpiles/leach pads are
-        intentionally excluded because they are disclosed separately.
+        Newmont's 2025 filing exposes the non-ore inventory components but not
+        the total concept through the Inline XBRL rows consumed here. The
+        validated components are concentrate, materials/supplies/other,
+        work-in-process, and precious metals. Their sum is the reported
+        $1.512B inventory total. Ore stockpiles/leach pads are disclosed
+        separately and are intentionally excluded.
         """
         component_names = {
             "ConcentrateInventoryNetOfReserves",
             "MaterialsSuppliesAndOtherInventoryNetOfReserves",
+            "InventoryWorkInProcessNetOfReserves",
             "PreciousMetalsInventoryNetOfReserves",
         }
         groups = {}
@@ -152,7 +153,7 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
                 score=145.0,
                 reason=(
                     "validated same-context inventory identity: "
-                    "Concentrate + Materials/Supplies/Other + Precious Metals; "
+                    "Concentrate + Materials/Supplies/Other + Work-in-Process + Precious Metals; "
                     "ore stockpiles/leach pads excluded"
                 ),
             )
@@ -169,7 +170,7 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
         exact_candidates = self._exact_rows_first(rows, metric, year)
 
         # NEM's validated inventory fallback: the total concept may be absent
-        # from Inline XBRL even though its three economic components are present.
+        # from Inline XBRL even though its four economic components are present.
         if not exact_candidates and metric == "inventory":
             derived_inventory = self._derive_validated_newmont_inventory(rows, year)
             if derived_inventory is not None:
