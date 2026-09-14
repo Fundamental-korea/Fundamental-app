@@ -1455,6 +1455,10 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "sector": sector,
             "wics_sector": wics_sector,
             "holding_company": holding_company,
+            "data_unavailable": False,  # ⚠️ 2026-09 버그 수정: 성공 payload가 이 필드를 아예
+            # 안 건드려서, 한 번이라도 실패해 True가 찍힌 종목은 이후 몇 번을 성공해도 영원히
+            # True로 남아있는 문제가 있었음(1,710개 종목에서 실제로 확인됨). 성공 시 명시적으로
+            # False로 덮어써서 해소.
             "base_year": base_year,  # 3/5/10y 추세 점수 계산 기준 연도 (연간 데이터 필요)
             "data_basis_label": data_basis_label,  # 현재 스냅샷(revenue~pbr)이 어느 시점 공시 기준인지 (예: "2026년 반기보고서")
             "stock_price": current_price,
