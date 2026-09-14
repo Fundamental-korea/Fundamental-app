@@ -13,12 +13,7 @@ from lxml import html
 
 
 def _local(tag: str) -> str:
-    """Return a case-insensitive local element name.
-
-    lxml's HTML parser may represent namespaced XBRL elements as strings such
-    as ``ix:nonfraction`` or ``xbrli:context`` and lowercases HTML names.
-    Splitting both namespace styles keeps matching independent of that detail.
-    """
+    """Return a case-insensitive local element name."""
     return tag.rsplit("}", 1)[-1].rsplit(":", 1)[-1].lower()
 
 
@@ -85,9 +80,7 @@ def parse_inline_xbrl(document_text: str | bytes, labels: dict[str, str] | None 
     """Extract ix:nonFraction facts and their context periods from inline XBRL HTML.
 
     Raw SEC filing content is parsed in memory only. Element and attribute
-    matching is deliberately namespace/case insensitive because lxml's HTML
-    parser normalizes HTML names and does not preserve XML namespaces the same
-    way an XML parser does.
+    matching is deliberately namespace/case insensitive.
     """
     labels = labels or {}
     payload = document_text.encode("utf-8") if isinstance(document_text, str) else document_text
@@ -143,11 +136,7 @@ def parse_inline_xbrl(document_text: str | bytes, labels: dict[str, str] | None 
         instant = bool(ctx.get("instant"))
         end = ctx.get("instant") or ctx.get("end")
         start = None if instant else ctx.get("start")
-        value = _num(
-            " ".join(e.itertext()),
-            _attr(e, "scale"),
-            _attr(e, "sign"),
-        )
+        value = _num(" ".join(e.itertext()), _attr(e, "scale"), _attr(e, "sign"))
         if value is None or not end:
             continue
 
@@ -165,5 +154,6 @@ def parse_inline_xbrl(document_text: str | bytes, labels: dict[str, str] | None 
             "filed": filed,
             "instant": instant,
             "dimensioned": bool(ctx.get("dimensioned")),
+            "contextRef": context_ref,
         })
     return rows
