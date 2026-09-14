@@ -26,6 +26,7 @@ from sec_xbrl_inline import parse_inline_xbrl
 
 XLINK = "http://www.w3.org/1999/xlink"
 
+
 def _local(tag: str) -> str:
     return tag.rsplit("}", 1)[-1]
 
@@ -93,6 +94,79 @@ class SECXBRLSearchV2_3_2(SECXBRLSearchV2_3_1):
             "concept_count": len({r["concept"] for r in rows}),
         }
 
+    @staticmethod
+    def _derived_liabilities_candidate(rows, year: int | None):
+        """Derive total liabilities from Assets - Equity when the issuer omits a
+        direct total-liabilities XBRL fact.
+
+        This is a balance-sheet identity, not an issuer-specific hard-code.
+        Assets and the selected equity concept must come from the same
+        non-dimensional instant context and the requested fiscal year.
+        """
+        if not rows:
+            return None
+
+        equity_concepts = (
+            "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+            "StockholdersEquity",
+            "EquityAttributableToOwnersOfParent",
+            "Equity",
+            "ProprietaryCapital",
+            "TotalProprietaryCapital",
+        )
+        assets_by_context: dict[str, dict[str, Any]] = {}
+        equity_by_context: dict[str, list[dict[str, Any]]] = {}
+        for r in rows:
+            if r.get("dimensioned") or not r.get("instant"):
+                continue
+            end = _date(r.get("end"))
+            if year is not None and (end is None or end.year != int(year)):
+                continue
+            cref = r.get("contextRef") or ""
+            if not cref:
+                continue
+            concept = r.get("concept", "")
+            if r.get("namespace") == "us-gaap" and concept == "Assets":
+                assets_by_context[cref] = r
+            if r.get("namespace") == "us-gaap" and concept in equity_concepts:
+                equity_by_context.setdefault(cref, []).append(r)
+
+        for cref, asset in assets_by_context.items():
+            asset_value = asset.get("value")
+            if asset_value is None:
+                continue
+            equities = equity_by_context.get(cref, [])
+            if not equities:
+                continue
+            rank = {name: i for i, name in enumerate(equity_concepts)}
+            equity = min(equities, key=lambda r: rank.get(r.get("concept", ""), 999))
+            equity_value = equity.get("value")
+            if equity_value is None:
+                continue
+            liabilities = float(asset_value) - float(equity_value)
+            if liabilities <= 0:
+                continue
+            end = asset.get("end")
+            return XBRLCandidate(
+                metric="liabilities",
+                namespace="derived",
+                concept="DerivedLiabilitiesFromAssetsAndEquity",
+                label="Total liabilities (derived from total assets minus equity)",
+                value=liabilities,
+                unit=asset.get("unit") or equity.get("unit") or "",
+                end=end,
+                start=None,
+                fy=asset.get("fy"),
+                form=asset.get("form"),
+                filed=asset.get("filed"),
+                instant=True,
+                dimensioned=False,
+                source="filing-xbrl-derived",
+                score=115.0,
+                reason="balance-sheet identity: Assets - Equity",
+            )
+        return None
+
     def search_filing(self, cik: str | int, metric: str, year: int | None = None,
                       include_dimensioned: bool = False,
                       submissions: dict[str, Any] | None = None, limit: int = 20):
@@ -159,6 +233,16 @@ class SECXBRLSearchV2_3_2(SECXBRLSearchV2_3_1):
                 score=score,
                 reason=", ".join(dict.fromkeys(reasons)),
             ))
+
+        # Some issuers omit the direct total-liabilities concept from their
+        # filing facts even though the balance sheet reports total assets and
+        # equity in the same instant context. Use the accounting identity only
+        # as a generic fallback when no direct candidate survived filtering.
+        if metric == "liabilities" and not candidates:
+            derived = self._derived_liabilities_candidate(rows, year)
+            if derived is not None:
+                candidates.append(derived)
+                meta["derived_balance_sheet"] = "assets_minus_equity"
 
         candidates.sort(
             key=lambda x: (x.score, _date(x.end) or date.min, x.filed or ""),
