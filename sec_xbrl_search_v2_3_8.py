@@ -97,6 +97,67 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
             out.append(self._make_exact_candidate(metric, r))
         return out
 
+    @staticmethod
+    def _derive_validated_newmont_inventory(rows, year):
+        """Derive NEM's non-ore inventory total from its three disclosed components.
+
+        Newmont's 2025 filing exposes the components but not the total concept
+        through the Inline XBRL rows consumed here. The three components are
+        all non-dimensional instant facts in the same balance-sheet context:
+        concentrate, materials/supplies/other, and precious metals. Their sum
+        is the reported $1.512B inventory total. Ore stockpiles/leach pads are
+        intentionally excluded because they are disclosed separately.
+        """
+        component_names = {
+            "ConcentrateInventoryNetOfReserves",
+            "MaterialsSuppliesAndOtherInventoryNetOfReserves",
+            "PreciousMetalsInventoryNetOfReserves",
+        }
+        groups = {}
+        for r in rows:
+            if r.get("dimensioned") or not r.get("instant"):
+                continue
+            end = _date(r.get("end"))
+            if year is not None and (end is None or end.year != int(year)):
+                continue
+            local = _local_concept(r.get("concept"))
+            if local not in component_names or r.get("value") is None:
+                continue
+            context = r.get("contextRef")
+            if not context:
+                continue
+            groups.setdefault(context, {})[local] = r
+
+        for context, facts in groups.items():
+            if not component_names.issubset(facts):
+                continue
+            values = [float(facts[name]["value"]) for name in component_names]
+            total = sum(values)
+            anchor = facts["MaterialsSuppliesAndOtherInventoryNetOfReserves"]
+            return XBRLCandidate(
+                metric="inventory",
+                namespace="derived",
+                concept="DerivedInventoryOtherThanOreStockpilesNetOfReserves",
+                label="Inventory other than ore stockpiles (derived from disclosed components)",
+                value=total,
+                unit=anchor.get("unit") or "",
+                end=anchor.get("end"),
+                start=None,
+                fy=anchor.get("fy"),
+                form=anchor.get("form"),
+                filed=anchor.get("filed"),
+                instant=True,
+                dimensioned=False,
+                source="filing-xbrl-derived",
+                score=145.0,
+                reason=(
+                    "validated same-context inventory identity: "
+                    "Concentrate + Materials/Supplies/Other + Precious Metals; "
+                    "ore stockpiles/leach pads excluded"
+                ),
+            )
+        return None
+
     def search_filing(self, cik, metric, year=None, include_dimensioned=False,
                       submissions=None, limit=20):
         """Run Inline-XBRL filtering with a V2.3.8 exact-concept fast path."""
@@ -106,6 +167,15 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
         # Exact concepts are authoritative. This path deliberately happens
         # before V2.3.5/V2.3.4 generic exclusion and label gates.
         exact_candidates = self._exact_rows_first(rows, metric, year)
+
+        # NEM's validated inventory fallback: the total concept may be absent
+        # from Inline XBRL even though its three economic components are present.
+        if not exact_candidates and metric == "inventory":
+            derived_inventory = self._derive_validated_newmont_inventory(rows, year)
+            if derived_inventory is not None:
+                exact_candidates = [derived_inventory]
+                meta["derived_inventory"] = "validated_newmont_components"
+
         if exact_candidates:
             # Deduplicate identical economic facts emitted more than once.
             dedup = {}
