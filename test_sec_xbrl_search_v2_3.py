@@ -161,7 +161,7 @@ def main():
 
     print(f"\nSEC ticker map: {len(ticker_map):,} tickers")
 
-    engine = SECXBRLSearchV2(
+    engine = SECXBRLSearchV2_3(
         user_agent="Fundamental-app regression-test contact@example.com"
     )
 
