@@ -13,7 +13,7 @@ import requests
 
 from sec_xbrl_search_v2_3_5 import SECXBRLSearchV2_3_5
 from sec_xbrl_search_v2_2 import METRIC_TERMS, _date, _annual_duration
-from sec_xbrl_search_v2_3 import _hard_excluded, _local_concept
+from sec_xbrl_search_v2_3 import _hard_excluded
 
 TICKERS = {
     "HON": ["liabilities"],
@@ -22,6 +22,11 @@ TICKERS = {
     "NEM": ["interest_expense", "inventory", "sga"],
     "DE": ["current_assets", "current_liabilities"],
 }
+
+
+def _local_concept(concept: str | None) -> str:
+    """Normalize prefixed/QName concepts to their local element name."""
+    return (concept or "").rsplit("}", 1)[-1].rsplit(":", 1)[-1]
 
 
 def _metric_tokens(metric: str) -> set[str]:
