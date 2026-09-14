@@ -4,6 +4,7 @@ Targeted Standard-sector fallbacks validated against 2025 SEC filings:
 - Newmont total inventory uses InventoryOtherThanOreStockpilesNetOfReserves ($1.512B).
 - Newmont interest expense can fall back to InterestIncomeExpenseNonoperatingNet;
   a negative net value is normalized to positive expense.
+- Newmont SG&A uses GeneralAndAdministrativeExpense as a validated proxy.
 - Deere current assets/current liabilities remain unavailable; no synthetic ratio.
 
 Raw SEC payloads remain in memory only.
@@ -11,11 +12,17 @@ Raw SEC payloads remain in memory only.
 from __future__ import annotations
 
 from datetime import date
-from typing import Any
 
 from sec_xbrl_search_v2_3_5 import SECXBRLSearchV2_3_5
-from sec_xbrl_search_v2_3_4 import EXACT_CONCEPTS_V234, _hard_excluded, _date, _annual_duration, INSTANT_METRICS, DURATION_METRICS, XBRLCandidate
-from sec_xbrl_search_v2_2 import LABEL_PRIORS
+from sec_xbrl_search_v2_3_4 import (
+    EXACT_CONCEPTS_V234,
+    _hard_excluded,
+    _date,
+    _annual_duration,
+    INSTANT_METRICS,
+    DURATION_METRICS,
+    XBRLCandidate,
+)
 from sec_xbrl_search_v2_3 import _label_quality
 
 EXACT_CONCEPTS_V238 = {
@@ -24,6 +31,8 @@ EXACT_CONCEPTS_V238 = {
     | {"InventoryOtherThanOreStockpilesNetOfReserves"},
     "interest_expense": set(EXACT_CONCEPTS_V234.get("interest_expense", set()))
     | {"InterestIncomeExpenseNonoperatingNet"},
+    "sga": set(EXACT_CONCEPTS_V234.get("sga", set()))
+    | {"GeneralAndAdministrativeExpense"},
 }
 
 
@@ -34,7 +43,7 @@ def _local_concept(concept: str | None) -> str:
 
 
 class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
-    """V2.3.5 plus validated Newmont-specific semantic fallbacks."""
+    """V2.3.5 plus validated Standard-sector semantic fallbacks."""
 
     @staticmethod
     def _is_exact_concept(metric: str, concept: str | None) -> bool:
@@ -45,17 +54,86 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
             return True
         return super()._candidate_allowed(metric, concept, label, source)
 
+    @staticmethod
+    def _make_exact_candidate(metric, r, reason="canonical concept"):
+        end = r.get("end")
+        instant = bool(r.get("instant"))
+        return XBRLCandidate(
+            metric=metric,
+            namespace=r.get("namespace", ""),
+            concept=r.get("concept", ""),
+            label=r.get("label", ""),
+            value=r.get("value"),
+            unit=r.get("unit"),
+            end=end,
+            start=r.get("start"),
+            fy=r.get("fy"),
+            form=r.get("form"),
+            filed=r.get("filed"),
+            instant=instant,
+            dimensioned=r.get("dimensioned", False),
+            source="filing-xbrl-inline",
+            score=155.0,
+            reason=reason,
+        )
+
+    def _exact_rows_first(self, rows, metric, year):
+        """Authoritative exact-concept path, before generic negative filters."""
+        out = []
+        for r in rows:
+            if not self._is_exact_concept(metric, r.get("concept")):
+                continue
+            if r.get("dimensioned"):
+                continue
+            end = _date(r.get("end"))
+            if year is not None and (end is None or end.year != int(year)):
+                continue
+            instant = bool(r.get("instant"))
+            annual = bool(r.get("start")) and _annual_duration(r.get("start"), r.get("end"))
+            if metric in INSTANT_METRICS and not instant:
+                continue
+            if metric in DURATION_METRICS and metric != "eps" and not annual:
+                continue
+            out.append(self._make_exact_candidate(metric, r))
+        return out
+
     def search_filing(self, cik, metric, year=None, include_dimensioned=False,
                       submissions=None, limit=20):
-        """Run the V2.3.4 inline-XBRL filter with the V2.3.8 exact whitelist.
-
-        We intentionally do not call the inherited search_filing here because
-        V2.3.4's exact check is bound to EXACT_CONCEPTS_V234.
-        """
+        """Run Inline-XBRL filtering with a V2.3.8 exact-concept fast path."""
         submissions = submissions or self.submissions(cik)
         rows, meta = self._inline_filing_rows(cik, submissions)
-        candidates: list[XBRLCandidate] = []
 
+        # Exact concepts are authoritative. This path deliberately happens
+        # before V2.3.5/V2.3.4 generic exclusion and label gates.
+        exact_candidates = self._exact_rows_first(rows, metric, year)
+        if exact_candidates:
+            # Deduplicate identical economic facts emitted more than once.
+            dedup = {}
+            for c in exact_candidates:
+                key = (c.concept, c.value, c.start, c.end, c.unit)
+                dedup[key] = c
+            exact_candidates = list(dedup.values())
+
+            if metric == "interest_expense":
+                for candidate in exact_candidates:
+                    if (_local_concept(candidate.concept) == "InterestIncomeExpenseNonoperatingNet"
+                            and candidate.value is not None and candidate.value < 0):
+                        candidate.value = abs(float(candidate.value))
+                        candidate.concept = "DerivedInterestExpenseFromNetInterestExpense"
+                        candidate.namespace = "derived"
+                        candidate.source = "filing-xbrl-derived"
+                        candidate.score = 125.0
+                        candidate.reason = "net interest expense fallback: abs(InterestIncomeExpenseNonoperatingNet)"
+
+            exact_candidates.sort(
+                key=lambda x: (x.score, _date(x.end) or date.min, x.filed or ""),
+                reverse=True,
+            )
+            meta["target_fy"] = year
+            meta["exact_fast_path"] = True
+            return exact_candidates[:limit], meta
+
+        candidates: list[XBRLCandidate] = []
         for r in rows:
             end = _date(r.get("end"))
             if year is not None and (end is None or end.year != int(year)):
@@ -65,8 +143,7 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
 
             concept = r.get("concept", "")
             label = r.get("label", "")
-            exact = self._is_exact_concept(metric, concept)
-            if not exact and _hard_excluded(metric, concept, label):
+            if _hard_excluded(metric, concept, label):
                 continue
             if not self._candidate_allowed(metric, concept, label, "filing-xbrl"):
                 continue
@@ -81,9 +158,6 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
             label_points, label_reasons = _label_quality(metric, label, concept)
             score = float(label_points)
             reasons = list(label_reasons)
-            if exact:
-                score = max(score, 100.0)
-                reasons.append("canonical concept")
             if metric in DURATION_METRICS and annual:
                 score += 25.0
                 reasons.append("annual duration")
@@ -127,17 +201,6 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
             if derived is not None:
                 candidates.append(derived)
                 meta[f"derived_{metric}"] = derived.reason
-
-        if metric == "interest_expense":
-            for candidate in candidates:
-                if (_local_concept(candidate.concept) == "InterestIncomeExpenseNonoperatingNet"
-                        and candidate.value is not None and candidate.value < 0):
-                    candidate.value = abs(float(candidate.value))
-                    candidate.concept = "DerivedInterestExpenseFromNetInterestExpense"
-                    candidate.namespace = "derived"
-                    candidate.source = "filing-xbrl-derived"
-                    candidate.score = min(candidate.score, 125.0)
-                    candidate.reason = "net interest expense fallback: abs(InterestIncomeExpenseNonoperatingNet)"
 
         candidates.sort(key=lambda x: (x.score, _date(x.end) or date.min, x.filed or ""), reverse=True)
         meta["target_fy"] = year
