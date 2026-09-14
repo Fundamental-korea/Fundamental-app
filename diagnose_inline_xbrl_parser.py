@@ -63,6 +63,17 @@ def latest_annual_filing(cik: str):
     return rows[0]
 
 
+def context_summary(ctx):
+    if ctx is None:
+        return {}
+    return {
+        "id": _attr(ctx, "id"),
+        "instant": _first_text(ctx, "instant"),
+        "start": _first_text(ctx, "startDate"),
+        "end": _first_text(ctx, "endDate"),
+    }
+
+
 def main(ticker: str = "HON"):
     cik = ticker_to_cik(ticker)
     filing = latest_annual_filing(cik)
@@ -94,12 +105,7 @@ def main(ticker: str = "HON"):
     context_map = {_attr(e, "id"): e for e in contexts}
     print(f"contexts_parsed={len(contexts)}")
     for e in contexts[:3]:
-        print("CONTEXT", {
-            "id": _attr(e, "id"),
-            "instant": _first_text(e, "instant"),
-            "start": _first_text(e, "startDate"),
-            "end": _first_text(e, "endDate"),
-        })
+        print("CONTEXT", context_summary(e))
 
     facts = [e for e in root.iter() if _local(e.tag) == "nonfraction"]
     print(f"nonfraction_samples={min(10, len(facts))}")
@@ -117,8 +123,49 @@ def main(ticker: str = "HON"):
             "num": _num(raw_text, _attr(e, "scale"), _attr(e, "sign")),
         })
 
-    print("\nLIABILITY_DIAGNOSTIC")
+    # Diagnostic 1: any instant fact on the filing report date with a large
+    # balance-sheet-like value. This deliberately does not require "liabil"
+    # to appear in the concept name, because issuers often use custom concepts.
+    print("\nINSTANT_BALANCE_DIAGNOSTIC")
     candidates = []
+    for e in facts:
+        cref = _attr(e, "contextRef")
+        ctx = context_map.get(cref)
+        instant = _first_text(ctx, "instant") if ctx is not None else None
+        if not instant or (report_date and instant != report_date):
+            continue
+        raw_text = " ".join(e.itertext()).strip()
+        value = _num(raw_text, _attr(e, "scale"), _attr(e, "sign"))
+        if value is None or abs(value) < 5_000_000_000:
+            continue
+        name = _attr(e, "name") or ""
+        candidates.append((abs(value), name, value, cref, instant, e))
+    candidates.sort(reverse=True)
+    print(f"large_instant_fact_count={len(candidates)}")
+    for _, name, value, cref, instant, e in candidates[:100]:
+        # Include the nearest textual table/row context so the human-readable
+        # label can be identified even when the XBRL concept is custom.
+        parent = e.getparent()
+        ancestor_text = ""
+        depth = 0
+        while parent is not None and depth < 5:
+            txt = " ".join(parent.itertext()).strip()
+            if len(txt) > len(ancestor_text):
+                ancestor_text = txt
+            parent = parent.getparent()
+            depth += 1
+        print("BALANCE_FACT", {
+            "name": name,
+            "value": value,
+            "contextRef": cref,
+            "instant": instant,
+            "ancestor_text": ancestor_text[:300],
+        })
+
+    # Diagnostic 2: all facts whose concept name itself contains liability.
+    # Kept separately to distinguish "no such concept" from semantic filtering.
+    print("\nLIABILITY_NAME_DIAGNOSTIC")
+    named = []
     for e in facts:
         name = _attr(e, "name") or ""
         if "liabil" not in name.lower():
@@ -127,17 +174,15 @@ def main(ticker: str = "HON"):
         ctx = context_map.get(cref)
         instant = _first_text(ctx, "instant") if ctx is not None else None
         end_date = _first_text(ctx, "endDate") if ctx is not None else None
-        if not instant or (report_date and end_date != report_date):
-            continue
         raw_text = " ".join(e.itertext()).strip()
         value = _num(raw_text, _attr(e, "scale"), _attr(e, "sign"))
         if value is None:
             continue
-        candidates.append((abs(value), name, value, cref, instant, end_date))
-    candidates.sort(reverse=True)
-    print(f"liability_fact_count={len(candidates)}")
-    for _, name, value, cref, instant, end_date in candidates[:50]:
-        print("LIABILITY", {
+        named.append((abs(value), name, value, cref, instant, end_date))
+    named.sort(reverse=True)
+    print(f"liability_name_fact_count={len(named)}")
+    for _, name, value, cref, instant, end_date in named[:50]:
+        print("LIABILITY_NAME", {
             "name": name,
             "value": value,
             "contextRef": cref,
