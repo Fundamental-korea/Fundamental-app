@@ -1,10 +1,8 @@
-"""Diagnostic for SEC Inline XBRL parsing.
+"""Standalone diagnostic for SEC Inline XBRL parsing.
 
 Read-only: downloads one annual SEC HTML filing, parses it in memory, and
-prints structural counts/samples. Raw SEC content is never persisted.
-
-This script is intentionally standalone and does NOT import the collector or
-Supabase client, because parser diagnostics should not require Supabase.
+prints structural counts/samples. No project/DB imports are used.
+Raw SEC content is never persisted.
 """
 from __future__ import annotations
 
@@ -57,6 +55,7 @@ def latest_annual_filing(cik: str):
             "doc": recent["primaryDocument"][i],
             "filed": recent["filingDate"][i],
             "fy": recent.get("fy", [None] * len(recent.get("form", [])))[i],
+            "reportDate": recent.get("reportDate", [None] * len(recent.get("form", [])))[i],
         })
     if not rows:
         raise RuntimeError(f"No annual filing found for CIK {cik}")
@@ -70,12 +69,14 @@ def main(ticker: str = "HON"):
     accession = filing["accession"]
     doc = filing["doc"]
     filed = filing["filed"]
+    report_date = filing.get("reportDate")
     compact = accession.replace("-", "")
     url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{compact}/{doc}"
     text = get_text(url)
     root = html.fromstring(text.encode("utf-8"))
 
     print(f"ticker={ticker} cik={int(cik)} accession={accession} doc={doc} filed={filed} fy={filing.get('fy')}")
+    print(f"report_date={report_date}")
     print(f"url={url}")
     print(f"root_tag={root.tag}")
 
@@ -90,6 +91,7 @@ def main(ticker: str = "HON"):
         print(f"  {name}: {count}")
 
     contexts = [e for e in root.iter() if _local(e.tag) == "context"]
+    context_map = {_attr(e, "id"): e for e in contexts}
     print(f"contexts_parsed={len(contexts)}")
     for e in contexts[:3]:
         print("CONTEXT", {
@@ -113,6 +115,34 @@ def main(ticker: str = "HON"):
             "nil": _attr(e, "nil"),
             "text": raw_text[:120],
             "num": _num(raw_text, _attr(e, "scale"), _attr(e, "sign")),
+        })
+
+    print("\nLIABILITY_DIAGNOSTIC")
+    candidates = []
+    for e in facts:
+        name = _attr(e, "name") or ""
+        if "liabil" not in name.lower():
+            continue
+        cref = _attr(e, "contextRef")
+        ctx = context_map.get(cref)
+        instant = _first_text(ctx, "instant") if ctx is not None else None
+        end_date = _first_text(ctx, "endDate") if ctx is not None else None
+        if not instant or (report_date and end_date != report_date):
+            continue
+        raw_text = " ".join(e.itertext()).strip()
+        value = _num(raw_text, _attr(e, "scale"), _attr(e, "sign"))
+        if value is None:
+            continue
+        candidates.append((abs(value), name, value, cref, instant, end_date))
+    candidates.sort(reverse=True)
+    print(f"liability_fact_count={len(candidates)}")
+    for _, name, value, cref, instant, end_date in candidates[:50]:
+        print("LIABILITY", {
+            "name": name,
+            "value": value,
+            "contextRef": cref,
+            "instant": instant,
+            "end": end_date,
         })
 
 
