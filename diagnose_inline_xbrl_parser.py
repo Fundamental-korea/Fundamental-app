@@ -123,9 +123,6 @@ def main(ticker: str = "HON"):
             "num": _num(raw_text, _attr(e, "scale"), _attr(e, "sign")),
         })
 
-    # Diagnostic 1: any instant fact on the filing report date with a large
-    # balance-sheet-like value. This deliberately does not require "liabil"
-    # to appear in the concept name, because issuers often use custom concepts.
     print("\nINSTANT_BALANCE_DIAGNOSTIC")
     candidates = []
     for e in facts:
@@ -140,11 +137,9 @@ def main(ticker: str = "HON"):
             continue
         name = _attr(e, "name") or ""
         candidates.append((abs(value), name, value, cref, instant, e))
-    candidates.sort(reverse=True)
+    candidates.sort(key=lambda x: (x[0], x[1], x[2], x[3] or "", x[4] or ""), reverse=True)
     print(f"large_instant_fact_count={len(candidates)}")
     for _, name, value, cref, instant, e in candidates[:100]:
-        # Include the nearest textual table/row context so the human-readable
-        # label can be identified even when the XBRL concept is custom.
         parent = e.getparent()
         ancestor_text = ""
         depth = 0
@@ -162,8 +157,6 @@ def main(ticker: str = "HON"):
             "ancestor_text": ancestor_text[:300],
         })
 
-    # Diagnostic 2: all facts whose concept name itself contains liability.
-    # Kept separately to distinguish "no such concept" from semantic filtering.
     print("\nLIABILITY_NAME_DIAGNOSTIC")
     named = []
     for e in facts:
@@ -179,7 +172,7 @@ def main(ticker: str = "HON"):
         if value is None:
             continue
         named.append((abs(value), name, value, cref, instant, end_date))
-    named.sort(reverse=True)
+    named.sort(key=lambda x: (x[0], x[1], x[2], x[3] or "", x[4] or "", x[5] or ""), reverse=True)
     print(f"liability_name_fact_count={len(named)}")
     for _, name, value, cref, instant, end_date in named[:50]:
         print("LIABILITY_NAME", {
