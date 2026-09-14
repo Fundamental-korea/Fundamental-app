@@ -20,6 +20,7 @@ from sec_xbrl_search_v2_2 import (
     _norm,
     _safe_float,
     _annual_duration,
+    _latest_annual_fy,
     XBRLCandidate,
 )
 
@@ -94,6 +95,10 @@ def _label_quality(metric: str, label: str, concept: str) -> tuple[int, list[str
 
 class SECXBRLSearchV2_3(SECXBRLSearchV2_2):
     """V2.2 plus strict label/total semantic validation."""
+
+    def _latest_annual_fy(self, submissions: dict[str, Any]) -> int | None:
+        """Return the fiscal year of the latest annual filing."""
+        return _latest_annual_fy(submissions)
 
     def _candidate_allowed(self, metric: str, concept: str, label: str, source: str) -> bool:
         if _hard_excluded(metric, concept, label):
