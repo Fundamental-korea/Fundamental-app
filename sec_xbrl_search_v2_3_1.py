@@ -28,6 +28,7 @@ from sec_xbrl_search_v2_3 import (
     _label_quality,
     ANNUAL_FORMS,
 )
+from sec_xbrl_search_v2_2 import SECXBRLSearchV2_2
 from sec_xbrl_inline import parse_inline_xbrl
 
 
@@ -46,11 +47,16 @@ class SECXBRLSearchV2_3_1(SECXBRLSearchV2_3):
         if target_year is None:
             raise ValueError("V2.3.1 search_company_facts requires target annual FY")
 
-        # Do not inherit V2.3's fy==target requirement. SEC comparative facts
-        # can carry an FY field reflecting the filing year rather than the
-        # period represented by the fact. Annual FORM + end year is safer.
-        rows = super(SECXBRLSearchV2_3, self).search_company_facts(
-            companyfacts, metric, year=None, aliases=aliases, limit=limit * 20
+        # IMPORTANT: call V2.2 directly, bypassing V2.3's stricter fy filter.
+        # V2.3.1 deliberately validates annual provenance using FORM + end year
+        # below because SEC comparative rows can carry a filing-year FY value.
+        rows = SECXBRLSearchV2_2.search_company_facts(
+            self,
+            companyfacts,
+            metric,
+            year=None,
+            aliases=aliases,
+            limit=limit * 20,
         )
 
         out = []
@@ -90,20 +96,18 @@ class SECXBRLSearchV2_3_1(SECXBRLSearchV2_3):
         labels: dict[str, str] = {}
         if label_file:
             labels = self._parse_labels(
-                self._get(f"{self.SEC_ARCHIVE}/{int(cik)}/{compact}/{label_file}").text
-                if hasattr(self, "SEC_ARCHIVE")
-                else self._get(f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{compact}/{label_file}").text
+                self._get(
+                    f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{compact}/{label_file}"
+                ).text
             )
 
         # Primary 10-K HTML is the authoritative Inline XBRL container.
         url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{compact}/{doc}"
         text = self._get(url).text
         rows = parse_inline_xbrl(text, labels=labels, filed=filed, form="10-K")
-        target_year = None
+
         for r in rows:
             d = _date(r.get("end"))
-            if d:
-                target_year = d.year if target_year is None else target_year
             r["fy"] = d.year if d else None
 
         return rows, {
@@ -129,8 +133,12 @@ class SECXBRLSearchV2_3_1(SECXBRLSearchV2_3):
 
         # First try the standalone instance parser inherited from V2.3.
         base_candidates, meta = super().search_filing(
-            cik, metric, year=year, include_dimensioned=include_dimensioned,
-            submissions=submissions, limit=limit,
+            cik,
+            metric,
+            year=year,
+            include_dimensioned=include_dimensioned,
+            submissions=submissions,
+            limit=limit,
         )
         if base_candidates:
             return base_candidates, meta
@@ -176,24 +184,26 @@ class SECXBRLSearchV2_3_1(SECXBRLSearchV2_3):
                 score += 30.0
                 reasons.append("target FY")
 
-            candidates.append(XBRLCandidate(
-                metric=metric,
-                namespace=r.get("namespace", ""),
-                concept=concept,
-                label=label,
-                value=r.get("value"),
-                unit=r.get("unit"),
-                end=r.get("end"),
-                start=r.get("start"),
-                fy=r.get("fy"),
-                form=r.get("form"),
-                filed=r.get("filed"),
-                instant=instant,
-                dimensioned=r.get("dimensioned", False),
-                source="filing-xbrl-inline",
-                score=score,
-                reason=", ".join(dict.fromkeys(reasons)),
-            ))
+            candidates.append(
+                XBRLCandidate(
+                    metric=metric,
+                    namespace=r.get("namespace", ""),
+                    concept=concept,
+                    label=label,
+                    value=r.get("value"),
+                    unit=r.get("unit"),
+                    end=r.get("end"),
+                    start=r.get("start"),
+                    fy=r.get("fy"),
+                    form=r.get("form"),
+                    filed=r.get("filed"),
+                    instant=instant,
+                    dimensioned=r.get("dimensioned", False),
+                    source="filing-xbrl-inline",
+                    score=score,
+                    reason=", ".join(dict.fromkeys(reasons)),
+                )
+            )
 
         candidates.sort(
             key=lambda x: (x.score, _date(x.end) or date.min, x.filed or ""),
