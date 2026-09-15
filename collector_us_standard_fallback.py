@@ -12,19 +12,14 @@ import requests
 
 from collector_us_fundamental import (
     SUPABASE_URL, SUPABASE_KEY, SEC_USER_AGENT, PERIODS,
-    build_fact_index, build_result as _build_result, load_company,
+    build_fact_index, build_result as _build_result, build_latest_snapshot, load_company,
 )
 from supabase import create_client
 from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8
 
 STANDARD_SECTORS = (
-    "technology",
-    "healthcare",
-    "consumer",
-    "industrials",
-    "energy",
-    "materials",
-    "communication",
+    "technology", "healthcare", "consumer", "industrials",
+    "energy", "materials", "communication",
 )
 
 STANDARD_METRICS = (
@@ -35,7 +30,6 @@ STANDARD_METRICS = (
 
 
 def _candidate_field(candidate, key, default=None):
-    """Read resolver output whether it is a compact dict or XBRLCandidate."""
     if candidate is None:
         return default
     if isinstance(candidate, dict):
@@ -49,22 +43,15 @@ def _candidate_to_row(candidate):
         return None
     end = _candidate_field(candidate, "end")
     return {
-        "fy": _candidate_field(candidate, "fy"),
-        "year": int(end[:4]) if end else None,
-        "end": end,
-        "filed": _candidate_field(candidate, "filed", "") or "",
-        "val": float(value),
-        "form": _candidate_field(candidate, "form"),
-        "frame": None,
-        "unit": _candidate_field(candidate, "unit"),
-        "namespace": _candidate_field(candidate, "namespace", ""),
-        "tag": _candidate_field(candidate, "concept", ""),
-        "source": _candidate_field(candidate, "source"),
+        "fy": _candidate_field(candidate, "fy"), "year": int(end[:4]) if end else None,
+        "end": end, "filed": _candidate_field(candidate, "filed", "") or "",
+        "val": float(value), "form": _candidate_field(candidate, "form"), "frame": None,
+        "unit": _candidate_field(candidate, "unit"), "namespace": _candidate_field(candidate, "namespace", ""),
+        "tag": _candidate_field(candidate, "concept", ""), "source": _candidate_field(candidate, "source"),
     }
 
 
 def augment_index_with_v238(index, resolver, cik, latest_year):
-    """Fill only missing Standard metrics for years used by period scoring."""
     target_years = {latest_year, *(latest_year - p for p in PERIODS)}
     for metric in STANDARD_METRICS:
         metric_rows = index.setdefault(metric, {})
@@ -80,24 +67,28 @@ def augment_index_with_v238(index, resolver, cik, latest_year):
             row = _candidate_to_row(candidate)
             if row is not None:
                 metric_rows[year] = row
-                print(
-                    f"[XBRL fallback] CIK={cik} metric={metric} year={year}: "
-                    f"{_candidate_field(candidate, 'concept')}="
-                    f"{_candidate_field(candidate, 'value')} "
-                    f"source={_candidate_field(candidate, 'source')}"
-                )
+                print(f"[XBRL fallback] CIK={cik} metric={metric} year={year}: {_candidate_field(candidate, 'concept')}={_candidate_field(candidate, 'value')} source={_candidate_field(candidate, 'source')}")
     return index
+
+
+def _snapshot_fields(snapshot):
+    return {
+        "snapshot": snapshot,
+        "snapshot_fiscal_end": snapshot.get("fiscal_end") if snapshot else None,
+        "snapshot_period": snapshot.get("fiscal_period") if snapshot else None,
+        "snapshot_form": snapshot.get("form") if snapshot else None,
+        "snapshot_filed": snapshot.get("filed") if snapshot else None,
+        "snapshot_basis": snapshot.get("basis") if snapshot else None,
+        "snapshot_updated_at": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 def build_result_with_v238(ticker, cik, company_name, facts, submissions,
                            universe_row=None, market_prices=None, resolver=None):
     index = build_fact_index(facts)
+    snapshot = build_latest_snapshot(facts)
     if resolver is not None:
-        flow_years = sorted(
-            set(index.get("revenue", {}).keys())
-            | set(index.get("operating_income", {}).keys())
-            | set(index.get("net_income", {}).keys())
-        )
+        flow_years = sorted(set(index.get("revenue", {}).keys()) | set(index.get("operating_income", {}).keys()) | set(index.get("net_income", {}).keys()))
         if flow_years:
             augment_index_with_v238(index, resolver, cik, max(flow_years))
 
@@ -108,18 +99,14 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
     universe_row = universe_row or {}
     all_years = sorted({y for rows in index.values() for y in rows.keys()})
     if not all_years:
-        return _build_result(ticker, cik, company_name, facts, submissions, universe_row, market_prices)
-    flow_years = sorted(
-        set(index.get("revenue", {}).keys())
-        | set(index.get("operating_income", {}).keys())
-        | set(index.get("net_income", {}).keys())
-    )
+        result = _build_result(ticker, cik, company_name, facts, submissions, universe_row, market_prices)
+        result.update(_snapshot_fields(snapshot))
+        return result
+
+    flow_years = sorted(set(index.get("revenue", {}).keys()) | set(index.get("operating_income", {}).keys()) | set(index.get("net_income", {}).keys()))
     latest_year = max(flow_years) if flow_years else max(all_years)
     profile = universe_row.get("scoring_profile") or "standard"
-
-    downturn_value, downturn_detail = calculate_downturn_defense(
-        ticker, market=(market_prices or {}).get("market"), stock=(market_prices or {}).get("stock")
-    )
+    downturn_value, downturn_detail = calculate_downturn_defense(ticker, market=(market_prices or {}).get("market"), stock=(market_prices or {}).get("stock"))
 
     period_scores, latest_score, latest_grade, latest_missing = {}, None, None, 0
     for period in PERIODS:
@@ -134,7 +121,7 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
             latest_missing = scored["missing_metric_count"]
 
     reliability = "high" if len(period_scores) >= 3 else ("medium" if period_scores else "low")
-    return {
+    result = {
         "ticker": ticker, "cik": str(cik), "company_name": company_name,
         "sector": universe_row.get("sector_common") or submissions.get("sicDescription"),
         "base_year": latest_year, "period_scores": period_scores,
@@ -144,58 +131,25 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "downturn_defense": downturn_value, "downturn_detail": downturn_detail,
     }
+    result.update(_snapshot_fields(snapshot))
+    return result
 
 
 def get_standard_universe(sb, tickers=None, limit=None, all_rows=False):
-    """Return only eligible companies in the seven Standard sectors.
-
-    Supabase REST responses are paginated explicitly so --all is safe for the
-    full Standard universe and cannot accidentally process special sectors.
-    """
+    """Return only eligible companies in the seven Standard sectors with pagination."""
     columns = "ticker,cik,company_name,sector_common,company_type,scoring_profile"
-
     if tickers:
         rows = []
         page_size = 1000
         for offset in range(0, len(tickers), page_size):
             batch = tickers[offset:offset + page_size]
-            rows.extend(
-                sb.table("US_Companies")
-                .select(columns)
-                .in_("ticker", batch)
-                .eq("is_fundamental_eligible", True)
-                .in_("sector_common", STANDARD_SECTORS)
-                .execute()
-                .data
-            )
+            rows.extend(sb.table("US_Companies").select(columns).in_("ticker", batch).eq("is_fundamental_eligible", True).in_("sector_common", STANDARD_SECTORS).execute().data)
         return rows
-
     if not all_rows:
-        return (
-            sb.table("US_Companies")
-            .select(columns)
-            .eq("is_fundamental_eligible", True)
-            .in_("sector_common", STANDARD_SECTORS)
-            .order("ticker")
-            .limit(limit or 5)
-            .execute()
-            .data
-        )
-
-    rows = []
-    page_size = 1000
-    offset = 0
+        return sb.table("US_Companies").select(columns).eq("is_fundamental_eligible", True).in_("sector_common", STANDARD_SECTORS).order("ticker").limit(limit or 5).execute().data
+    rows, page_size, offset = [], 1000, 0
     while True:
-        batch = (
-            sb.table("US_Companies")
-            .select(columns)
-            .eq("is_fundamental_eligible", True)
-            .in_("sector_common", STANDARD_SECTORS)
-            .order("ticker")
-            .range(offset, offset + page_size - 1)
-            .execute()
-            .data
-        )
+        batch = sb.table("US_Companies").select(columns).eq("is_fundamental_eligible", True).in_("sector_common", STANDARD_SECTORS).order("ticker").range(offset, offset + page_size - 1).execute().data
         rows.extend(batch)
         print(f"[UNIVERSE] fetched {len(batch)} rows (total={len(rows)})")
         if len(batch) < page_size:
@@ -213,18 +167,13 @@ def main():
     args = parser.parse_args()
     if not SUPABASE_KEY:
         raise RuntimeError("SUPABASE_SECRET_KEY or SUPABASE_KEY is required")
-
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
-    tickers = [args.ticker.upper().strip()] if args.ticker else (
-        [x.upper().strip() for x in args.tickers.split(",") if x.strip()] if args.tickers else None
-    )
+    tickers = [args.ticker.upper().strip()] if args.ticker else ([x.upper().strip() for x in args.tickers.split(",") if x.strip()] if args.tickers else None)
     rows = get_standard_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
     print(f"[UNIVERSE] Standard companies selected: {len(rows)}")
-
     session = requests.Session()
     session.headers.update({"User-Agent": SEC_USER_AGENT})
     resolver = SECXBRLSearchV2_3_8(session=session)
-
     market = None
     stock_cache = {}
     try:
@@ -232,7 +181,6 @@ def main():
         market = _close_series(BENCHMARK)
     except Exception as exc:
         print(f"[US] downturn market data unavailable: {exc}")
-
     for i, row in enumerate(rows, 1):
         ticker, cik = row["ticker"], row["cik"]
         try:
@@ -243,14 +191,9 @@ def main():
                     stock_cache[ticker] = _close_series(ticker)
                 except Exception:
                     stock_cache[ticker] = None
-            result = build_result_with_v238(
-                ticker, cik, row.get("company_name") or submissions.get("name") or ticker,
-                facts, submissions, universe_row=row,
-                market_prices={"market": market, "stock": stock_cache.get(ticker)},
-                resolver=resolver,
-            )
+            result = build_result_with_v238(ticker, cik, row.get("company_name") or submissions.get("name") or ticker, facts, submissions, universe_row=row, market_prices={"market": market, "stock": stock_cache.get(ticker)}, resolver=resolver)
             sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
-            print(f"[{i}/{len(rows)}] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} reliability={result['data_reliability']}")
+            print(f"[{i}/{len(rows)}] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} reliability={result['data_reliability']} snapshot={result.get('snapshot_fiscal_end')}")
         except Exception as exc:
             print(f"[{i}/{len(rows)}] {ticker}: FAILED: {exc}")
     print("Completed.")
