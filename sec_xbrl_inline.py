@@ -12,8 +12,15 @@ from typing import Any
 from lxml import html
 
 
-def _local(tag: str) -> str:
-    """Return a case-insensitive local element name."""
+def _local(tag: Any) -> str:
+    """Return a case-insensitive local element name.
+
+    lxml comment/processing-instruction nodes expose ``tag`` as a callable
+    cython object rather than a string. Treat those nodes as non-elements so
+    filing parsing cannot fail with ``...object has no attribute rsplit``.
+    """
+    if not isinstance(tag, str):
+        return ""
     return tag.rsplit("}", 1)[-1].rsplit(":", 1)[-1].lower()
 
 
@@ -21,13 +28,15 @@ def _attr(element, name: str) -> str | None:
     """Get an HTML/XML attribute case-insensitively, including namespaced attrs."""
     wanted = name.lower()
     for key, value in element.attrib.items():
-        local = key.rsplit("}", 1)[-1].rsplit(":", 1)[-1].lower()
+        local = _local(key)
         if local == wanted:
             return value
     return None
 
 
 def _namespace(tag: str) -> str:
+    if not isinstance(tag, str):
+        return ""
     if tag.startswith("{") and "}" in tag:
         return tag[1:].split("}", 1)[0]
     if ":" in tag:
