@@ -108,8 +108,8 @@ LABEL_ALIASES = {
     "receivables": [
         "trade and other receivables",
         "trade receivables",
-        "accounts receivable",
         "accounts receivable, net",
+        "accounts receivable",
         "receivables",
     ],
     "unbilled_receivables": [
@@ -162,14 +162,23 @@ def normalize_label(value: Any) -> str:
 
 def _label_matches(label: Any, aliases: List[str]) -> bool:
     normalized = normalize_label(label)
+
+    # Exact matches always win.
     for alias in aliases:
         alias = normalize_label(alias)
         if normalized == alias:
             return True
-    for alias in aliases:
-        alias = normalize_label(alias)
+
+    # Prefer longer aliases to prevent 'receivables' from stealing
+    # 'unbilled receivables'.
+    for alias in sorted(
+        (normalize_label(alias) for alias in aliases),
+        key=len,
+        reverse=True,
+    ):
         if len(alias) >= 8 and alias in normalized:
             return True
+
     return False
 
 
@@ -209,7 +218,11 @@ def score_financial_table(table: pd.DataFrame) -> int:
         "earnings per share": 1,
     }
 
-    return sum(points for keyword, points in keywords.items() if keyword in text)
+    return sum(
+        points
+        for keyword, points in keywords.items()
+        if keyword in text
+    )
 
 
 def find_financial_tables(
@@ -228,7 +241,10 @@ def find_financial_tables(
                 "table": table,
             })
 
-    candidates.sort(key=lambda item: item["score"], reverse=True)
+    candidates.sort(
+        key=lambda item: item["score"],
+        reverse=True,
+    )
     return candidates
 
 
@@ -273,14 +289,18 @@ def _parse_date_text(text: Any) -> Optional[str]:
         if not match:
             continue
         try:
-            return pd.to_datetime(match.group(0)).strftime("%Y-%m-%d")
+            return pd.to_datetime(
+                match.group(0)
+            ).strftime("%Y-%m-%d")
         except Exception:
             pass
 
     return None
 
 
-def infer_column_dates(table: pd.DataFrame) -> Dict[Any, Optional[str]]:
+def infer_column_dates(
+    table: pd.DataFrame,
+) -> Dict[Any, Optional[str]]:
     result: Dict[Any, Optional[str]] = {}
     columns = list(table.columns)
 
@@ -292,13 +312,20 @@ def infer_column_dates(table: pd.DataFrame) -> Dict[Any, Optional[str]]:
             continue
 
         pieces = []
-        for row_index in range(min(5, len(table))):
-            value = table.iloc[row_index, column_index]
+        for row_index in range(
+            min(5, len(table))
+        ):
+            value = table.iloc[
+                row_index,
+                column_index,
+            ]
             text = _clean_text(value)
             if text:
                 pieces.append(text)
 
-        result[column] = _parse_date_text(" ".join(pieces))
+        result[column] = _parse_date_text(
+            " ".join(pieces)
+        )
 
     return result
 
@@ -351,7 +378,9 @@ def classify_period_text(text: Any) -> str:
     return "unknown"
 
 
-def infer_column_periods(table: pd.DataFrame) -> Dict[Any, str]:
+def infer_column_periods(
+    table: pd.DataFrame,
+) -> Dict[Any, str]:
     result: Dict[Any, str] = {}
     columns = list(table.columns)
 
@@ -363,18 +392,27 @@ def infer_column_periods(table: pd.DataFrame) -> Dict[Any, str]:
             continue
 
         pieces = []
-        for row_index in range(min(5, len(table))):
-            value = table.iloc[row_index, column_index]
+        for row_index in range(
+            min(5, len(table))
+        ):
+            value = table.iloc[
+                row_index,
+                column_index,
+            ]
             text = _clean_text(value)
             if text:
                 pieces.append(text)
 
-        result[column] = classify_period_text(" ".join(pieces))
+        result[column] = classify_period_text(
+            " ".join(pieces)
+        )
 
     return result
 
 
-def _period_year(date_text: Optional[str]) -> Optional[int]:
+def _period_year(
+    date_text: Optional[str],
+) -> Optional[int]:
     if not date_text:
         return None
     try:
@@ -395,6 +433,7 @@ def extract_metric_by_period(
     period_map = infer_column_periods(table)
 
     raw_values: List[Dict[str, Any]] = []
+
     for column in table.columns:
         number = _to_number(row[column])
         if number is None:
@@ -412,28 +451,55 @@ def extract_metric_by_period(
         "ytd": None,
         "annual": None,
         "prior": None,
+        "prior_by_period": {
+            "quarter": None,
+            "ytd": None,
+            "annual": None,
+        },
         "values": raw_values,
     }
 
-    # Current values are always first value within the relevant period.
-    # Prior-year values are identified by the reporting year instead of
-    # relying on a vague 'prior' header.
     for period in ("quarter", "ytd", "annual"):
-        items = [item for item in raw_values if item["period"] == period]
+        items = [
+            item
+            for item in raw_values
+            if item["period"] == period
+        ]
+
         if not items:
             continue
 
+        # First value is the current reporting period.
         result[period] = items[0]["value"]
 
-        current_year = _period_year(items[0].get("date"))
-        if current_year is not None:
-            prior_items = [
-                item
-                for item in items[1:]
-                if _period_year(item.get("date")) == current_year - 1
-            ]
-            if prior_items:
-                result["prior"] = prior_items[0]["value"]
+        current_year = _period_year(
+            items[0].get("date")
+        )
+
+        if current_year is None:
+            continue
+
+        prior_items = [
+            item
+            for item in items[1:]
+            if _period_year(item.get("date"))
+            == current_year - 1
+        ]
+
+        if prior_items:
+            result["prior_by_period"][period] = (
+                prior_items[0]["value"]
+            )
+
+    # Backward-compatible convenience field. For callers that still use
+    # 'prior', prefer YTD, then quarter, then annual.
+    result["prior"] = (
+        result["prior_by_period"].get("ytd")
+        if result["prior_by_period"].get("ytd") is not None
+        else result["prior_by_period"].get("quarter")
+        if result["prior_by_period"].get("quarter") is not None
+        else result["prior_by_period"].get("annual")
+    )
 
     return result
 
@@ -443,7 +509,10 @@ def _extract_metric_from_candidates(
     metric: str,
 ) -> Dict[str, Any]:
     for candidate in candidates:
-        result = extract_metric_by_period(candidate["table"], metric)
+        result = extract_metric_by_period(
+            candidate["table"],
+            metric,
+        )
         if result:
             return result
     return {}
@@ -457,15 +526,31 @@ def _extract_metric_from_candidates(
 def _latest_balance_row(
     candidates: List[Dict[str, Any]],
     metric: str,
-) -> Tuple[Optional[str], Optional[float], Optional[float]]:
-    extracted = _extract_metric_from_candidates(candidates, metric)
+) -> Tuple[
+    Optional[str],
+    Optional[float],
+    Optional[float],
+]:
+    extracted = _extract_metric_from_candidates(
+        candidates,
+        metric,
+    )
+
     values = extracted.get("values", [])
-    dated = [item for item in values if item.get("date")]
+    dated = [
+        item
+        for item in values
+        if item.get("date")
+    ]
 
     if not dated:
         return None, None, None
 
-    dated.sort(key=lambda item: item["date"], reverse=True)
+    dated.sort(
+        key=lambda item: item["date"],
+        reverse=True,
+    )
+
     latest = dated[0]
     prior = dated[1] if len(dated) > 1 else None
 
@@ -479,8 +564,8 @@ def _latest_balance_row(
 def _normalized_income_period(
     candidates: List[Dict[str, Any]],
     period: str,
-) -> Dict[str, Optional[float]]:
-    metrics = (
+) -> Dict[str, Any]:
+    metric_names = (
         "revenue",
         "operating_income",
         "net_income",
@@ -493,10 +578,18 @@ def _normalized_income_period(
     current: Dict[str, Optional[float]] = {}
     prior: Dict[str, Optional[float]] = {}
 
-    for metric in metrics:
-        extracted = _extract_metric_from_candidates(candidates, metric)
+    for metric in metric_names:
+        extracted = _extract_metric_from_candidates(
+            candidates,
+            metric,
+        )
+
         current[metric] = extracted.get(period)
-        prior[metric] = extracted.get("prior")
+        prior[metric] = (
+            extracted
+            .get("prior_by_period", {})
+            .get(period)
+        )
 
     current["_prior_year"] = prior
     return current
@@ -510,10 +603,58 @@ def _normalized_cash_flow_period(
         candidates,
         "operating_cash_flow",
     )
+
+    prior = (
+        extracted
+        .get("prior_by_period", {})
+        .get(period)
+    )
+
     return {
         "operating_cash_flow": extracted.get(period),
-        "prior": extracted.get("prior"),
+        "prior": prior,
     }
+
+
+def _balance_values_at_date(
+    candidates: List[Dict[str, Any]],
+    metric: str,
+    target_date: Optional[str],
+) -> Tuple[Optional[float], Optional[float]]:
+    extracted = _extract_metric_from_candidates(
+        candidates,
+        metric,
+    )
+
+    values = [
+        item
+        for item in extracted.get("values", [])
+        if item.get("date")
+    ]
+
+    current = None
+    previous = None
+
+    for item in values:
+        if item.get("date") == target_date:
+            current = item.get("value")
+            break
+
+    earlier = [
+        item
+        for item in values
+        if item.get("date") and target_date
+        and item.get("date") < target_date
+    ]
+
+    if earlier:
+        earlier.sort(
+            key=lambda item: item["date"],
+            reverse=True,
+        )
+        previous = earlier[0].get("value")
+
+    return current, previous
 
 
 def normalize_foreign_result(
@@ -525,9 +666,6 @@ def normalize_foreign_result(
     form: Optional[str] = None,
 ) -> Dict[str, Any]:
     candidates = find_financial_tables(html)
-
-    balance: Dict[str, Dict[str, Optional[float]]] = {}
-    discovered_balance_date: Optional[str] = None
 
     balance_metrics = (
         "assets",
@@ -541,64 +679,130 @@ def normalize_foreign_result(
         "unbilled_receivables",
     )
 
-    balance_values: Dict[str, Tuple[Optional[str], Optional[float], Optional[float]]] = {
-        metric: _latest_balance_row(candidates, metric)
-        for metric in balance_metrics
-    }
+    metric_dates = {}
+    all_dates: List[str] = []
 
-    all_dates = [value[0] for value in balance_values.values() if value[0]]
-    if fiscal_end:
-        latest_balance_date = fiscal_end
-    elif all_dates:
-        latest_balance_date = max(all_dates)
-    else:
-        latest_balance_date = None
+    for metric in balance_metrics:
+        extracted = _extract_metric_from_candidates(
+            candidates,
+            metric,
+        )
+        dates = [
+            item.get("date")
+            for item in extracted.get("values", [])
+            if item.get("date")
+        ]
+        if dates:
+            metric_dates[metric] = sorted(
+                set(dates),
+                reverse=True,
+            )
+            all_dates.extend(dates)
+        else:
+            metric_dates[metric] = []
+
+    latest_balance_date = fiscal_end or (
+        max(all_dates) if all_dates else None
+    )
+
+    balance: Dict[str, Dict[str, Optional[float]]] = {}
 
     if latest_balance_date:
-        discovered_balance_date = latest_balance_date
         current_balance: Dict[str, Optional[float]] = {}
-        prior_balance: Dict[str, Optional[float]] = {}
+        previous_balance: Dict[str, Optional[float]] = {}
 
-        for metric, (date, current_value, prior_value) in balance_values.items():
-            # Only place a latest value into the normalized snapshot when its
-            # extracted date is the latest balance date.
-            if date == latest_balance_date:
+        for metric in balance_metrics:
+            current_value, previous_value = _balance_values_at_date(
+                candidates,
+                metric,
+                latest_balance_date,
+            )
+
+            if current_value is not None:
                 current_balance[metric] = current_value
-                prior_balance[metric] = prior_value
+            if previous_value is not None:
+                previous_balance[metric] = previous_value
 
-        # Preserve the two receivable components and expose a normalized total.
-        receivables = current_balance.get("receivables")
-        unbilled = current_balance.get("unbilled_receivables")
-        if receivables is not None and unbilled is not None:
-            current_balance["receivables"] = receivables + unbilled
-        elif receivables is None and unbilled is not None:
-            current_balance["receivables"] = unbilled
+        # Normalize receivables without losing the component values.
+        trade_receivables = current_balance.get("receivables")
+        unbilled_receivables = current_balance.get(
+            "unbilled_receivables"
+        )
+
+        if (
+            trade_receivables is not None
+            and unbilled_receivables is not None
+        ):
+            current_balance["receivables"] = (
+                trade_receivables
+                + unbilled_receivables
+            )
+        elif (
+            trade_receivables is None
+            and unbilled_receivables is not None
+        ):
+            current_balance["receivables"] = (
+                unbilled_receivables
+            )
+
+        # Keep a clear audit-friendly component field.
+        if unbilled_receivables is not None:
+            current_balance[
+                "unbilled_receivables"
+            ] = unbilled_receivables
 
         balance[latest_balance_date] = current_balance
 
-        if any(value is not None for value in prior_balance.values()):
-            # Use the latest available prior balance date when possible.
-            prior_dates = [
-                value[0]
-                for value in balance_values.values()
-                if value[0] and value[0] != latest_balance_date
-            ]
-            if prior_dates:
-                prior_date = max(prior_dates)
-                balance[prior_date] = {
-                    metric: item[2]
-                    for metric, item in balance_values.items()
-                    if item[0] == latest_balance_date and item[2] is not None
-                }
+        previous_dates = [
+            date
+            for date in set(all_dates)
+            if date < latest_balance_date
+        ]
 
-    income_quarter = _normalized_income_period(candidates, "quarter")
-    income_ytd = _normalized_income_period(candidates, "ytd")
-    income_annual = _normalized_income_period(candidates, "annual")
+        if previous_dates:
+            previous_date = max(previous_dates)
+            prior_row: Dict[str, Optional[float]] = {}
+
+            for metric in balance_metrics:
+                value, _ = _balance_values_at_date(
+                    candidates,
+                    metric,
+                    previous_date,
+                )
+                if value is not None:
+                    prior_row[metric] = value
+
+            if prior_row:
+                balance[previous_date] = prior_row
+
+    income_statement = {
+        "quarter": _normalized_income_period(
+            candidates,
+            "quarter",
+        ),
+        "ytd": _normalized_income_period(
+            candidates,
+            "ytd",
+        ),
+        "annual": _normalized_income_period(
+            candidates,
+            "annual",
+        ),
+    }
 
     cash_flow = {
-        "quarter": _normalized_cash_flow_period(candidates, "quarter"),
-        "ytd": _normalized_cash_flow_period(candidates, "ytd"),
-        "annual": _normalized_cash_flow_period(candidates, "annual"),
+        "quarter": _normalized_cash_flow_period(
+            candidates,
+            "quarter",
+        ),
+        "ytd": _normalized_cash_flow_period(
+            candidates,
+            "ytd",
+        ),
+        "annual": _normalized_cash_flow_period(
+            candidates,
+            "annual",
+        ),
     }
 
     return {
@@ -606,20 +810,20 @@ def normalize_foreign_result(
             "ticker": ticker,
             "currency": currency,
             "scale": scale,
-            "fiscal_end": fiscal_end or discovered_balance_date,
+            "fiscal_end": (
+                fiscal_end
+                or latest_balance_date
+            ),
             "form": form,
         },
-        "income_statement": {
-            "quarter": income_quarter,
-            "ytd": income_ytd,
-            "annual": income_annual,
-        },
+        "income_statement": income_statement,
         "balance_sheet": balance,
         "cash_flow": cash_flow,
         "parser": {
             "financial_table_count": len(candidates),
             "table_indices": [
-                candidate["table_index"] for candidate in candidates
+                candidate["table_index"]
+                for candidate in candidates
             ],
         },
     }
@@ -668,69 +872,133 @@ def calculate_standard_metrics(
     result: Dict[str, Any],
 ) -> Dict[str, Optional[float]]:
     metrics: Dict[str, Optional[float]] = {
-        metric: None for metric in STANDARD_METRICS
+        metric: None
+        for metric in STANDARD_METRICS
     }
 
     income = result.get("income_statement", {})
     quarter = income.get("quarter", {})
     ytd = income.get("ytd", {})
 
-    # Growth: current YTD vs prior-year YTD is preferred.
+    # Growth: current YTD vs prior-year YTD.
+    ytd_prior = ytd.get("_prior_year", {})
+
     metrics["revenue_growth"] = _growth_percent(
         ytd.get("revenue"),
-        ytd.get("_prior_year", {}).get("revenue"),
+        ytd_prior.get("revenue"),
+    )
+
+    current_eps = (
+        ytd.get("eps_diluted")
+        if ytd.get("eps_diluted") is not None
+        else ytd.get("eps_basic")
+    )
+    prior_eps = (
+        ytd_prior.get("eps_diluted")
+        if ytd_prior.get("eps_diluted") is not None
+        else ytd_prior.get("eps_basic")
     )
 
     metrics["eps_growth"] = _growth_percent(
-        ytd.get("eps_diluted") or ytd.get("eps_basic"),
-        ytd.get("_prior_year", {}).get("eps_diluted")
-        or ytd.get("_prior_year", {}).get("eps_basic"),
+        current_eps,
+        prior_eps,
     )
 
     revenue = quarter.get("revenue")
     operating_income = quarter.get("operating_income")
 
     if revenue not in (None, 0) and operating_income is not None:
-        metrics["opm"] = operating_income / revenue * 100.0
+        metrics["opm"] = (
+            operating_income / revenue * 100.0
+        )
 
-    liabilities = _latest_balance_value(result, "liabilities")
-    equity = _latest_balance_value(result, "equity")
-    cash = _latest_balance_value(result, "cash")
+    liabilities = _latest_balance_value(
+        result,
+        "liabilities",
+    )
+    equity = _latest_balance_value(
+        result,
+        "equity",
+    )
+    cash = _latest_balance_value(
+        result,
+        "cash",
+    )
 
-    if liabilities is not None and equity is not None and equity > 0:
-        metrics["debt_rate"] = liabilities / equity * 100.0
+    if (
+        liabilities is not None
+        and equity is not None
+        and equity > 0
+    ):
+        metrics["debt_rate"] = (
+            liabilities / equity * 100.0
+        )
 
-    current_assets = _latest_balance_value(result, "current_assets")
-    current_liabilities = _latest_balance_value(result, "current_liabilities")
-    inventory = _latest_balance_value(result, "inventory")
-    receivables = _latest_balance_value(result, "receivables")
+    current_assets = _latest_balance_value(
+        result,
+        "current_assets",
+    )
+    current_liabilities = _latest_balance_value(
+        result,
+        "current_liabilities",
+    )
+    inventory = _latest_balance_value(
+        result,
+        "inventory",
+    )
+    receivables = _latest_balance_value(
+        result,
+        "receivables",
+    )
 
     if current_liabilities not in (None, 0):
-        if current_assets is not None and inventory is not None:
+        if (
+            current_assets is not None
+            and inventory is not None
+        ):
             metrics["quick_ratio"] = (
                 current_assets - inventory
             ) / current_liabilities
-        elif cash is not None and receivables is not None:
+        elif (
+            cash is not None
+            and receivables is not None
+        ):
             metrics["quick_ratio"] = (
                 cash + receivables
             ) / current_liabilities
 
     finance_costs = quarter.get("finance_costs")
-    if operating_income is not None and finance_costs is not None:
+    if (
+        operating_income is not None
+        and finance_costs is not None
+    ):
         interest = abs(finance_costs)
         if interest > 0:
-            metrics["interest_coverage"] = operating_income / interest
+            metrics["interest_coverage"] = (
+                operating_income / interest
+            )
 
-    ocf = result.get("cash_flow", {}).get("quarter", {}).get(
-        "operating_cash_flow"
+    ocf = (
+        result
+        .get("cash_flow", {})
+        .get("quarter", {})
+        .get("operating_cash_flow")
     )
     net_income = quarter.get("net_income")
-    if ocf is not None and net_income not in (None, 0):
-        metrics["ocf_ratio"] = ocf / net_income
+
+    if (
+        ocf is not None
+        and net_income not in (None, 0)
+    ):
+        metrics["ocf_ratio"] = (
+            ocf / net_income
+        )
 
     sga = quarter.get("sga")
     if sga is not None and revenue not in (None, 0):
-        metrics["sga_ratio"] = abs(sga) / revenue * 100.0
+        metrics["sga_ratio"] = (
+            abs(sga) / revenue * 100.0
+        )
 
     if (
         operating_income is not None
@@ -738,13 +1006,19 @@ def calculate_standard_metrics(
         and liabilities is not None
         and cash is not None
     ):
-        invested_capital = equity + liabilities - cash
+        invested_capital = (
+            equity + liabilities - cash
+        )
+
         if invested_capital > 0:
             nopat = operating_income * 0.78
-            metrics["roic"] = nopat / invested_capital * 100.0
+            metrics["roic"] = (
+                nopat
+                / invested_capital
+                * 100.0
+            )
 
-    # Downturn defense needs multi-year evidence; never fabricate it from one
-    # foreign filing. The existing Standard scorer can fill this separately.
+    # Downturn defense requires multi-year evidence.
     metrics["downturn_defense"] = None
 
     return metrics
@@ -755,7 +1029,9 @@ def build_standard_metric_payload(
 ) -> Dict[str, Any]:
     metrics = calculate_standard_metrics(result)
     missing_metrics = [
-        metric for metric, value in metrics.items() if value is None
+        metric
+        for metric, value in metrics.items()
+        if value is None
     ]
 
     return {
@@ -779,5 +1055,11 @@ def print_standard_metric_payload(
         print(f"{metric:24s} = {value}")
 
     print()
-    print("missing_metric_count =", payload["missing_metric_count"])
-    print("missing_metrics =", payload["missing_metrics"])
+    print(
+        "missing_metric_count =",
+        payload["missing_metric_count"],
+    )
+    print(
+        "missing_metrics =",
+        payload["missing_metrics"],
+    )
