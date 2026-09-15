@@ -1,8 +1,8 @@
 """Diagnose domestic Standard companies with missing fiscal snapshots.
 
-No database writes. For each Standard company whose snapshot is missing and
-whose latest relevant SEC filing is domestic, inspect Company Facts and report
-why build_latest_snapshot() cannot currently produce a snapshot.
+No database writes. First classifies all snapshot-missing Standard companies
+using SEC submissions, then only analyzes those whose latest relevant filing
+is domestic under the project's existing classification rule.
 """
 
 import os
@@ -17,7 +17,8 @@ SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE
 SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "Fundamental-app contact@example.com")
 SEC_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
-RELEVANT_FORMS = {"10-Q", "10-Q/A", "10-K", "10-K/A"}
+RELEVANT_FORMS = {"10-Q", "10-Q/A", "10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A", "6-K"}
+FOREIGN_FORMS = {"20-F", "20-F/A", "40-F", "40-F/A"}
 STANDARD_SECTORS = {"technology", "healthcare", "consumer", "industrials", "energy", "materials", "communication"}
 PAGE_SIZE = 1000
 SNAPSHOT_FORMS = {"10-Q", "10-Q/A", "10-K", "10-K/A"}
@@ -92,7 +93,7 @@ def load_standard_missing(sb):
     return [r for r in missing if r.get("ticker") in standard]
 
 
-def latest_domestic_filing(submissions):
+def latest_relevant_filing(submissions):
     recent = submissions.get("filings", {}).get("recent", {}) or {}
     rows = []
     for form, filed, accession, primary in zip(
@@ -118,14 +119,11 @@ def parse_date(value):
 def companyfacts_summary(facts):
     facts_root = facts.get("facts") or {}
     namespaces = sorted(facts_root.keys())
-    tag_summary = {}
-    for namespace in namespaces:
-        tags = facts_root.get(namespace) or {}
-        tag_summary[namespace] = len(tags)
+    tag_summary = {namespace: len(facts_root.get(namespace) or {}) for namespace in namespaces}
     available_metrics = []
-    metric_rows = {}
     max_dates = []
     future_rows = []
+
     for metric in sorted(INSTANT_METRICS | FLOW_METRICS):
         matched = []
         for tag in FACT_ALIASES.get(metric, []):
@@ -148,12 +146,11 @@ def companyfacts_summary(facts):
                             future_rows.append((metric, namespace, tag, end, filed, form))
         if matched:
             available_metrics.append(metric)
-            metric_rows[metric] = matched
+
     return {
         "namespaces": namespaces,
         "tag_counts": tag_summary,
         "available_metrics": available_metrics,
-        "metric_rows": metric_rows,
         "max_snapshot_end": max(max_dates) if max_dates else None,
         "future_end_count": len(future_rows),
         "future_examples": future_rows[:5],
@@ -169,29 +166,50 @@ def main():
     session = requests.Session()
     session.headers.update({"User-Agent": SEC_USER_AGENT})
 
-    print(f"[INPUT] domestic diagnostic candidates={len(rows)}")
-    print("ticker|company|cik|filing|filed|facts_namespaces|metrics|candidate_end|future_end_rows|diagnosis")
+    print(f"[INPUT] snapshot-missing Standard rows={len(rows)}")
 
-    counts = {}
+    # Preserve the project's existing classification rule:
+    # 20-F/40-F = foreign; everything else in RELEVANT_FORMS = domestic.
+    domestic_rows = []
+    classification_counts = {"domestic": 0, "foreign": 0, "no_relevant_filing": 0, "error": 0}
+    classification_errors = []
     for row in rows:
         ticker = row.get("ticker") or ""
-        company = row.get("company_name") or ""
         cik_raw = str(row.get("cik") or "").strip()
         try:
             if not cik_raw:
-                diagnosis = "missing_cik"
-                counts[diagnosis] = counts.get(diagnosis, 0) + 1
-                print(f"{ticker}|{company}||ERROR|||||{diagnosis}")
+                classification_counts["error"] += 1
+                classification_errors.append((ticker, "missing_cik"))
                 continue
-            cik = cik_raw.zfill(10)
-            submissions = fetch_json(session, SEC_SUBMISSIONS_URL.format(cik=cik))
-            filing = latest_domestic_filing(submissions)
+            submissions = fetch_json(session, SEC_SUBMISSIONS_URL.format(cik=cik_raw.zfill(10)))
+            filing = latest_relevant_filing(submissions)
             if not filing:
-                diagnosis = "no_recent_domestic_filing"
-                counts[diagnosis] = counts.get(diagnosis, 0) + 1
-                print(f"{ticker}|{company}|{cik}|NONE|||||{diagnosis}")
+                classification_counts["no_relevant_filing"] += 1
                 continue
+            kind = "foreign" if filing["form"] in FOREIGN_FORMS else "domestic"
+            classification_counts[kind] += 1
+            if kind == "domestic":
+                domestic_rows.append((row, filing))
+        except Exception as exc:
+            classification_counts["error"] += 1
+            classification_errors.append((ticker, f"{type(exc).__name__}:{exc}"))
+        time.sleep(0.12)
 
+    print(
+        "[CLASSIFICATION] "
+        f"domestic={classification_counts['domestic']} "
+        f"foreign={classification_counts['foreign']} "
+        f"no_relevant_filing={classification_counts['no_relevant_filing']} "
+        f"error={classification_counts['error']}"
+    )
+
+    print("ticker|company|cik|filing|filed|facts_namespaces|metrics|candidate_end|future_end_rows|diagnosis")
+    counts = {}
+    for row, filing in domestic_rows:
+        ticker = row.get("ticker") or ""
+        company = row.get("company_name") or ""
+        cik = str(row.get("cik") or "").strip().zfill(10)
+        try:
             facts = fetch_json(session, SEC_FACTS_URL.format(cik=cik))
             summary = companyfacts_summary(facts)
             ns = ",".join(summary["namespaces"]) or "-"
@@ -202,8 +220,8 @@ def main():
                 diagnosis = "companyfacts_empty"
             elif not summary["available_metrics"]:
                 diagnosis = "no_supported_tags"
-            elif summary["max_snapshot_end"]:
-                end_date = parse_date(summary["max_snapshot_end"])
+            elif candidate_end != "-":
+                end_date = parse_date(candidate_end)
                 filed_date = parse_date(filing["filed"])
                 if end_date and filed_date and end_date > filed_date:
                     diagnosis = "future_end_candidate"
@@ -214,21 +232,13 @@ def main():
 
             counts[diagnosis] = counts.get(diagnosis, 0) + 1
             print("|".join([
-                ticker,
-                company,
-                cik,
-                filing["form"],
-                filing["filed"],
-                ns,
-                metrics,
-                candidate_end,
-                str(summary["future_end_count"]),
-                diagnosis,
+                ticker, company, cik, filing["form"], filing["filed"],
+                ns, metrics, candidate_end, str(summary["future_end_count"]), diagnosis,
             ]))
         except Exception as exc:
             diagnosis = f"error:{type(exc).__name__}"
             counts[diagnosis] = counts.get(diagnosis, 0) + 1
-            print(f"{ticker}|{company}|{cik_raw}|ERROR|||||{diagnosis}:{exc}")
+            print(f"{ticker}|{company}|{cik}|ERROR|||||{diagnosis}:{exc}")
         time.sleep(0.25)
 
     print("[SUMMARY] " + " ".join(f"{k}={v}" for k, v in sorted(counts.items())))
