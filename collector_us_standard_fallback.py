@@ -12,10 +12,20 @@ import requests
 
 from collector_us_fundamental import (
     SUPABASE_URL, SUPABASE_KEY, SEC_USER_AGENT, PERIODS,
-    build_fact_index, build_result as _build_result, get_universe, load_company,
+    build_fact_index, build_result as _build_result, load_company,
 )
 from supabase import create_client
 from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8
+
+STANDARD_SECTORS = (
+    "technology",
+    "healthcare",
+    "consumer",
+    "industrials",
+    "energy",
+    "materials",
+    "communication",
+)
 
 STANDARD_METRICS = (
     "revenue", "eps", "operating_income", "liabilities", "current_assets",
@@ -63,8 +73,6 @@ def augment_index_with_v238(index, resolver, cik, latest_year):
                 continue
             try:
                 resolved = resolver.resolve(cik, metric, year=year)
-                # SECXBRLSearchV2_3_8.resolve() returns a wrapper whose actual
-                # selected candidate is stored in the "best" field.
                 candidate = resolved.get("best") if isinstance(resolved, dict) else resolved
             except Exception as exc:
                 print(f"[XBRL fallback] CIK={cik} metric={metric} year={year}: {exc}")
@@ -138,6 +146,64 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
     }
 
 
+def get_standard_universe(sb, tickers=None, limit=None, all_rows=False):
+    """Return only eligible companies in the seven Standard sectors.
+
+    Supabase REST responses are paginated explicitly so --all is safe for the
+    full Standard universe and cannot accidentally process special sectors.
+    """
+    columns = "ticker,cik,company_name,sector_common,company_type,scoring_profile"
+
+    if tickers:
+        rows = []
+        page_size = 1000
+        for offset in range(0, len(tickers), page_size):
+            batch = tickers[offset:offset + page_size]
+            rows.extend(
+                sb.table("US_Companies")
+                .select(columns)
+                .in_("ticker", batch)
+                .eq("is_fundamental_eligible", True)
+                .in_("sector_common", STANDARD_SECTORS)
+                .execute()
+                .data
+            )
+        return rows
+
+    if not all_rows:
+        return (
+            sb.table("US_Companies")
+            .select(columns)
+            .eq("is_fundamental_eligible", True)
+            .in_("sector_common", STANDARD_SECTORS)
+            .order("ticker")
+            .limit(limit or 5)
+            .execute()
+            .data
+        )
+
+    rows = []
+    page_size = 1000
+    offset = 0
+    while True:
+        batch = (
+            sb.table("US_Companies")
+            .select(columns)
+            .eq("is_fundamental_eligible", True)
+            .in_("sector_common", STANDARD_SECTORS)
+            .order("ticker")
+            .range(offset, offset + page_size - 1)
+            .execute()
+            .data
+        )
+        rows.extend(batch)
+        print(f"[UNIVERSE] fetched {len(batch)} rows (total={len(rows)})")
+        if len(batch) < page_size:
+            break
+        offset += page_size
+    return rows
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ticker")
@@ -152,7 +218,8 @@ def main():
     tickers = [args.ticker.upper().strip()] if args.ticker else (
         [x.upper().strip() for x in args.tickers.split(",") if x.strip()] if args.tickers else None
     )
-    rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
+    rows = get_standard_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
+    print(f"[UNIVERSE] Standard companies selected: {len(rows)}")
 
     session = requests.Session()
     session.headers.update({"User-Agent": SEC_USER_AGENT})
