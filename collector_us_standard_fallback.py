@@ -62,7 +62,10 @@ def augment_index_with_v238(index, resolver, cik, latest_year):
             if year in metric_rows:
                 continue
             try:
-                candidate = resolver.resolve(cik, metric, year=year)
+                resolved = resolver.resolve(cik, metric, year=year)
+                # SECXBRLSearchV2_3_8.resolve() returns a wrapper whose actual
+                # selected candidate is stored in the "best" field.
+                candidate = resolved.get("best") if isinstance(resolved, dict) else resolved
             except Exception as exc:
                 print(f"[XBRL fallback] CIK={cik} metric={metric} year={year}: {exc}")
                 continue
