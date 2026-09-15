@@ -1,15 +1,17 @@
 """Incremental SEC filing updater for the US Standard universe.
 
 Checks SEC submissions for the 7 Standard sectors and only re-collects
-companies whose latest relevant filing is newer than the stored snapshot.
+companies that already have a stored snapshot and whose latest relevant
+filing is newer than that snapshot.
+
+Initial collection is intentionally kept separate. This prevents a manual
+or scheduled run from accidentally launching a 4,580-company bootstrap.
 """
 from __future__ import annotations
 
-import os
 import subprocess
 import sys
 import time
-from datetime import datetime
 
 import requests
 from supabase import create_client
@@ -111,12 +113,13 @@ def _latest_relevant_filing(submissions):
 
 
 def _needs_update(latest, stored):
+    # No stored snapshot means the company has not completed initial collection.
+    # Never bootstrap the full universe from the daily updater.
+    if not stored or not stored.get("snapshot_filed"):
+        return False
     if not latest:
         return False
-    stored_filed = (stored or {}).get("snapshot_filed")
-    if not stored_filed:
-        return True
-    return (latest.get("filed") or "") > str(stored_filed)[:10]
+    return (latest.get("filed") or "") > str(stored["snapshot_filed"])[:10]
 
 
 def main():
@@ -134,16 +137,21 @@ def main():
     session.headers.update({"User-Agent": SEC_USER_AGENT, "Accept-Encoding": "gzip, deflate"})
 
     changed = []
+    uninitialized = 0
     checked = 0
     errors = 0
     for row in universe:
         ticker = row["ticker"]
-        cik = str(row["cik"]).strip()
-        cik10 = cik.zfill(10)
+        stored = existing.get(ticker)
+        if not stored or not stored.get("snapshot_filed"):
+            uninitialized += 1
+            continue
+
+        cik = str(row["cik"]).strip().zfill(10)
         try:
-            submissions = _sec_get(session, SEC_SUBMISSIONS_URL.format(cik=cik10))
+            submissions = _sec_get(session, SEC_SUBMISSIONS_URL.format(cik=cik))
             latest = _latest_relevant_filing(submissions)
-            if _needs_update(latest, existing.get(ticker)):
+            if _needs_update(latest, stored):
                 changed.append(ticker)
                 print(f"[CHANGED] {ticker}: filed={latest.get('filed')} form={latest.get('form')} report={latest.get('report_date')}")
             checked += 1
@@ -152,7 +160,7 @@ def main():
             print(f"[CHECK FAILED] {ticker}: {exc}")
         time.sleep(SEC_DELAY_SECONDS)
 
-    print(f"[CHECK] checked={checked} changed={len(changed)} errors={errors}")
+    print(f"[CHECK] initialized={checked} uninitialized={uninitialized} changed={len(changed)} errors={errors}")
     if not changed:
         if errors:
             raise RuntimeError(f"SEC filing check completed with {errors} errors and no updates")
