@@ -27,7 +27,10 @@ from sec_xbrl_inline import parse_inline_xbrl
 XLINK = "http://www.w3.org/1999/xlink"
 
 
-def _local(tag: str) -> str:
+def _local(tag: Any) -> str:
+    """Return local element name; ignore lxml non-element node callables."""
+    if not isinstance(tag, str):
+        return ""
     return tag.rsplit("}", 1)[-1]
 
 
@@ -181,10 +184,10 @@ class SECXBRLSearchV2_3_2(SECXBRLSearchV2_3_1):
                 continue
             if not include_dimensioned and r.get("dimensioned"):
                 continue
-
             concept = r.get("concept", "")
             label = r.get("label", "")
-            if _hard_excluded(metric, concept, label):
+            exact = self._is_exact_concept(metric, concept)
+            if not exact and _hard_excluded(metric, concept, label):
                 continue
             if not self._candidate_allowed(metric, concept, label, "filing-xbrl"):
                 continue
@@ -196,24 +199,16 @@ class SECXBRLSearchV2_3_2(SECXBRLSearchV2_3_1):
             if metric in DURATION_METRICS and metric != "eps" and not annual:
                 continue
 
-            label_points, label_reasons = _label_quality(metric, label, concept)
-            score = float(label_points)
-            reasons = list(label_reasons)
-            if concept in EXACT_CONCEPTS.get(metric, set()):
-                score = max(score, 100.0)
-                reasons.append("canonical concept")
+            score = 100.0 if exact else 0.0
+            reasons = ["canonical concept"] if exact else []
             if metric in DURATION_METRICS and annual:
-                score += 25.0
-                reasons.append("annual duration")
+                score += 25.0; reasons.append("annual duration")
             elif metric in INSTANT_METRICS and instant:
-                score += 20.0
-                reasons.append("instant")
+                score += 20.0; reasons.append("instant")
             if r.get("namespace") == "us-gaap":
-                score += 5.0
-                reasons.append("us-gaap")
+                score += 5.0; reasons.append("us-gaap")
             if year is not None and end and end.year == int(year):
-                score += 30.0
-                reasons.append("target FY")
+                score += 30.0; reasons.append("target FY")
 
             candidates.append(XBRLCandidate(
                 metric=metric,
@@ -234,20 +229,19 @@ class SECXBRLSearchV2_3_2(SECXBRLSearchV2_3_1):
                 reason=", ".join(dict.fromkeys(reasons)),
             ))
 
-        # Some issuers omit the direct total-liabilities concept from their
-        # filing facts even though the balance sheet reports total assets and
-        # equity in the same instant context. Use the accounting identity only
-        # as a generic fallback when no direct candidate survived filtering.
         if metric == "liabilities" and not candidates:
             derived = self._derived_liabilities_candidate(rows, year)
             if derived is not None:
                 candidates.append(derived)
                 meta["derived_balance_sheet"] = "assets_minus_equity"
 
-        candidates.sort(
-            key=lambda x: (x.score, _date(x.end) or date.min, x.filed or ""),
-            reverse=True,
-        )
+        if metric in {"operating_income", "sga"} and not candidates:
+            derived = self._derive_duration_metric(rows, metric, year)
+            if derived is not None:
+                candidates.append(derived)
+                meta[f"derived_{metric}"] = derived.reason
+
+        candidates.sort(key=lambda x: (x.score, _date(x.end) or date.min, x.filed or ""), reverse=True)
         meta["target_fy"] = year
         return candidates[:limit], meta
 
