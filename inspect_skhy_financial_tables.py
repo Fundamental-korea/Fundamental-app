@@ -12,9 +12,11 @@ from collector_us_foreign_fallback import find_financial_tables, _clean_text
 # ============================================================
 
 CIK = "0002120882"
+# SEC filing dated 2026-08-18 containing the semi-annual business report.
+# The earlier 0001104659 URL was invalid for SK hynix and returned 404.
 FILING_URL = (
     "https://www.sec.gov/Archives/edgar/data/2120882/"
-    "000110465926092383/tm2621766d1_ex99-1.htm"
+    "000119312526354777/d147827d6k.htm"
 )
 
 HEADERS = {
