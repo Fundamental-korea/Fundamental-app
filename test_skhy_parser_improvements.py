@@ -18,7 +18,7 @@ HEADERS = {
 }
 
 
-def _header_text(table, column_index, rows=5):
+def _header_text(table, column_index, rows=8):
     parts = []
     for row_index in range(min(rows, len(table))):
         text = f._clean_text(table.iloc[row_index, column_index])
@@ -33,16 +33,15 @@ def improved_column_metadata(table):
     periods = {column: f.classify_period_text(column) for column in columns}
 
     for i, column in enumerate(columns):
-        header = _header_text(table, i)
+        header = _header_text(table, i, rows=8)
         if dates[column] is None:
             dates[column] = f._parse_date_text(header)
         if periods[column] == "unknown":
             periods[column] = f.classify_period_text(header)
 
-    # SEC HTML often uses colspan/rowspan. pandas.read_html leaves the
-    # date/period text on one column of a merged group and the numeric value
-    # on its neighbour. Propagate the latest header metadata to the right
-    # across adjacent columns until another explicit date appears.
+    # SEC HTML frequently flattens colspan/rowspan headers. Propagate metadata
+    # from an explicit header cell across its value columns, but never overwrite
+    # a later explicit date/period discovered on that column.
     current_date = None
     current_period = "unknown"
     for column in columns:
@@ -70,9 +69,6 @@ def improved_find_metric_row(table, metric):
 
             for alias in aliases:
                 if text == alias:
-                    # Exact aliases always beat substring matches. This is
-                    # important for equity: Total Equity must beat the earlier
-                    # Equity Attributable to Owners row.
                     rank = 1000 + len(alias)
                     if rank > best_rank:
                         best = row
@@ -116,22 +112,25 @@ def improved_extract_metric_by_period(table, metric):
     }
 
     for period in ("quarter", "ytd", "annual"):
-        items = [x for x in raw_values if x["period"] == period and x.get("date")]
+        items = [x for x in raw_values if x["period"] == period]
         if not items:
             continue
-        # A merged header can label both the note column and the value column.
-        # Ignore columns that are clearly note/reference fields when a numeric
-        # reporting value follows them.
+
         result[period] = items[0]["value"]
         current_year = f._period_year(items[0].get("date"))
-        if current_year is None:
-            continue
-        prior_items = [
-            x for x in items[1:]
-            if f._period_year(x.get("date")) == current_year - 1
-        ]
-        if prior_items:
-            result["prior_by_period"][period] = prior_items[0]["value"]
+
+        if current_year is not None:
+            prior_items = [
+                x for x in items[1:]
+                if f._period_year(x.get("date")) == current_year - 1
+            ]
+            if prior_items:
+                result["prior_by_period"][period] = prior_items[0]["value"]
+        elif len(items) >= 2:
+            # For flattened SEC tables where the dates are attached only to
+            # surrounding header cells, the second value in the same period
+            # group is the prior-year comparison column.
+            result["prior_by_period"][period] = items[1]["value"]
 
     result["prior"] = (
         result["prior_by_period"]["ytd"]
@@ -198,11 +197,19 @@ def run():
             extracted = improved_extract_metric_by_period(table_130, metric)
             print(f"{metric:20s} -> {extracted}")
 
+    print("\n[Derived checks]")
+    revenue = improved_extract_metric_by_period(table_379, "revenue") if table_379 is not None else {}
+    op = improved_extract_metric_by_period(table_379, "operating_income") if table_379 is not None else {}
+    if revenue.get("quarter") and op.get("quarter"):
+        print("quarter_opm          ->", op["quarter"] / revenue["quarter"] * 100.0)
+    print("quarter_revenue_prior ->", revenue.get("prior_by_period", {}).get("quarter"))
+    print("ytd_revenue_prior     ->", revenue.get("prior_by_period", {}).get("ytd"))
+
     print("\n[Expected structural checks]")
     print("- income statement should expose 2026 current + 2025 prior for quarter and YTD")
     print("- equity should select Total Equity, not Equity Attributable to Owners")
-    print("- current_assets/current_liabilities/inventory should have 2026-06-30 dates")
-    print("- SKHY OPM should be calculated only after source mapping is validated")
+    print("- current_assets/current_liabilities should now match 'Current Assets'/'Current Liabilities'")
+    print("- OPM should be calculated from table 379 only after period mapping is validated")
     print("=" * 72)
 
 
