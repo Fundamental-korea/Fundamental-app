@@ -47,6 +47,29 @@ def score_table(table):
     return score
 
 
+def print_table_detail(idx, table):
+    print("\n[Detailed table structure]")
+    print(f"table_index={idx} shape={table.shape}")
+    print("columns:")
+    for col_index, column in enumerate(table.columns):
+        print(f"  col {col_index}: {column!r}")
+
+    print("first 12 rows:")
+    for row_idx in range(min(12, len(table))):
+        row = table.iloc[row_idx]
+        values = " | ".join(f._clean_text(v) for v in row.tolist())
+        print(f"  row {row_idx}: {values}")
+
+    date_map = f.infer_column_dates(table)
+    period_map = f.infer_column_periods(table)
+    print("common metadata:")
+    for col_index, column in enumerate(table.columns):
+        print(
+            f"  col {col_index}: date={date_map.get(column)!r} "
+            f"period={period_map.get(column)!r}"
+        )
+
+
 def main():
     response = requests.get(FILING_URL, headers=HEADERS, timeout=60)
     response.raise_for_status()
@@ -71,6 +94,13 @@ def main():
         for row_idx, row in table.iterrows():
             if row_contains_ocf(row):
                 print(f"row {row_idx}: " + " | ".join(f._clean_text(v) for v in row.tolist()))
+
+    for target_idx in (382, 741):
+        target = next((table for _, idx, table in candidates if idx == target_idx), None)
+        if target is not None:
+            print("\n" + "=" * 72)
+            print_table_detail(target_idx, target)
+            print("=" * 72)
 
     print("\n[Current common parser lookup]")
     financial_candidates = f.find_financial_tables(response.text)
