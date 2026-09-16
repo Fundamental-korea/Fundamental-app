@@ -60,6 +60,56 @@ def _foreign_ocf_period_hint(table: pd.DataFrame) -> Optional[str]:
     return None
 
 
+def _foreign_ocf_period_hint_from_candidates(
+    candidates: List[Dict[str, Any]],
+) -> Optional[str]:
+    # The OCF table itself may contain only flattened year cells such as
+    # "2026 | 2026 | 2025 | 2025". Look across the entire filing's financial
+    # table set for the reporting-period language that the OCF table lost.
+    combined = " ".join(
+        _clean_text(value).lower()
+        for candidate in candidates
+        for value in candidate["table"].astype(str).values.flatten()
+    )
+
+    if any(
+        marker in combined
+        for marker in (
+            "six months ended",
+            "six months",
+            "half-year",
+            "half year",
+            "semi-annual",
+            "semiannual",
+            "year to date",
+            "cumulative",
+        )
+    ):
+        return "ytd"
+
+    if any(
+        marker in combined
+        for marker in (
+            "three months ended",
+            "three months",
+            "quarter ended",
+        )
+    ):
+        return "quarter"
+
+    if any(
+        marker in combined
+        for marker in (
+            "twelve months ended",
+            "year ended",
+            "fiscal year",
+        )
+    ):
+        return "annual"
+
+    return None
+
+
 def _foreign_extract_ocf_from_candidates(
     candidates: List[Dict[str, Any]],
 ) -> Dict[str, Any]:
@@ -84,6 +134,7 @@ def _foreign_extract_ocf_from_candidates(
         ranked.append((score, candidate))
 
     ranked.sort(key=lambda item: item[0], reverse=True)
+    filing_period_hint = _foreign_ocf_period_hint_from_candidates(candidates)
 
     for _, candidate in ranked:
         table = candidate["table"]
@@ -131,8 +182,10 @@ def _foreign_extract_ocf_from_candidates(
                     result["prior_by_period"][period] = items[1]["value"]
 
         # Flattened foreign filings often leave all OCF columns as unknown.
+        # Use filing-wide context because the OCF table itself may contain
+        # only the repeated fiscal years and no "six months" text.
         if not any(result[p] is not None for p in ("quarter", "ytd", "annual")):
-            hint = _foreign_ocf_period_hint(table)
+            hint = _foreign_ocf_period_hint(table) or filing_period_hint
             if hint is not None:
                 result[hint] = raw_values[0]["value"]
                 if len(raw_values) >= 2:
@@ -214,9 +267,6 @@ def main() -> None:
         BACKUP.write_text(text, encoding="utf-8")
         print(f"Backup created: {BACKUP}")
 
-    # Append the override block. Python resolves global function names at call
-    # time, so later definitions safely replace the earlier implementations
-    # without disturbing the existing parser code or earlier local fixes.
     text = text.rstrip() + "\n\n" + BLOCK.strip() + "\n"
     SOURCE.write_text(text, encoding="utf-8")
     print("OCF override applied successfully.")
