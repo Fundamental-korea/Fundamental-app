@@ -1,22 +1,18 @@
 """US market valuation snapshot helpers.
 
-Keeps market-derived values separate from SEC accounting facts.
+Market facts and SEC accounting facts are kept separate.
 
-Rules:
-- EPS: use the SEC-reported diluted EPS fact; never synthesize EPS from net income/shares.
+Formula contract:
+- EPS: SEC-reported diluted EPS; never reconstruct from income/shares.
 - BPS: parent-attributable common equity / period-end common shares outstanding.
 - Market cap: current price * current common shares outstanding.
-- PER: current price / selected reported EPS.
+- PER: current price / latest full-year reported diluted EPS.
 - PBR: current price / period-end BPS.
-
-The helper is deliberately conservative: ambiguous share-count facts are left out
-rather than guessing across multiple common-share classes.
 """
 
 from __future__ import annotations
 
 import math
-from datetime import datetime
 
 
 def _clean(value):
@@ -62,19 +58,30 @@ def _fact_rows(companyfacts, tags, forms=None):
     return out
 
 
-def _best_instant(rows, end=None):
-    candidates = [r for r in rows if not r.get("start") and (end is None or r["end"] == end)]
+def _best_instant(rows, end):
+    candidates = [r for r in rows if not r.get("start") and r["end"] == end]
     if not candidates:
         return None
-    candidates.sort(key=lambda r: (r["namespace"] == "us-gaap", -r["priority"], r["filed"], r["end"]), reverse=True)
+    candidates.sort(key=lambda r: (r["namespace"] == "us-gaap", -r["priority"], r["filed"]), reverse=True)
     return candidates[0]
 
 
 def _latest_instant(rows):
     if not rows:
         return None
-    rows = sorted(rows, key=lambda r: (r["end"], r["filed"], r["namespace"] == "us-gaap", -r["priority"]), reverse=True)
-    return _best_instant(rows, rows[0]["end"])
+    latest_end = max(r["end"] for r in rows)
+    return _best_instant(rows, latest_end)
+
+
+def _latest_full_year(rows):
+    candidates = [
+        r for r in rows
+        if r.get("start") and r.get("days") is not None and 300 <= r["days"] <= 380
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda r: (r["end"], r["filed"], r["namespace"] == "us-gaap", -r["priority"]), reverse=True)
+    return candidates[0]
 
 
 def _reported_eps(companyfacts):
@@ -83,13 +90,20 @@ def _reported_eps(companyfacts):
         "ifrs-full": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
     }
     rows = _fact_rows(companyfacts, tags)
+    for row in rows:
+        if row.get("start"):
+            try:
+                row["days"] = (__import__("datetime").date.fromisoformat(row["end"]) - __import__("datetime").date.fromisoformat(row["start"])).days
+            except ValueError:
+                row["days"] = None
     diluted = [r for r in rows if r["tag"] == "EarningsPerShareDiluted"]
     basic = [r for r in rows if r["tag"] == "EarningsPerShareBasic"]
-    # Prefer the latest reported diluted EPS. Fall back to basic EPS only if diluted is absent.
-    row = sorted(diluted, key=lambda r: (r["end"], r["filed"], r["namespace"] == "us-gaap"), reverse=True)[0] if diluted else None
-    if row is None and basic:
-        row = sorted(basic, key=lambda r: (r["end"], r["filed"], r["namespace"] == "us-gaap"), reverse=True)[0]
-    return row
+    row = _latest_full_year(diluted)
+    basis = "reported-diluted" if row else None
+    if row is None:
+        row = _latest_full_year(basic)
+        basis = "reported-basic" if row else None
+    return row, basis
 
 
 def _equity_and_nci(companyfacts, fiscal_end):
@@ -104,35 +118,27 @@ def _equity_and_nci(companyfacts, fiscal_end):
     equity_rows = _fact_rows(companyfacts, equity_tags)
     nci_rows = _fact_rows(companyfacts, nci_tags)
     equity = _best_instant(equity_rows, fiscal_end)
-    if equity is None:
-        equity = _latest_instant(equity_rows)
     nci = _best_instant(nci_rows, fiscal_end)
     if equity is None:
         return None, None
-    # IFRS parent-equity tags are already parent-attributable.
     if equity["tag"] == "EquityAttributableToOwnersOfParent":
         return equity, None
-    # US GAAP tag explicitly says that NCI is included: subtract matching NCI.
     if "IncludingPortionAttributableToNoncontrollingInterest" in equity["tag"] and nci is not None:
         equity = dict(equity)
-        equity["value"] = equity["value"] - nci["value"]
+        equity["value"] -= nci["value"]
         equity["basis"] = "parent-attributable"
         equity["nci_source_tag"] = nci["tag"]
-        return equity, nci
     return equity, nci
 
 
-def _shares(companyfacts, fiscal_end=None, current_only=False):
+def _period_end_shares(companyfacts, fiscal_end):
     tags = {
-        "us-gaap": ["EntityCommonStockSharesOutstanding", "CommonStockSharesOutstanding"],
+        "us-gaap": ["CommonStockSharesOutstanding", "EntityCommonStockSharesOutstanding"],
         "ifrs-full": [],
     }
     rows = _fact_rows(companyfacts, tags)
-    if fiscal_end:
-        row = _best_instant(rows, fiscal_end)
-        if row:
-            return row
-    return _latest_instant(rows)
+    # For BPS we do not fall forward to a later date. That would mismatch the equity period.
+    return _best_instant(rows, fiscal_end)
 
 
 def _market_field(market_data, *keys):
@@ -145,49 +151,42 @@ def _market_field(market_data, *keys):
 
 def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None):
     market_data = market_data or {}
-    eps_row = _reported_eps(companyfacts)
+    eps_row, eps_basis = _reported_eps(companyfacts)
     equity_row, nci_row = _equity_and_nci(companyfacts, fiscal_end)
-    period_shares_row = _shares(companyfacts, fiscal_end)
-    current_shares_row = _shares(companyfacts)
+    period_shares_row = _period_end_shares(companyfacts, fiscal_end)
 
     price = _market_field(market_data, "price", "current_price", "regularMarketPrice")
-    current_shares = _clean(current_shares_row["value"]) if current_shares_row else None
+    current_shares = _market_field(market_data, "current_shares", "shares_outstanding")
+    if current_shares is None:
+        # SEC fallback is only for current market-cap construction; if stale/ambiguous, upstream market source should override it.
+        current_row = _latest_instant(_fact_rows(companyfacts, {"us-gaap": ["EntityCommonStockSharesOutstanding"], "ifrs-full": []}))
+        current_shares = _clean(current_row["value"]) if current_row else None
+
     period_shares = _clean(period_shares_row["value"]) if period_shares_row else None
     equity = _clean(equity_row["value"]) if equity_row else None
     eps = _clean(eps_row["value"]) if eps_row else None
 
-    bps = None
-    if equity is not None and period_shares and period_shares > 0:
-        bps = equity / period_shares
-
-    market_cap = None
-    if price is not None and current_shares and current_shares > 0:
-        market_cap = price * current_shares
-
-    per = None
-    if price is not None and eps is not None and eps > 0:
-        per = price / eps
-
-    pbr = None
-    if price is not None and bps is not None and bps > 0:
-        pbr = price / bps
+    bps = equity / period_shares if equity is not None and period_shares and period_shares > 0 else None
+    market_cap = price * current_shares if price is not None and current_shares and current_shares > 0 else None
+    per = price / eps if price is not None and eps is not None and eps > 0 else None
+    pbr = price / bps if price is not None and bps is not None and bps > 0 else None
 
     result = {
         "price": price,
         "market_cap": market_cap,
         "current_shares_outstanding": current_shares,
-        "current_shares_source": current_shares_row["tag"] if current_shares_row else None,
+        "current_shares_source": "market-data" if market_data.get("current_shares") is not None or market_data.get("shares_outstanding") is not None else ("sec-company-facts" if current_shares is not None else None),
         "period_end_shares_outstanding": period_shares,
         "period_end_shares_source": period_shares_row["tag"] if period_shares_row else None,
         "eps": eps,
         "eps_source": eps_row["tag"] if eps_row else None,
-        "eps_basis": "reported-diluted" if eps_row and eps_row["tag"] == "EarningsPerShareDiluted" else ("reported-basic" if eps_row else None),
+        "eps_basis": eps_basis,
         "bps": bps,
         "bps_basis": "parent-attributable-equity-period-end-shares" if bps is not None else None,
         "bps_equity": equity,
         "bps_equity_source": equity_row["tag"] if equity_row else None,
         "per": per,
-        "per_basis": "current-price/reported-eps" if per is not None else None,
+        "per_basis": "current-price/latest-full-year-reported-eps" if per is not None else None,
         "pbr": pbr,
         "pbr_basis": "current-price/period-end-bps" if pbr is not None else None,
     }
@@ -195,7 +194,8 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None):
         result["bps_equity_basis"] = equity_row["basis"]
         result["bps_nci_source_tag"] = equity_row.get("nci_source_tag")
     elif nci_row and equity_row:
-        result["bps_nci_note"] = "selected equity tag was not explicitly NCI-inclusive; no subtraction applied"
+        result["bps_nci_note"] = "selected equity fact was not explicitly NCI-inclusive; no subtraction applied"
+
     for field, aliases in {
         "day_high": ("day_high", "regularMarketDayHigh"),
         "day_low": ("day_low", "regularMarketDayLow"),
@@ -210,7 +210,7 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None):
 
 
 def normalize_market_quote(info, history=None):
-    """Normalize yfinance quote/1y history into stable scalar market fields."""
+    """Normalize yfinance quote information and one-year history."""
     info = info or {}
     result = {}
     mapping = {
@@ -220,7 +220,6 @@ def normalize_market_quote(info, history=None):
         "day_low": ("dayLow", "regularMarketDayLow"),
         "week52_high": ("fiftyTwoWeekHigh", "52WeekHigh"),
         "week52_low": ("fiftyTwoWeekLow", "52WeekLow"),
-        "market_cap": ("marketCap",),
         "current_shares": ("sharesOutstanding", "impliedSharesOutstanding"),
     }
     for target, aliases in mapping.items():
