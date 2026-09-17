@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import re
 from datetime import date
+from html import unescape
 
 SEC_FORMS = {"10-Q", "10-Q/A", "10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
@@ -141,43 +142,93 @@ def _current_shares_from_sec(companyfacts):
     return _sum_dei_shares_on_date(rows, latest_end)
 
 
-def _share_numbers(text, date_phrase):
-    """Extract class-specific outstanding share counts associated with one date."""
-    values = []
-    class_patterns = [
-        re.compile(rf"Class\s+[A-Z][^\.{{}}]{{0,260}}?Outstanding\s*[–-]\s*(\d[\d,]*)\s+and\s+\d[\d,]*\s+shares\s+as\s+of\s+{date_phrase}", re.I),
-        re.compile(rf"Class\s+[A-Z][^\.{{}}]{{0,260}}?Issued\s+and\s+Outstanding\s*[–-]\s*(\d[\d,]*)\s+shares\s+as\s+of\s+{date_phrase}", re.I),
-    ]
-    for pattern in class_patterns:
-        for match in pattern.finditer(text):
-            values.append(int(match.group(1).replace(",", "")))
-    return list(dict.fromkeys(x for x in values if x > 0))
+def _normalized_filing_text(text):
+    clean = unescape(text or "")
+    clean = re.sub(r"<[^>]+>", " ", clean)
+    clean = clean.replace("\xa0", " ")
+    clean = re.sub(r"[\u2012\u2013\u2014\u2212]", "-", clean)
+    return re.sub(r"\s+", " ", clean).strip()
+
+
+def _month_date_phrase(fiscal_end):
+    try:
+        dt = date.fromisoformat(fiscal_end)
+    except ValueError:
+        return None
+    months = {1:"January",2:"February",3:"March",4:"April",5:"May",6:"June",7:"July",8:"August",9:"September",10:"October",11:"November",12:"December"}
+    return rf"{months[dt.month]}\s+{dt.day}(?:st|nd|rd|th)?,\s+{dt.year}"
+
+
+def _class_outstanding_value(text, class_name, date_phrase=None):
+    """Extract the outstanding common-share count for one class."""
+    class_pattern = rf"{re.escape(class_name)}\s*(?P<body>.*?)(?=\bClass\s+[A-Z]\b|\bCommon Class [A-Z]\b|\bAdditional paid-in capital\b|\bRetained earnings\b|\bAccumulated other comprehensive\b|\bTreasury stock\b|\bTotal stockholders[’'] equity\b|$)"
+    match = re.search(class_pattern, text, re.I)
+    if not match:
+        return None
+    body = match.group("body")
+    if date_phrase:
+        patterns = [
+            rf"Outstanding\s*-\s*(\d[\d,]*)\s+(?:and\s+\d[\d,]*\s+)?shares\s+as\s+of\s+{date_phrase}",
+            rf"Issued\s+and\s+Outstanding\s*-\s*(\d[\d,]*)\s+shares\s+as\s+of\s+{date_phrase}",
+        ]
+    else:
+        patterns = [
+            r"Common Stock Shares Outstanding\s+(\d[\d,]*)",
+            r"Outstanding\s*-\s*(\d[\d,]*)\s+shares\s+as\s+of\s+[A-Za-z]+\s+\d{1,2}(?:st|nd|rd|th)?,\s+\d{4}",
+            r"Issued\s+and\s+Outstanding\s*-\s*(\d[\d,]*)\s+shares",
+        ]
+    for pattern in patterns:
+        found = re.search(pattern, body, re.I)
+        if found:
+            value = int(found.group(1).replace(",", ""))
+            if value > 0:
+                return value
+    return None
 
 
 def parse_common_shares_from_filing(text, fiscal_end=None, for_current=False):
     """Extract common shares from SEC filing text, separated into period-end vs cover-date counts."""
-    if not text:
+    clean = _normalized_filing_text(text)
+    if not clean:
         return None
-    clean = re.sub(r"\s+", " ", text)
 
     if for_current:
-        cover = re.search(r"t?\s*here were\s+(\d[\d,]*)\s+shares\s+of the issuer['’]s Class A common stock.*?outstanding\s+and\s+(\d[\d,]*)\s+shares\s+of the issuer['’]s Class B common stock.*?outstanding", clean, re.I)
-        if cover:
-            values = [int(cover.group(1).replace(",", "")), int(cover.group(2).replace(",", ""))]
-            return {"value": sum(values), "tag": "filing-cover-common-shares", "namespace": "filing", "basis": "filing-cover-sum-of-common-classes", "class_count": len(values), "date_basis": "cover-date"}
-        return None
+        values = []
+        for class_name in ("Common Class A [Member]", "Common Class B [Member]", "Common Class C [Member]"):
+            value = _class_outstanding_value(clean, class_name, None)
+            if value is not None:
+                values.append(value)
+        if not values:
+            cover = re.search(
+                r"there were\s+(\d[\d,]*)\s+shares\s+of the issuer[’']?s Class A common stock.*?outstanding.*?(?:and|,)\s+(\d[\d,]*)\s+shares\s+of the issuer[’']?s Class B common stock.*?outstanding",
+                clean,
+                re.I,
+            )
+            if cover:
+                values = [int(cover.group(1).replace(",", "")), int(cover.group(2).replace(",", ""))]
+        if not values:
+            generic = re.search(r"there were\s+(\d[\d,]*)\s+shares.*?outstanding", clean, re.I)
+            if generic:
+                values = [int(generic.group(1).replace(",", ""))]
+        if not values:
+            return None
+        unique_values = list(dict.fromkeys(values))
+        return {"value": sum(unique_values), "tag": "filing-cover-common-shares", "namespace": "filing", "basis": "filing-cover-sum-of-common-classes", "class_count": len(unique_values), "date_basis": "cover-date"}
 
-    if fiscal_end:
-        try:
-            dt = date.fromisoformat(fiscal_end)
-            months = {1:"January",2:"February",3:"March",4:"April",5:"May",6:"June",7:"July",8:"August",9:"September",10:"October",11:"November",12:"December"}
-            date_phrase = rf"{months[dt.month]}\s+{dt.day},\s+{dt.year}"
-        except ValueError:
-            date_phrase = re.escape(fiscal_end)
-        values = _share_numbers(clean, date_phrase)
-        if values:
-            return {"value": sum(values), "tag": "filing-fiscal-end-common-shares", "namespace": "filing", "basis": "filing-fiscal-end-sum-of-common-classes", "class_count": len(values), "fiscal_end": fiscal_end, "date_basis": "fiscal-end"}
-    return None
+    if not fiscal_end:
+        return None
+    date_phrase = _month_date_phrase(fiscal_end)
+    if not date_phrase:
+        return None
+    values = []
+    for class_name in ("Class A", "Class B", "Class C"):
+        value = _class_outstanding_value(clean, class_name, date_phrase)
+        if value is not None:
+            values.append(value)
+    if not values:
+        return None
+    unique_values = list(dict.fromkeys(values))
+    return {"value": sum(unique_values), "tag": "filing-fiscal-end-common-shares", "namespace": "filing", "basis": "filing-fiscal-end-sum-of-common-classes", "class_count": len(unique_values), "fiscal_end": fiscal_end, "date_basis": "fiscal-end"}
 
 
 def _market_field(market_data, *keys):
@@ -196,6 +247,7 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None, filing_
     if period_shares_row is None and filing_shares is not None:
         period_shares_row = filing_shares
         period_shares_basis = "filing-fiscal-end-fallback"
+
     price = _market_field(market_data, "price", "current_price", "regularMarketPrice")
     current_shares = _market_field(market_data, "current_shares", "shares_outstanding")
     current_shares_basis = "market-data" if current_shares is not None else None
