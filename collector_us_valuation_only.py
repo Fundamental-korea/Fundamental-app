@@ -8,8 +8,10 @@ already contain a valuation block, unless --refresh is requested.
 from __future__ import annotations
 
 import argparse
+import re
 import time
 from datetime import datetime, timezone
+from html import unescape
 
 import requests
 from supabase import create_client
@@ -99,6 +101,59 @@ def _load_standard_rows(sb, tickers=None, refresh=False):
     return rows
 
 
+def _normalized_filing_text(text):
+    clean = unescape(text or "")
+    clean = re.sub(r"<[^>]+>", " ", clean)
+    clean = clean.replace("\xa0", " ")
+    clean = re.sub(r"[\u2012\u2013\u2014\u2212]", "-", clean)
+    return re.sub(r"\s+", " ", clean).strip()
+
+
+def parse_reported_eps_from_filing(text):
+    """Extract a directly reported annual EPS from SEC filing text.
+
+    This is only a fallback when Company Facts does not expose the standard
+    EarningsPerShareDiluted/Basic tag. No EPS is reconstructed from net income
+    or shares.
+    """
+    clean = _normalized_filing_text(text)
+    if not clean:
+        return None
+
+    patterns = [
+        re.compile(
+            r"Earnings\s*(?:\(loss\)\s*)?per\s+common\s+share\s*-\s*assuming\s+dilution"
+            r"(?:\s*\(dollars\))?\s*(-?\d[\d,]*(?:\.\d+)?)",
+            re.I,
+        ),
+        re.compile(
+            r"Earnings\s*(?:\(loss\)\s*)?per\s+common\s+share"
+            r"(?:\s*\(dollars\))?\s*(-?\d[\d,]*(?:\.\d+)?)",
+            re.I,
+        ),
+        re.compile(
+            r"Diluted\s+earnings\s+per\s+share(?:\s*\(dollars\))?\s*(-?\d[\d,]*(?:\.\d+)?)",
+            re.I,
+        ),
+    ]
+
+    for pattern in patterns:
+        match = pattern.search(clean)
+        if match:
+            try:
+                value = float(match.group(1).replace(",", ""))
+            except ValueError:
+                continue
+            if value == value and abs(value) < 1_000_000:
+                return {
+                    "value": value,
+                    "tag": "filing:reported-eps",
+                    "namespace": "filing",
+                    "basis": "directly-reported-filing-eps",
+                }
+    return None
+
+
 def collect_valuation_one(session, row):
     ticker = row["ticker"]
     cik = row["cik"]
@@ -113,6 +168,7 @@ def collect_valuation_one(session, row):
     filing = find_latest_filing(submissions, fiscal_end)
     period_filing_shares = None
     current_filing_shares = None
+    primary_text = None
 
     if filing:
         primary_text = filing_text(session, cik, filing)
@@ -147,6 +203,19 @@ def collect_valuation_one(session, row):
         filing_shares=period_filing_shares,
         current_filing_shares=current_filing_shares,
     )
+
+    # Company Facts occasionally omits the standard EPS fact even though the
+    # filing visibly reports it. Use the filing's reported annual EPS directly.
+    if valuation.get("eps") is None and primary_text:
+        filing_eps = parse_reported_eps_from_filing(primary_text)
+        if filing_eps is not None:
+            valuation["eps"] = filing_eps["value"]
+            valuation["eps_source"] = filing_eps["tag"]
+            valuation["eps_basis"] = filing_eps["basis"]
+            price = valuation.get("price")
+            eps = filing_eps["value"]
+            valuation["per"] = price / eps if price is not None and eps and eps > 0 else None
+            valuation["per_basis"] = "current-price/directly-reported-filing-eps" if valuation.get("per") is not None else None
 
     if filing:
         valuation["filing_form"] = filing["form"]
