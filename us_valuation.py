@@ -59,21 +59,172 @@ def _latest_full_year(rows):
     candidates = [r for r in rows if r.get("start") and r.get("days") is not None and 300 <= r["days"] <= 380]
     if not candidates:
         return None
+    fy_candidates = [r for r in candidates if (r.get("fp") or "").upper() == "FY"]
+    if fy_candidates:
+        candidates = fy_candidates
     candidates.sort(key=lambda r: (r["end"], r["filed"], r["namespace"] == "us-gaap", -r["priority"]), reverse=True)
     return candidates[0]
 
 
+def _all_eps_fact_rows(companyfacts):
+    """Find numeric EPS facts across all SEC namespaces/tags.
+
+    Company Facts normally exposes us-gaap EarningsPerShareDiluted/Basic, but
+    some issuers use a different taxonomy/tag for an otherwise directly
+    reported EPS. Search the fact metadata (tag/label) without reconstructing
+    EPS from net income or shares.
+    """
+    root = companyfacts.get("facts") or {}
+    rows = []
+    annual_forms = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+
+    for namespace, facts in root.items():
+        if not isinstance(facts, dict):
+            continue
+        for tag, fact in facts.items():
+            if not isinstance(fact, dict):
+                continue
+
+            label = str(fact.get("label") or "")
+            description = str(fact.get("description") or "")
+            tag_lower = tag.lower()
+            haystack = f"{tag} {label} {description}".lower().replace("_", " ")
+            label_normalized = re.sub(r"[^a-z0-9]+", " ", label.lower()).strip()
+
+            is_eps = (
+                "earningspershare" in tag_lower
+                or (
+                    "earnings" in label_normalized
+                    and "per" in label_normalized
+                    and "share" in label_normalized
+                    and ("common" in label_normalized or "diluted" in label_normalized or "basic" in label_normalized)
+                )
+                or "earnings per share" in haystack
+                or "earnings per common share" in haystack
+            )
+            if not is_eps:
+                continue
+
+            # Ignore text/abstract facts even if their labels mention EPS.
+            if "abstract" in tag_lower or "textblock" in tag_lower:
+                continue
+
+            for unit, unit_rows in (fact.get("units") or {}).items():
+                if not isinstance(unit_rows, list):
+                    continue
+                for row in unit_rows:
+                    form = row.get("form")
+                    end = row.get("end")
+                    if form not in SEC_FORMS or not end:
+                        continue
+                    value = _clean(row.get("val"))
+                    if value is None:
+                        continue
+
+                    days = None
+                    if row.get("start"):
+                        try:
+                            days = (date.fromisoformat(end) - date.fromisoformat(row["start"])).days
+                        except ValueError:
+                            pass
+
+                    diluted_rank = 0 if "diluted" in tag_lower or "assumingdilution" in tag_lower else 1 if "basic" in tag_lower else 2
+                    annual_rank = 0 if form in annual_forms else 1
+                    fy_rank = 0 if (row.get("fp") or "").upper() == "FY" else 1
+                    duration_rank = 0 if days is not None and 300 <= days <= 380 else 1
+
+                    rows.append({
+                        "namespace": namespace,
+                        "tag": tag,
+                        "priority": diluted_rank,
+                        "unit": unit,
+                        "value": value,
+                        "start": row.get("start"),
+                        "end": end,
+                        "filed": row.get("filed") or "",
+                        "fy": row.get("fy"),
+                        "fp": row.get("fp"),
+                        "frame": row.get("frame"),
+                        "days": days,
+                        "_annual_rank": annual_rank,
+                        "_fy_rank": fy_rank,
+                        "_duration_rank": duration_rank,
+                        "_label": label,
+                    })
+
+    return rows
+
+
+def _best_reported_annual_eps(rows):
+    if not rows:
+        return None
+
+    annual = [
+        r for r in rows
+        if (
+            r.get("_fy_rank") == 0
+            and r.get("_duration_rank") == 0
+        )
+    ]
+
+    if not annual:
+        annual = [
+            r for r in rows
+            if (
+                r.get("_duration_rank") == 0
+                and r.get("_annual_rank") == 0
+            )
+        ]
+
+    if not annual:
+        annual = [
+            r for r in rows
+            if r.get("_annual_rank") == 0 and (r.get("fy") is not None or r.get("start"))
+        ]
+
+    if not annual:
+        return None
+
+    annual.sort(
+        key=lambda r: (
+            r.get("end", ""),
+            r.get("filed", ""),
+            -r.get("priority", 2),
+            r.get("_label", ""),
+        ),
+        reverse=True,
+    )
+    return annual[0]
+
+
 def _reported_eps(companyfacts):
-    tags = {"us-gaap": ["EarningsPerShareDiluted", "EarningsPerShareBasic"], "ifrs-full": ["EarningsPerShareDiluted", "EarningsPerShareBasic"]}
-    rows = _fact_rows(companyfacts, tags)
+    exact_tags = {
+        "us-gaap": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
+        "ifrs-full": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
+    }
+    rows = _fact_rows(companyfacts, exact_tags)
+
     diluted = [r for r in rows if r["tag"] == "EarningsPerShareDiluted"]
     basic = [r for r in rows if r["tag"] == "EarningsPerShareBasic"]
+
     row = _latest_full_year(diluted)
     basis = "reported-diluted" if row else None
     if row is None:
         row = _latest_full_year(basic)
         basis = "reported-basic" if row else None
-    return row, basis
+    if row is not None:
+        return row, basis
+
+    # Generic Company Facts fallback: search all namespaces/tags whose fact
+    # metadata identifies the item as earnings-per-share, while still requiring
+    # annual evidence. This handles issuers whose EPS taxonomy/tag differs from
+    # the canonical us-gaap tags.
+    generic = _best_reported_annual_eps(_all_eps_fact_rows(companyfacts))
+    if generic is None:
+        return None, None
+
+    is_diluted = "diluted" in (generic.get("tag") or "").lower() or "assumingdilution" in (generic.get("tag") or "").lower()
+    return generic, "reported-diluted-fallback" if is_diluted else "reported-basic-fallback"
 
 
 def _equity_and_nci(companyfacts, fiscal_end):
