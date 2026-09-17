@@ -8,6 +8,7 @@ already contain a valuation block, unless --refresh is requested.
 from __future__ import annotations
 
 import argparse
+import math
 import re
 import time
 from datetime import datetime, timezone
