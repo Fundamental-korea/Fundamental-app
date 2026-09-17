@@ -24,6 +24,7 @@ from collector_us_fundamental import (
     load_company,
 )
 from downturn_us import BENCHMARK, _close_series
+from sec_filing_utils import filing_text_resilient, find_filing_with_history
 from us_valuation import build_valuation_snapshot, normalize_market_quote, parse_common_shares_from_filing
 
 
@@ -85,47 +86,8 @@ def find_latest_filing(submissions, fiscal_end):
 
 
 def filing_text(session, cik, filing, filename=None):
-    """Fetch a filing document from the SEC archive with throttling retries.
-
-    SEC archive requests can intermittently return 403/429/5xx during bursty
-    collection even when the filing exists. Retry those transient responses
-    with backoff instead of silently converting the filing into missing data.
-    """
-    if not filing:
-        return None
-
-    cik_int = str(int(str(cik)))
-    accession = filing["accession"].replace("-", "")
-    name = filename or filing["document"]
-    url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accession}/{name}"
-
-    transient_statuses = {403, 429, 500, 502, 503, 504}
-    request_headers = {
-        "User-Agent": SEC_USER_AGENT,
-        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        "Accept-Language": "en-US,en;q=0.8",
-        "Connection": "close",
-    }
-
-    for attempt in range(4):
-        try:
-            response = session.get(url, headers=request_headers, timeout=45)
-            if response.status_code == 200:
-                text = response.text
-                if text:
-                    return text
-                return None
-            if response.status_code in transient_statuses:
-                delay = 1.0 * (attempt + 1)
-                time.sleep(delay)
-                continue
-            response.raise_for_status()
-        except Exception:
-            if attempt >= 3:
-                return None
-            time.sleep(1.0 * (attempt + 1))
-
-    return None
+    """Backward-compatible SEC filing fetch using resilient archive resolution."""
+    return filing_text_resilient(session, cik, filing, filename=filename)
 
 
 def _normalized_filing_text(text):
@@ -222,17 +184,23 @@ def collect_one(sb, session, row, market=None):
     if snapshot and snapshot.get("fiscal_end"):
         quote = load_market_quote(ticker)
         fiscal_end = snapshot["fiscal_end"]
-        filing = find_latest_filing(submissions, fiscal_end)
+        filing = find_filing_with_history(
+            session,
+            cik,
+            submissions,
+            fiscal_end,
+            find_latest_filing,
+        )
 
         # Period-end shares come from the balance-sheet portion of the
         # primary filing. This is deliberately separate from cover-page shares.
-        primary_text = filing_text(session, cik, filing)
+        primary_text = filing_text_resilient(session, cik, filing)
         period_filing_shares = parse_fiscal_end_common_shares(primary_text, fiscal_end) if primary_text else None
         if period_filing_shares is None and primary_text:
             period_filing_shares = parse_common_shares_from_filing(primary_text, fiscal_end, for_current=False)
 
         # Current shares come from filing-level cover-page XBRL (usually R1.htm).
-        cover_text = filing_text(session, cik, filing, filename="R1.htm")
+        cover_text = filing_text_resilient(session, cik, filing, filename="R1.htm")
         current_filing_shares = parse_common_shares_from_filing(
             cover_text,
             fiscal_end,
@@ -274,6 +242,7 @@ def collect_one(sb, session, row, market=None):
             valuation["filing_accession"] = filing["accession"]
             valuation["filing_document"] = filing["document"]
             valuation["filing_date"] = filing.get("filing_date")
+            valuation["filing_source_cik"] = filing.get("source_cik")
         valuation["period_filing_shares_found"] = period_filing_shares is not None
         valuation["current_filing_shares_found"] = current_filing_shares is not None
         snapshot["market"] = quote
@@ -297,7 +266,6 @@ def main():
     tickers = [args.ticker.upper().strip()] if args.ticker else ([x.upper().strip() for x in args.tickers.split(",") if x.strip()] if args.tickers else None)
     rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=(args.all_rows or bool(tickers)))
 
-    import requests
     session = requests.Session()
     session.headers.update({"User-Agent": SEC_USER_AGENT})
 
