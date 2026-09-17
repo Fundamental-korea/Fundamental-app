@@ -8,7 +8,6 @@ SEC-safe valuation metrics.
 from __future__ import annotations
 
 import argparse
-import os
 
 import yfinance as yf
 from supabase import create_client
@@ -74,13 +73,14 @@ def main():
     parser.add_argument("--ticker")
     parser.add_argument("--tickers")
     parser.add_argument("--limit", type=int, default=5)
+    parser.add_argument("--all", action="store_true", dest="all_rows")
     args = parser.parse_args()
     if not SUPABASE_KEY:
         raise RuntimeError("SUPABASE_SECRET_KEY or SUPABASE_KEY is required")
 
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
     tickers = [args.ticker.upper().strip()] if args.ticker else ([x.upper().strip() for x in args.tickers.split(",") if x.strip()] if args.tickers else None)
-    rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=bool(tickers))
+    rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=(args.all or bool(tickers)))
 
     import requests
     session = requests.Session()
