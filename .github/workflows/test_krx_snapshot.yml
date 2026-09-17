@@ -1,7 +1,7 @@
 name: Test KRX Market Snapshot
 
 on:
-  workflow_dispatch:
+  push:
 
 jobs:
   test-krx:
