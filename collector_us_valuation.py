@@ -12,6 +12,7 @@ import re
 import time
 from html import unescape
 
+import requests
 import yfinance as yf
 from supabase import create_client
 
