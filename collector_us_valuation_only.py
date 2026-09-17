@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from html import unescape
 
 import requests
+from bs4 import BeautifulSoup
 from supabase import create_client
 
 from collector_us_fundamental import SEC_USER_AGENT, SUPABASE_KEY, SUPABASE_URL, load_company
@@ -102,28 +103,45 @@ def _load_standard_rows(sb, tickers=None, refresh=False):
     return rows
 
 
-def _normalized_filing_cells(text):
-    """Normalize SEC HTML while preserving table-cell boundaries."""
+def _collapse_space(value):
+    return re.sub(r"\s+", " ", unescape(value or "")).strip()
+
+
+def _normalized_filing_text(text):
+    """Normalize SEC filing text while preserving ordinary wording."""
     clean = unescape(text or "")
-    if not clean:
-        return []
-    clean = re.sub(
-        r"</?(?:td|th|tr|p|div|li|br)[^>]*>",
-        " | ",
-        clean,
-        flags=re.I,
-    )
     clean = re.sub(r"<[^>]+>", " ", clean)
     clean = clean.replace("\xa0", " ")
     clean = re.sub(r"[\u2012\u2013\u2014\u2212]", "-", clean)
-    clean = re.sub(r"\s+", " ", clean)
-    cells = [part.strip() for part in clean.split("|") if part.strip()]
-    return cells
+    return re.sub(r"\s+", " ", clean).strip()
+
+
+def _normalized_filing_rows(text):
+    """Read SEC HTML table rows without destroying row/cell boundaries."""
+    clean = text or ""
+    if not clean:
+        return []
+
+    soup = BeautifulSoup(clean, "html.parser")
+    rows = []
+    for tr in soup.find_all("tr"):
+        cells = tr.find_all(["th", "td"])
+        if not cells:
+            continue
+        values = []
+        for cell in cells:
+            value = _collapse_space(cell.get_text(" ", strip=True))
+            if value:
+                value = re.sub(r"[\u2012\u2013\u2014\u2212]", "-", value)
+                values.append(value)
+        if values:
+            rows.append(values)
+    return rows
 
 
 def _parse_reported_number(token):
     """Parse a single SEC-rendered numeric token, including parentheses negatives."""
-    token = token.strip()
+    token = _collapse_space(token)
     if not token or token in {"-", "—", "–", "N/A", "NA"}:
         return None
     negative = token.startswith("(") and token.endswith(")")
@@ -142,40 +160,45 @@ def _parse_reported_number(token):
     return value
 
 
-def _extract_eps_from_following_cells(cells, start_index, lookahead=12):
-    """Extract the first plausible reported EPS value after an EPS row label.
+def _eps_label_matches(cell):
+    """Return True when one table cell is a reported EPS row label."""
+    label = _collapse_space(cell)
+    label = re.sub(r"\s+\(?\d{1,2}\)?$", "", label)
+    label = label.lower()
 
-    SEC filing tables frequently place a footnote marker in one cell and the
-    actual first-year EPS in the next cell. Prefer decimal/parenthesized/
-    currency-formatted values before falling back to a plain numeric value.
-    """
-    values = []
-    for cell in cells[start_index + 1 : start_index + 1 + lookahead]:
-        cell = cell.strip()
-        if not cell:
-            continue
-        # Normal SEC tables may render a single cell with more than one token.
-        for token in re.findall(
+    if "earnings" not in label or "per" not in label or "share" not in label:
+        return False
+
+    if "per common share" in label:
+        return True
+    if "earnings per share" in label and ("diluted" in label or "basic" in label):
+        return True
+    return False
+
+
+def _extract_eps_from_row(cells, label_index):
+    """Extract the reported EPS value from the same SEC table row."""
+    candidates = []
+
+    for cell in cells[label_index + 1 :]:
+        tokens = re.findall(
             r"(?:\(-?\$?\d[\d,]*(?:\.\d+)?\)|-?\$?\d[\d,]*(?:\.\d+)?)",
             cell,
-        ):
+        )
+        for token in tokens:
             value = _parse_reported_number(token)
-            if value is not None and abs(value) < 1_000_000:
-                values.append((token, value))
+            if value is None or abs(value) >= 1_000_000:
+                continue
+            candidates.append((token, value))
 
-    if not values:
+    if not candidates:
         return None
 
-    # Footnote/reference cells are commonly simple integers such as "2".
-    # A reported EPS almost always carries decimal precision or currency/
-    # parenthesis formatting. Prefer those tokens when available.
-    for token, value in values:
+    for token, value in candidates:
         if "." in token or "$" in token or token.startswith("("):
             return value
 
-    # Integer EPS is valid; use the first numeric value only when no formatted
-    # EPS candidate exists.
-    return values[0][1]
+    return candidates[0][1]
 
 
 def parse_reported_eps_from_filing(text):
@@ -183,41 +206,31 @@ def parse_reported_eps_from_filing(text):
 
     This is only a fallback when Company Facts does not expose the standard
     EarningsPerShareDiluted/Basic tag. No EPS is reconstructed from net income
-    or shares. The parser is table-aware so footnote cells do not get confused
-    with the first fiscal-year EPS value.
+    or shares. The parser reads actual HTML table rows so footnote cells,
+    year headers, and unrelated nearby numbers do not corrupt the EPS value.
     """
-    cells = _normalized_filing_cells(text)
-    if not cells:
+    rows = _normalized_filing_rows(text)
+    if not rows:
         return None
 
-    label_patterns = [
-        re.compile(
-            r"^earnings\s*(?:\(loss\)\s*)?per\s+common\s+share\s*"
-            r"[-–—]\s*assuming\s+dilution(?:\s*\(dollars\))?$",
-            re.I,
-        ),
-        re.compile(
-            r"^diluted\s+earnings\s+per\s+(?:common\s+)?share(?:\s*\(dollars\))?$",
-            re.I,
-        ),
-        re.compile(
-            r"^earnings\s*(?:\(loss\)\s*)?per\s+common\s+share(?:\s*\(dollars\))?$",
-            re.I,
-        ),
-    ]
+    priority_checks = (
+        lambda cell: _eps_label_matches(cell) and "dilut" in cell.lower(),
+        lambda cell: _eps_label_matches(cell) and "basic" in cell.lower(),
+        _eps_label_matches,
+    )
 
-    # Prefer the explicitly diluted row, then generic/diluted variants.
-    for pattern in label_patterns:
-        for index, cell in enumerate(cells):
-            if pattern.search(cell.strip()):
-                value = _extract_eps_from_following_cells(cells, index)
-                if value is not None:
-                    return {
-                        "value": value,
-                        "tag": "filing:reported-eps",
-                        "namespace": "filing",
-                        "basis": "directly-reported-annual-sec-filing-eps",
-                    }
+    for check in priority_checks:
+        for row in rows:
+            for index, cell in enumerate(row):
+                if check(cell):
+                    value = _extract_eps_from_row(row, index)
+                    if value is not None:
+                        return {
+                            "value": value,
+                            "tag": "filing:reported-eps",
+                            "namespace": "filing",
+                            "basis": "directly-reported-annual-sec-filing-eps",
+                        }
     return None
 
 
@@ -285,7 +298,6 @@ def collect_valuation_one(session, row):
                 for_current=True,
             )
 
-        # Filing-level XBRL cover report is the preferred current-share fallback.
         cover_text = filing_text(session, cik, filing, filename="R1.htm")
         if cover_text:
             current_filing_shares = parse_common_shares_from_filing(
