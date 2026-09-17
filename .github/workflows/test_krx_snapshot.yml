@@ -31,3 +31,11 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
         run: python test_krx_db_update.py
+
+      - name: DART + KRX financial 3-stock test
+        env:
+          KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+        run: python test_krx_financial_3stock.py
