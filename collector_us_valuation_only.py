@@ -11,6 +11,7 @@ import argparse
 import math
 import re
 import time
+import xml.etree.ElementTree as ET
 from datetime import datetime, timezone
 from html import unescape
 
@@ -37,6 +38,9 @@ STANDARD_SECTORS = (
     "materials",
     "communication",
 )
+
+
+EPS_ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
 
 def _load_paged(sb, table, columns, filters=None, page_size=1000):
@@ -107,38 +111,6 @@ def _collapse_space(value):
     return re.sub(r"\s+", " ", unescape(value or "")).strip()
 
 
-def _normalized_filing_text(text):
-    """Normalize SEC filing text while preserving ordinary wording."""
-    clean = unescape(text or "")
-    clean = re.sub(r"<[^>]+>", " ", clean)
-    clean = clean.replace("\xa0", " ")
-    clean = re.sub(r"[\u2012\u2013\u2014\u2212]", "-", clean)
-    return re.sub(r"\s+", " ", clean).strip()
-
-
-def _normalized_filing_rows(text):
-    """Read SEC HTML table rows without destroying row/cell boundaries."""
-    clean = text or ""
-    if not clean:
-        return []
-
-    soup = BeautifulSoup(clean, "html.parser")
-    rows = []
-    for tr in soup.find_all("tr"):
-        cells = tr.find_all(["th", "td"])
-        if not cells:
-            continue
-        values = []
-        for cell in cells:
-            value = _collapse_space(cell.get_text(" ", strip=True))
-            if value:
-                value = re.sub(r"[\u2012\u2013\u2014\u2212]", "-", value)
-                values.append(value)
-        if values:
-            rows.append(values)
-    return rows
-
-
 def _parse_reported_number(token):
     """Parse a single SEC-rendered numeric token, including parentheses negatives."""
     token = _collapse_space(token)
@@ -155,83 +127,139 @@ def _parse_reported_number(token):
         return None
     if negative:
         value = -abs(value)
-    if not math.isfinite(value):
+    return value if math.isfinite(value) else None
+
+
+def _xml_local_name(tag):
+    return str(tag or "").rsplit("}", 1)[-1].lower()
+
+
+def find_eps_report_document(session, cik, annual_filing):
+    """Find the SEC XBRL report file dedicated to annual earnings per share."""
+    if not annual_filing:
         return None
-    return value
+
+    summary_text = filing_text(session, cik, annual_filing, filename="FilingSummary.xml")
+    if not summary_text:
+        return None
+
+    try:
+        root = ET.fromstring(summary_text)
+    except ET.ParseError:
+        return None
+
+    matches = []
+    for report in root.iter():
+        if _xml_local_name(report.tag) != "report":
+            continue
+
+        values = {}
+        for child in list(report):
+            values[_xml_local_name(child.tag)] = _collapse_space(child.text)
+
+        short_name = (values.get("shortname") or "").lower()
+        long_name = (values.get("longname") or "").lower()
+        menu_category = (values.get("menucategory") or "").lower()
+        html_file = values.get("htmlfilename") or values.get("htmlfile")
+
+        if not html_file:
+            continue
+
+        searchable = f"{short_name} {long_name} {menu_category}"
+        if "earnings per share" not in searchable and "earnings" not in searchable:
+            continue
+        if "per share" not in searchable and "eps" not in searchable:
+            continue
+
+        matches.append((
+            0 if short_name == "earnings per share" else 1,
+            0 if "earnings per share" in searchable else 1,
+            html_file,
+        ))
+
+    if not matches:
+        return None
+
+    matches.sort(key=lambda item: (item[0], item[1], item[2]))
+    return matches[0][2]
 
 
-def _eps_label_matches(cell):
-    """Return True when one table cell is a reported EPS row label."""
-    label = _collapse_space(cell)
-    label = re.sub(r"\s+\(?\d{1,2}\)?$", "", label)
-    label = label.lower()
+def _normalized_report_rows(text):
+    """Read rows from a small SEC XBRL report such as R12.htm."""
+    if not text:
+        return []
+    soup = BeautifulSoup(text, "html.parser")
+    rows = []
+    for tr in soup.find_all("tr"):
+        cells = tr.find_all(["th", "td"])
+        if not cells:
+            continue
+        values = [_collapse_space(cell.get_text(" ", strip=True)) for cell in cells]
+        values = [value for value in values if value]
+        if values:
+            rows.append(values)
+    return rows
 
-    if "earnings" not in label or "per" not in label or "share" not in label:
-        return False
 
-    if "per common share" in label:
-        return True
-    if "earnings per share" in label and ("diluted" in label or "basic" in label):
-        return True
-    return False
+def _eps_row_label_kind(label):
+    """Rank an EPS report row label; diluted/common-share rows come first."""
+    text = _collapse_space(label).lower()
+    if "earnings" not in text or "share" not in text:
+        return None
+    if "per common share" in text and "assuming dilution" in text:
+        return 0
+    if "per common share" in text and "diluted" in text:
+        return 0
+    if "per share" in text and "diluted" in text:
+        return 0
+    if "per common share" in text:
+        return 1
+    if "per share" in text and "basic" in text:
+        return 2
+    if "per share" in text:
+        return 3
+    return None
 
 
-def _extract_eps_from_row(cells, label_index):
-    """Extract the reported EPS value from the same SEC table row."""
+def parse_reported_eps_from_report(text):
+    """Extract directly reported annual EPS from the SEC's dedicated XBRL report."""
+    rows = _normalized_report_rows(text)
+    if not rows:
+        return None
+
     candidates = []
-
-    for cell in cells[label_index + 1 :]:
-        tokens = re.findall(
-            r"(?:\(-?\$?\d[\d,]*(?:\.\d+)?\)|-?\$?\d[\d,]*(?:\.\d+)?)",
-            cell,
-        )
-        for token in tokens:
-            value = _parse_reported_number(token)
-            if value is None or abs(value) >= 1_000_000:
+    for row in rows:
+        for index, cell in enumerate(row):
+            kind = _eps_row_label_kind(cell)
+            if kind is None:
                 continue
-            candidates.append((token, value))
+
+            values = []
+            for later_cell in row[index + 1 :]:
+                for token in re.findall(
+                    r"(?:\(-?\$?\d[\d,]*(?:\.\d+)?\)|-?\$?\d[\d,]*(?:\.\d+)?)",
+                    later_cell,
+                ):
+                    value = _parse_reported_number(token)
+                    if value is not None and abs(value) < 1_000_000:
+                        values.append(value)
+
+            if values:
+                candidates.append((kind, values[0], cell))
 
     if not candidates:
         return None
 
-    for token, value in candidates:
-        if "." in token or "$" in token or token.startswith("("):
-            return value
-
-    return candidates[0][1]
-
-
-def parse_reported_eps_from_filing(text):
-    """Extract directly reported annual EPS from an annual SEC filing.
-
-    This is only a fallback when Company Facts does not expose the standard
-    EarningsPerShareDiluted/Basic tag. No EPS is reconstructed from net income
-    or shares. The parser reads actual HTML table rows so footnote cells,
-    year headers, and unrelated nearby numbers do not corrupt the EPS value.
-    """
-    rows = _normalized_filing_rows(text)
-    if not rows:
-        return None
-
-    priority_checks = (
-        lambda cell: _eps_label_matches(cell) and "dilut" in cell.lower(),
-        lambda cell: _eps_label_matches(cell) and "basic" in cell.lower(),
-        _eps_label_matches,
-    )
-
-    for check in priority_checks:
-        for row in rows:
-            for index, cell in enumerate(row):
-                if check(cell):
-                    value = _extract_eps_from_row(row, index)
-                    if value is not None:
-                        return {
-                            "value": value,
-                            "tag": "filing:reported-eps",
-                            "namespace": "filing",
-                            "basis": "directly-reported-annual-sec-filing-eps",
-                        }
-    return None
+    candidates.sort(key=lambda item: item[0])
+    kind, value, label = candidates[0]
+    basis = "directly-reported-annual-sec-xbrl-eps"
+    return {
+        "value": value,
+        "tag": "filing:xbrl-reported-eps",
+        "namespace": "filing",
+        "basis": basis,
+        "report_label": label,
+    }
 
 
 def find_latest_annual_filing(submissions):
@@ -245,7 +273,7 @@ def find_latest_annual_filing(submissions):
     best = None
 
     for idx, form in enumerate(forms):
-        if form not in {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}:
+        if form not in EPS_ANNUAL_FORMS:
             continue
         accession = accessions[idx] if idx < len(accessions) else None
         document = documents[idx] if idx < len(documents) else None
@@ -291,7 +319,6 @@ def collect_valuation_one(session, row):
                     fiscal_end,
                     for_current=False,
                 )
-
             current_filing_shares = parse_common_shares_from_filing(
                 primary_text,
                 fiscal_end,
@@ -314,22 +341,29 @@ def collect_valuation_one(session, row):
         current_filing_shares=current_filing_shares,
     )
 
-    # Company Facts occasionally omits the standard EPS fact even though the
-    # annual filing visibly reports it. Always use the latest annual filing,
-    # not the latest quarter filing, for PER's annual EPS fallback.
+    # Company Facts is the first source for annual EPS. Some issuers do not
+    # expose the annual EPS observation there in a usable form, so fall back to
+    # the SEC's dedicated XBRL EPS report discovered through FilingSummary.xml.
     if valuation.get("eps") is None:
         annual_filing = find_latest_annual_filing(submissions)
-        annual_text = filing_text(session, cik, annual_filing) if annual_filing else None
-        filing_eps = parse_reported_eps_from_filing(annual_text) if annual_text else None
-        if filing_eps is not None:
-            valuation["eps"] = filing_eps["value"]
-            valuation["eps_source"] = filing_eps["tag"]
-            valuation["eps_basis"] = filing_eps["basis"]
-            price = valuation.get("price")
-            eps = filing_eps["value"]
-            valuation["per"] = price / eps if price is not None and eps and eps > 0 else None
-            valuation["per_basis"] = "current-price/directly-reported-annual-sec-filing-eps" if valuation.get("per") is not None else None
-            if annual_filing:
+        if annual_filing:
+            report_document = find_eps_report_document(session, cik, annual_filing)
+            report_text = filing_text(session, cik, annual_filing, filename=report_document) if report_document else None
+            filing_eps = parse_reported_eps_from_report(report_text) if report_text else None
+            if filing_eps is not None:
+                valuation["eps"] = filing_eps["value"]
+                valuation["eps_source"] = filing_eps["tag"]
+                valuation["eps_basis"] = filing_eps["basis"]
+                valuation["eps_report_document"] = report_document
+                valuation["eps_report_label"] = filing_eps.get("report_label")
+                price = valuation.get("price")
+                eps = filing_eps["value"]
+                valuation["per"] = price / eps if price is not None and eps > 0 else None
+                valuation["per_basis"] = (
+                    "current-price/directly-reported-annual-sec-xbrl-eps"
+                    if valuation.get("per") is not None
+                    else None
+                )
                 valuation["eps_filing_form"] = annual_filing["form"]
                 valuation["eps_filing_accession"] = annual_filing["accession"]
                 valuation["eps_filing_document"] = annual_filing["document"]
