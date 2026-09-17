@@ -208,6 +208,20 @@ def collect_one(sb, session, row, market=None):
             filing_shares=period_filing_shares,
             current_filing_shares=current_filing_shares,
         )
+
+        # When market data has no current share count, always prefer the SEC
+        # filing cover-page total over Company Facts DEI. Company Facts can
+        # expose only one class for multi-class issuers and understate market cap.
+        if quote.get("current_shares") is None and current_filing_shares is not None:
+            cover_value = current_filing_shares.get("value")
+            if cover_value is not None and cover_value > 0:
+                valuation["current_shares_outstanding"] = cover_value
+                valuation["current_shares_source"] = "filing-cover-fallback"
+                price = valuation.get("price")
+                if price is not None and price > 0:
+                    valuation["market_cap"] = price * cover_value
+                    valuation["market_cap_basis"] = "current-price-times-sec-filing-cover-shares"
+
         if filing:
             valuation["filing_form"] = filing["form"]
             valuation["filing_accession"] = filing["accession"]
