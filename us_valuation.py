@@ -149,7 +149,8 @@ def _share_numbers(text, date_phrase):
         re.compile(rf"Class\s+[A-Z][^\.{{}}]{{0,260}}?Issued\s+and\s+Outstanding\s*[–-]\s*(\d[\d,]*)\s+shares\s+as\s+of\s+{date_phrase}", re.I),
     ]
     for pattern in class_patterns:
-        values.extend(int(m.group(1).replace(",", "")) for m in pattern.finditer(text))
+        for match in pattern.finditer(text):
+            values.append(int(match.group(1).replace(",", "")))
     return list(dict.fromkeys(x for x in values if x > 0))
 
 
@@ -160,9 +161,7 @@ def parse_common_shares_from_filing(text, fiscal_end=None, for_current=False):
     clean = re.sub(r"\s+", " ", text)
 
     if for_current:
-        # SEC cover-page wording is explicit and represents the latest reported
-        # outstanding shares, which is appropriate as a fallback for market cap.
-        cover = re.search(r"there were\s+(\d[\d,]*)\s+shares\s+of the issuer’s Class A common stock.*?outstanding\s+and\s+(\d[\d,]*)\s+shares\s+of the issuer’s Class B common stock.*?outstanding", clean, re.I)
+        cover = re.search(r"t?\s*here were\s+(\d[\d,]*)\s+shares\s+of the issuer['’]s Class A common stock.*?outstanding\s+and\s+(\d[\d,]*)\s+shares\s+of the issuer['’]s Class B common stock.*?outstanding", clean, re.I)
         if cover:
             values = [int(cover.group(1).replace(",", "")), int(cover.group(2).replace(",", ""))]
             return {"value": sum(values), "tag": "filing-cover-common-shares", "namespace": "filing", "basis": "filing-cover-sum-of-common-classes", "class_count": len(values), "date_basis": "cover-date"}
@@ -197,7 +196,6 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None, filing_
     if period_shares_row is None and filing_shares is not None:
         period_shares_row = filing_shares
         period_shares_basis = "filing-fiscal-end-fallback"
-
     price = _market_field(market_data, "price", "current_price", "regularMarketPrice")
     current_shares = _market_field(market_data, "current_shares", "shares_outstanding")
     current_shares_basis = "market-data" if current_shares is not None else None
