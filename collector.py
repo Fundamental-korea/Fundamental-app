@@ -787,23 +787,27 @@ def _parse_report_financials(df, df_full=None):
     return {**ratios, "revenue_growth": revenue_growth, "eps_growth": eps_growth, **raw}
 
 
-def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing=True):
+def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing=True, force_refresh=False):
     """특정 (연도, 보고서유형) 시점의 재무 지표를 조회/파싱하는 공통 로직.
     fetch_latest_report_metrics와 fetch_recent_quarters_metrics가 공유해서 씀.
     ⚠️ 경량 지표 캐시(Report_Metrics_Cache) 우선 조회 - 매일 자동갱신 파이프라인이
-    같은 4개 분기 보고서를 매번 새로 DART 조회하던 문제(20분->2~3시간)를 여기서 해결함."""
-    cached = _get_cached_report_metrics(stock_code, year, reprt_code, use_ofs_for_manufacturing)
-    if cached is not None:
-        # ⚠️ 2026-09 버그 수정: fetch_year_data()가 동일한 Report_Metrics_Cache 테이블/키
-        # (stock_code, year, reprt_code="11011", use_ofs)를 공유해서 캐싱하는데, 그쪽 결과엔
-        # _report_year/_report_code가 없음(_parse_year_financials는 이 두 키를 안 넣음).
-        # fetch_recent_quarters_metrics가 이전 분기로 거슬러 올라가다 우연히 그 캐시와
-        # 같은 (year, reprt_code="11011") 조합을 조회하면 이 두 키가 빠진 채로 반환돼서
-        # 나중에 q['_report_year'] 접근에서 KeyError가 났었음. 캐시 히트/미스와 무관하게
-        # 이 함수를 호출한 시점에 이미 알고 있는 (year, reprt_code)로 항상 덮어써서 보장함.
-        cached["_report_year"] = year
-        cached["_report_code"] = reprt_code
-        return cached
+    같은 4개 분기 보고서를 매번 새로 DART 조회하던 문제(20분->2~3시간)를 여기서 해결함.
+    force_refresh=True면 캐시 읽기만 건너뛰고 원문(finstate/finstate_all) 캐시는 그대로
+    재사용해 다시 파싱 - equity_for_bps처럼 파싱 로직이 바뀌었을 때 DART 재호출 없이
+    Report_Metrics_Cache만 새 값으로 갱신하기 위한 1회성 강제 재계산 스위치."""
+    if not force_refresh:
+        cached = _get_cached_report_metrics(stock_code, year, reprt_code, use_ofs_for_manufacturing)
+        if cached is not None:
+            # ⚠️ 2026-09 버그 수정: fetch_year_data()가 동일한 Report_Metrics_Cache 테이블/키
+            # (stock_code, year, reprt_code="11011", use_ofs)를 공유해서 캐싱하는데, 그쪽 결과엔
+            # _report_year/_report_code가 없음(_parse_year_financials는 이 두 키를 안 넣음).
+            # fetch_recent_quarters_metrics가 이전 분기로 거슬러 올라가다 우연히 그 캐시와
+            # 같은 (year, reprt_code="11011") 조합을 조회하면 이 두 키가 빠진 채로 반환돼서
+            # 나중에 q['_report_year'] 접근에서 KeyError가 났었음. 캐시 히트/미스와 무관하게
+            # 이 함수를 호출한 시점에 이미 알고 있는 (year, reprt_code)로 항상 덮어써서 보장함.
+            cached["_report_year"] = year
+            cached["_report_code"] = reprt_code
+            return cached
 
     fin_data = _dart_finstate_cached(stock_code, year, reprt_code)
 
@@ -828,13 +832,13 @@ def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufact
     return result
 
 
-def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True):
+def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True, force_refresh=False):
     """
     1년(단기) 기간 전용: 연간 사업보고서가 아니라 '지금 시점 가장 최신' 분기/반기 보고서 기준으로
     지표와 전년동기 대비 성장률을 계산 (최신성 우선).
     """
     year, reprt_code = get_latest_available_report()
-    return _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing)
+    return _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing, force_refresh=force_refresh)
 
 
 REPORT_CODE_LABEL = {
@@ -1826,12 +1830,17 @@ def sync_all_kor_stocks_b_group(limit=None, sleep_sec=0.1, use_ofs_for_manufactu
 # --------------------------------------------------------------------------
 
 def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
-                  existing_period_scores, kospi_mdd_cache, use_ofs_for_manufacturing=True):
+                  existing_period_scores, kospi_mdd_cache, use_ofs_for_manufacturing=True,
+                  force_refresh=False):
     """
     단일 종목의 1y 지표만 갱신. 3y/5y/10y는 existing_period_scores에서 그대로 유지.
     이미 annual baseline 수집이 끝난 종목 대상 - sector/wics_sector/holding_company는
     이미 저장된 값을 그대로 재사용 (매 분기마다 KRX-DESC/WICS 재조회 안 함 - 그건 연 1회 전체
     재수집 때만 갱신되면 충분한 정보라서).
+    force_refresh=True: DART 재호출 없이(원문 캐시 재사용) Report_Metrics_Cache의 파싱 결과만
+    강제로 다시 계산 - equity_for_bps 도입, issued_shares 저장 누락 수정처럼 "파싱/저장 로직만
+    바뀌고 원문 데이터는 그대로"인 경우, 이미 캐시된 전체 종목에 새 로직을 1회성으로
+    반영하기 위한 경량 재수집 스위치 (평소 매일 자동갱신 땐 기본값 False로 그대로 둘 것).
     """
     try:
         financial_sector = is_financial_sector(sector, wics_sector=wics_sector)
@@ -1840,7 +1849,9 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         # 적용 (분기 자동갱신 경로가 별도로 이 exemption 로직을 갖고 있었어서 따로 고쳐야 했음).
         effective_use_ofs = False
 
-        latest_report = fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=effective_use_ofs)
+        latest_report = fetch_latest_report_metrics(
+            stock_code, use_ofs_for_manufacturing=effective_use_ofs, force_refresh=force_refresh
+        )
         if latest_report is None:
             print(f"  ⚠️ [{stock_name}] 최신 보고서를 가져오지 못해 1y 갱신을 건너뜁니다.")
             return False
@@ -2014,7 +2025,8 @@ def get_1y_update_targets():
     return all_rows
 
 
-def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.05, use_ofs_for_manufacturing=True, max_workers=8):
+def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.05, use_ofs_for_manufacturing=True, max_workers=8,
+                                 force_refresh=False):
     """
     전체 종목의 1y 지표를 일괄 갱신 (분기 자동갱신 파이프라인의 메인 진입점).
     - 종목당 DART 호출 약 2회 -> 전체 약 2,600개 기준 5,000~6,000건 -> 일일 한도(4만) 내 여유
@@ -2024,6 +2036,10 @@ def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.05, use_ofs_for_manufact
       확인만 하고 끝나므로 안전 - 낭비되는 DART 호출은 있지만 데이터가 틀어지진 않음)
     - max_workers: 동시 처리 종목 수. 네트워크 대기시간이 대부분이라 병렬화 효과가 큼.
       DART 쪽에서 429(rate limit) 에러가 늘어나면 이 값을 낮춰서 재시도할 것.
+    - force_refresh=True: issued_shares 저장 누락 수정 + equity_for_bps(BPS 지배지분 우선)
+      도입을 기존에 이미 수집된 전체 종목에 1회성으로 반영할 때만 켜서 실행할 것 (원문 DART
+      캐시는 그대로 재사용하므로 실제 DART 호출은 거의 발생하지 않음 - 신규/캐시미스 종목만
+      예외). 평소 매일 자동갱신(GitHub Actions)에서는 기본값 False로 둘 것.
     """
     kospi_mdd_cache = get_kospi_mdd_cache()
 
@@ -2033,7 +2049,7 @@ def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.05, use_ofs_for_manufact
 
     total = len(targets)
     est_calls = total * 2
-    print(f"📋 1y 갱신 대상 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건, 동시 {max_workers}개 처리)")
+    print(f"📋 1y 갱신 대상 {total}개 (예상 DART 호출 약 {est_calls:,}건 / 일일 한도 40,000건, 동시 {max_workers}개 처리{', force_refresh=True' if force_refresh else ''})")
 
     succeeded, failed = [], []
     completed = 0
@@ -2048,6 +2064,7 @@ def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.05, use_ofs_for_manufact
             existing_period_scores=row.get("period_scores") or {},
             kospi_mdd_cache=kospi_mdd_cache,
             use_ofs_for_manufacturing=use_ofs_for_manufacturing,
+            force_refresh=force_refresh,
         )
         if sleep_sec:
             time.sleep(sleep_sec)
