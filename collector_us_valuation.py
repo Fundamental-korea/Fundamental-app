@@ -27,17 +27,35 @@ from us_valuation import build_valuation_snapshot, normalize_market_quote, parse
 
 
 def load_market_quote(ticker):
-    """Load a scalar market quote plus one-year history for 52-week extremes."""
+    """Load market data with fast_info first and info as a fallback for shares."""
     symbol = yf.Ticker(ticker)
     try:
-        info = dict(symbol.fast_info)
+        fast = dict(symbol.fast_info)
     except Exception:
-        info = {}
+        fast = {}
+
+    # Some issuers (notably certain share classes such as GOOGL) do not expose
+    # sharesOutstanding through fast_info even though the slower info payload
+    # contains it. Only request info when the fast payload is missing shares.
+    merged = dict(fast)
+    has_fast_shares = any(
+        merged.get(key) is not None
+        for key in ("sharesOutstanding", "impliedSharesOutstanding")
+    )
+    if not has_fast_shares:
+        try:
+            slow_info = dict(symbol.info)
+            for key, value in slow_info.items():
+                if value is not None and merged.get(key) is None:
+                    merged[key] = value
+        except Exception:
+            pass
+
     try:
         history = symbol.history(period="1y", auto_adjust=False, actions=False)
     except Exception:
         history = None
-    return normalize_market_quote(info, history)
+    return normalize_market_quote(merged, history)
 
 
 def find_latest_filing(submissions, fiscal_end):
