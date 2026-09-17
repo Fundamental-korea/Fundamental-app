@@ -8,6 +8,8 @@ import time
 from collector_us_fundamental import SEC_SUBMISSIONS_URL, SEC_USER_AGENT, fetch_json
 
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+SEC_ARCHIVE_MIN_INTERVAL = 0.35
+_LAST_ARCHIVE_REQUEST = 0.0
 
 
 def accession_cik(accession):
@@ -79,13 +81,7 @@ def _submission_ciks_from_accessions(submissions, current_cik):
 
 
 def find_filing_with_history(session, current_cik, submissions, fiscal_end, base_find_filing):
-    """Resolve a fiscal-period filing across successor/predecessor submissions.
-
-    The current issuer CIK is tried first. When the requested period is absent,
-    CIKs embedded in recent accessions are queried as historical issuers.
-    Every returned filing carries ``source_cik`` so archive retrieval can use
-    the issuer whose submissions supplied that filing.
-    """
+    """Resolve a fiscal-period filing across successor/predecessor submissions."""
     direct = base_find_filing(submissions, fiscal_end)
     if direct:
         return {**direct, "source_cik": str(current_cik).zfill(10)}
@@ -126,14 +122,30 @@ def find_annual_filing_with_history(session, current_cik, submissions, fiscal_en
     return None
 
 
-def filing_text_resilient(session, cik, filing, filename=None):
-    """Fetch filing text using several valid SEC archive CIK paths.
+def _respect_archive_rate_limit():
+    """Pace SEC archive requests across filing documents."""
+    global _LAST_ARCHIVE_REQUEST
+    now = time.monotonic()
+    wait = SEC_ARCHIVE_MIN_INTERVAL - (now - _LAST_ARCHIVE_REQUEST)
+    if wait > 0:
+        time.sleep(wait)
+    _LAST_ARCHIVE_REQUEST = time.monotonic()
 
-    Prefer the CIK whose submissions supplied the filing, then the current CIK,
-    then the CIK encoded in the accession. This covers successor issuers where
-    current submissions may reference legacy accessions while SEC archive
-    directories can remain registered under the successor CIK.
-    """
+
+def _retry_delay(response, attempt):
+    """Return a bounded retry delay, honoring SEC Retry-After when present."""
+    raw = response.headers.get("Retry-After") if response is not None else None
+    try:
+        retry_after = float(raw)
+    except (TypeError, ValueError):
+        retry_after = None
+    if retry_after is not None and retry_after >= 0:
+        return min(max(retry_after, 1.0), 30.0)
+    return float(attempt + 1)
+
+
+def filing_text_resilient(session, cik, filing, filename=None):
+    """Fetch filing text from the SEC archive using accession-owned CIK first."""
     if not filing:
         return None
 
@@ -143,10 +155,10 @@ def filing_text_resilient(session, cik, filing, filename=None):
     if not accession_path or not name:
         return None
 
-    preferred = str(filing.get("source_cik") or cik).zfill(10)
     accession_owner = accession_cik(accession)
+    preferred = str(filing.get("source_cik") or cik).zfill(10)
     candidates = []
-    for value in (preferred, str(cik).zfill(10), accession_owner):
+    for value in (accession_owner, preferred, str(cik).zfill(10)):
         if value and value not in candidates:
             candidates.append(value)
 
@@ -162,17 +174,18 @@ def filing_text_resilient(session, cik, filing, filename=None):
         archive_cik = str(int(archive_cik))
         url = f"https://www.sec.gov/Archives/edgar/data/{archive_cik}/{accession_path}/{name}"
         for attempt in range(4):
+            _respect_archive_rate_limit()
             try:
                 response = session.get(url, headers=headers, timeout=45)
                 if response.status_code == 200 and response.text:
                     return response.text
                 if response.status_code in transient:
-                    time.sleep(1.0 * (attempt + 1))
+                    time.sleep(_retry_delay(response, attempt))
                     continue
                 break
             except Exception:
                 if attempt >= 3:
                     break
-                time.sleep(1.0 * (attempt + 1))
+                time.sleep(float(attempt + 1))
 
     return None
