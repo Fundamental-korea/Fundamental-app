@@ -80,7 +80,7 @@ def main():
 
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
     tickers = [args.ticker.upper().strip()] if args.ticker else ([x.upper().strip() for x in args.tickers.split(",") if x.strip()] if args.tickers else None)
-    rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=(args.all or bool(tickers)))
+    rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=(args.all_rows or bool(tickers)))
 
     import requests
     session = requests.Session()
