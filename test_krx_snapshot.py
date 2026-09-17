@@ -10,7 +10,7 @@ from kor_market_pipeline import fetch_market_snapshot_map
 TARGETS = {
     "005930": "삼성전자",
     "000660": "SK하이닉스",
-    "108320": "LS에코에너지",
+    "229640": "LS에코에너지",
 }
 
 
