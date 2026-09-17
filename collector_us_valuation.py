@@ -45,6 +45,7 @@ def find_latest_filing(submissions, fiscal_end):
     reports = recent.get("reportDate") or []
     accessions = recent.get("accessionNumber") or []
     documents = recent.get("primaryDocument") or []
+    best = None
     for idx, report_date in enumerate(reports):
         if report_date != fiscal_end:
             continue
@@ -53,17 +54,21 @@ def find_latest_filing(submissions, fiscal_end):
             continue
         accession = accessions[idx] if idx < len(accessions) else None
         document = documents[idx] if idx < len(documents) else None
+        filed = ((recent.get("filingDate") or [None] * len(reports))[idx] if idx < len(recent.get("filingDate") or []) else None)
         if accession and document:
-            return {"form": form, "accession": accession, "document": document, "report_date": report_date}
-    return None
+            candidate = {"form": form, "accession": accession, "document": document, "report_date": report_date, "filing_date": filed or ""}
+            if best is None or candidate["filing_date"] > best["filing_date"]:
+                best = candidate
+    return best
 
 
-def filing_text(session, cik, filing):
+def filing_text(session, cik, filing, filename=None):
     if not filing:
         return None
     cik_int = str(int(str(cik)))
     accession = filing["accession"].replace("-", "")
-    url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accession}/{filing['document']}"
+    name = filename or filing["document"]
+    url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accession}/{name}"
     try:
         response = session.get(url, timeout=30)
         response.raise_for_status()
@@ -94,13 +99,39 @@ def collect_one(sb, session, row, market=None):
     snapshot = result.get("snapshot")
     if snapshot and snapshot.get("fiscal_end"):
         quote = load_market_quote(ticker)
-        filing = find_latest_filing(submissions, snapshot["fiscal_end"])
-        cover_text = filing_text(session, cik, filing)
-        period_filing_shares = parse_common_shares_from_filing(cover_text, snapshot["fiscal_end"], for_current=False) if cover_text else None
-        current_filing_shares = parse_common_shares_from_filing(cover_text, snapshot["fiscal_end"], for_current=True) if cover_text else None
+        fiscal_end = snapshot["fiscal_end"]
+        filing = find_latest_filing(submissions, fiscal_end)
+
+        # Period-end shares: use the primary 10-Q/10-K because this is where
+        # balance-sheet equity and the fiscal-end outstanding share count align.
+        primary_text = filing_text(session, cik, filing)
+        period_filing_shares = parse_common_shares_from_filing(
+            primary_text,
+            fiscal_end,
+            for_current=False,
+        ) if primary_text else None
+
+        # Current shares: SEC filing-level cover-page XBRL (typically R1.htm)
+        # explicitly reports each common class outstanding on the cover date.
+        cover_text = filing_text(session, cik, filing, filename="R1.htm")
+        current_filing_shares = parse_common_shares_from_filing(
+            cover_text,
+            fiscal_end,
+            for_current=True,
+        ) if cover_text else None
+
+        # Some filings may not expose R1.htm under that name; the primary filing
+        # itself can still carry the cover-page disclosure, so try it as a fallback.
+        if current_filing_shares is None and primary_text:
+            current_filing_shares = parse_common_shares_from_filing(
+                primary_text,
+                fiscal_end,
+                for_current=True,
+            )
+
         valuation = build_valuation_snapshot(
             facts,
-            snapshot["fiscal_end"],
+            fiscal_end,
             quote,
             filing_shares=period_filing_shares,
             current_filing_shares=current_filing_shares,
@@ -108,6 +139,10 @@ def collect_one(sb, session, row, market=None):
         if filing:
             valuation["filing_form"] = filing["form"]
             valuation["filing_accession"] = filing["accession"]
+            valuation["filing_document"] = filing["document"]
+            valuation["filing_date"] = filing.get("filing_date")
+        valuation["period_filing_shares_found"] = period_filing_shares is not None
+        valuation["current_filing_shares_found"] = current_filing_shares is not None
         snapshot["market"] = quote
         snapshot["valuation"] = valuation
         result["snapshot"] = snapshot
@@ -149,7 +184,9 @@ def main():
                 f"[{i}/{len(rows)}] {ticker}: score={result['total_score']} "
                 f"grade={result['grade']} snapshot={result.get('snapshot_fiscal_end')} "
                 f"EPS={valuation.get('eps')} BPS={valuation.get('bps')} "
-                f"PER={valuation.get('per')} PBR={valuation.get('pbr')}"
+                f"PER={valuation.get('per')} PBR={valuation.get('pbr')} "
+                f"periodShares={valuation.get('period_end_shares_outstanding')} "
+                f"currentShares={valuation.get('current_shares_outstanding')}"
             )
         except Exception as exc:
             print(f"[{i}/{len(rows)}] {ticker}: FAILED: {exc}")
