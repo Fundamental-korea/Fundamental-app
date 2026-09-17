@@ -48,12 +48,12 @@ def choose_annual(candidates, fiscal_end=None):
     if not candidates:
         return None
     if fiscal_end:
-        eligible = [
+        candidates = [
             row for row in candidates
             if row.get("report_date") and row["report_date"] <= fiscal_end
         ]
-        if eligible:
-            candidates = eligible
+        if not candidates:
+            return None
     candidates = list(candidates)
     candidates.sort(
         key=lambda row: (row.get("report_date") or "", row.get("filing_date") or ""),
