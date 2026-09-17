@@ -147,6 +147,7 @@ def install_market_snapshot_integration() -> dict:
             .eq("stock_code", stock_code)
             .limit(1)
             .execute()
+        )
         row = (row_res.data or [None])[0] or {}
 
         per, pbr = _recalculate_valuation(
