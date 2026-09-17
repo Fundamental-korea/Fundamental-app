@@ -101,56 +101,122 @@ def _load_standard_rows(sb, tickers=None, refresh=False):
     return rows
 
 
-def _normalized_filing_text(text):
+def _normalized_filing_cells(text):
+    """Normalize SEC HTML while preserving table-cell boundaries."""
     clean = unescape(text or "")
+    if not clean:
+        return []
+    clean = re.sub(
+        r"</?(?:td|th|tr|p|div|li|br)[^>]*>",
+        " | ",
+        clean,
+        flags=re.I,
+    )
     clean = re.sub(r"<[^>]+>", " ", clean)
     clean = clean.replace("\xa0", " ")
     clean = re.sub(r"[\u2012\u2013\u2014\u2212]", "-", clean)
-    return re.sub(r"\s+", " ", clean).strip()
+    clean = re.sub(r"\s+", " ", clean)
+    cells = [part.strip() for part in clean.split("|") if part.strip()]
+    return cells
+
+
+def _parse_reported_number(token):
+    """Parse a single SEC-rendered numeric token, including parentheses negatives."""
+    token = token.strip()
+    if not token or token in {"-", "—", "–", "N/A", "NA"}:
+        return None
+    negative = token.startswith("(") and token.endswith(")")
+    token = token.strip("()")
+    token = token.replace("$", "").replace(",", "").strip()
+    if not re.fullmatch(r"[-+]?\d+(?:\.\d+)?", token):
+        return None
+    try:
+        value = float(token)
+    except ValueError:
+        return None
+    if negative:
+        value = -abs(value)
+    if not math.isfinite(value):
+        return None
+    return value
+
+
+def _extract_eps_from_following_cells(cells, start_index, lookahead=12):
+    """Extract the first plausible reported EPS value after an EPS row label.
+
+    SEC filing tables frequently place a footnote marker in one cell and the
+    actual first-year EPS in the next cell. Prefer decimal/parenthesized/
+    currency-formatted values before falling back to a plain numeric value.
+    """
+    values = []
+    for cell in cells[start_index + 1 : start_index + 1 + lookahead]:
+        cell = cell.strip()
+        if not cell:
+            continue
+        # Normal SEC tables may render a single cell with more than one token.
+        for token in re.findall(
+            r"(?:\(-?\$?\d[\d,]*(?:\.\d+)?\)|-?\$?\d[\d,]*(?:\.\d+)?)",
+            cell,
+        ):
+            value = _parse_reported_number(token)
+            if value is not None and abs(value) < 1_000_000:
+                values.append((token, value))
+
+    if not values:
+        return None
+
+    # Footnote/reference cells are commonly simple integers such as "2".
+    # A reported EPS almost always carries decimal precision or currency/
+    # parenthesis formatting. Prefer those tokens when available.
+    for token, value in values:
+        if "." in token or "$" in token or token.startswith("("):
+            return value
+
+    # Integer EPS is valid; use the first numeric value only when no formatted
+    # EPS candidate exists.
+    return values[0][1]
 
 
 def parse_reported_eps_from_filing(text):
-    """Extract a directly reported annual EPS from an annual SEC filing.
+    """Extract directly reported annual EPS from an annual SEC filing.
 
     This is only a fallback when Company Facts does not expose the standard
     EarningsPerShareDiluted/Basic tag. No EPS is reconstructed from net income
-    or shares.
+    or shares. The parser is table-aware so footnote cells do not get confused
+    with the first fiscal-year EPS value.
     """
-    clean = _normalized_filing_text(text)
-    if not clean:
+    cells = _normalized_filing_cells(text)
+    if not cells:
         return None
 
-    patterns = [
+    label_patterns = [
         re.compile(
-            r"Earnings\s*(?:\(loss\)\s*)?per\s+common\s+share\s*-\s*assuming\s+dilution"
-            r"(?:\s*\(dollars\))?\s*(-?\d[\d,]*(?:\.\d+)?)",
+            r"^earnings\s*(?:\(loss\)\s*)?per\s+common\s+share\s*"
+            r"[-–—]\s*assuming\s+dilution(?:\s*\(dollars\))?$",
             re.I,
         ),
         re.compile(
-            r"Earnings\s*(?:\(loss\)\s*)?per\s+common\s+share"
-            r"(?:\s*\(dollars\))?\s*(-?\d[\d,]*(?:\.\d+)?)",
+            r"^diluted\s+earnings\s+per\s+(?:common\s+)?share(?:\s*\(dollars\))?$",
             re.I,
         ),
         re.compile(
-            r"Diluted\s+earnings\s+per\s+share(?:\s*\(dollars\))?\s*(-?\d[\d,]*(?:\.\d+)?)",
+            r"^earnings\s*(?:\(loss\)\s*)?per\s+common\s+share(?:\s*\(dollars\))?$",
             re.I,
         ),
     ]
 
-    for pattern in patterns:
-        match = pattern.search(clean)
-        if match:
-            try:
-                value = float(match.group(1).replace(",", ""))
-            except ValueError:
-                continue
-            if value == value and abs(value) < 1_000_000:
-                return {
-                    "value": value,
-                    "tag": "filing:reported-eps",
-                    "namespace": "filing",
-                    "basis": "directly-reported-annual-10-k-eps",
-                }
+    # Prefer the explicitly diluted row, then generic/diluted variants.
+    for pattern in label_patterns:
+        for index, cell in enumerate(cells):
+            if pattern.search(cell.strip()):
+                value = _extract_eps_from_following_cells(cells, index)
+                if value is not None:
+                    return {
+                        "value": value,
+                        "tag": "filing:reported-eps",
+                        "namespace": "filing",
+                        "basis": "directly-reported-annual-sec-filing-eps",
+                    }
     return None
 
 
@@ -249,7 +315,7 @@ def collect_valuation_one(session, row):
             price = valuation.get("price")
             eps = filing_eps["value"]
             valuation["per"] = price / eps if price is not None and eps and eps > 0 else None
-            valuation["per_basis"] = "current-price/directly-reported-annual-10-k-eps" if valuation.get("per") is not None else None
+            valuation["per_basis"] = "current-price/directly-reported-annual-sec-filing-eps" if valuation.get("per") is not None else None
             if annual_filing:
                 valuation["eps_filing_form"] = annual_filing["form"]
                 valuation["eps_filing_accession"] = annual_filing["accession"]
