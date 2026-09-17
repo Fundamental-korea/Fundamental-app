@@ -221,6 +221,30 @@ def get_total_equity(df, detail_df=None):
     return 0.0  # 그래도 못 찾으면 기존처럼 0 (발생 빈도는 크게 줄어들 것으로 예상됨)
 
 
+def get_parent_equity(df, detail_df=None):
+    """
+    BPS/PBR 전용 '지배기업 소유주지분' 추출 (get_total_equity와는 목적이 다름).
+    get_total_equity()가 반환하는 자본총계는 debt_rate 등 재무건전성 지표에는 맞는 분모지만,
+    BPS(주당순자산)는 업계 표준상 지배기업 소유주지분 ÷ 발행주식수여야 함 - 자본총계(지배+비지배
+    합산)를 그대로 쓰면 비지배지분이 큰 종목에서 BPS/PBR이 과대평가됨.
+    지배지분 라벨을 못 찾으면 None을 반환하고, 호출부에서 total_equity로 폴백한다
+    (지배주주만 있어 애초에 라벨이 안 쪼개지는 회사가 깨지지 않도록).
+    """
+    controlling_kw = ["지배기업의 소유주에게 귀속되는 자본", "지배기업소유주지분", "지배기업의 소유지분"]
+
+    for source_df in [df, detail_df]:
+        if source_df is None:
+            continue
+        for kw in controlling_kw:
+            row = source_df[source_df["account_nm"].str.contains(kw, na=False, regex=False)]
+            if not row.empty:
+                val_str = str(row.iloc[0]["thstrm_amount"]).replace(",", "")
+                if val_str and val_str != "-":
+                    return float(val_str)
+
+    return None
+
+
 def resolve_interest_coverage(op_profit, interest_exp, debt_rate):
     """
     interest_coverage 기본값(25점 만점) 오남용 방지 (버그2 수정).
@@ -631,6 +655,9 @@ def _parse_year_financials(df, df_full=None):
 
     # 자본총계는 매칭 실패율이 유독 높았던 계정이라 전용 폴백 로직 사용 (버그6 수정)
     total_equity = get_total_equity(df, detail_df)
+    # BPS/PBR 전용: 지배기업 소유주지분 우선, 없으면 total_equity로 폴백 (debt_rate 등은 total_equity 그대로 사용)
+    parent_equity = get_parent_equity(df, detail_df)
+    equity_for_bps = parent_equity if parent_equity is not None and parent_equity > 0 else total_equity
 
     inventory = get_value(["재고자산"], detail_df)
     sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"], detail_df)
@@ -670,6 +697,7 @@ def _parse_year_financials(df, df_full=None):
         "net_income": net_income,
         "total_liabilities": total_liab,
         "total_equity": total_equity,
+        "equity_for_bps": equity_for_bps,
         "interest_exp_is_approx": interest_exp_is_approx,
         "reported_eps": reported_eps,
     }
@@ -700,6 +728,9 @@ def _parse_report_financials(df, df_full=None):
     detail_df = df_full if df_full is not None else df
 
     total_equity = get_total_equity(df, detail_df)
+    # BPS/PBR 전용: 지배기업 소유주지분 우선, 없으면 total_equity로 폴백 (debt_rate 등은 total_equity 그대로 사용)
+    parent_equity = get_parent_equity(df, detail_df)
+    equity_for_bps = parent_equity if parent_equity is not None and parent_equity > 0 else total_equity
 
     inventory = get_value(["재고자산"], detail_df)
     sga_costs = get_value(["판매비와관리비", "판매비와 관리비", "판관비"], detail_df)
@@ -747,6 +778,7 @@ def _parse_report_financials(df, df_full=None):
         "net_income": net_income,
         "total_liabilities": total_liab,
         "total_equity": total_equity,
+        "equity_for_bps": equity_for_bps,
         "interest_exp_is_approx": interest_exp_is_approx,
         "revenue_growth_raw": revenue_growth_raw,
         "eps_growth_raw": eps_growth_raw,
@@ -1392,8 +1424,10 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             float_shares = distributed_shares if distributed_shares else (issued_shares - (treasury_shares or 0))
             eps = (net_income / float_shares) if float_shares and float_shares > 0 else None
             eps_is_reported = False
-        # BPS는 K-IFRS 표준 공시 계정이 따로 없어 계속 자본총계÷발행주식수로 근사
-        bps = (total_equity / issued_shares) if issued_shares > 0 else None
+        # BPS는 K-IFRS 표준 공시 계정이 따로 없어 자본총계÷발행주식수로 근사하되,
+        # 지배기업 소유주지분이 있으면 그걸 우선 사용 (비지배지분 포함시 BPS 과대평가 방지)
+        equity_for_bps = latest.get("equity_for_bps", total_equity)
+        bps = (equity_for_bps / issued_shares) if issued_shares > 0 else None
         per = round(current_price / eps, 2) if eps else None  # 음수(적자) PER도 저장 - 0 나눗셈만 방지
         pbr = round(current_price / bps, 2) if (bps and bps > 0) else None
 
@@ -1875,7 +1909,8 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
                 float_shares = distributed_shares if distributed_shares else issued_shares
                 eps = (net_income / float_shares) if float_shares and float_shares > 0 else None
                 eps_is_reported = False
-            bps = (total_equity / issued_shares) if issued_shares > 0 else None
+            equity_for_bps = latest_report.get("equity_for_bps", total_equity)
+            bps = (equity_for_bps / issued_shares) if issued_shares > 0 else None
             per = round(current_price / eps, 2) if eps else None
             pbr = round(current_price / bps, 2) if (bps and bps > 0) else None
 
