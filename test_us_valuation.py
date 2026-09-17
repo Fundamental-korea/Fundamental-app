@@ -4,13 +4,15 @@ from us_valuation import build_valuation_snapshot
 
 
 class TestUSValuation(unittest.TestCase):
-    def test_nci_safe_bps_and_reported_eps(self):
+    def test_nci_safe_bps_market_cap_and_reported_annual_eps(self):
         facts = {
             "facts": {
                 "us-gaap": {
                     "StockholdersEquity": {"units": {"USD": [{"val": 900, "start": None, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
-                    "NetIncomeLoss": {"units": {"USD": [{"val": 120, "start": "2026-04-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
-                    "EarningsPerShareDiluted": {"units": {"USD/shares": [{"val": 1.20, "start": "2026-04-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}] }},
+                    "EarningsPerShareDiluted": {"units": {"USD/shares": [
+                        {"val": 1.20, "start": "2026-04-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"},
+                        {"val": 4.80, "start": "2025-07-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-K"},
+                    ]}},
                     "EntityCommonStockSharesOutstanding": {"units": {"shares": [
                         {"val": 100, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"},
                         {"val": 110, "end": "2026-08-15", "filed": "2026-08-15", "form": "10-Q"},
@@ -18,12 +20,13 @@ class TestUSValuation(unittest.TestCase):
                 }
             }
         }
-        result = build_valuation_snapshot(facts, "2026-06-30", {"price": 10})
-        self.assertEqual(result["eps"], 1.20)
+        result = build_valuation_snapshot(facts, "2026-06-30", {"price": 10, "current_shares": 110})
+        self.assertEqual(result["eps"], 4.80)
         self.assertEqual(result["bps"], 9.0)
         self.assertEqual(result["market_cap"], 1100.0)
-        self.assertAlmostEqual(result["per"], 10 / 1.2)
+        self.assertAlmostEqual(result["per"], 10 / 4.8)
         self.assertAlmostEqual(result["pbr"], 10 / 9.0)
+        self.assertEqual(result["eps_basis"], "reported-diluted")
 
     def test_nci_inclusive_equity_is_reduced(self):
         facts = {
@@ -32,11 +35,11 @@ class TestUSValuation(unittest.TestCase):
                     "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest": {"units": {"USD": [{"val": 1200, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
                     "NoncontrollingInterestInConsolidatedEntity": {"units": {"USD": [{"val": 200, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
                     "EntityCommonStockSharesOutstanding": {"units": {"shares": [{"val": 100, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
-                    "EarningsPerShareDiluted": {"units": {"USD/shares": [{"val": 3.0, "start": "2026-04-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}] }},
+                    "EarningsPerShareDiluted": {"units": {"USD/shares": [{"val": 3.0, "start": "2025-07-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-K"}] }},
                 }
             }
         }
-        result = build_valuation_snapshot(facts, "2026-06-30", {"price": 12})
+        result = build_valuation_snapshot(facts, "2026-06-30", {"price": 12, "current_shares": 100})
         self.assertEqual(result["bps"], 10.0)
         self.assertEqual(result["bps_equity_basis"], "parent-attributable")
         self.assertEqual(result["bps_nci_source_tag"], "NoncontrollingInterestInConsolidatedEntity")
