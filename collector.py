@@ -1496,6 +1496,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "base_year": base_year,  # 3/5/10y 추세 점수 계산 기준 연도 (연간 데이터 필요)
             "data_basis_label": data_basis_label,  # 현재 스냅샷(revenue~pbr)이 어느 시점 공시 기준인지 (예: "2026년 반기보고서")
             "stock_price": current_price,
+            "issued_shares": issued_shares,
             "per": per,
             "pbr": pbr,
             "eps": round(eps, 2) if eps is not None else None,
@@ -1916,6 +1917,7 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
 
             snapshot_fields = {
                 "stock_price": current_price,
+                "issued_shares": issued_shares,
                 "per": per,
                 "pbr": pbr,
                 "eps": round(eps, 2) if eps is not None else None,
