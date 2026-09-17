@@ -12,7 +12,6 @@ def _fact(tag, value, unit="USD"):
                             "form": "10-K",
                             "start": "2025-01-01",
                             "end": "2025-12-31",
-                            "end": "2025-12-31",
                             "filed": "2026-02-01",
                             "val": value,
                             "frame": "CY2025",
