@@ -30,6 +30,7 @@ jobs:
       - name: 파이썬 업데이트 스크립트 실행
         env:
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
+          KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
