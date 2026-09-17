@@ -21,12 +21,12 @@ from supabase import create_client
 
 from collector_us_fundamental import SEC_USER_AGENT, SUPABASE_KEY, SUPABASE_URL, load_company
 from collector_us_valuation import (
-    filing_text,
     find_latest_filing,
     load_market_quote,
     parse_fiscal_end_common_shares,
 )
 from downturn_us import BENCHMARK, _close_series
+from sec_filing_utils import filing_text_resilient, find_annual_filing_with_history, find_filing_with_history
 from us_valuation import build_valuation_snapshot, parse_common_shares_from_filing
 
 STANDARD_SECTORS = (
@@ -38,7 +38,6 @@ STANDARD_SECTORS = (
     "materials",
     "communication",
 )
-
 
 EPS_ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 
@@ -139,7 +138,7 @@ def find_eps_report_documents(session, cik, annual_filing):
     if not annual_filing:
         return []
 
-    summary_text = filing_text(session, cik, annual_filing, filename="FilingSummary.xml")
+    summary_text = filing_text_resilient(session, cik, annual_filing, filename="FilingSummary.xml")
     if not summary_text:
         return []
 
@@ -250,12 +249,11 @@ def parse_reported_eps_from_report(text):
 
     candidates.sort(key=lambda item: item[0])
     kind, value, label = candidates[0]
-    basis = "directly-reported-annual-sec-xbrl-eps"
     return {
         "value": value,
         "tag": "filing:xbrl-reported-eps",
         "namespace": "filing",
-        "basis": basis,
+        "basis": "directly-reported-annual-sec-xbrl-eps",
         "report_label": label,
     }
 
@@ -302,13 +300,22 @@ def collect_valuation_one(session, row):
     facts, submissions = load_company(session, ticker, cik)
     quote = load_market_quote(ticker)
 
-    filing = find_latest_filing(submissions, fiscal_end)
+    # Resolve the filing from the current issuer first. If the requested fiscal
+    # period is absent (as with successor issuers such as XOM), inspect CIKs
+    # represented by recent accession numbers and search their submissions.
+    filing = find_filing_with_history(
+        session,
+        cik,
+        submissions,
+        fiscal_end,
+        find_latest_filing,
+    )
     period_filing_shares = None
     current_filing_shares = None
     primary_text = None
 
     if filing:
-        primary_text = filing_text(session, cik, filing)
+        primary_text = filing_text_resilient(session, cik, filing)
         if primary_text:
             period_filing_shares = parse_fiscal_end_common_shares(primary_text, fiscal_end)
             if period_filing_shares is None:
@@ -323,7 +330,7 @@ def collect_valuation_one(session, row):
                 for_current=True,
             )
 
-        cover_text = filing_text(session, cik, filing, filename="R1.htm")
+        cover_text = filing_text_resilient(session, cik, filing, filename="R1.htm")
         if cover_text:
             current_filing_shares = parse_common_shares_from_filing(
                 cover_text,
@@ -341,13 +348,19 @@ def collect_valuation_one(session, row):
 
     # Company Facts is the first source for annual EPS. Some issuers do not
     # expose the annual EPS observation there in a usable form, so fall back to
-    # SEC XBRL annual reports discovered through FilingSummary.xml.
+    # SEC XBRL annual reports discovered through FilingSummary.xml. The annual
+    # filing itself is resolved across successor/predecessor CIK history.
     if valuation.get("eps") is None:
-        annual_filing = find_latest_annual_filing(submissions)
+        annual_filing = find_annual_filing_with_history(
+            session,
+            cik,
+            submissions,
+            fiscal_end=fiscal_end,
+        )
         if annual_filing:
             report_documents = find_eps_report_documents(session, cik, annual_filing)
             for report_document in report_documents:
-                report_text = filing_text(session, cik, annual_filing, filename=report_document)
+                report_text = filing_text_resilient(session, cik, annual_filing, filename=report_document)
                 filing_eps = parse_reported_eps_from_report(report_text) if report_text else None
                 if filing_eps is None:
                     continue
@@ -357,6 +370,7 @@ def collect_valuation_one(session, row):
                 valuation["eps_basis"] = filing_eps["basis"]
                 valuation["eps_report_document"] = report_document
                 valuation["eps_report_label"] = filing_eps.get("report_label")
+                valuation["eps_filing_source_cik"] = annual_filing.get("source_cik")
                 price = valuation.get("price")
                 eps = filing_eps["value"]
                 valuation["per"] = price / eps if price is not None and eps > 0 else None
@@ -377,6 +391,7 @@ def collect_valuation_one(session, row):
         valuation["filing_accession"] = filing["accession"]
         valuation["filing_document"] = filing["document"]
         valuation["filing_date"] = filing.get("filing_date")
+        valuation["filing_source_cik"] = filing.get("source_cik")
 
     valuation["period_filing_shares_found"] = period_filing_shares is not None
     valuation["current_filing_shares_found"] = current_filing_shares is not None
