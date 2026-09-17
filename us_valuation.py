@@ -1,18 +1,9 @@
-"""US market valuation snapshot helpers.
-
-Market facts and SEC accounting facts are kept separate.
-
-Formula contract:
-- EPS: SEC-reported diluted EPS; never reconstruct from income/shares.
-- BPS: parent-attributable common equity / best available common shares closest to period end.
-- Market cap: current price * current common shares outstanding.
-- PER: current price / latest full-year reported diluted EPS.
-- PBR: current price / period-end BPS.
-"""
+"""US market valuation snapshot helpers."""
 
 from __future__ import annotations
 
 import math
+import re
 from datetime import date
 
 SEC_FORMS = {"10-Q", "10-Q/A", "10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
@@ -51,20 +42,7 @@ def _fact_rows(companyfacts, tags, forms=None):
                             days = (date.fromisoformat(row["end"]) - date.fromisoformat(row["start"])).days
                         except ValueError:
                             pass
-                    out.append({
-                        "namespace": namespace,
-                        "tag": tag,
-                        "priority": priority,
-                        "unit": unit,
-                        "value": value,
-                        "start": row.get("start"),
-                        "end": row["end"],
-                        "filed": row.get("filed") or "",
-                        "fy": row.get("fy"),
-                        "fp": row.get("fp"),
-                        "frame": row.get("frame"),
-                        "days": days,
-                    })
+                    out.append({"namespace": namespace, "tag": tag, "priority": priority, "unit": unit, "value": value, "start": row.get("start"), "end": row["end"], "filed": row.get("filed") or "", "fy": row.get("fy"), "fp": row.get("fp"), "frame": row.get("frame"), "days": days})
     return out
 
 
@@ -161,13 +139,32 @@ def _period_end_shares(companyfacts, fiscal_end):
     return None, None
 
 
-def _current_shares_from_sec(companyfacts):
-    rows = _dei_share_rows(companyfacts)
-    instant_rows = [r for r in rows if not r.get("start")]
-    if not instant_rows:
+def parse_common_shares_from_filing(text, fiscal_end=None):
+    """Extract common-share counts from SEC filing cover/table text when Company Facts does not expose them."""
+    if not text:
         return None
-    latest_end = max(r["end"] for r in instant_rows)
-    return _sum_dei_shares_on_date(rows, latest_end)
+    clean = re.sub(r"\s+", " ", text)
+    # Table-style "Class A ... Outstanding ... 450,571,783" or "Class B ... Outstanding ... 400".
+    patterns = [
+        re.compile(r"Class\s+[A-Z][^\.]{0,220}?Outstanding\s*[–-]\s*(\d[\d,]*)", re.I),
+        re.compile(r"Class\s+[A-Z][^\.]{0,220}?outstanding\s*(?:shares?)?\s*(?:of)?\s*(\d[\d,]*)", re.I),
+    ]
+    values = []
+    for pattern in patterns:
+        for match in pattern.finditer(clean):
+            n = int(match.group(1).replace(",", ""))
+            if n > 0:
+                values.append(n)
+    # Cover-page wording: "there were X shares ... Class A ... outstanding and Y shares ... Class B ... outstanding"
+    if not values:
+        cover = re.search(r"there were\s+(\d[\d,]*)\s+shares.*?Class A.*?outstanding.*?(?:and|,).*?(\d[\d,]*)\s+shares.*?Class B.*?outstanding", clean, re.I)
+        if cover:
+            values = [int(cover.group(1).replace(",", "")), int(cover.group(2).replace(",", ""))]
+    if not values:
+        return None
+    # Deduplicate accidental matches while preserving counts.
+    values = list(dict.fromkeys(values))
+    return {"value": sum(values), "tag": "filing-cover-common-shares", "namespace": "filing", "basis": "filing-text-sum-of-common-classes", "class_count": len(values), "fiscal_end": fiscal_end}
 
 
 def _market_field(market_data, *keys):
@@ -178,11 +175,15 @@ def _market_field(market_data, *keys):
     return None
 
 
-def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None):
+def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None, filing_shares=None):
     market_data = market_data or {}
     eps_row, eps_basis = _reported_eps(companyfacts)
     equity_row, nci_row = _equity_and_nci(companyfacts, fiscal_end)
     period_shares_row, period_shares_basis = _period_end_shares(companyfacts, fiscal_end)
+    if period_shares_row is None and filing_shares is not None:
+        period_shares_row = filing_shares
+        period_shares_basis = "filing-cover-fallback"
+
     price = _market_field(market_data, "price", "current_price", "regularMarketPrice")
     current_shares = _market_field(market_data, "current_shares", "shares_outstanding")
     current_shares_basis = "market-data" if current_shares is not None else None
@@ -190,6 +191,10 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None):
         current_row = _current_shares_from_sec(companyfacts)
         current_shares = _clean(current_row["value"]) if current_row else None
         current_shares_basis = "sec-dei-latest-cover-date" if current_shares is not None else None
+    if current_shares is None and filing_shares is not None:
+        current_shares = _clean(filing_shares.get("value"))
+        current_shares_basis = "filing-cover-fallback"
+
     period_shares = _clean(period_shares_row["value"]) if period_shares_row else None
     equity = _clean(equity_row["value"]) if equity_row else None
     eps = _clean(eps_row["value"]) if eps_row else None
@@ -197,26 +202,7 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None):
     market_cap = price * current_shares if price is not None and current_shares and current_shares > 0 else None
     per = price / eps if price is not None and eps is not None and eps > 0 else None
     pbr = price / bps if price is not None and bps is not None and bps > 0 else None
-    result = {
-        "price": price,
-        "market_cap": market_cap,
-        "current_shares_outstanding": current_shares,
-        "current_shares_source": current_shares_basis,
-        "period_end_shares_outstanding": period_shares,
-        "period_end_shares_source": period_shares_row["tag"] if period_shares_row else None,
-        "period_end_shares_basis": period_shares_basis,
-        "eps": eps,
-        "eps_source": eps_row["tag"] if eps_row else None,
-        "eps_basis": eps_basis,
-        "bps": bps,
-        "bps_basis": "parent-attributable-equity-period-end-shares" if bps is not None else None,
-        "bps_equity": equity,
-        "bps_equity_source": equity_row["tag"] if equity_row else None,
-        "per": per,
-        "per_basis": "current-price/latest-full-year-reported-eps" if per is not None else None,
-        "pbr": pbr,
-        "pbr_basis": "current-price/period-end-bps" if pbr is not None else None,
-    }
+    result = {"price": price, "market_cap": market_cap, "current_shares_outstanding": current_shares, "current_shares_source": current_shares_basis, "period_end_shares_outstanding": period_shares, "period_end_shares_source": period_shares_row["tag"] if period_shares_row else None, "period_end_shares_basis": period_shares_basis, "eps": eps, "eps_source": eps_row["tag"] if eps_row else None, "eps_basis": eps_basis, "bps": bps, "bps_basis": "parent-attributable-equity-period-end-shares" if bps is not None else None, "bps_equity": equity, "bps_equity_source": equity_row["tag"] if equity_row else None, "per": per, "per_basis": "current-price/latest-full-year-reported-eps" if per is not None else None, "pbr": pbr, "pbr_basis": "current-price/period-end-bps" if pbr is not None else None}
     if equity_row and equity_row.get("basis"):
         result["bps_equity_basis"] = equity_row["basis"]
         result["bps_nci_source_tag"] = equity_row.get("nci_source_tag")
@@ -226,10 +212,6 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None):
         result["period_end_shares_note"] = period_shares_row["basis"]
         if period_shares_row.get("days_after_fiscal_end") is not None:
             result["period_end_shares_days_after_fiscal_end"] = period_shares_row["days_after_fiscal_end"]
-    for field, aliases in {"day_high": ("day_high", "regularMarketDayHigh"), "day_low": ("day_low", "regularMarketDayLow"), "week52_high": ("week52_high", "fiftyTwoWeekHigh"), "week52_low": ("week52_low", "fiftyTwoWeekLow"), "volume": ("volume", "regularMarketVolume")}.items():
-        value = _market_field(market_data, *aliases)
-        if value is not None:
-            result[field] = value
     return result
 
 
@@ -251,3 +233,12 @@ def normalize_market_quote(info, history=None):
         except Exception:
             pass
     return result
+
+
+def _current_shares_from_sec(companyfacts):
+    rows = _dei_share_rows(companyfacts)
+    instant_rows = [r for r in rows if not r.get("start")]
+    if not instant_rows:
+        return None
+    latest_end = max(r["end"] for r in instant_rows)
+    return _sum_dei_shares_on_date(rows, latest_end)
