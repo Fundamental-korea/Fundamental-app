@@ -110,7 +110,7 @@ def _normalized_filing_text(text):
 
 
 def parse_reported_eps_from_filing(text):
-    """Extract a directly reported annual EPS from SEC filing text.
+    """Extract a directly reported annual EPS from an annual SEC filing.
 
     This is only a fallback when Company Facts does not expose the standard
     EarningsPerShareDiluted/Basic tag. No EPS is reconstructed from net income
@@ -149,9 +149,40 @@ def parse_reported_eps_from_filing(text):
                     "value": value,
                     "tag": "filing:reported-eps",
                     "namespace": "filing",
-                    "basis": "directly-reported-filing-eps",
+                    "basis": "directly-reported-annual-10-k-eps",
                 }
     return None
+
+
+def find_latest_annual_filing(submissions):
+    """Return the most recent annual 10-K/20-F/40-F filing."""
+    recent = ((submissions or {}).get("filings") or {}).get("recent") or {}
+    forms = recent.get("form") or []
+    accessions = recent.get("accessionNumber") or []
+    documents = recent.get("primaryDocument") or []
+    report_dates = recent.get("reportDate") or []
+    filed_dates = recent.get("filingDate") or []
+    best = None
+
+    for idx, form in enumerate(forms):
+        if form not in {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}:
+            continue
+        accession = accessions[idx] if idx < len(accessions) else None
+        document = documents[idx] if idx < len(documents) else None
+        report_date = report_dates[idx] if idx < len(report_dates) else None
+        filed = filed_dates[idx] if idx < len(filed_dates) else ""
+        if not accession or not document:
+            continue
+        candidate = {
+            "form": form,
+            "accession": accession,
+            "document": document,
+            "report_date": report_date,
+            "filing_date": filed,
+        }
+        if best is None or candidate["filing_date"] > best["filing_date"]:
+            best = candidate
+    return best
 
 
 def collect_valuation_one(session, row):
@@ -205,9 +236,12 @@ def collect_valuation_one(session, row):
     )
 
     # Company Facts occasionally omits the standard EPS fact even though the
-    # filing visibly reports it. Use the filing's reported annual EPS directly.
-    if valuation.get("eps") is None and primary_text:
-        filing_eps = parse_reported_eps_from_filing(primary_text)
+    # annual filing visibly reports it. Always use the latest annual filing,
+    # not the latest quarter filing, for PER's annual EPS fallback.
+    if valuation.get("eps") is None:
+        annual_filing = find_latest_annual_filing(submissions)
+        annual_text = filing_text(session, cik, annual_filing) if annual_filing else None
+        filing_eps = parse_reported_eps_from_filing(annual_text) if annual_text else None
         if filing_eps is not None:
             valuation["eps"] = filing_eps["value"]
             valuation["eps_source"] = filing_eps["tag"]
@@ -215,7 +249,13 @@ def collect_valuation_one(session, row):
             price = valuation.get("price")
             eps = filing_eps["value"]
             valuation["per"] = price / eps if price is not None and eps and eps > 0 else None
-            valuation["per_basis"] = "current-price/directly-reported-filing-eps" if valuation.get("per") is not None else None
+            valuation["per_basis"] = "current-price/directly-reported-annual-10-k-eps" if valuation.get("per") is not None else None
+            if annual_filing:
+                valuation["eps_filing_form"] = annual_filing["form"]
+                valuation["eps_filing_accession"] = annual_filing["accession"]
+                valuation["eps_filing_document"] = annual_filing["document"]
+                valuation["eps_filing_report_date"] = annual_filing.get("report_date")
+                valuation["eps_filing_date"] = annual_filing.get("filing_date")
 
     if filing:
         valuation["filing_form"] = filing["form"]
