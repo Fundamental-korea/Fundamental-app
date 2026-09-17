@@ -134,19 +134,19 @@ def _xml_local_name(tag):
     return str(tag or "").rsplit("}", 1)[-1].lower()
 
 
-def find_eps_report_document(session, cik, annual_filing):
-    """Find the SEC XBRL report file dedicated to annual earnings per share."""
+def find_eps_report_documents(session, cik, annual_filing):
+    """Find SEC XBRL report files related to annual earnings per share."""
     if not annual_filing:
-        return None
+        return []
 
     summary_text = filing_text(session, cik, annual_filing, filename="FilingSummary.xml")
     if not summary_text:
-        return None
+        return []
 
     try:
         root = ET.fromstring(summary_text)
     except ET.ParseError:
-        return None
+        return []
 
     matches = []
     for report in root.iter():
@@ -171,17 +171,15 @@ def find_eps_report_document(session, cik, annual_filing):
         if "per share" not in searchable and "eps" not in searchable:
             continue
 
-        matches.append((
-            0 if short_name == "earnings per share" else 1,
-            0 if "earnings per share" in searchable else 1,
-            html_file,
-        ))
+        details_rank = 0 if "details" in searchable else 1
+        exact_rank = 0 if short_name == "earnings per share" else 1
+        matches.append((details_rank, exact_rank, html_file))
 
     if not matches:
-        return None
+        return []
 
     matches.sort(key=lambda item: (item[0], item[1], item[2]))
-    return matches[0][2]
+    return [item[2] for item in matches]
 
 
 def _normalized_report_rows(text):
@@ -343,14 +341,17 @@ def collect_valuation_one(session, row):
 
     # Company Facts is the first source for annual EPS. Some issuers do not
     # expose the annual EPS observation there in a usable form, so fall back to
-    # the SEC's dedicated XBRL EPS report discovered through FilingSummary.xml.
+    # SEC XBRL annual reports discovered through FilingSummary.xml.
     if valuation.get("eps") is None:
         annual_filing = find_latest_annual_filing(submissions)
         if annual_filing:
-            report_document = find_eps_report_document(session, cik, annual_filing)
-            report_text = filing_text(session, cik, annual_filing, filename=report_document) if report_document else None
-            filing_eps = parse_reported_eps_from_report(report_text) if report_text else None
-            if filing_eps is not None:
+            report_documents = find_eps_report_documents(session, cik, annual_filing)
+            for report_document in report_documents:
+                report_text = filing_text(session, cik, annual_filing, filename=report_document)
+                filing_eps = parse_reported_eps_from_report(report_text) if report_text else None
+                if filing_eps is None:
+                    continue
+
                 valuation["eps"] = filing_eps["value"]
                 valuation["eps_source"] = filing_eps["tag"]
                 valuation["eps_basis"] = filing_eps["basis"]
@@ -369,6 +370,7 @@ def collect_valuation_one(session, row):
                 valuation["eps_filing_document"] = annual_filing["document"]
                 valuation["eps_filing_report_date"] = annual_filing.get("report_date")
                 valuation["eps_filing_date"] = annual_filing.get("filing_date")
+                break
 
     if filing:
         valuation["filing_form"] = filing["form"]
