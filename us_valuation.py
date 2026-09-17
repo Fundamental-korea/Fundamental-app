@@ -54,13 +54,6 @@ def _best_instant(rows, end):
     return candidates[0]
 
 
-def _latest_instant(rows):
-    if not rows:
-        return None
-    latest_end = max(r["end"] for r in rows)
-    return _best_instant(rows, latest_end)
-
-
 def _latest_full_year(rows):
     candidates = [r for r in rows if r.get("start") and r.get("days") is not None and 300 <= r["days"] <= 380]
     if not candidates:
@@ -139,32 +132,53 @@ def _period_end_shares(companyfacts, fiscal_end):
     return None, None
 
 
-def parse_common_shares_from_filing(text, fiscal_end=None):
-    """Extract common-share counts from SEC filing cover/table text when Company Facts does not expose them."""
+def _current_shares_from_sec(companyfacts):
+    rows = _dei_share_rows(companyfacts)
+    instant_rows = [r for r in rows if not r.get("start")]
+    if not instant_rows:
+        return None
+    latest_end = max(r["end"] for r in instant_rows)
+    return _sum_dei_shares_on_date(rows, latest_end)
+
+
+def _share_numbers(text, date_phrase):
+    """Extract class-specific outstanding share counts associated with one date."""
+    values = []
+    class_patterns = [
+        re.compile(rf"Class\s+[A-Z][^\.{{}}]{{0,260}}?Outstanding\s*[–-]\s*(\d[\d,]*)\s+and\s+\d[\d,]*\s+shares\s+as\s+of\s+{date_phrase}", re.I),
+        re.compile(rf"Class\s+[A-Z][^\.{{}}]{{0,260}}?Issued\s+and\s+Outstanding\s*[–-]\s*(\d[\d,]*)\s+shares\s+as\s+of\s+{date_phrase}", re.I),
+    ]
+    for pattern in class_patterns:
+        values.extend(int(m.group(1).replace(",", "")) for m in pattern.finditer(text))
+    return list(dict.fromkeys(x for x in values if x > 0))
+
+
+def parse_common_shares_from_filing(text, fiscal_end=None, for_current=False):
+    """Extract common shares from SEC filing text, separated into period-end vs cover-date counts."""
     if not text:
         return None
     clean = re.sub(r"\s+", " ", text)
-    # Table-style "Class A ... Outstanding ... 450,571,783" or "Class B ... Outstanding ... 400".
-    patterns = [
-        re.compile(r"Class\s+[A-Z][^\.]{0,220}?Outstanding\s*[–-]\s*(\d[\d,]*)", re.I),
-        re.compile(r"Class\s+[A-Z][^\.]{0,220}?outstanding\s*(?:shares?)?\s*(?:of)?\s*(\d[\d,]*)", re.I),
-    ]
-    values = []
-    for pattern in patterns:
-        for match in pattern.finditer(clean):
-            n = int(match.group(1).replace(",", ""))
-            if n > 0:
-                values.append(n)
-    # Cover-page wording: "there were X shares ... Class A ... outstanding and Y shares ... Class B ... outstanding"
-    if not values:
-        cover = re.search(r"there were\s+(\d[\d,]*)\s+shares.*?Class A.*?outstanding.*?(?:and|,).*?(\d[\d,]*)\s+shares.*?Class B.*?outstanding", clean, re.I)
+
+    if for_current:
+        # SEC cover-page wording is explicit and represents the latest reported
+        # outstanding shares, which is appropriate as a fallback for market cap.
+        cover = re.search(r"there were\s+(\d[\d,]*)\s+shares\s+of the issuer’s Class A common stock.*?outstanding\s+and\s+(\d[\d,]*)\s+shares\s+of the issuer’s Class B common stock.*?outstanding", clean, re.I)
         if cover:
             values = [int(cover.group(1).replace(",", "")), int(cover.group(2).replace(",", ""))]
-    if not values:
+            return {"value": sum(values), "tag": "filing-cover-common-shares", "namespace": "filing", "basis": "filing-cover-sum-of-common-classes", "class_count": len(values), "date_basis": "cover-date"}
         return None
-    # Deduplicate accidental matches while preserving counts.
-    values = list(dict.fromkeys(values))
-    return {"value": sum(values), "tag": "filing-cover-common-shares", "namespace": "filing", "basis": "filing-text-sum-of-common-classes", "class_count": len(values), "fiscal_end": fiscal_end}
+
+    if fiscal_end:
+        try:
+            dt = date.fromisoformat(fiscal_end)
+            months = {1:"January",2:"February",3:"March",4:"April",5:"May",6:"June",7:"July",8:"August",9:"September",10:"October",11:"November",12:"December"}
+            date_phrase = rf"{months[dt.month]}\s+{dt.day},\s+{dt.year}"
+        except ValueError:
+            date_phrase = re.escape(fiscal_end)
+        values = _share_numbers(clean, date_phrase)
+        if values:
+            return {"value": sum(values), "tag": "filing-fiscal-end-common-shares", "namespace": "filing", "basis": "filing-fiscal-end-sum-of-common-classes", "class_count": len(values), "fiscal_end": fiscal_end, "date_basis": "fiscal-end"}
+    return None
 
 
 def _market_field(market_data, *keys):
@@ -175,14 +189,14 @@ def _market_field(market_data, *keys):
     return None
 
 
-def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None, filing_shares=None):
+def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None, filing_shares=None, current_filing_shares=None):
     market_data = market_data or {}
     eps_row, eps_basis = _reported_eps(companyfacts)
     equity_row, nci_row = _equity_and_nci(companyfacts, fiscal_end)
     period_shares_row, period_shares_basis = _period_end_shares(companyfacts, fiscal_end)
     if period_shares_row is None and filing_shares is not None:
         period_shares_row = filing_shares
-        period_shares_basis = "filing-cover-fallback"
+        period_shares_basis = "filing-fiscal-end-fallback"
 
     price = _market_field(market_data, "price", "current_price", "regularMarketPrice")
     current_shares = _market_field(market_data, "current_shares", "shares_outstanding")
@@ -191,8 +205,8 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None, filing_
         current_row = _current_shares_from_sec(companyfacts)
         current_shares = _clean(current_row["value"]) if current_row else None
         current_shares_basis = "sec-dei-latest-cover-date" if current_shares is not None else None
-    if current_shares is None and filing_shares is not None:
-        current_shares = _clean(filing_shares.get("value"))
+    if current_shares is None and current_filing_shares is not None:
+        current_shares = _clean(current_filing_shares.get("value"))
         current_shares_basis = "filing-cover-fallback"
 
     period_shares = _clean(period_shares_row["value"]) if period_shares_row else None
@@ -233,12 +247,3 @@ def normalize_market_quote(info, history=None):
         except Exception:
             pass
     return result
-
-
-def _current_shares_from_sec(companyfacts):
-    rows = _dei_share_rows(companyfacts)
-    instant_rows = [r for r in rows if not r.get("start")]
-    if not instant_rows:
-        return None
-    latest_end = max(r["end"] for r in instant_rows)
-    return _sum_dei_shares_on_date(rows, latest_end)
