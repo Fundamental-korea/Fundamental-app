@@ -98,6 +98,7 @@ def test_equity_including_nci_is_subtracted():
                 _fact("RevenueFromContractWithCustomerExcludingAssessedTax", 10000),
                 _fact("OperatingIncomeLoss", 2000),
                 _fact("NetIncomeLoss", 1000),
+                _fact("Assets", 20000),
                 _fact("StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", 20472),
                 _fact("MinorityInterest", 15109),
                 _fact("Liabilities", 15000),
