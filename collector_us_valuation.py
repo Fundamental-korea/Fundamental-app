@@ -8,7 +8,6 @@ SEC-safe valuation metrics.
 from __future__ import annotations
 
 import argparse
-import re
 
 import yfinance as yf
 from supabase import create_client
@@ -97,8 +96,15 @@ def collect_one(sb, session, row, market=None):
         quote = load_market_quote(ticker)
         filing = find_latest_filing(submissions, snapshot["fiscal_end"])
         cover_text = filing_text(session, cik, filing)
-        filing_shares = parse_common_shares_from_filing(cover_text, snapshot["fiscal_end"]) if cover_text else None
-        valuation = build_valuation_snapshot(facts, snapshot["fiscal_end"], quote, filing_shares=filing_shares)
+        period_filing_shares = parse_common_shares_from_filing(cover_text, snapshot["fiscal_end"], for_current=False) if cover_text else None
+        current_filing_shares = parse_common_shares_from_filing(cover_text, snapshot["fiscal_end"], for_current=True) if cover_text else None
+        valuation = build_valuation_snapshot(
+            facts,
+            snapshot["fiscal_end"],
+            quote,
+            filing_shares=period_filing_shares,
+            current_filing_shares=current_filing_shares,
+        )
         if filing:
             valuation["filing_form"] = filing["form"]
             valuation["filing_accession"] = filing["accession"]
