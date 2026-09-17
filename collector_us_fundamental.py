@@ -38,8 +38,11 @@ FACT_ALIASES = {
     "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax", "Revenues", "SalesRevenueNet", "SalesRevenueGoodsNet"],
     "operating_income": ["OperatingIncomeLoss"],
     "net_income": ["NetIncomeLoss", "ProfitLoss"],
+    "net_income_parent": ["NetIncomeLossAttributableToOwnersOfParent", "NetIncomeLossAttributableToParent", "ProfitLossAttributableToOwnersOfParent", "ProfitLossAttributableToParent"],
+    "net_income_nci": ["NetIncomeLossAttributableToNoncontrollingInterest", "ProfitLossAttributableToNoncontrollingInterest"],
     "assets": ["Assets"],
     "equity": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
+    "equity_nci": ["MinorityInterest", "NoncontrollingInterestInConsolidatedEntity", "NoncontrollingInterestInConsolidatedEntityIncludingPortionAttributableToRedeemableNoncontrollingInterest"],
     "liabilities": ["Liabilities"],
     "current_assets": ["AssetsCurrent"],
     "current_liabilities": ["LiabilitiesCurrent"],
@@ -56,8 +59,11 @@ IFRS_FACT_ALIASES = {
     "revenue": ["Revenue", "RevenueFromContractsWithCustomers"],
     "operating_income": ["ProfitLossFromOperatingActivities", "OperatingIncomeLoss"],
     "net_income": ["ProfitLoss", "ProfitLossAttributableToOwnersOfParent"],
+    "net_income_parent": ["ProfitLossAttributableToOwnersOfParent", "ProfitLossAttributableToParent"],
+    "net_income_nci": ["ProfitLossAttributableToNoncontrollingInterest"],
     "assets": ["Assets"],
-    "equity": ["Equity", "EquityAttributableToOwnersOfParent"],
+    "equity": ["EquityAttributableToOwnersOfParent", "Equity"],
+    "equity_nci": ["NoncontrollingInterestsInEquity", "NoncontrollingInterestInConsolidatedEntity", "MinorityInterest"],
     "liabilities": ["Liabilities"],
     "current_assets": ["CurrentAssets"],
     "current_liabilities": ["CurrentLiabilities"],
@@ -221,13 +227,70 @@ def _best_duration(rows, end, fy=None, quarter_only=False):
     return candidates[0] if candidates else None
 
 
+def _best_related_duration(rows, target):
+    candidates = [r for r in rows if r.get("end") == target.get("end") and r.get("days")]
+    if target.get("fy") is not None:
+        same_fy = [r for r in candidates if r.get("fy") == target.get("fy")]
+        if same_fy:
+            candidates = same_fy
+    target_days = target.get("days")
+    if target_days:
+        close = [r for r in candidates if abs((r.get("days") or 0) - target_days) <= 5]
+        if close:
+            candidates = close
+    target_start = target.get("start")
+    if target_start:
+        same_start = [r for r in candidates if r.get("start") == target_start]
+        if same_start:
+            candidates = same_start
+    candidates.sort(key=lambda r: (r["namespace_rank"], -r["priority"], r["filed"], r.get("days") or 0), reverse=True)
+    return candidates[0] if candidates else None
+
+
+def _parent_attributable_rows(rows, nci_rows):
+    """Replace consolidated duration values with parent-attributable values when NCI is reported."""
+    if not rows or not nci_rows:
+        return rows
+    adjusted = []
+    for row in rows:
+        nci = _best_related_duration(nci_rows, row)
+        if nci is None:
+            adjusted.append(row)
+            continue
+        adjusted.append({**row, "val": row["val"] - nci["val"], "parent_attributable": True, "nci_source_tag": nci["tag"]})
+    return adjusted
+
+
+def _best_related_instant(rows, target):
+    candidates = [r for r in rows if r.get("end") == target.get("end") and not r.get("start")]
+    if target.get("fy") is not None:
+        same_fy = [r for r in candidates if r.get("fy") == target.get("fy")]
+        if same_fy:
+            candidates = same_fy
+    candidates.sort(key=lambda r: (r["namespace_rank"], -r["priority"], r["filed"], r["form"].endswith("/A")), reverse=True)
+    return candidates[0] if candidates else None
+
+
+def _parent_attributable_instant(row, nci_rows):
+    """Return parent-attributable instant value when the selected equity fact includes NCI."""
+    if row is None or not nci_rows:
+        return row
+    tag = row.get("tag") or ""
+    if "IncludingPortionAttributableToNoncontrollingInterest" not in tag:
+        return row
+    nci = _best_related_instant(nci_rows, row)
+    if nci is None:
+        return row
+    return {**row, "val": row["val"] - nci["val"], "parent_attributable": True, "nci_source_tag": nci["tag"]}
+
+
 def _derive_quarter_value(rows, end, fy):
     """Convert latest YTD duration fact to quarter-only using the prior YTD fact."""
     current = _best_duration(rows, end, fy=fy, quarter_only=False)
     if not current:
         return None
     if current["days"] and 70 <= current["days"] <= 110:
-        return {"value": current["val"], "source": "reported-quarter", "start": current["start"], "end": current["end"], "days": current["days"]}
+        return {"value": current["val"], "source": "reported-quarter", "start": current["start"], "end": current["end"], "days": current["days"], "parent_attributable": bool(current.get("parent_attributable"))}
     if not current["start"] or not fy or not current["days"] or current["days"] < 150:
         return None
     prior = [r for r in rows if r.get("fy") == fy and r.get("end") < end and r.get("start") == current["start"] and r.get("days") and r["days"] < current["days"]]
@@ -235,7 +298,7 @@ def _derive_quarter_value(rows, end, fy):
         return None
     prior.sort(key=lambda r: (r["end"], r["filed"]), reverse=True)
     p = prior[0]
-    return {"value": current["val"] - p["val"], "source": "derived-quarter-from-ytd", "start": p["end"], "end": end, "days": (current["days"] - p["days"])}
+    return {"value": current["val"] - p["val"], "source": "derived-quarter-from-ytd", "start": p["end"], "end": end, "days": (current["days"] - p["days"]), "parent_attributable": bool(current.get("parent_attributable"))}
 
 
 def build_latest_snapshot(companyfacts):
@@ -246,9 +309,11 @@ def build_latest_snapshot(companyfacts):
     This is intentionally separate from annual scoring data.
     """
     all_rows = {metric: _all_fact_rows(companyfacts, metric) for metric in FACT_ALIASES}
+    if all_rows.get("net_income"):
+        all_rows["net_income"] = _parent_attributable_rows(all_rows["net_income"], all_rows.get("net_income_nci", []))
     all_dates = []
     for metric, rows in all_rows.items():
-        if metric in {"assets", "equity", "liabilities", "current_assets", "current_liabilities", "cash", "receivables", "inventory"}:
+        if metric in {"assets", "equity", "equity_nci", "liabilities", "current_assets", "current_liabilities", "cash", "receivables", "inventory"}:
             all_dates.extend(r["end"] for r in rows if not r["start"])
         else:
             all_dates.extend(r["end"] for r in rows if r["form"] in SNAPSHOT_FORMS)
@@ -280,8 +345,14 @@ def build_latest_snapshot(companyfacts):
     flow_metrics = {"revenue", "operating_income", "net_income", "interest_expense", "operating_cash_flow", "sga", "eps"}
     for metric in instant_metrics:
         row = _best_snapshot_instant(all_rows.get(metric, []), end)
+        if metric == "equity":
+            row = _parent_attributable_instant(row, all_rows.get("equity_nci", []))
         if row:
-            snapshot["instant"][metric] = {"value": row["val"], "unit": row["unit"], "tag": row["tag"], "namespace": row["namespace"], "source": "sec-company-facts", "filed": row["filed"]}
+            entry = {"value": row["val"], "unit": row["unit"], "tag": row["tag"], "namespace": row["namespace"], "source": "sec-company-facts", "filed": row["filed"]}
+            if row.get("parent_attributable"):
+                entry["basis"] = "parent-attributable"
+                entry["nci_source_tag"] = row.get("nci_source_tag")
+            snapshot["instant"][metric] = entry
 
     for metric in flow_metrics:
         rows = all_rows.get(metric, [])
@@ -291,7 +362,11 @@ def build_latest_snapshot(companyfacts):
         if q:
             entry["quarter"] = q
         if reported:
-            entry["reported"] = {"value": reported["val"], "unit": reported["unit"], "days": reported["days"], "start": reported["start"], "end": reported["end"], "tag": reported["tag"], "namespace": reported["namespace"], "filed": reported["filed"]}
+            reported_entry = {"value": reported["val"], "unit": reported["unit"], "days": reported["days"], "start": reported["start"], "end": reported["end"], "tag": reported["tag"], "namespace": reported["namespace"], "filed": reported["filed"]}
+            if reported.get("parent_attributable"):
+                reported_entry["basis"] = "parent-attributable"
+                reported_entry["nci_source_tag"] = reported.get("nci_source_tag")
+            entry["reported"] = reported_entry
         # TTM: current YTD/quarter + prior fiscal year - prior comparable YTD.
         if fy:
             annuals = [r for r in rows if r.get("fy") == fy and r.get("form") in FLOW_FORMS and r.get("days") and 300 <= r["days"] <= 380]
@@ -309,9 +384,9 @@ def build_latest_snapshot(companyfacts):
                         comparable = comparable_rows[-1]
                 if comparable:
                     ttm_value = reported["val"] + prior_annual["val"] - comparable["val"]
-                    entry["ttm"] = {"value": ttm_value, "unit": reported["unit"], "source": "derived-ttm"}
+                    entry["ttm"] = {"value": ttm_value, "unit": reported["unit"], "source": "derived-ttm", "basis": "parent-attributable"} if metric == "net_income" and reported.get("parent_attributable") else {"value": ttm_value, "unit": reported["unit"], "source": "derived-ttm"}
                 elif q:
-                    entry["ttm"] = {"value": q["value"] + prior_annual["val"], "unit": q.get("unit") or annual["unit"], "source": "partial-ttm"}
+                    entry["ttm"] = {"value": q["value"] + prior_annual["val"], "unit": q.get("unit") or annual["unit"], "source": "partial-ttm", "basis": "parent-attributable"} if metric == "net_income" and q.get("parent_attributable") else {"value": q["value"] + prior_annual["val"], "unit": q.get("unit") or annual["unit"], "source": "partial-ttm"}
         if entry:
             snapshot["flows"][metric] = entry
 
@@ -344,9 +419,22 @@ def debt_rate(liabilities, equity):
 def annual_metrics(index, year):
     revenue = latest_annual_value(index, "revenue", year)
     opinc = latest_annual_value(index, "operating_income", year)
-    net_income = latest_annual_value(index, "net_income", year)
+    consolidated_net_income = latest_annual_value(index, "net_income", year)
+    parent_net_income = latest_annual_value(index, "net_income_parent", year)
+    nci_net_income = latest_annual_value(index, "net_income_nci", year)
+    if parent_net_income is not None:
+        net_income = parent_net_income
+    elif consolidated_net_income is not None and nci_net_income is not None:
+        net_income = consolidated_net_income - nci_net_income
+    else:
+        net_income = consolidated_net_income
     assets = latest_annual_value(index, "assets", year)
     equity = latest_annual_value(index, "equity", year)
+    equity_nci = latest_annual_value(index, "equity_nci", year)
+    equity_row = (index.get("equity") or {}).get(year)
+    equity_tag = (equity_row or {}).get("tag") or ""
+    if equity is not None and "IncludingPortionAttributableToNoncontrollingInterest" in equity_tag and equity_nci is not None:
+        equity = equity - equity_nci
     liabilities = latest_annual_value(index, "liabilities", year)
     current_assets = latest_annual_value(index, "current_assets", year)
     current_liabilities = latest_annual_value(index, "current_liabilities", year)
