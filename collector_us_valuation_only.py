@@ -35,35 +35,68 @@ STANDARD_SECTORS = (
 )
 
 
-def get_standard_rows(sb, refresh=False):
-    """Load Standard rows that already have a fundamental snapshot."""
+def _load_paged(sb, table, columns, filters=None, page_size=1000):
     rows = []
     offset = 0
-    page_size = 1000
     while True:
-        response = (
-            sb.table("US_Fundamental")
-            .select("ticker,cik,company_name,sector,snapshot")
-            .in_("sector", list(STANDARD_SECTORS))
-            .range(offset, offset + page_size - 1)
-            .execute()
-        )
-        batch = response.data or []
+        query = sb.table(table).select(columns)
+        if filters:
+            for method, args in filters:
+                query = getattr(query, method)(*args)
+        batch = query.range(offset, offset + page_size - 1).execute().data or []
         rows.extend(batch)
         if len(batch) < page_size:
             break
         offset += page_size
+    return rows
 
-    if refresh:
-        return [r for r in rows if r.get("snapshot") and r["snapshot"].get("fiscal_end")]
 
-    return [
-        r
-        for r in rows
-        if r.get("snapshot")
-        and r["snapshot"].get("fiscal_end")
-        and not r["snapshot"].get("valuation")
-    ]
+def _merge_standard_rows(sb):
+    """Use US_Companies.sector_common as the Standard-universe authority."""
+    companies = _load_paged(
+        sb,
+        "US_Companies",
+        "ticker,cik,company_name,sector_common",
+        filters=[
+            ("eq", ("is_fundamental_eligible", True)),
+            ("in_", ("sector_common", list(STANDARD_SECTORS))),
+        ],
+    )
+    company_by_ticker = {r["ticker"]: r for r in companies}
+
+    fundamentals = _load_paged(
+        sb,
+        "US_Fundamental",
+        "ticker,cik,company_name,sector,snapshot",
+    )
+    fundamental_by_ticker = {r["ticker"]: r for r in fundamentals}
+
+    rows = []
+    for ticker, company in company_by_ticker.items():
+        fundamental = fundamental_by_ticker.get(ticker)
+        if not fundamental:
+            continue
+        snapshot = fundamental.get("snapshot")
+        if not snapshot or not snapshot.get("fiscal_end"):
+            continue
+        rows.append({
+            "ticker": ticker,
+            "cik": company.get("cik") or fundamental.get("cik"),
+            "company_name": company.get("company_name") or fundamental.get("company_name") or ticker,
+            "sector": company.get("sector_common"),
+            "snapshot": snapshot,
+        })
+    return rows
+
+
+def _load_standard_rows(sb, tickers=None, refresh=False):
+    rows = _merge_standard_rows(sb)
+    if tickers:
+        wanted = {x.upper().strip() for x in tickers}
+        rows = [r for r in rows if r["ticker"] in wanted]
+    if not refresh:
+        rows = [r for r in rows if not r["snapshot"].get("valuation")]
+    return rows
 
 
 def collect_valuation_one(session, row):
@@ -151,23 +184,7 @@ def main():
     elif args.tickers:
         explicit_tickers = [x.upper().strip() for x in args.tickers.split(",") if x.strip()]
 
-    if explicit_tickers:
-        response = (
-            sb.table("US_Fundamental")
-            .select("ticker,cik,company_name,sector,snapshot")
-            .in_("ticker", explicit_tickers)
-            .execute()
-        )
-        rows = response.data or []
-        rows = [
-            r for r in rows
-            if r.get("sector") in STANDARD_SECTORS
-            and r.get("snapshot")
-            and r["snapshot"].get("fiscal_end")
-            and (args.refresh or not r["snapshot"].get("valuation"))
-        ]
-    else:
-        rows = get_standard_rows(sb, refresh=args.refresh)
+    rows = _load_standard_rows(sb, tickers=explicit_tickers, refresh=args.refresh)
 
     if args.limit > 0:
         rows = rows[: args.limit]
