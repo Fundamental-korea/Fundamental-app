@@ -8,6 +8,8 @@ SEC-safe valuation metrics.
 from __future__ import annotations
 
 import argparse
+import re
+from html import unescape
 
 import yfinance as yf
 from supabase import create_client
@@ -45,6 +47,7 @@ def find_latest_filing(submissions, fiscal_end):
     reports = recent.get("reportDate") or []
     accessions = recent.get("accessionNumber") or []
     documents = recent.get("primaryDocument") or []
+    filed_dates = recent.get("filingDate") or []
     best = None
     for idx, report_date in enumerate(reports):
         if report_date != fiscal_end:
@@ -54,15 +57,16 @@ def find_latest_filing(submissions, fiscal_end):
             continue
         accession = accessions[idx] if idx < len(accessions) else None
         document = documents[idx] if idx < len(documents) else None
-        filed = ((recent.get("filingDate") or [None] * len(reports))[idx] if idx < len(recent.get("filingDate") or []) else None)
+        filed = filed_dates[idx] if idx < len(filed_dates) else ""
         if accession and document:
-            candidate = {"form": form, "accession": accession, "document": document, "report_date": report_date, "filing_date": filed or ""}
+            candidate = {"form": form, "accession": accession, "document": document, "report_date": report_date, "filing_date": filed}
             if best is None or candidate["filing_date"] > best["filing_date"]:
                 best = candidate
     return best
 
 
 def filing_text(session, cik, filing, filename=None):
+    """Fetch a filing document from the SEC archive."""
     if not filing:
         return None
     cik_int = str(int(str(cik)))
@@ -75,6 +79,77 @@ def filing_text(session, cik, filing, filename=None):
         return response.text
     except Exception:
         return None
+
+
+def _normalized_filing_text(text):
+    """Normalize SEC HTML/XML into text while preserving table wording."""
+    clean = unescape(text or "")
+    clean = re.sub(r"<[^>]+>", " ", clean)
+    clean = clean.replace("\xa0", " ")
+    clean = re.sub(r"[\u2012\u2013\u2014\u2212]", "-", clean)
+    return re.sub(r"\s+", " ", clean).strip()
+
+
+def parse_fiscal_end_common_shares(text, fiscal_end):
+    """Extract period-end common shares from the filing balance-sheet text.
+
+    A company may mention Class A/B multiple times in one filing (cover page,
+    EPS note, balance sheet). We inspect every class block and only accept a
+    block containing the requested fiscal-end date, preventing the cover-page
+    class mention from masking the later balance-sheet class mention.
+    """
+    clean = _normalized_filing_text(text)
+    if not clean or not fiscal_end:
+        return None
+    try:
+        dt = __import__("datetime").date.fromisoformat(fiscal_end)
+    except ValueError:
+        return None
+
+    months = {
+        1: "January", 2: "February", 3: "March", 4: "April",
+        5: "May", 6: "June", 7: "July", 8: "August",
+        9: "September", 10: "October", 11: "November", 12: "December",
+    }
+    date_phrase = rf"{months[dt.month]}\s+{dt.day}(?:st|nd|rd|th)?,\s+{dt.year}"
+
+    block_pattern = re.compile(
+        r"(?:Class\s+[A-C]\b|Common Class [A-C] \[Member\])"
+        r"(?P<body>.*?)(?=\bClass\s+[A-C]\b|\bCommon Class [A-C] \[Member\]\b|"
+        r"\bAdditional paid-in capital\b|\bRetained earnings\b|"
+        r"\bAccumulated other comprehensive\b|\bTreasury stock\b|"
+        r"\bTotal stockholders[’'] equity\b|$)",
+        re.I,
+    )
+
+    values = []
+    for match in block_pattern.finditer(clean):
+        body = match.group("body")
+        patterns = [
+            rf"Outstanding\s*-\s*(\d[\d,]*)\s+(?:and\s+\d[\d,]*\s+)?shares\s+as\s+of\s+{date_phrase}",
+            rf"Issued\s+and\s+Outstanding\s*-\s*(\d[\d,]*)\s+shares\s+as\s+of\s+{date_phrase}",
+        ]
+        for pattern in patterns:
+            found = re.search(pattern, body, re.I)
+            if found:
+                number = int(found.group(1).replace(",", ""))
+                if number > 0:
+                    values.append(number)
+                    break
+
+    if not values:
+        return None
+
+    unique_values = list(dict.fromkeys(values))
+    return {
+        "value": sum(unique_values),
+        "tag": "filing-fiscal-end-common-shares",
+        "namespace": "filing",
+        "basis": "filing-fiscal-end-sum-of-common-classes",
+        "class_count": len(unique_values),
+        "fiscal_end": fiscal_end,
+        "date_basis": "fiscal-end",
+    }
 
 
 def collect_one(sb, session, row, market=None):
@@ -102,17 +177,14 @@ def collect_one(sb, session, row, market=None):
         fiscal_end = snapshot["fiscal_end"]
         filing = find_latest_filing(submissions, fiscal_end)
 
-        # Period-end shares: use the primary 10-Q/10-K because this is where
-        # balance-sheet equity and the fiscal-end outstanding share count align.
+        # Period-end shares come from the balance-sheet portion of the
+        # primary filing. This is deliberately separate from cover-page shares.
         primary_text = filing_text(session, cik, filing)
-        period_filing_shares = parse_common_shares_from_filing(
-            primary_text,
-            fiscal_end,
-            for_current=False,
-        ) if primary_text else None
+        period_filing_shares = parse_fiscal_end_common_shares(primary_text, fiscal_end) if primary_text else None
+        if period_filing_shares is None and primary_text:
+            period_filing_shares = parse_common_shares_from_filing(primary_text, fiscal_end, for_current=False)
 
-        # Current shares: SEC filing-level cover-page XBRL (typically R1.htm)
-        # explicitly reports each common class outstanding on the cover date.
+        # Current shares come from filing-level cover-page XBRL (usually R1.htm).
         cover_text = filing_text(session, cik, filing, filename="R1.htm")
         current_filing_shares = parse_common_shares_from_filing(
             cover_text,
@@ -120,8 +192,8 @@ def collect_one(sb, session, row, market=None):
             for_current=True,
         ) if cover_text else None
 
-        # Some filings may not expose R1.htm under that name; the primary filing
-        # itself can still carry the cover-page disclosure, so try it as a fallback.
+        # Some filings do not expose the cover report as R1.htm; fall back to
+        # the primary filing's cover-page wording.
         if current_filing_shares is None and primary_text:
             current_filing_shares = parse_common_shares_from_filing(
                 primary_text,
