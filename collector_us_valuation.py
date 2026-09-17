@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import time
 from html import unescape
 
 import yfinance as yf
@@ -84,19 +85,47 @@ def find_latest_filing(submissions, fiscal_end):
 
 
 def filing_text(session, cik, filing, filename=None):
-    """Fetch a filing document from the SEC archive."""
+    """Fetch a filing document from the SEC archive with throttling retries.
+
+    SEC archive requests can intermittently return 403/429/5xx during bursty
+    collection even when the filing exists. Retry those transient responses
+    with backoff instead of silently converting the filing into missing data.
+    """
     if not filing:
         return None
+
     cik_int = str(int(str(cik)))
     accession = filing["accession"].replace("-", "")
     name = filename or filing["document"]
     url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accession}/{name}"
-    try:
-        response = session.get(url, timeout=30)
-        response.raise_for_status()
-        return response.text
-    except Exception:
-        return None
+
+    transient_statuses = {403, 429, 500, 502, 503, 504}
+    request_headers = {
+        "User-Agent": SEC_USER_AGENT,
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.8",
+        "Connection": "close",
+    }
+
+    for attempt in range(4):
+        try:
+            response = session.get(url, headers=request_headers, timeout=45)
+            if response.status_code == 200:
+                text = response.text
+                if text:
+                    return text
+                return None
+            if response.status_code in transient_statuses:
+                delay = 1.0 * (attempt + 1)
+                time.sleep(delay)
+                continue
+            response.raise_for_status()
+        except Exception:
+            if attempt >= 3:
+                return None
+            time.sleep(1.0 * (attempt + 1))
+
+    return None
 
 
 def _normalized_filing_text(text):
