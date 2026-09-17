@@ -8,6 +8,7 @@ SEC-safe valuation metrics.
 from __future__ import annotations
 
 import argparse
+import re
 
 import yfinance as yf
 from supabase import create_client
@@ -21,7 +22,7 @@ from collector_us_fundamental import (
     load_company,
 )
 from downturn_us import BENCHMARK, _close_series
-from us_valuation import build_valuation_snapshot, normalize_market_quote
+from us_valuation import build_valuation_snapshot, normalize_market_quote, parse_common_shares_from_filing
 
 
 def load_market_quote(ticker):
@@ -36,6 +37,40 @@ def load_market_quote(ticker):
     except Exception:
         history = None
     return normalize_market_quote(info, history)
+
+
+def find_latest_filing(submissions, fiscal_end):
+    """Return the SEC filing metadata that reports the requested fiscal period."""
+    recent = ((submissions or {}).get("filings") or {}).get("recent") or {}
+    forms = recent.get("form") or []
+    reports = recent.get("reportDate") or []
+    accessions = recent.get("accessionNumber") or []
+    documents = recent.get("primaryDocument") or []
+    for idx, report_date in enumerate(reports):
+        if report_date != fiscal_end:
+            continue
+        form = forms[idx] if idx < len(forms) else None
+        if form not in {"10-Q", "10-Q/A", "10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}:
+            continue
+        accession = accessions[idx] if idx < len(accessions) else None
+        document = documents[idx] if idx < len(documents) else None
+        if accession and document:
+            return {"form": form, "accession": accession, "document": document, "report_date": report_date}
+    return None
+
+
+def filing_text(session, cik, filing):
+    if not filing:
+        return None
+    cik_int = str(int(str(cik)))
+    accession = filing["accession"].replace("-", "")
+    url = f"https://www.sec.gov/Archives/edgar/data/{cik_int}/{accession}/{filing['document']}"
+    try:
+        response = session.get(url, timeout=30)
+        response.raise_for_status()
+        return response.text
+    except Exception:
+        return None
 
 
 def collect_one(sb, session, row, market=None):
@@ -60,7 +95,13 @@ def collect_one(sb, session, row, market=None):
     snapshot = result.get("snapshot")
     if snapshot and snapshot.get("fiscal_end"):
         quote = load_market_quote(ticker)
-        valuation = build_valuation_snapshot(facts, snapshot["fiscal_end"], quote)
+        filing = find_latest_filing(submissions, snapshot["fiscal_end"])
+        cover_text = filing_text(session, cik, filing)
+        filing_shares = parse_common_shares_from_filing(cover_text, snapshot["fiscal_end"]) if cover_text else None
+        valuation = build_valuation_snapshot(facts, snapshot["fiscal_end"], quote, filing_shares=filing_shares)
+        if filing:
+            valuation["filing_form"] = filing["form"]
+            valuation["filing_accession"] = filing["accession"]
         snapshot["market"] = quote
         snapshot["valuation"] = valuation
         result["snapshot"] = snapshot
