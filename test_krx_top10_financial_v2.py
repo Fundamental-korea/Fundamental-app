@@ -21,20 +21,17 @@ EXCLUDE_CODES = {"005930", "000660"}
 PREFERRED_SUFFIXES = ("2우B", "1우", "2우", "3우", "우B", "우C", "우")
 
 
-def load_company_rows():
-    rows, start, page_size = [], 0, 1000
-    while True:
+def load_company_rows(codes=None):
+    """Load only target rows. Avoid scanning the large period_scores JSON column."""
+    if codes:
         res = (
             collector.supabase.table("Fundamental")
-            .select("stock_code,stock_name,sector,wics_sector,holding_company,period_scores")
-            .range(start, start + page_size - 1)
+            .select("stock_code,stock_name,sector,wics_sector,holding_company")
+            .in_("stock_code", list(codes))
             .execute()
         )
-        batch = res.data or []
-        rows.extend(batch)
-        if len(batch) < page_size:
-            return rows
-        start += page_size
+        return res.data or []
+    return []
 
 
 def resolve_issuer(code, name, rows):
@@ -86,7 +83,8 @@ def main():
     if len(targets) != 8:
         raise SystemExit(f"Expected 8 targets, got {len(targets)}.")
 
-    rows = load_company_rows()
+    rows = load_company_rows([code for _, code, _ in targets])
+    row_map = {str(r.get("stock_code") or "").zfill(6): r for r in rows}
     print("\n=== READ-ONLY KRX TOP-10 DART DIAGNOSTIC ===")
     print("DB WRITE: NO")
     print("RULE: EPS is validated independently of DART stock-total availability.\n")
@@ -95,7 +93,7 @@ def main():
     share_basis_issues = []
 
     for rank, code, snap in targets:
-        dbrow = next((r for r in rows if str(r.get("stock_code") or "").zfill(6) == code), None)
+        dbrow = row_map.get(code)
         if not dbrow:
             hard_failures.append(f"{code}: Fundamental row missing")
             print(f"\nFAIL rank={rank} {code}: Fundamental row missing")
@@ -106,9 +104,14 @@ def main():
         if preferred:
             print(f"  preferred -> DART issuer {issuer_name} ({issuer_code})")
 
-        latest = collector.fetch_latest_report_metrics(
-            issuer_code, use_ofs_for_manufacturing=False, force_refresh=True
-        )
+        try:
+            latest = collector.fetch_latest_report_metrics(
+                issuer_code, use_ofs_for_manufacturing=False, force_refresh=True
+            )
+        except Exception as e:
+            hard_failures.append(f"{code}: DART latest-report exception: {e}")
+            print(f"  ❌ DART latest-report exception: {e}")
+            continue
         if latest is None:
             hard_failures.append(f"{code}: latest DART financial report unavailable")
             print("  FAIL: latest DART financial report unavailable")
@@ -183,6 +186,7 @@ def main():
             ])
 
     print("\n=== DIAGNOSTIC SUMMARY ===")
+    print(f"Targets processed: {len(targets)} / {len(targets)}")
     print(f"Hard financial failures: {len(hard_failures)}")
     for x in hard_failures:
         print("  ❌", x)
