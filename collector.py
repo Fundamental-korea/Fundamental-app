@@ -818,6 +818,25 @@ def _parse_report_financials(df, df_full=None):
     )
     eps_growth = sanitize_growth(eps_growth_raw)
 
+    # DART/XBRL 계정명은 회사마다 표기가 달라질 수 있으므로 공통 EPS 파서를 사용한다.
+    # 특히 '보통주기본주당이익'처럼 실제 공시 계정이 있어도 기존 일반 키워드 매칭에서
+    # 누락될 수 있었던 문제를 방지한다.
+    reported_eps = _find_common_basic_eps(detail_df, field="thstrm_amount")
+
+    # 보고기간 말일은 재무상태표의 당기 기준일을 우선 보존한다.
+    # BPS 주식수의 기준일 검증에 사용하며, 임의로 6/30 등의 날짜를 가정하지 않는다.
+    report_period_end = None
+    if "thstrm_dt" in detail_df.columns:
+        bs_rows = detail_df[detail_df.get("sj_div", "").astype(str).eq("BS")] if "sj_div" in detail_df.columns else detail_df
+        for raw_dt in bs_rows.get("thstrm_dt", []).tolist():
+            dt = str(raw_dt).strip()
+            if dt and dt.lower() not in ("nan", "none", "-"):
+                import re as _re
+                m = _re.search(r"(\\d{4})[.\\-/](\\d{1,2})[.\\-/](\\d{1,2})", dt)
+                if m:
+                    report_period_end = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+                    break
+
     raw = {
         "revenue": revenue,
         "operating_income": op_profit,
@@ -828,6 +847,8 @@ def _parse_report_financials(df, df_full=None):
         "interest_exp_is_approx": interest_exp_is_approx,
         "revenue_growth_raw": revenue_growth_raw,
         "eps_growth_raw": eps_growth_raw,
+        "reported_eps": reported_eps,
+        "report_period_end": report_period_end,
     }
 
     return {**ratios, "revenue_growth": revenue_growth, "eps_growth": eps_growth, **raw}
