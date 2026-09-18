@@ -46,18 +46,68 @@ def compute_volume_ma(volume: pd.Series, window: int = 20) -> pd.Series:
     return volume.rolling(window=window, min_periods=window).mean()
 
 
-def compute_all_indicators(hist_df: pd.DataFrame) -> dict:
-    """hist_df: 'Open','High','Low','Close','Volume' 컬럼을 가진 OHLCV DataFrame (yfinance 포맷)"""
+def compute_stochastic(high: pd.Series, low: pd.Series, close: pd.Series,
+                        k_window: int = 14, d_window: int = 3, smooth_k: int = 3):
+    """스토캐스틱 슬로우(Slow Stochastic) - 국내 HTS 기본값(14,3,3)과 동일."""
+    lowest_low = low.rolling(window=k_window, min_periods=k_window).min()
+    highest_high = high.rolling(window=k_window, min_periods=k_window).max()
+    raw_k = (close - lowest_low) / (highest_high - lowest_low).replace(0, pd.NA) * 100
+    k = raw_k.rolling(window=smooth_k, min_periods=smooth_k).mean()
+    d = k.rolling(window=d_window, min_periods=d_window).mean()
+    return k, d
+
+
+def compute_ichimoku(high: pd.Series, low: pd.Series, close: pd.Series,
+                      tenkan_window: int = 9, kijun_window: int = 26, senkou_b_window: int = 52):
+    """일목균형표. 국내에서 흔히 쓰는 기본값(9,26,52)을 그대로 사용.
+    선행스팬(구름)은 kijun_window만큼 '미래'로 밀어서 그리는 게 원래 정의라 shift(+)를 씀 -
+    그래서 마지막 kijun_window개 지점엔 구름이 아직 안 그려진 것처럼 보이는 게 정상."""
+    tenkan = (high.rolling(tenkan_window, min_periods=tenkan_window).max()
+              + low.rolling(tenkan_window, min_periods=tenkan_window).min()) / 2
+    kijun = (high.rolling(kijun_window, min_periods=kijun_window).max()
+             + low.rolling(kijun_window, min_periods=kijun_window).min()) / 2
+    senkou_a = ((tenkan + kijun) / 2).shift(kijun_window)
+    senkou_b = ((high.rolling(senkou_b_window, min_periods=senkou_b_window).max()
+                 + low.rolling(senkou_b_window, min_periods=senkou_b_window).min()) / 2).shift(kijun_window)
+    chikou = close.shift(-kijun_window)
+    return tenkan, kijun, senkou_a, senkou_b, chikou
+
+
+# --------------------------------------------------------------------------
+# 파라미터 커스터마이징 지원 - 사용자가 기간 등을 직접 조절할 수 있도록
+# --------------------------------------------------------------------------
+
+DEFAULT_PARAMS = {
+    "sma_short": 20, "sma_mid": 60, "sma_long": 120,
+    "bb_window": 20, "bb_std": 2.0,
+    "rsi_window": 14,
+    "macd_fast": 12, "macd_slow": 26, "macd_signal": 9,
+    "vol_ma_window": 20,
+    "stoch_k": 14, "stoch_d": 3, "stoch_smooth": 3,
+    "ichimoku_tenkan": 9, "ichimoku_kijun": 26, "ichimoku_senkou_b": 52,
+}
+
+
+def compute_all_indicators(hist_df: pd.DataFrame, params: dict = None) -> dict:
+    """hist_df: 'Open','High','Low','Close','Volume' 컬럼을 가진 OHLCV DataFrame (yfinance 포맷).
+    params를 안 넘기면 DEFAULT_PARAMS(업계 표준값) 그대로 사용 - 기존 호출부는 그대로 동작함."""
+    p = {**DEFAULT_PARAMS, **(params or {})}
     close = hist_df["Close"]
+    high = hist_df["High"]
+    low = hist_df["Low"]
     volume = hist_df["Volume"]
 
-    sma20 = compute_sma(close, 20)
-    sma60 = compute_sma(close, 60)
-    sma120 = compute_sma(close, 120)
-    bb_upper, bb_mid, bb_lower = compute_bollinger(close, 20, 2)
-    rsi14 = compute_rsi(close, 14)
-    macd_line, macd_signal, macd_hist = compute_macd(close, 12, 26, 9)
-    vol_ma20 = compute_volume_ma(volume, 20)
+    sma20 = compute_sma(close, p["sma_short"])
+    sma60 = compute_sma(close, p["sma_mid"])
+    sma120 = compute_sma(close, p["sma_long"])
+    bb_upper, bb_mid, bb_lower = compute_bollinger(close, p["bb_window"], p["bb_std"])
+    rsi14 = compute_rsi(close, p["rsi_window"])
+    macd_line, macd_signal, macd_hist = compute_macd(close, p["macd_fast"], p["macd_slow"], p["macd_signal"])
+    vol_ma20 = compute_volume_ma(volume, p["vol_ma_window"])
+    stoch_k, stoch_d = compute_stochastic(high, low, close, p["stoch_k"], p["stoch_d"], p["stoch_smooth"])
+    tenkan, kijun, senkou_a, senkou_b, chikou = compute_ichimoku(
+        high, low, close, p["ichimoku_tenkan"], p["ichimoku_kijun"], p["ichimoku_senkou_b"]
+    )
 
     return {
         "sma20": sma20, "sma60": sma60, "sma120": sma120,
@@ -65,6 +115,9 @@ def compute_all_indicators(hist_df: pd.DataFrame) -> dict:
         "rsi14": rsi14,
         "macd_line": macd_line, "macd_signal": macd_signal, "macd_hist": macd_hist,
         "vol_ma20": vol_ma20,
+        "stoch_k": stoch_k, "stoch_d": stoch_d,
+        "tenkan": tenkan, "kijun": kijun, "senkou_a": senkou_a, "senkou_b": senkou_b, "chikou": chikou,
+        "params": p,  # UI 라벨링용(예: f"SMA{p['sma_short']}") - 커스텀 기간 반영해서 표시하려고 같이 반환
     }
 
 
@@ -170,3 +223,39 @@ def generate_volume_commentary(volume: pd.Series, vol_ma20: pd.Series) -> str:
         return f"오늘 거래량이 최근 20일 평균의 {ratio:.1f}배로, 평소보다 한산한 편이에요. 지금 가격 움직임은 신뢰도가 다소 낮을 수 있어요."
     else:
         return f"오늘 거래량은 최근 20일 평균과 비슷한 수준({ratio:.1f}배)이에요. 특별히 튀는 수급 신호는 없는 상태예요."
+
+
+def generate_stochastic_commentary(stoch_k: pd.Series, stoch_d: pd.Series) -> str:
+    if pd.isna(stoch_k.iloc[-1]) or pd.isna(stoch_d.iloc[-1]):
+        return "데이터가 아직 충분히 쌓이지 않아 스토캐스틱을 계산할 수 없어요."
+
+    k, d = stoch_k.iloc[-1], stoch_d.iloc[-1]
+    if k >= 80:
+        zone = f"%K가 {k:.1f}로 80 이상인 과매수 구간이에요."
+    elif k <= 20:
+        zone = f"%K가 {k:.1f}로 20 이하인 과매도 구간이에요."
+    else:
+        zone = f"%K가 {k:.1f}로 20~80 사이 중립 구간이에요."
+
+    momentum = "%K가 %D 위에 있어 단기 상승 모멘텀이 우세해요." if k > d else "%K가 %D 아래에 있어 단기 하락 모멘텀이 우세해요."
+    return f"{zone} {momentum} RSI보다 더 민감하게 반응해서, 짧은 스윙 타이밍을 잡는 데 자주 쓰여요."
+
+
+def generate_ichimoku_commentary(close: pd.Series, tenkan: pd.Series, kijun: pd.Series,
+                                  senkou_a: pd.Series, senkou_b: pd.Series) -> str:
+    price = close.iloc[-1]
+    t, k = tenkan.iloc[-1], kijun.iloc[-1]
+    span_a, span_b = senkou_a.iloc[-1], senkou_b.iloc[-1]
+    if pd.isna(t) or pd.isna(k) or pd.isna(span_a) or pd.isna(span_b):
+        return "데이터가 아직 충분히 쌓이지 않아 일목균형표를 계산할 수 없어요 (구름을 그리려면 최소 52일 이상의 데이터가 필요해요)."
+
+    cloud_top, cloud_bottom = max(span_a, span_b), min(span_a, span_b)
+    if price > cloud_top:
+        cloud_note = "현재가가 구름대 위에 있어 추세가 상승 국면으로 해석돼요."
+    elif price < cloud_bottom:
+        cloud_note = "현재가가 구름대 아래에 있어 추세가 하락 국면으로 해석돼요."
+    else:
+        cloud_note = "현재가가 구름대 안에 있어 방향을 못 정한 혼조 구간으로 해석돼요."
+
+    tenkan_note = "전환선이 기준선 위에 있어 단기 흐름이 긍정적이에요." if t > k else "전환선이 기준선 아래에 있어 단기 흐름이 부정적이에요."
+    return f"{cloud_note} {tenkan_note}"
