@@ -296,6 +296,55 @@ def _find_account_value(source_df, keywords, field="thstrm_amount"):
 
     return None
 
+def _find_common_basic_eps(source_df, field="thstrm_amount"):
+    """DART/XBRL의 여러 계정명 중 보통주 기본 EPS를 안전하게 선택한다.
+
+    일반적인 '기본주당이익' 부분매칭은 '우선주기본주당이익'을 먼저 잡을 수 있으므로,
+    보통주/기본/주당/이익 조건을 우선하고 희석 EPS는 제외한다.
+    """
+    if source_df is None or source_df.empty or "account_nm" not in source_df.columns:
+        return None
+
+    names = source_df["account_nm"].astype(str)
+    norm_names = names.map(_normalize_account_name)
+
+    # 실측에서 확인된 대표적인 정확 계정명 우선.
+    for exact_name in (
+        "보통주기본주당이익",
+        "보통주기본주당순이익",
+    ):
+        mask = norm_names == exact_name
+        if mask.any():
+            value = _parse_dart_number(source_df[mask].iloc[0][field])
+            if value is not None:
+                return value
+
+    # 회사별 표기 변형 대응: 보통주 + 기본 + 주당 + 이익, 희석 제외.
+    common_basic_mask = (
+        norm_names.str.contains("보통주", na=False, regex=False)
+        & norm_names.str.contains("기본", na=False, regex=False)
+        & norm_names.str.contains("주당", na=False, regex=False)
+        & norm_names.str.contains("이익", na=False, regex=False)
+        & ~norm_names.str.contains("희석", na=False, regex=False)
+    )
+    for _, row in source_df[common_basic_mask].iterrows():
+        value = _parse_dart_number(row[field])
+        if value is not None:
+            return value
+
+    # 보통주가 명시되지 않는 일반 기본 EPS도 허용하되 우선주/희석은 제외.
+    generic_basic_mask = (
+        norm_names.str.contains("기본주당", na=False, regex=False)
+        & ~norm_names.str.contains("우선주", na=False, regex=False)
+        & ~norm_names.str.contains("희석", na=False, regex=False)
+    )
+    for _, row in source_df[generic_basic_mask].iterrows():
+        value = _parse_dart_number(row[field])
+        if value is not None:
+            return value
+
+    return None
+
 
 def get_interest_expense(detail_df, field="thstrm_amount"):
     """
@@ -668,10 +717,7 @@ def _parse_year_financials(df, df_full=None):
     # 주당순이익(EPS): 회사가 K-IFRS 기준으로 직접 계산해서 공시하는 "기본주당순이익" 계정을
     # 우선 사용 (순이익÷발행주식수로 자체 근사하면 자사주 미차감 등으로 부정확 - 버그9 수정).
     # 못 찾으면 None -> 호출부(sync_kor_stock_fundamental)에서 근사치로 폴백.
-    reported_eps = _find_account_value(
-        detail_df, ["기본주당순이익", "기본주당이익", "주당순이익", "보통주기본주당순이익"],
-        field="thstrm_amount",
-    )
+    reported_eps = _find_common_basic_eps(detail_df, field="thstrm_amount")
 
     # 투하자본 근사치: 자산총계 - 유동부채 (이자부채만 정확히 구분하기 어려워 유동부채 전체를 차감하는 간이 추정)
     invested_capital = total_assets - current_liab
