@@ -24,6 +24,13 @@ jobs:
           KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
         run: python test_krx_snapshot.py
 
+      - name: DART raw stock-total diagnostic (read only)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+        run: python diagnose_dart_stock_total.py
+
       - name: Supabase 3-stock live DB test
         env:
           KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
