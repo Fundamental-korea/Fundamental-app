@@ -69,6 +69,23 @@ def get_fresh_stock_total(code, years):
     return None, None, None, attempts
 
 
+def derive_report_period_end(report_year, report_code):
+    """DART standard calendar-year report-period fallback.
+
+    Used only when the financial API payload omits an explicit period-end date.
+    """
+    month_day = {
+        "11011": (12, 31),
+        "11012": (6, 30),
+        "11013": (3, 31),
+        "11014": (9, 30),
+    }.get(str(report_code))
+    if not month_day or report_year is None:
+        return None
+    month, day = month_day
+    return f"{int(report_year):04d}-{month:02d}-{day:02d}"
+
+
 def fetch_krx_listed_shares_on_date(stock_code, date_str):
     """보고기간 말일의 KRX 상장주식수. 현재 주식수를 과거 BPS 기준으로 대체하지 않는다."""
     bas_dd = date_str.replace("-", "")
@@ -176,10 +193,19 @@ def main():
             # DART '주식총수'가 없는 회사는 현재 KRX 주식수를 쓰지 않는다.
             # 대신 DART 보고기간 말일과 동일한 날짜의 KRX 상장주식수를 조회한다.
             report_period_end = latest.get("report_period_end")
+            report_period_basis = "DART explicit period-end"
+            if not report_period_end:
+                report_period_end = derive_report_period_end(
+                    latest.get("_report_year"), latest.get("_report_code")
+                )
+                report_period_basis = "derived from DART report code"
             if report_period_end:
                 bps_shares, bps_market_source = fetch_krx_listed_shares_on_date(code, report_period_end)
                 if bps_shares:
-                    bps_source = f"KRX listed shares on report period end ({report_period_end}, {bps_market_source})"
+                    bps_source = (
+                        f"KRX listed shares on report period end "
+                        f"({report_period_end}, {bps_market_source}; {report_period_basis})"
+                    )
         bps = (equity / bps_shares) if equity is not None and bps_shares and bps_shares > 0 else None
 
         price = snap.get("stock_price")
