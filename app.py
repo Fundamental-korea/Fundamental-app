@@ -19,6 +19,8 @@ from chart_indicators import (
     generate_rsi_commentary,
     generate_macd_commentary,
     generate_volume_commentary,
+    generate_stochastic_commentary,
+    generate_ichimoku_commentary,
 )
 import requests
 import streamlit as st
@@ -776,6 +778,18 @@ def get_stock_data(code):
     return result
 
 
+@st.cache_data(ttl=6 * 3600, show_spinner=False)
+def get_chart_history(code, period="1y"):
+    """Chart Analysis 전용 - 공부/스윙매매 목적이라 실시간 갱신은 불필요해서 6시간 캐시.
+    get_stock_data()와 분리해둔 이유: 저 함수는 매 페이지뷰마다 yfinance를 새로 호출하는
+    기존 동작이라 - 여기서 캐시 정책을 바꿔도 메인 펀더멘탈 리포트 페이지는 영향 없음."""
+    ticker_symbol = f"{code}.KS" if code.isdigit() else code
+    try:
+        return yf.Ticker(ticker_symbol).history(period=period)
+    except Exception:
+        return pd.DataFrame()
+
+
 # ==========================================
 # 3. 미국/한국 주식 통합 실시간 검색 컴포넌트
 # ==========================================
@@ -1214,9 +1228,43 @@ if selected_code and view_mode_param == "chart":
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
+elif view_mode_param == "analysis_search":
+    # ==========================================
+    # [5-0] 차트 분석 전용 검색 화면 - Chart Analysis 탭에서 새 창으로 열림
+    # ==========================================
+    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
+
+    with col_logo:
+        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
+
+    with col_quote:
+        render_quote_box()
+
+    with col_login:
+        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    left_ad, search_main, right_ad = st.columns([0.6, 6.8, 0.6])
+
+    with left_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
+    with search_main:
+        st.markdown("### 📊 차트 분석 (Chart Analysis)")
+        st.info(
+            "종목을 검색하면 캔들스틱 차트에 이동평균선·볼린저밴드·RSI·스토캐스틱·일목균형표·MACD·거래량 "
+            "지표를 얹어서, 지금 이 종목 기준 쉬운 설명과 함께 보여드려요."
+        )
+        analysis_search_stocks_db = get_combined_stock_db()
+        render_unified_search_box(stock_db=analysis_search_stocks_db, target_view="analysis")
+
+    with right_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
 elif selected_code and view_mode_param == "analysis":
     # ==========================================
-    # [5-1] 차트 분석(기술적 지표) 페이지 - 새 탭에서 열림
+    # [5-1] 차트 분석(기술적 지표) 페이지 - 전용 검색 화면에서 검색해 새 창으로 열림
     # ==========================================
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
@@ -1241,99 +1289,140 @@ elif selected_code and view_mode_param == "analysis":
         analysis_name = query_params.get("name", selected_code)
         st.markdown(f"### 📊 {analysis_name} ({selected_code}) 차트 분석 (Chart Analysis)")
 
-        analysis_data = get_stock_data(selected_code)
-        hist_df = analysis_data.get("hist", pd.DataFrame())
+        period_choice = st.select_slider(
+            "조회 기간", options=["6mo", "1y", "3y", "5y", "10y"], value="1y",
+            help="공부·스윙매매용이라 실시간 갱신은 안 하고, 몇 시간 단위로 캐시된 데이터를 보여드려요.",
+        )
+        hist_df = get_chart_history(selected_code, period=period_choice)
+
+        with st.expander("⚙️ 지표 설정 (고급) - 기간을 직접 바꿔볼 수 있어요"):
+            set_col1, set_col2, set_col3 = st.columns(3)
+            with set_col1:
+                sma_short = st.number_input("단기 이동평균(일)", 5, 60, 20, key="an_sma_short")
+                sma_mid = st.number_input("중기 이동평균(일)", 10, 120, 60, key="an_sma_mid")
+                sma_long = st.number_input("장기 이동평균(일)", 20, 300, 120, key="an_sma_long")
+            with set_col2:
+                bb_window = st.number_input("볼린저 기간(일)", 5, 60, 20, key="an_bb_window")
+                bb_std = st.number_input("볼린저 표준편차 배수", 1.0, 4.0, 2.0, step=0.5, key="an_bb_std")
+                rsi_window = st.number_input("RSI 기간(일)", 5, 30, 14, key="an_rsi_window")
+            with set_col3:
+                macd_fast = st.number_input("MACD 단기", 5, 30, 12, key="an_macd_fast")
+                macd_slow = st.number_input("MACD 장기", 15, 60, 26, key="an_macd_slow")
+                macd_signal = st.number_input("MACD 시그널", 3, 20, 9, key="an_macd_signal")
+
+        custom_params = {
+            "sma_short": sma_short, "sma_mid": sma_mid, "sma_long": sma_long,
+            "bb_window": bb_window, "bb_std": bb_std,
+            "rsi_window": rsi_window,
+            "macd_fast": macd_fast, "macd_slow": macd_slow, "macd_signal": macd_signal,
+        }
 
         if not hist_df.empty and len(hist_df) >= 20:
-            indicators = compute_all_indicators(hist_df)
+            indicators = compute_all_indicators(hist_df, params=custom_params)
+            p = indicators["params"]
 
             fig = make_subplots(
-                rows=4, cols=1, shared_xaxes=True,
-                row_heights=[0.5, 0.15, 0.15, 0.2],
-                vertical_spacing=0.03,
-                subplot_titles=("가격 + 이동평균선 + 볼린저밴드", "거래량", "RSI(14)", "MACD(12,26,9)"),
+                rows=5, cols=1, shared_xaxes=True,
+                row_heights=[0.38, 0.12, 0.14, 0.14, 0.16],
+                vertical_spacing=0.025,
+                subplot_titles=(
+                    "가격 + 이동평균선 + 볼린저밴드 + 일목균형표",
+                    "거래량", "RSI", "스토캐스틱", "MACD",
+                ),
             )
 
-            # 1) 캔들스틱 + 이동평균선 + 볼린저밴드
+            # 1) 캔들스틱 - 기본으로 항상 보임
             fig.add_trace(go.Candlestick(
                 x=hist_df.index, open=hist_df["Open"], high=hist_df["High"],
                 low=hist_df["Low"], close=hist_df["Close"],
                 increasing_line_color="#D97706", decreasing_line_color="#2563EB",
                 name="가격",
             ), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=hist_df.index, y=indicators["sma20"], name="SMA20",
-                line=dict(width=1.2, color="#F4A261"),
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=hist_df.index, y=indicators["sma60"], name="SMA60",
-                line=dict(width=1.2, color="#2563EB"),
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=hist_df.index, y=indicators["sma120"], name="SMA120",
-                line=dict(width=1.2, color="#6B7280"),
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=hist_df.index, y=indicators["bb_upper"], name="볼린저 상단",
-                line=dict(width=1, color="rgba(217,119,6,0.4)", dash="dot"),
-            ), row=1, col=1)
-            fig.add_trace(go.Scatter(
-                x=hist_df.index, y=indicators["bb_lower"], name="볼린저 하단",
-                line=dict(width=1, color="rgba(217,119,6,0.4)", dash="dot"),
-                fill="tonexty", fillcolor="rgba(244,162,97,0.06)",
-            ), row=1, col=1)
 
-            # 2) 거래량 + 거래량 이동평균
-            fig.add_trace(go.Bar(
-                x=hist_df.index, y=hist_df["Volume"], name="거래량",
-                marker_color="rgba(148,163,184,0.5)",
-            ), row=2, col=1)
-            fig.add_trace(go.Scatter(
-                x=hist_df.index, y=indicators["vol_ma20"], name="거래량 MA20",
-                line=dict(width=1.2, color="#D97706"),
-            ), row=2, col=1)
+            # 이동평균선 - 추세 파악 기본기라 기본으로 켜둠
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["sma20"], name=f"SMA{p['sma_short']}",
+                                      line=dict(width=1.2, color="#F4A261")), row=1, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["sma60"], name=f"SMA{p['sma_mid']}",
+                                      line=dict(width=1.2, color="#2563EB")), row=1, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["sma120"], name=f"SMA{p['sma_long']}",
+                                      line=dict(width=1.2, color="#6B7280")), row=1, col=1)
 
-            # 3) RSI
-            fig.add_trace(go.Scatter(
-                x=hist_df.index, y=indicators["rsi14"], name="RSI(14)",
-                line=dict(width=1.4, color="#7C3AED"),
-            ), row=3, col=1)
+            # 볼린저밴드 - 기본 숨김 (범례 클릭으로 켜기)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["bb_upper"], name="볼린저 상단",
+                                      line=dict(width=1, color="rgba(217,119,6,0.4)", dash="dot"),
+                                      visible="legendonly"), row=1, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["bb_lower"], name="볼린저 하단",
+                                      line=dict(width=1, color="rgba(217,119,6,0.4)", dash="dot"),
+                                      fill="tonexty", fillcolor="rgba(244,162,97,0.06)",
+                                      visible="legendonly"), row=1, col=1)
+
+            # 일목균형표 - 기본 숨김 (범례 클릭으로 켜기), 구름은 단순 단색 채움으로 표현
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["tenkan"], name="전환선",
+                                      line=dict(width=1, color="#DC2626"), visible="legendonly"), row=1, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["kijun"], name="기준선",
+                                      line=dict(width=1, color="#2563EB"), visible="legendonly"), row=1, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["senkou_a"], name="선행스팬A",
+                                      line=dict(width=0.8, color="rgba(22,163,74,0.5)"), visible="legendonly"), row=1, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["senkou_b"], name="구름(선행스팬B)",
+                                      line=dict(width=0.8, color="rgba(220,38,38,0.5)"),
+                                      fill="tonexty", fillcolor="rgba(148,163,184,0.15)",
+                                      visible="legendonly"), row=1, col=1)
+
+            # 2) 거래량 + 거래량 이동평균 - 가격 신뢰도 판단 기본기라 기본으로 보임
+            fig.add_trace(go.Bar(x=hist_df.index, y=hist_df["Volume"], name="거래량",
+                                  marker_color="rgba(148,163,184,0.5)"), row=2, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["vol_ma20"], name="거래량 MA20",
+                                      line=dict(width=1.2, color="#D97706")), row=2, col=1)
+
+            # 3) RSI - 기본 숨김
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["rsi14"], name=f"RSI({p['rsi_window']})",
+                                      line=dict(width=1.4, color="#7C3AED"), visible="legendonly"), row=3, col=1)
             fig.add_hline(y=70, line=dict(color="#DC2626", width=1, dash="dash"), row=3, col=1)
             fig.add_hline(y=30, line=dict(color="#16A34A", width=1, dash="dash"), row=3, col=1)
 
-            # 4) MACD
-            fig.add_trace(go.Bar(
-                x=hist_df.index, y=indicators["macd_hist"], name="MACD 히스토그램",
-                marker_color="rgba(148,163,184,0.6)",
-            ), row=4, col=1)
-            fig.add_trace(go.Scatter(
-                x=hist_df.index, y=indicators["macd_line"], name="MACD선",
-                line=dict(width=1.3, color="#D97706"),
-            ), row=4, col=1)
-            fig.add_trace(go.Scatter(
-                x=hist_df.index, y=indicators["macd_signal"], name="시그널선",
-                line=dict(width=1.3, color="#2563EB"),
-            ), row=4, col=1)
+            # 4) 스토캐스틱 - 기본 숨김
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["stoch_k"], name="%K",
+                                      line=dict(width=1.3, color="#0EA5E9"), visible="legendonly"), row=4, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["stoch_d"], name="%D",
+                                      line=dict(width=1.3, color="#F97316"), visible="legendonly"), row=4, col=1)
+            fig.add_hline(y=80, line=dict(color="#DC2626", width=1, dash="dash"), row=4, col=1)
+            fig.add_hline(y=20, line=dict(color="#16A34A", width=1, dash="dash"), row=4, col=1)
+
+            # 5) MACD - 기본 숨김
+            fig.add_trace(go.Bar(x=hist_df.index, y=indicators["macd_hist"], name="MACD 히스토그램",
+                                  marker_color="rgba(148,163,184,0.6)", visible="legendonly"), row=5, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["macd_line"], name="MACD선",
+                                      line=dict(width=1.3, color="#D97706"), visible="legendonly"), row=5, col=1)
+            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["macd_signal"], name="시그널선",
+                                      line=dict(width=1.3, color="#2563EB"), visible="legendonly"), row=5, col=1)
 
             fig.update_layout(
-                height=820,
+                height=980,
                 margin=dict(l=10, r=10, t=30, b=10),
                 xaxis_rangeslider_visible=False,
                 plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
                 font=dict(color="#1A1A1A", size=11),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02),
                 showlegend=True,
+                dragmode="zoom",
             )
-            for i in range(1, 5):
+            for i in range(1, 6):
                 fig.update_xaxes(row=i, col=1, rangeslider_visible=False)
 
-            st.plotly_chart(fig, use_container_width=True, key="chart_analysis_main")
+            st.caption("💡 범례를 클릭하면 지표를 켜고 끌 수 있어요. 캔들스틱·이동평균선·거래량은 기본으로 보이고, 나머지는 직접 켜보세요.")
+            st.plotly_chart(
+                fig, use_container_width=True, key="chart_analysis_main",
+                config={
+                    "modeBarButtonsToAdd": ["drawline", "drawopenpath", "drawrect", "eraseshape"],
+                    "displaylogo": False,
+                },
+            )
 
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-            st.markdown("##### 🎓 지표별 쉬운 설명 (지금 이 종목 기준)")
+            st.markdown("##### 🎓 지표별 쉬운 설명 (지금 이 종목 기준) - 눌러서 펼쳐보세요")
 
             close = hist_df["Close"]
-            indicator_cards = [
+            indicator_explainers = [
                 ("📏 이동평균선 (MA)",
                  "가격의 최근 흐름을 평균 내서 추세를 부드럽게 보여주는 지표예요.",
                  generate_ma_commentary(close, indicators["sma20"], indicators["sma60"], indicators["sma120"])),
@@ -1343,6 +1432,13 @@ elif selected_code and view_mode_param == "analysis":
                 ("⚡ RSI (상대강도지수)",
                  "최근 상승압력과 하락압력의 비율로 과매수/과매도를 0~100 사이 숫자로 보여줘요.",
                  generate_rsi_commentary(indicators["rsi14"])),
+                ("🌀 스토캐스틱",
+                 "일정 기간 가격 범위 안에서 현재가의 위치를 %로 보여주는, RSI보다 더 민감한 단기 지표예요.",
+                 generate_stochastic_commentary(indicators["stoch_k"], indicators["stoch_d"])),
+                ("☁️ 일목균형표",
+                 "전환선·기준선·구름(선행스팬)으로 추세의 방향과 강도를 종합적으로 보여주는 일본식 지표예요.",
+                 generate_ichimoku_commentary(close, indicators["tenkan"], indicators["kijun"],
+                                               indicators["senkou_a"], indicators["senkou_b"])),
                 ("🔀 MACD",
                  "단기/장기 이동평균의 차이로 추세 전환 시점을 포착하는 지표예요.",
                  generate_macd_commentary(indicators["macd_line"], indicators["macd_signal"], indicators["macd_hist"])),
@@ -1351,17 +1447,10 @@ elif selected_code and view_mode_param == "analysis":
                  generate_volume_commentary(hist_df["Volume"], indicators["vol_ma20"])),
             ]
 
-            for title, definition, commentary in indicator_cards:
-                st.markdown(
-                    f"""
-                    <div class="indicator-card">
-                        <div class="indicator-card-title">{title}</div>
-                        <div class="indicator-card-def">{definition}</div>
-                        <div class="indicator-card-desc">{commentary}</div>
-                    </div>
-                    """,
-                    unsafe_allow_html=True,
-                )
+            for title, definition, commentary in indicator_explainers:
+                with st.expander(title):
+                    st.markdown(f"<div class='indicator-card-def'>{definition}</div>", unsafe_allow_html=True)
+                    st.markdown(f"<div class='indicator-card-desc'>{commentary}</div>", unsafe_allow_html=True)
         elif not hist_df.empty:
             st.info("차트 데이터가 20일치 미만이라 지표를 계산하기엔 아직 부족해요. 기본 가격 흐름만 보여드릴게요.")
             st.line_chart(hist_df["Close"])
@@ -1446,10 +1535,21 @@ elif not selected_code:
                 "<div style='margin-bottom: 15px;'></div>",
                 unsafe_allow_html=True,
             )
-            render_unified_search_box(stock_db=combined_stocks_db, target_view="analysis")
             st.info(
-                "📊 **Chart Analysis**: 이동평균선·볼린저밴드·RSI·MACD·거래량, 5가지 핵심 기술적 지표를 "
-                "지금 이 종목 기준으로 자동 해설해드려요. 초보자도 지표가 왜 그런 값이 나왔는지 바로 이해할 수 있어요."
+                "📊 **Chart Analysis**: 이동평균선·볼린저밴드·RSI·MACD·스토캐스틱·일목균형표·거래량까지, "
+                "지금 이 종목 기준 자동 해설과 함께 전문 차트를 볼 수 있는 전용 화면이 새 창으로 열려요."
+            )
+            st.markdown(
+                """
+                <a href="?view=analysis_search" target="_blank" style="
+                    display:block; text-align:center; text-decoration:none;
+                    background-color:#FFFFFF; color:#1A1A1A; border:1.5px solid #D1D5DB;
+                    border-radius:10px; font-size:16px; font-weight:800; padding:12px 0;
+                    box-shadow:0 2px 5px rgba(0,0,0,0.04);">
+                    🔍 차트 분석 검색창 새 창으로 열기
+                </a>
+                """,
+                unsafe_allow_html=True,
             )
 
         st.markdown(
