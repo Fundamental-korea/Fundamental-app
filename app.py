@@ -825,21 +825,28 @@ def render_naver_style_chart(hist_df, indicators, height=1020):
     <html>
     <head>
         <meta charset="utf-8">
-        <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+        <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
         <style>
             body {{ margin: 0; padding: 0; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
         </style>
     </head>
     <body>
         <div id="naverStyleChart"></div>
+        <div id="chartErrorBox"></div>
         <script>
+        try {{
             const D = {data_json};
 
             function visTrace(name, y, color, width, extra) {{
-                return Object.assign({{
+                extra = extra || {{}};
+                const trace = Object.assign({{
                     type: "scatter", mode: "lines", x: D.dates, y: y, name: name,
-                    line: Object.assign({{ width: width, color: color }}, extra && extra.line || {{}}),
-                }}, extra || {{}});
+                    line: {{ width: width, color: color }},
+                }}, extra);
+                if (extra.line) {{
+                    trace.line = Object.assign({{ width: width, color: color }}, extra.line);
+                }}
+                return trace;
             }}
 
             const traces = [
@@ -911,7 +918,12 @@ def render_naver_style_chart(hist_df, indicators, height=1020):
             }};
 
             const graphDiv = document.getElementById("naverStyleChart");
-            Plotly.newPlot(graphDiv, traces, layout, config);
+            Plotly.newPlot(graphDiv, traces, layout, config).catch(function(err) {{
+                document.getElementById("chartErrorBox").innerHTML =
+                    "<div style='color:#DC2626; background:#FEF2F2; border:1px solid #FCA5A5; " +
+                    "border-radius:8px; padding:14px; margin-top:10px; font-family:monospace; font-size:13px;'>" +
+                    "⚠️ Plotly 렌더링 오류: " + (err && err.message ? err.message : err) + "</div>";
+            }});
 
             function visibleIndices(x0, x1) {{
                 const t0 = new Date(x0).getTime();
@@ -976,6 +988,12 @@ def render_naver_style_chart(hist_df, indicators, height=1020):
                         .catch(function() {{ isRescaling = false; }});
                 }}
             }});
+        }} catch (err) {{
+            document.getElementById("chartErrorBox").innerHTML =
+                "<div style='color:#DC2626; background:#FEF2F2; border:1px solid #FCA5A5; " +
+                "border-radius:8px; padding:14px; margin-top:10px; font-family:monospace; font-size:13px; white-space:pre-wrap;'>" +
+                "⚠️ 차트 렌더링 오류: " + (err && err.message ? err.message : err) + "</div>";
+        }}
         </script>
     </body>
     </html>
