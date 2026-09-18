@@ -24,30 +24,10 @@ jobs:
           KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
         run: python test_krx_snapshot.py
 
-      - name: DART direct API vs OpenDartReader diagnostic (read only)
-        env:
-          DART_API_KEY: ${{ secrets.DART_API_KEY }}
-        run: python test_dart_direct_vs_reader.py
-
-      - name: DART raw stock-total diagnostic (read only)
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          DART_API_KEY: ${{ secrets.DART_API_KEY }}
-        run: python diagnose_dart_stock_total.py
-
-      - name: Supabase 3-stock live DB test
+      - name: KRX top-10 financial test (Samsung + SK hynix excluded)
         env:
           KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
-        run: python test_krx_db_update.py
-
-      - name: DART + KRX financial 3-stock test
-        env:
-          KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-          DART_API_KEY: ${{ secrets.DART_API_KEY }}
-        run: python test_krx_financial_3stock.py
+        run: python test_krx_top10_financial.py
