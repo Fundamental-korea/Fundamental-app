@@ -1,7 +1,8 @@
 name: Test KRX Market Snapshot
 
 on:
-  push:
+  # Read-only tests are also manual-only so normal code commits do not
+  # unexpectedly start additional Actions runs.
   workflow_dispatch:
 
 jobs:

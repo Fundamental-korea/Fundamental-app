@@ -1,9 +1,8 @@
 name: KRX Full Production Run (2,876 Korean Stocks)
 
 on:
-  push:
-    branches:
-      - refactor/kor-market-snapshot
+  # IMPORTANT: never run the full 2,876-stock production job on ordinary pushes.
+  # Run it explicitly from GitHub Actions when a full refresh is intended.
   workflow_dispatch:
 
 jobs:
