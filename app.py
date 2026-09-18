@@ -3,8 +3,6 @@ import random
 import FinanceDataReader as fdr
 import pandas as pd
 import altair as alt
-import plotly.graph_objects as go
-from plotly.subplots import make_subplots
 import streamlit as st
 import streamlit.components.v1 as components
 from supabase import create_client
@@ -791,6 +789,200 @@ def get_chart_history(code, period="1y"):
         return pd.DataFrame()
 
 
+def render_naver_style_chart(hist_df, indicators, height=1020):
+    """네이버증권 스타일 차트 - Plotly.js를 components.html로 직접 임베드.
+    st.plotly_chart(서버에서 그려서 넘김)로는 줌/팬 시 y축이 안 따라오는 게 기본 동작이라
+    (Plotly는 x축만 자동으로 다시 그리고 y축 범위는 그대로 유지함), 이 함수는 브라우저에서
+    직접 Plotly.js를 돌려서 'plotly_relayout' 이벤트(사용자가 줌/팬 할 때 발생)를 잡아
+    화면에 보이는 구간의 고가/저가/거래량/MACD 범위로 y축을 다시 계산해서 그려줌.
+    네이버증권처럼 확대·이동할 때마다 y축이 그 구간에 맞게 재조정되는 느낌을 구현한 것.
+    RSI/스토캐스틱은 0~100 고정 범위라 원래도 재조정이 필요 없어서 그대로 둠."""
+
+    dates = [d.strftime("%Y-%m-%d") for d in hist_df.index]
+    o, h, l, c = hist_df["Open"].tolist(), hist_df["High"].tolist(), hist_df["Low"].tolist(), hist_df["Close"].tolist()
+    volume = hist_df["Volume"].tolist()
+    # 국내 관례: 상승(종가>=시가)=빨강, 하락=파랑 - 캔들/거래량 막대 모두 동일 색상 규칙 적용
+    vol_colors = ["#DC2626" if cc >= oo else "#2563EB" for oo, cc in zip(o, c)]
+
+    def s(key):
+        return indicators[key].tolist()
+
+    payload = {
+        "dates": dates, "open": o, "high": h, "low": l, "close": c,
+        "volume": volume, "vol_colors": vol_colors,
+        "sma5": s("sma5"), "sma20": s("sma20"), "sma60": s("sma60"), "sma120": s("sma120"),
+        "bb_upper": s("bb_upper"), "bb_lower": s("bb_lower"),
+        "tenkan": s("tenkan"), "kijun": s("kijun"), "senkou_a": s("senkou_a"), "senkou_b": s("senkou_b"),
+        "vol_ma20": s("vol_ma20"),
+        "rsi14": s("rsi14"),
+        "stoch_k": s("stoch_k"), "stoch_d": s("stoch_d"),
+        "macd_line": s("macd_line"), "macd_signal": s("macd_signal"), "macd_hist": s("macd_hist"),
+    }
+    data_json = json.dumps(payload)
+
+    custom_html = f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.35.2/plotly.min.js"></script>
+        <style>
+            body {{ margin: 0; padding: 0; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
+        </style>
+    </head>
+    <body>
+        <div id="naverStyleChart"></div>
+        <script>
+            const D = {data_json};
+
+            function visTrace(name, y, color, width, extra) {{
+                return Object.assign({{
+                    type: "scatter", mode: "lines", x: D.dates, y: y, name: name,
+                    line: Object.assign({{ width: width, color: color }}, extra && extra.line || {{}}),
+                }}, extra || {{}});
+            }}
+
+            const traces = [
+                {{ type: "candlestick", x: D.dates, open: D.open, high: D.high, low: D.low, close: D.close,
+                   name: "가격", yaxis: "y", xaxis: "x",
+                   increasing: {{ line: {{ color: "#DC2626" }} }}, decreasing: {{ line: {{ color: "#2563EB" }} }} }},
+
+                visTrace("5일선", D.sma5, "#16A34A", 1.1, {{ yaxis: "y" }}),
+                visTrace("20일선", D.sma20, "#DC2626", 1.1, {{ yaxis: "y" }}),
+                visTrace("60일선", D.sma60, "#F97316", 1.1, {{ yaxis: "y" }}),
+                visTrace("120일선", D.sma120, "#7C3AED", 1.1, {{ yaxis: "y" }}),
+
+                visTrace("볼린저 상단", D.bb_upper, "rgba(217,119,6,0.4)", 1, {{ yaxis: "y", visible: "legendonly", line: {{ dash: "dot" }} }}),
+                visTrace("볼린저 하단", D.bb_lower, "rgba(217,119,6,0.4)", 1, {{ yaxis: "y", visible: "legendonly", line: {{ dash: "dot" }}, fill: "tonexty", fillcolor: "rgba(244,162,97,0.06)" }}),
+
+                visTrace("전환선", D.tenkan, "#DC2626", 1, {{ yaxis: "y", visible: "legendonly" }}),
+                visTrace("기준선", D.kijun, "#2563EB", 1, {{ yaxis: "y", visible: "legendonly" }}),
+                visTrace("선행스팬A", D.senkou_a, "rgba(22,163,74,0.5)", 0.8, {{ yaxis: "y", visible: "legendonly" }}),
+                visTrace("구름(선행스팬B)", D.senkou_b, "rgba(220,38,38,0.5)", 0.8, {{ yaxis: "y", visible: "legendonly", fill: "tonexty", fillcolor: "rgba(148,163,184,0.15)" }}),
+
+                {{ type: "bar", x: D.dates, y: D.volume, name: "거래량", yaxis: "y2", marker: {{ color: D.vol_colors, opacity: 0.55 }} }},
+                visTrace("거래량 MA20", D.vol_ma20, "#D97706", 1.1, {{ yaxis: "y2", visible: "legendonly" }}),
+
+                visTrace("RSI(14)", D.rsi14, "#7C3AED", 1.3, {{ yaxis: "y3", visible: "legendonly" }}),
+
+                visTrace("%K", D.stoch_k, "#0EA5E9", 1.2, {{ yaxis: "y4", visible: "legendonly" }}),
+                visTrace("%D", D.stoch_d, "#F97316", 1.2, {{ yaxis: "y4", visible: "legendonly" }}),
+
+                {{ type: "bar", x: D.dates, y: D.macd_hist, name: "MACD 히스토그램", yaxis: "y5",
+                   marker: {{ color: "rgba(148,163,184,0.6)" }}, visible: "legendonly" }},
+                visTrace("MACD선", D.macd_line, "#D97706", 1.2, {{ yaxis: "y5", visible: "legendonly" }}),
+                visTrace("시그널선", D.macd_signal, "#2563EB", 1.2, {{ yaxis: "y5", visible: "legendonly" }}),
+            ];
+
+            const domains = {{ price: [0.60, 1.0], vol: [0.46, 0.58], rsi: [0.33, 0.44], stoch: [0.19, 0.30], macd: [0.0, 0.16] }};
+
+            const layout = {{
+                height: {height},
+                margin: {{ l: 55, r: 55, t: 10, b: 30 }},
+                paper_bgcolor: "#FFFFFF", plot_bgcolor: "#FFFFFF",
+                font: {{ color: "#1A1A1A", size: 11 }},
+                dragmode: "pan",
+                showlegend: true,
+                legend: {{ orientation: "h", y: 1.03 }},
+                xaxis: {{ type: "date", rangeslider: {{ visible: false }}, anchor: "y" }},
+                yaxis: {{ domain: domains.price, anchor: "x", side: "right", title: "가격" }},
+                yaxis2: {{ domain: domains.vol, anchor: "x", side: "right", title: "거래량" }},
+                yaxis3: {{ domain: domains.rsi, anchor: "x", side: "right", title: "RSI", range: [0, 100] }},
+                yaxis4: {{ domain: domains.stoch, anchor: "x", side: "right", title: "Stoch", range: [0, 100] }},
+                yaxis5: {{ domain: domains.macd, anchor: "x", side: "right", title: "MACD" }},
+                shapes: [
+                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 70, y1: 70, line: {{ color: "#DC2626", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 30, y1: 30, line: {{ color: "#16A34A", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "#DC2626", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "#16A34A", width: 1, dash: "dash" }} }},
+                ],
+                annotations: [
+                    {{ text: "가격 · 이동평균선 · 볼린저밴드 · 일목균형표", xref: "paper", yref: "paper", x: 0, y: domains.price[1], showarrow: false, xanchor: "left", font: {{ size: 11, color: "#6B7280" }} }},
+                    {{ text: "거래량", xref: "paper", yref: "paper", x: 0, y: domains.vol[1], showarrow: false, xanchor: "left", font: {{ size: 11, color: "#6B7280" }} }},
+                    {{ text: "RSI", xref: "paper", yref: "paper", x: 0, y: domains.rsi[1], showarrow: false, xanchor: "left", font: {{ size: 11, color: "#6B7280" }} }},
+                    {{ text: "스토캐스틱", xref: "paper", yref: "paper", x: 0, y: domains.stoch[1], showarrow: false, xanchor: "left", font: {{ size: 11, color: "#6B7280" }} }},
+                    {{ text: "MACD", xref: "paper", yref: "paper", x: 0, y: domains.macd[1], showarrow: false, xanchor: "left", font: {{ size: 11, color: "#6B7280" }} }},
+                ],
+            }};
+
+            const config = {{
+                scrollZoom: true, displaylogo: false,
+                modeBarButtonsToAdd: ["drawline", "drawopenpath", "drawrect", "eraseshape"],
+            }};
+
+            const graphDiv = document.getElementById("naverStyleChart");
+            Plotly.newPlot(graphDiv, traces, layout, config);
+
+            function visibleIndices(x0, x1) {{
+                const t0 = new Date(x0).getTime();
+                const t1 = new Date(x1).getTime();
+                const idxs = [];
+                for (let i = 0; i < D.dates.length; i++) {{
+                    const t = new Date(D.dates[i]).getTime();
+                    if (t >= t0 && t <= t1) idxs.push(i);
+                }}
+                return idxs;
+            }}
+
+            function minMax(arr, idxs) {{
+                let mn = Infinity, mx = -Infinity;
+                for (const i of idxs) {{
+                    const v = arr[i];
+                    if (v === null || v === undefined || isNaN(v)) continue;
+                    if (v < mn) mn = v;
+                    if (v > mx) mx = v;
+                }}
+                return [mn, mx];
+            }}
+
+            let isRescaling = false;
+            function rescaleYAxes(x0, x1) {{
+                const idxs = visibleIndices(x0, x1);
+                if (idxs.length === 0) return Promise.resolve();
+
+                const priceLo = minMax(D.low, idxs)[0];
+                const priceHi = minMax(D.high, idxs)[1];
+                const pad = (priceHi - priceLo) * 0.08 || priceHi * 0.05 || 1;
+
+                const volHi = minMax(D.volume, idxs)[1];
+
+                const macdAll = D.macd_line.concat(D.macd_signal).concat(D.macd_hist);
+                const idxs2 = idxs.concat(idxs.map(i => i + D.dates.length)).concat(idxs.map(i => i + 2 * D.dates.length));
+                const [macdLo, macdHi] = minMax(macdAll, idxs2);
+                const macdPad = (isFinite(macdHi - macdLo) ? (macdHi - macdLo) * 0.15 : 1) || 1;
+
+                const update = {{}};
+                if (isFinite(priceLo) && isFinite(priceHi)) update["yaxis.range"] = [priceLo - pad, priceHi + pad];
+                if (isFinite(volHi)) update["yaxis2.range"] = [0, volHi * 1.15];
+                if (isFinite(macdLo) && isFinite(macdHi)) update["yaxis5.range"] = [macdLo - macdPad, macdHi + macdPad];
+
+                return Plotly.relayout(graphDiv, update);
+            }}
+
+            graphDiv.on("plotly_relayout", function(evt) {{
+                if (isRescaling) return;
+                let newRange = null;
+                if (evt["xaxis.range[0]"] !== undefined && evt["xaxis.range[1]"] !== undefined) {{
+                    newRange = [evt["xaxis.range[0]"], evt["xaxis.range[1]"]];
+                }} else if (Array.isArray(evt["xaxis.range"])) {{
+                    newRange = evt["xaxis.range"];
+                }} else if (evt["xaxis.autorange"]) {{
+                    newRange = [D.dates[0], D.dates[D.dates.length - 1]];
+                }}
+                if (newRange) {{
+                    isRescaling = true;
+                    rescaleYAxes(newRange[0], newRange[1])
+                        .then(function() {{ isRescaling = false; }})
+                        .catch(function() {{ isRescaling = false; }});
+                }}
+            }});
+        </script>
+    </body>
+    </html>
+    """
+    components.html(custom_html, height=height + 20, scrolling=False)
+
+
 # ==========================================
 # 3. 미국/한국 주식 통합 실시간 검색 컴포넌트
 # ==========================================
@@ -1290,15 +1482,17 @@ elif selected_code and view_mode_param == "analysis":
         analysis_name = query_params.get("name", selected_code)
         st.markdown(f"### 📊 {analysis_name} ({selected_code}) 차트 분석 (Chart Analysis)")
 
-        period_choice = st.select_slider(
-            "조회 기간", options=["6mo", "1y", "3y", "5y", "10y"], value="1y",
+        period_choice_label = st.select_slider(
+            "조회 기간", options=["6mo", "1y", "3y", "5y", "10y", "전체(상장이후)"], value="1y",
             help="공부·스윙매매용이라 실시간 갱신은 안 하고, 몇 시간 단위로 캐시된 데이터를 보여드려요.",
         )
+        period_choice = "max" if period_choice_label == "전체(상장이후)" else period_choice_label
         hist_df = get_chart_history(selected_code, period=period_choice)
 
         with st.expander("⚙️ 지표 설정 (고급) - 기간을 직접 바꿔볼 수 있어요"):
             set_col1, set_col2, set_col3 = st.columns(3)
             with set_col1:
+                sma_tiny = st.number_input("초단기 이동평균(일)", 2, 20, 5, key="an_sma_tiny")
                 sma_short = st.number_input("단기 이동평균(일)", 5, 60, 20, key="an_sma_short")
                 sma_mid = st.number_input("중기 이동평균(일)", 10, 120, 60, key="an_sma_mid")
                 sma_long = st.number_input("장기 이동평균(일)", 20, 300, 120, key="an_sma_long")
@@ -1312,7 +1506,7 @@ elif selected_code and view_mode_param == "analysis":
                 macd_signal = st.number_input("MACD 시그널", 3, 20, 9, key="an_macd_signal")
 
         custom_params = {
-            "sma_short": sma_short, "sma_mid": sma_mid, "sma_long": sma_long,
+            "sma_tiny": sma_tiny, "sma_short": sma_short, "sma_mid": sma_mid, "sma_long": sma_long,
             "bb_window": bb_window, "bb_std": bb_std,
             "rsi_window": rsi_window,
             "macd_fast": macd_fast, "macd_slow": macd_slow, "macd_signal": macd_signal,
@@ -1322,106 +1516,12 @@ elif selected_code and view_mode_param == "analysis":
             indicators = compute_all_indicators(hist_df, params=custom_params)
             p = indicators["params"]
 
-            fig = make_subplots(
-                rows=5, cols=1, shared_xaxes=True,
-                row_heights=[0.38, 0.12, 0.14, 0.14, 0.16],
-                vertical_spacing=0.025,
-                subplot_titles=(
-                    "가격 + 이동평균선 + 볼린저밴드 + 일목균형표",
-                    "거래량", "RSI", "스토캐스틱", "MACD",
-                ),
-            )
-
-            # 1) 캔들스틱 - 기본으로 항상 보임
-            fig.add_trace(go.Candlestick(
-                x=hist_df.index, open=hist_df["Open"], high=hist_df["High"],
-                low=hist_df["Low"], close=hist_df["Close"],
-                increasing_line_color="#D97706", decreasing_line_color="#2563EB",
-                name="가격",
-            ), row=1, col=1)
-
-            # 이동평균선 - "지표는 전부 꺼두고 직접 켜서 본다"는 학습 경험을 위해 기본 숨김
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["sma20"], name=f"SMA{p['sma_short']}",
-                                      line=dict(width=1.2, color="#F4A261"), visible="legendonly"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["sma60"], name=f"SMA{p['sma_mid']}",
-                                      line=dict(width=1.2, color="#2563EB"), visible="legendonly"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["sma120"], name=f"SMA{p['sma_long']}",
-                                      line=dict(width=1.2, color="#6B7280"), visible="legendonly"), row=1, col=1)
-
-            # 볼린저밴드 - 기본 숨김 (범례 클릭으로 켜기)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["bb_upper"], name="볼린저 상단",
-                                      line=dict(width=1, color="rgba(217,119,6,0.4)", dash="dot"),
-                                      visible="legendonly"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["bb_lower"], name="볼린저 하단",
-                                      line=dict(width=1, color="rgba(217,119,6,0.4)", dash="dot"),
-                                      fill="tonexty", fillcolor="rgba(244,162,97,0.06)",
-                                      visible="legendonly"), row=1, col=1)
-
-            # 일목균형표 - 기본 숨김 (범례 클릭으로 켜기), 구름은 단순 단색 채움으로 표현
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["tenkan"], name="전환선",
-                                      line=dict(width=1, color="#DC2626"), visible="legendonly"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["kijun"], name="기준선",
-                                      line=dict(width=1, color="#2563EB"), visible="legendonly"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["senkou_a"], name="선행스팬A",
-                                      line=dict(width=0.8, color="rgba(22,163,74,0.5)"), visible="legendonly"), row=1, col=1)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["senkou_b"], name="구름(선행스팬B)",
-                                      line=dict(width=0.8, color="rgba(220,38,38,0.5)"),
-                                      fill="tonexty", fillcolor="rgba(148,163,184,0.15)",
-                                      visible="legendonly"), row=1, col=1)
-
-            # 2) 거래량(원본 데이터라 기본으로 보임) + 거래량 이동평균(계산된 지표라 기본 숨김)
-            fig.add_trace(go.Bar(x=hist_df.index, y=hist_df["Volume"], name="거래량",
-                                  marker_color="rgba(148,163,184,0.5)"), row=2, col=1)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["vol_ma20"], name="거래량 MA20",
-                                      line=dict(width=1.2, color="#D97706"), visible="legendonly"), row=2, col=1)
-
-            # 3) RSI - 기본 숨김
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["rsi14"], name=f"RSI({p['rsi_window']})",
-                                      line=dict(width=1.4, color="#7C3AED"), visible="legendonly"), row=3, col=1)
-            fig.add_hline(y=70, line=dict(color="#DC2626", width=1, dash="dash"), row=3, col=1)
-            fig.add_hline(y=30, line=dict(color="#16A34A", width=1, dash="dash"), row=3, col=1)
-
-            # 4) 스토캐스틱 - 기본 숨김
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["stoch_k"], name="%K",
-                                      line=dict(width=1.3, color="#0EA5E9"), visible="legendonly"), row=4, col=1)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["stoch_d"], name="%D",
-                                      line=dict(width=1.3, color="#F97316"), visible="legendonly"), row=4, col=1)
-            fig.add_hline(y=80, line=dict(color="#DC2626", width=1, dash="dash"), row=4, col=1)
-            fig.add_hline(y=20, line=dict(color="#16A34A", width=1, dash="dash"), row=4, col=1)
-
-            # 5) MACD - 기본 숨김
-            fig.add_trace(go.Bar(x=hist_df.index, y=indicators["macd_hist"], name="MACD 히스토그램",
-                                  marker_color="rgba(148,163,184,0.6)", visible="legendonly"), row=5, col=1)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["macd_line"], name="MACD선",
-                                      line=dict(width=1.3, color="#D97706"), visible="legendonly"), row=5, col=1)
-            fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["macd_signal"], name="시그널선",
-                                      line=dict(width=1.3, color="#2563EB"), visible="legendonly"), row=5, col=1)
-
-            fig.update_layout(
-                height=980,
-                margin=dict(l=10, r=10, t=30, b=10),
-                xaxis_rangeslider_visible=False,
-                plot_bgcolor="#FFFFFF", paper_bgcolor="#FFFFFF",
-                font=dict(color="#1A1A1A", size=11),
-                legend=dict(orientation="h", yanchor="bottom", y=1.02),
-                showlegend=True,
-                dragmode="pan",  # 드래그 = 좌우 이동 (네이버증권 방식)
-            )
-            for i in range(1, 6):
-                fig.update_xaxes(row=i, col=1, rangeslider_visible=False)
-
             st.caption(
-                "💡 마우스 휠로 확대/축소, 드래그로 좌우 이동할 수 있어요 (더블클릭하면 원래대로 돌아가요). "
-                "범례를 클릭하면 지표를 켜고 끌 수 있어요 - 처음엔 캔들스틱과 거래량만 보이니, 보고 싶은 지표를 직접 켜보세요."
+                "💡 마우스 휠로 확대/축소, 드래그로 좌우 이동할 수 있어요 - 이동/확대할 때마다 y축(가격·거래량·MACD)이 "
+                "보이는 구간에 맞춰 자동으로 다시 그려져요 (더블클릭하면 전체 구간으로 리셋). "
+                "이동평균선(5·20·60·120)은 기본으로 보이고, 나머지 지표는 범례를 클릭해서 켜보세요."
             )
-            st.plotly_chart(
-                fig, use_container_width=True, key="chart_analysis_main",
-                config={
-                    "scrollZoom": True,  # 마우스 휠로 확대/축소
-                    "modeBarButtonsToAdd": ["drawline", "drawopenpath", "drawrect", "eraseshape"],
-                    "displaylogo": False,
-                },
-            )
+            render_naver_style_chart(hist_df, indicators, height=1020)
 
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             st.markdown("##### 🎓 지표별 강의 (지금 이 종목 기준) - 눌러서 펼쳐보세요")
