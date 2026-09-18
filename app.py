@@ -21,6 +21,7 @@ from chart_indicators import (
     generate_volume_commentary,
     generate_stochastic_commentary,
     generate_ichimoku_commentary,
+    INDICATOR_LESSONS,
 )
 import requests
 import streamlit as st
@@ -1339,13 +1340,13 @@ elif selected_code and view_mode_param == "analysis":
                 name="가격",
             ), row=1, col=1)
 
-            # 이동평균선 - 추세 파악 기본기라 기본으로 켜둠
+            # 이동평균선 - "지표는 전부 꺼두고 직접 켜서 본다"는 학습 경험을 위해 기본 숨김
             fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["sma20"], name=f"SMA{p['sma_short']}",
-                                      line=dict(width=1.2, color="#F4A261")), row=1, col=1)
+                                      line=dict(width=1.2, color="#F4A261"), visible="legendonly"), row=1, col=1)
             fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["sma60"], name=f"SMA{p['sma_mid']}",
-                                      line=dict(width=1.2, color="#2563EB")), row=1, col=1)
+                                      line=dict(width=1.2, color="#2563EB"), visible="legendonly"), row=1, col=1)
             fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["sma120"], name=f"SMA{p['sma_long']}",
-                                      line=dict(width=1.2, color="#6B7280")), row=1, col=1)
+                                      line=dict(width=1.2, color="#6B7280"), visible="legendonly"), row=1, col=1)
 
             # 볼린저밴드 - 기본 숨김 (범례 클릭으로 켜기)
             fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["bb_upper"], name="볼린저 상단",
@@ -1368,11 +1369,11 @@ elif selected_code and view_mode_param == "analysis":
                                       fill="tonexty", fillcolor="rgba(148,163,184,0.15)",
                                       visible="legendonly"), row=1, col=1)
 
-            # 2) 거래량 + 거래량 이동평균 - 가격 신뢰도 판단 기본기라 기본으로 보임
+            # 2) 거래량(원본 데이터라 기본으로 보임) + 거래량 이동평균(계산된 지표라 기본 숨김)
             fig.add_trace(go.Bar(x=hist_df.index, y=hist_df["Volume"], name="거래량",
                                   marker_color="rgba(148,163,184,0.5)"), row=2, col=1)
             fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["vol_ma20"], name="거래량 MA20",
-                                      line=dict(width=1.2, color="#D97706")), row=2, col=1)
+                                      line=dict(width=1.2, color="#D97706"), visible="legendonly"), row=2, col=1)
 
             # 3) RSI - 기본 숨김
             fig.add_trace(go.Scatter(x=hist_df.index, y=indicators["rsi14"], name=f"RSI({p['rsi_window']})",
@@ -1404,52 +1405,58 @@ elif selected_code and view_mode_param == "analysis":
                 font=dict(color="#1A1A1A", size=11),
                 legend=dict(orientation="h", yanchor="bottom", y=1.02),
                 showlegend=True,
-                dragmode="zoom",
+                dragmode="pan",  # 드래그 = 좌우 이동 (네이버증권 방식)
             )
             for i in range(1, 6):
                 fig.update_xaxes(row=i, col=1, rangeslider_visible=False)
 
-            st.caption("💡 범례를 클릭하면 지표를 켜고 끌 수 있어요. 캔들스틱·이동평균선·거래량은 기본으로 보이고, 나머지는 직접 켜보세요.")
+            st.caption(
+                "💡 마우스 휠로 확대/축소, 드래그로 좌우 이동할 수 있어요 (더블클릭하면 원래대로 돌아가요). "
+                "범례를 클릭하면 지표를 켜고 끌 수 있어요 - 처음엔 캔들스틱과 거래량만 보이니, 보고 싶은 지표를 직접 켜보세요."
+            )
             st.plotly_chart(
                 fig, use_container_width=True, key="chart_analysis_main",
                 config={
+                    "scrollZoom": True,  # 마우스 휠로 확대/축소
                     "modeBarButtonsToAdd": ["drawline", "drawopenpath", "drawrect", "eraseshape"],
                     "displaylogo": False,
                 },
             )
 
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
-            st.markdown("##### 🎓 지표별 쉬운 설명 (지금 이 종목 기준) - 눌러서 펼쳐보세요")
+            st.markdown("##### 🎓 지표별 강의 (지금 이 종목 기준) - 눌러서 펼쳐보세요")
 
             close = hist_df["Close"]
             indicator_explainers = [
-                ("📏 이동평균선 (MA)",
-                 "가격의 최근 흐름을 평균 내서 추세를 부드럽게 보여주는 지표예요.",
+                ("📏 이동평균선 (MA)", "ma",
                  generate_ma_commentary(close, indicators["sma20"], indicators["sma60"], indicators["sma120"])),
-                ("📐 볼린저 밴드",
-                 "가격 변동성을 기준으로 '평소보다 비싼지/싼지'를 시각적으로 보여주는 지표예요.",
+                ("📐 볼린저 밴드", "bollinger",
                  generate_bollinger_commentary(close, indicators["bb_upper"], indicators["bb_mid"], indicators["bb_lower"])),
-                ("⚡ RSI (상대강도지수)",
-                 "최근 상승압력과 하락압력의 비율로 과매수/과매도를 0~100 사이 숫자로 보여줘요.",
+                ("⚡ RSI (상대강도지수)", "rsi",
                  generate_rsi_commentary(indicators["rsi14"])),
-                ("🌀 스토캐스틱",
-                 "일정 기간 가격 범위 안에서 현재가의 위치를 %로 보여주는, RSI보다 더 민감한 단기 지표예요.",
+                ("🌀 스토캐스틱", "stochastic",
                  generate_stochastic_commentary(indicators["stoch_k"], indicators["stoch_d"])),
-                ("☁️ 일목균형표",
-                 "전환선·기준선·구름(선행스팬)으로 추세의 방향과 강도를 종합적으로 보여주는 일본식 지표예요.",
+                ("☁️ 일목균형표", "ichimoku",
                  generate_ichimoku_commentary(close, indicators["tenkan"], indicators["kijun"],
                                                indicators["senkou_a"], indicators["senkou_b"])),
-                ("🔀 MACD",
-                 "단기/장기 이동평균의 차이로 추세 전환 시점을 포착하는 지표예요.",
+                ("🔀 MACD", "macd",
                  generate_macd_commentary(indicators["macd_line"], indicators["macd_signal"], indicators["macd_hist"])),
-                ("📊 거래량",
-                 "얼마나 많은 사람이 사고팔았는지를 보여줘서, 가격 움직임의 신뢰도를 판단하는 데 써요.",
+                ("📊 거래량", "volume",
                  generate_volume_commentary(hist_df["Volume"], indicators["vol_ma20"])),
             ]
 
-            for title, definition, commentary in indicator_explainers:
+            for title, lesson_key, commentary in indicator_explainers:
+                lesson = INDICATOR_LESSONS[lesson_key]
                 with st.expander(title):
-                    st.markdown(f"<div class='indicator-card-def'>{definition}</div>", unsafe_allow_html=True)
+                    st.markdown("**📖 개념**")
+                    st.markdown(f"<div class='indicator-card-desc'>{lesson['concept']}</div>", unsafe_allow_html=True)
+                    st.markdown("**🧮 계산 방법**")
+                    st.markdown(f"<div class='indicator-card-desc'>{lesson['calculation']}</div>", unsafe_allow_html=True)
+                    st.markdown("**🎯 실전 활용**")
+                    st.markdown(f"<div class='indicator-card-desc'>{lesson['how_to_use']}</div>", unsafe_allow_html=True)
+                    st.markdown("**⚠️ 초보자가 흔히 하는 실수**")
+                    st.markdown(f"<div class='indicator-card-desc'>{lesson['common_mistakes']}</div>", unsafe_allow_html=True)
+                    st.markdown("**🔎 지금 이 종목 기준**")
                     st.markdown(f"<div class='indicator-card-desc'>{commentary}</div>", unsafe_allow_html=True)
         elif not hist_df.empty:
             st.info("차트 데이터가 20일치 미만이라 지표를 계산하기엔 아직 부족해요. 기본 가격 흐름만 보여드릴게요.")
