@@ -5,3 +5,4 @@ finance-datareader
 opendartreader
 requests
 yfinance
+plotly
