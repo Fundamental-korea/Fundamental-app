@@ -832,7 +832,7 @@ def _parse_report_financials(df, df_full=None):
             dt = str(raw_dt).strip()
             if dt and dt.lower() not in ("nan", "none", "-"):
                 import re as _re
-                m = _re.search(r"(\\d{4})[.\\-/](\\d{1,2})[.\\-/](\\d{1,2})", dt)
+                m = _re.search(r"(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})", dt)
                 if m:
                     report_period_end = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
                     break
@@ -908,7 +908,7 @@ def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufact
                 if col not in source.columns:
                     continue
                 for raw_dt in source[col].astype(str).tolist():
-                    m = _re.search(r"(\\d{4})[.\\-/](\\d{1,2})[.\\-/](\\d{1,2})", raw_dt)
+                    m = _re.search(r"(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})", raw_dt)
                     if m:
                         report_period_end = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
                         break
