@@ -342,6 +342,7 @@ def install_market_snapshot_integration() -> dict:
         )
 
         payload = {
+            "stock_code": str(stock_code).zfill(6),
             "stock_price": snapshot.get("stock_price"),
             "listed_shares": snapshot.get("listed_shares"),
             "market_cap": snapshot.get("market_cap"),
