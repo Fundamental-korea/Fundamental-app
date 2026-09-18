@@ -15,6 +15,51 @@ import collector
 
 EXCLUDE_CODES = {"005930", "000660"}
 
+# KRX는 우선주를 별도 증권으로 취급하지만, DART 재무제표는 발행회사(보통주)의
+# 재무정보를 기준으로 조회해야 하는 경우가 있다. 예: 삼성전자우(005935) -> 삼성전자(005930).
+# DART 공식 고유번호 목록도 상장회사 종목코드를 회사 식별자와 별도로 제공하므로,
+# KRX security code를 그대로 DART issuer code로 가정하지 않는다.
+PREFERRED_SUFFIXES = ("2우B", "1우", "2우", "3우", "우B", "우C", "우")
+
+
+def _load_all_company_rows():
+    rows = []
+    start = 0
+    page_size = 1000
+    while True:
+        res = (
+            collector.supabase.table("Fundamental")
+            .select("stock_code,stock_name,sector,wics_sector,holding_company,period_scores")
+            .range(start, start + page_size - 1)
+            .execute()
+        )
+        batch = res.data or []
+        rows.extend(batch)
+        if len(batch) < page_size:
+            break
+        start += page_size
+    return rows
+
+
+def _resolve_dart_financial_base_code(code, name, company_rows):
+    """Return the issuer/common-stock code used for DART financials, if this KRX
+    security appears to be a preferred share. Return None when no mapping is needed."""
+    name = str(name or "").strip()
+    base_name = None
+    for suffix in PREFERRED_SUFFIXES:
+        if name.endswith(suffix) and len(name) > len(suffix):
+            base_name = name[: -len(suffix)].strip()
+            break
+    if not base_name:
+        return None
+
+    for candidate in company_rows:
+        if str(candidate.get("stock_name") or "").strip() == base_name:
+            candidate_code = str(candidate.get("stock_code") or "").zfill(6)
+            if candidate_code and candidate_code != code:
+                return candidate_code
+    return None
+
 
 def _load_row(code):
     res = (
@@ -72,18 +117,44 @@ if __name__ == "__main__":
         name = row.get("stock_name") or code
         print(f"\n--- Rank {rank}: {name} ({code}) ---")
 
+        company_rows = _load_all_company_rows()
+        dart_code = _resolve_dart_financial_base_code(code, name, company_rows)
+        financial_row = row
+        financial_code = code
+        financial_name = name
+
+        if dart_code:
+            financial_row = next(
+                (candidate for candidate in company_rows
+                 if str(candidate.get("stock_code") or "").zfill(6) == dart_code),
+                None,
+            )
+            if not financial_row:
+                raise SystemExit(
+                    f"Preferred-share issuer mapping failed for {name} ({code}) -> {dart_code}."
+                )
+            financial_name = financial_row.get("stock_name") or dart_code
+            financial_code = dart_code
+            print(
+                f"  ↳ KRX preferred share detected: {code} {name} "
+                f"-> DART financial issuer: {dart_code} {financial_name}"
+            )
+
         ok = collector.sync_1y_only(
-            code,
-            name,
-            sector=row.get("sector"),
-            wics_sector=row.get("wics_sector"),
-            holding_company=row.get("holding_company") or False,
-            existing_period_scores=row.get("period_scores") or {},
+            financial_code,
+            financial_name,
+            sector=financial_row.get("sector"),
+            wics_sector=financial_row.get("wics_sector"),
+            holding_company=financial_row.get("holding_company") or False,
+            existing_period_scores=financial_row.get("period_scores") or {},
             kospi_mdd_cache=kospi_mdd_cache,
             force_refresh=True,
         )
         if not ok:
-            raise SystemExit(f"DART 1y refresh failed for {name} ({code}).")
+            raise SystemExit(
+                f"DART 1y refresh failed for {name} ({code}); "
+                f"financial issuer={financial_name} ({financial_code})."
+            )
 
         after = (
             collector.supabase.table("Fundamental")
@@ -91,13 +162,16 @@ if __name__ == "__main__":
                 "stock_price,eps,bps,issued_shares,period_end_shares,"
                 "per,pbr,data_basis_label"
             )
-            .eq("stock_code", code)
+            .eq("stock_code", financial_code)
             .limit(1)
             .execute()
         )
         saved = (after.data or [None])[0]
         if not saved:
-            raise SystemExit(f"Verification read failed for {name} ({code}).")
+            raise SystemExit(
+                f"Financial verification read failed for {financial_name} ({financial_code}) "
+                f"while testing {name} ({code})."
+            )
 
         per, pbr = _recalculate_valuation(
             snapshot.get("stock_price"), saved.get("eps"), saved.get("bps")
@@ -109,10 +183,15 @@ if __name__ == "__main__":
             "market_cap": snapshot["market_cap"],
             "market_snapshot_date": snapshot["market_snapshot_date"],
             "market_data_source": snapshot["market_data_source"],
+            # EPS/BPS는 issuer(보통주 회사)의 DART 재무정보를 사용하지만,
+            # price/listed_shares/market_cap은 반드시 테스트 대상 KRX 증권 자체 값을 사용한다.
+            "eps": saved.get("eps"),
+            "bps": saved.get("bps"),
             "per": per,
             "pbr": pbr,
             "period_end_shares": saved.get("period_end_shares") or saved.get("issued_shares"),
-            "shares_data_source": "DART_STOCK_TOTAL",
+            "shares_data_source": "DART_STOCK_TOTAL_ISSUER",
+            "data_basis_label": saved.get("data_basis_label"),
         }
         collector.supabase.table("Fundamental").update(payload).eq("stock_code", code).execute()
 
