@@ -24,6 +24,11 @@ jobs:
           KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
         run: python test_krx_snapshot.py
 
+      - name: DART direct API vs OpenDartReader diagnostic (read only)
+        env:
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+        run: python test_dart_direct_vs_reader.py
+
       - name: DART raw stock-total diagnostic (read only)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
