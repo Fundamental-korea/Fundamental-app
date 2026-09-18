@@ -24,10 +24,10 @@ jobs:
           KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
         run: python test_krx_snapshot.py
 
-      - name: KRX top-10 financial test (Samsung + SK hynix excluded)
+      - name: Independent DART + KRX top-10 diagnostic (READ ONLY)
         env:
           KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           DART_API_KEY: ${{ secrets.DART_API_KEY }}
-        run: python test_krx_top10_financial.py
+        run: python test_krx_top10_financial_v2.py
