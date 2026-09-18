@@ -1,0 +1,1 @@
+trigger Step 5 market-map diagnostic
