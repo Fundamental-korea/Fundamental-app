@@ -1064,15 +1064,12 @@ def extract_treasury_shares(df):
     return int(val) if val is not None else 0
 
 
-def fetch_stock_total_count_info(stock_code, year, reprt_code="11011"):
+def fetch_stock_total_count_info(stock_code, year):
     """
-    주식의 총수 현황 조회. 기본값은 사업보고서(11011)지만 최신 재무 스냅샷에서는
-    최신 반기/분기/사업보고서와 동일한 report code를 사용해 기간말 주식수와 회계 기준을 맞춘다.
-    OpenDART 공식 API도 주식총수 현황을 사업/분기/반기보고서별로 제공한다.
+    주식의 총수 현황 조회 (dart.report 키워드 '주식총수' - 유일하게 유효한 키워드, 다른
+    후보('주식의 총수'/'stockTotqySttus')는 dart.report()가 ValueError로 거부함을 확인함).
     """
-    cached = _get_cached_raw(
-        stock_code, year, reprt_code, fs_div="N/A", source="report_stock_total"
-    )
+    cached = _get_cached_raw(stock_code, year, "11011", fs_div="N/A", source="report_stock_total")
     if cached is not None:
         return cached
     df = None
@@ -1083,9 +1080,8 @@ def fetch_stock_total_count_info(stock_code, year, reprt_code="11011"):
     except Exception as e:
         print(f"  ⚠️ [{stock_code}] 주식총수 리포트 조회 실패: {e}")
     if df is not None and not df.empty:
-        _set_cached_raw(stock_code, year, reprt_code, "N/A", "report_stock_total", df)
+        _set_cached_raw(stock_code, year, "11011", "N/A", "report_stock_total", df)
     return df
-
 
 def extract_issued_shares(df):
     """
@@ -1428,11 +1424,7 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             print(f"❌ [{stock_name}] 현재가를 가져올 수 없습니다 (fdr.DataReader 실패) - 스킵합니다.")
             return
 
-        stock_total_df = fetch_stock_total_count_info(
-            stock_code,
-            latest_report["_report_year"],
-            latest_report["_report_code"],
-        )
+        stock_total_df = fetch_stock_total_count_info(stock_code, get_latest_annual_year())
         issued_shares, distributed_shares = extract_issued_shares(stock_total_df)
         issued_shares = issued_shares or 0
         if issued_shares <= 0:
