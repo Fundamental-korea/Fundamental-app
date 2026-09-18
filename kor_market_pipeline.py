@@ -1,25 +1,29 @@
-"""Safe integration layer for KRX market snapshots and the existing Korean collector.
+"""Production integration for KRX market snapshots + DART financial snapshots.
 
-The existing collector remains the source of DART financial data and 1y scoring.
-This module adds the market-data layer without rewriting the large collector.py in one step:
+Source policy:
+- KRX Open API: current close, current listed shares, current market cap.
+- DART: latest confirmed financial report, reported EPS, equity and reporting-period basis.
+- BPS: latest-report equity divided by reporting-period share basis. Prefer KRX listed
+  shares on the report period end when DART stock-total is unavailable.
+- Current market-cap shares are never substituted with an old DART share count.
 
-KRX -> current close / listed shares / market cap
-DART collector -> financial snapshot / EPS / BPS / period-end share basis
-
-The KRX daily endpoints return the whole market for a date, so we fetch KOSPI/KOSDAQ once
-per run and keep an in-memory lookup instead of making one API request per stock.
+The daily pipeline fetches KOSPI/KOSDAQ once for the current snapshot. Historical KRX
+share counts are fetched per unique report-period date only when needed and cached in
+memory for the run.
 """
 
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
 from typing import Any, Dict, Optional
+import re
 
 import collector
 from kor_market_snapshot import _request_daily_trade, _to_int
 
 
 MARKET_API_IDS = ("stk_bydd_trd", "ksq_bydd_trd")
+_HISTORICAL_KRX_SHARE_CACHE: Dict[str, Dict[str, int]] = {}
 
 
 def _parse_market_row(row: dict, snapshot_date: str) -> Optional[dict]:
@@ -85,6 +89,135 @@ def fetch_market_snapshot_map(max_lookback_days: int = 7) -> Dict[str, dict]:
     return result
 
 
+def _load_krx_share_map_for_date(date_str: str) -> Dict[str, int]:
+    """Load KRX listed shares for one date, cached by date.
+
+    The KRX daily endpoint is market-wide, so one date requires at most one request
+    per supported market. This keeps the daily 1y job from making one API request
+    per company when many companies share the same report period.
+    """
+    key = str(date_str)
+    if key in _HISTORICAL_KRX_SHARE_CACHE:
+        return _HISTORICAL_KRX_SHARE_CACHE[key]
+
+    bas_dd = key.replace("-", "")
+    result: Dict[str, int] = {}
+    for api_id in ("stk_bydd_trd", "ksq_bydd_trd", "knx_bydd_trd"):
+        try:
+            rows = _request_daily_trade(api_id, bas_dd)
+        except Exception as exc:
+            print(f"  ⚠️ KRX {api_id} {key} 과거 상장주식수 조회 실패: {exc}")
+            continue
+        for row in rows:
+            code = str(row.get("ISU_CD") or row.get("isu_cd") or "").strip().zfill(6)
+            listed = _to_int(row.get("LIST_SHRS") or row.get("list_shrs"))
+            if code and listed and listed > 0:
+                result[code] = listed
+
+    _HISTORICAL_KRX_SHARE_CACHE[key] = result
+    if result:
+        print(f"  📚 KRX historical listed shares: {key} / {len(result):,}개")
+    return result
+
+
+def fetch_krx_listed_shares_on_or_before(stock_code: str, date_str: str, max_lookback_days: int = 7):
+    """Return KRX listed shares on the report date, or nearest prior trading day."""
+    target = datetime.strptime(date_str, "%Y-%m-%d").date()
+    for offset in range(max_lookback_days + 1):
+        d = target - timedelta(days=offset)
+        shares = _load_krx_share_map_for_date(d.isoformat()).get(str(stock_code).zfill(6))
+        if shares:
+            source_date = d.isoformat()
+            return shares, source_date
+    return None, None
+
+
+def _extract_company_value(company_info, *keys):
+    if company_info is None:
+        return None
+    if hasattr(company_info, "to_dict"):
+        data = company_info.to_dict()
+    elif isinstance(company_info, dict):
+        data = company_info
+    else:
+        try:
+            data = dict(company_info)
+        except Exception:
+            return None
+    for key in keys:
+        value = data.get(key)
+        if value not in (None, "", "-", "nan"):
+            return str(value).strip()
+    return None
+
+
+def _get_dart_fiscal_month(stock_code: str) -> Optional[int]:
+    """Read DART company settlement month only when an explicit report date is missing."""
+    try:
+        info = collector.dart.company(str(stock_code).zfill(6))
+        raw = _extract_company_value(info, "acc_mt", "accMt")
+        if raw:
+            return int(raw)
+    except Exception as exc:
+        print(f"  ⚠️ [{stock_code}] DART 결산월 조회 실패: {exc}")
+    return None
+
+
+def _derive_calendar_report_period_end(report_year: int, report_code: str, stock_code: str) -> Optional[str]:
+    """Safe fallback for companies confirmed by DART as December year-end.
+
+    We do not derive a date for non-December fiscal years without an explicit DART
+    period-end, because a report code alone does not identify the calendar date for
+    those companies.
+    """
+    fiscal_month = _get_dart_fiscal_month(stock_code)
+    if fiscal_month != 12:
+        return None
+
+    month_day = {
+        "11011": (12, 31),
+        "11012": (6, 30),
+        "11013": (3, 31),
+        "11014": (9, 30),
+    }.get(str(report_code))
+    if not month_day or report_year is None:
+        return None
+    month, day = month_day
+    return f"{int(report_year):04d}-{month:02d}-{day:02d}"
+
+
+def _get_latest_report_basis(stock_code: str) -> Optional[dict]:
+    """Read the already-cached latest DART report metrics when possible."""
+    try:
+        return collector.fetch_latest_report_metrics(
+            stock_code,
+            use_ofs_for_manufacturing=False,
+            force_refresh=False,
+        )
+    except Exception as exc:
+        print(f"  ⚠️ [{stock_code}] 최신 DART 보고기간 조회 실패: {exc}")
+        return None
+
+
+def _resolve_report_period_end(stock_code: str, latest: Optional[dict]) -> tuple[Optional[str], str]:
+    if not latest:
+        return None, "unavailable"
+
+    explicit = latest.get("report_period_end")
+    if explicit:
+        return explicit, "DART explicit period-end"
+
+    derived = _derive_calendar_report_period_end(
+        latest.get("_report_year"),
+        latest.get("_report_code"),
+        stock_code,
+    )
+    if derived:
+        return derived, "derived from DART report code after confirming December fiscal year"
+
+    return None, "unavailable"
+
+
 def _recalculate_valuation(price: Optional[int], eps: Any, bps: Any) -> tuple[Optional[float], Optional[float]]:
     try:
         eps_value = float(eps) if eps is not None else None
@@ -101,12 +234,11 @@ def _recalculate_valuation(price: Optional[int], eps: Any, bps: Any) -> tuple[Op
 
 
 def install_market_snapshot_integration() -> dict:
-    """Monkey-patch the existing daily 1y worker with a KRX post-processing layer.
+    """Install the production KRX layer around collector.sync_1y_only.
 
-    This is intentionally isolated from collector.py for the first production test. The
-    original DART/score calculation still runs unchanged; after a successful stock update,
-    KRX values overwrite only market snapshot fields and PER/PBR are recalculated from the
-    already-stored EPS/BPS.
+    The underlying DART/score calculation still runs first. This wrapper then replaces
+    only the market snapshot fields and recalculates PER/PBR using the latest EPS/BPS.
+    BPS is explicitly rebuilt from latest-report equity + report-period share basis.
     """
     market_map = fetch_market_snapshot_map()
     original_sync = collector.sync_1y_only
@@ -138,7 +270,7 @@ def install_market_snapshot_integration() -> dict:
 
         snapshot = market_map.get(str(stock_code).zfill(6))
         if snapshot is None:
-            print(f"  ⚠️ [{stock_name}] KRX snapshot 없음 - 기존 DART/FDR 결과 유지")
+            print(f"  ⚠️ [{stock_name}] KRX snapshot 없음 - 시장 필드는 기존값 유지")
             return True
 
         row_res = (
@@ -150,28 +282,81 @@ def install_market_snapshot_integration() -> dict:
         )
         row = (row_res.data or [None])[0] or {}
 
+        latest = _get_latest_report_basis(stock_code)
+        report_period_end, report_period_basis = _resolve_report_period_end(stock_code, latest)
+
+        eps = row.get("eps")
+        if eps is None and latest is not None:
+            eps = latest.get("reported_eps")
+
+        equity = None
+        if latest is not None:
+            equity = latest.get("equity_for_bps", latest.get("total_equity"))
+
+        if equity is None:
+            bps_existing = row.get("bps")
+            if bps_existing is not None:
+                try:
+                    equity = float(bps_existing) * float(row.get("issued_shares") or 0)
+                except (TypeError, ValueError):
+                    equity = None
+
+        period_end_shares = None
+        shares_source = None
+        shares_basis_date = None
+        if report_period_end:
+            period_end_shares, shares_basis_date = fetch_krx_listed_shares_on_or_before(
+                stock_code, report_period_end
+            )
+            if period_end_shares:
+                shares_source = (
+                    "KRX listed shares on report period end"
+                    if shares_basis_date == report_period_end
+                    else "KRX listed shares on nearest prior trading day"
+                )
+
+        # DART stock-total is a fallback only. It is never used as current market-cap shares.
+        if not period_end_shares and row.get("issued_shares"):
+            try:
+                legacy_dart_shares = int(row["issued_shares"])
+                if legacy_dart_shares > 0:
+                    period_end_shares = legacy_dart_shares
+                    shares_basis_date = None
+                    shares_source = "DART_STOCK_TOTAL_FALLBACK"
+            except (TypeError, ValueError):
+                pass
+
+        bps = None
+        if equity is not None and period_end_shares and period_end_shares > 0:
+            bps = equity / period_end_shares
+
         per, pbr = _recalculate_valuation(
-            snapshot.get("stock_price"), row.get("eps"), row.get("bps")
+            snapshot.get("stock_price"), eps, bps
         )
 
-        issued_shares = row.get("issued_shares")
         payload = {
             "stock_price": snapshot.get("stock_price"),
             "listed_shares": snapshot.get("listed_shares"),
             "market_cap": snapshot.get("market_cap"),
             "market_snapshot_date": snapshot.get("market_snapshot_date"),
             "market_data_source": snapshot.get("market_data_source"),
-            "period_end_shares": issued_shares,
-            "shares_data_source": "DART_STOCK_TOTAL",
+            "period_end_shares": period_end_shares,
+            "shares_basis_date": shares_basis_date,
+            "shares_data_source": shares_source,
             "per": per,
             "pbr": pbr,
+            "eps": round(float(eps), 2) if eps is not None else None,
+            "bps": round(float(bps), 2) if bps is not None else None,
         }
 
-        # Keep the legacy issued_shares field for compatibility. Its semantic role is now
-        # explicitly the DART/reporting-period share basis; listed_shares is the live market basis.
-        if issued_shares is not None:
-            payload["bps_basis_label"] = "latest financial equity / DART stock-total share basis"
+        if period_end_shares and shares_source:
+            payload["bps_basis_label"] = (
+                f"latest financial equity / {shares_source}"
+                + (f" ({shares_basis_date})" if shares_basis_date else "")
+            )
 
+        # Keep legacy issued_shares untouched. It is retained for backward compatibility;
+        # listed_shares is the only field used for current market-cap calculations.
         collector.supabase.table("Fundamental").upsert(
             collector._sanitize_json(payload), on_conflict="stock_code"
         ).execute()
@@ -192,7 +377,8 @@ def install_market_snapshot_integration() -> dict:
             f"주가 {snapshot.get('stock_price'):,} / "
             f"상장주식수 {listed_shares:,} / "
             f"시총 {market_cap:,} / "
-            f"기준일 {snapshot.get('market_snapshot_date')}"
+            f"기간말주식수 {period_end_shares:,} / "
+            f"기준일 {shares_basis_date or 'DART fallback'}"
         )
         return True
 
