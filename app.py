@@ -789,14 +789,53 @@ def get_chart_history(code, period="1y"):
         return pd.DataFrame()
 
 
-def render_naver_style_chart(hist_df, indicators, height=1020):
+@st.cache_data(ttl=1800, show_spinner=False)
+def get_chart_history_intraday(code, yf_interval="30m", period="60d"):
+    """분봉 전용. yfinance 자체가 분봉은 최근 구간만 제공하는 제약이 있어서
+    (30분봉 기준 최근 60일 정도) 일/주/월봉처럼 전체 기간을 볼 수는 없음 - 그래서
+    일봉(get_chart_history)과 별도 함수 + 짧은 캐시(30분)로 분리해둠."""
+    ticker_symbol = f"{code}.KS" if code.isdigit() else code
+    try:
+        return yf.Ticker(ticker_symbol).history(period=period, interval=yf_interval)
+    except Exception:
+        return pd.DataFrame()
+
+
+def resample_ohlcv(df, rule):
+    """일봉 데이터를 주/월/분기/년봉으로 묶어줌 - 새로 데이터를 받아올 필요 없이
+    이미 캐시된 일봉(get_chart_history)에서 pandas resample만으로 계산 가능."""
+    if df.empty or rule is None:
+        return df
+    agg = {"Open": "first", "High": "max", "Low": "min", "Close": "last", "Volume": "sum"}
+    resampled = df.resample(rule).agg(agg).dropna(subset=["Open"])
+    return resampled
+
+
+INTERVAL_RESAMPLE_RULE = {
+    "일봉": None, "주봉": "W", "월봉": "MS", "분기봉": "QS", "년봉": "YS",
+}
+
+
+def render_naver_style_chart(hist_df, indicators, stock_code, stock_name,
+                              current_interval="일봉", visible_map=None, height=1020):
     """네이버증권 스타일 차트 - Plotly.js를 components.html로 직접 임베드.
     st.plotly_chart(서버에서 그려서 넘김)로는 줌/팬 시 y축이 안 따라오는 게 기본 동작이라
     (Plotly는 x축만 자동으로 다시 그리고 y축 범위는 그대로 유지함), 이 함수는 브라우저에서
     직접 Plotly.js를 돌려서 'plotly_relayout' 이벤트(사용자가 줌/팬 할 때 발생)를 잡아
     화면에 보이는 구간의 고가/저가/거래량/MACD 범위로 y축을 다시 계산해서 그려줌.
     네이버증권처럼 확대·이동할 때마다 y축이 그 구간에 맞게 재조정되는 느낌을 구현한 것.
-    RSI/스토캐스틱은 0~100 고정 범위라 원래도 재조정이 필요 없어서 그대로 둠."""
+    RSI/스토캐스틱은 0~100 고정 범위라 원래도 재조정이 필요 없어서 그대로 둠.
+
+    visible_map: {"ma": bool, "bb": bool, "ichimoku": bool, "vol_ma": bool,
+                  "rsi": bool, "stoch": bool, "macd": bool} - 기본 전부 False(꺼짐).
+    current_interval: 상단 탭바에서 현재 선택된 값("분봉"/"일봉"/"주봉"/"월봉"/"분기봉"/"년봉") -
+    탭 클릭 시 같은 페이지를 ?interval=<선택값>으로 다시 불러오는 방식(네이버처럼 차트 안에 박힌 탭)."""
+
+    vm = {"ma": False, "bb": False, "ichimoku": False, "vol_ma": False, "rsi": False, "stoch": False, "macd": False}
+    vm.update(visible_map or {})
+
+    def vis(key):
+        return True if vm[key] else "legendonly"
 
     dates = [d.strftime("%Y-%m-%d") for d in hist_df.index]
     o, h, l, c = hist_df["Open"].tolist(), hist_df["High"].tolist(), hist_df["Low"].tolist(), hist_df["Close"].tolist()
@@ -820,6 +859,13 @@ def render_naver_style_chart(hist_df, indicators, height=1020):
     }
     data_json = json.dumps(payload)
 
+    intervals = ["분봉", "일봉", "주봉", "월봉", "분기봉", "년봉"]
+    tab_buttons_html = "".join(
+        f"""<div class="ivl-tab{' ivl-tab-active' if ivl == current_interval else ''}"
+                 onclick="goInterval('{ivl}')">{ivl}</div>"""
+        for ivl in intervals
+    )
+
     custom_html = f"""
     <!DOCTYPE html>
     <html>
@@ -828,14 +874,27 @@ def render_naver_style_chart(hist_df, indicators, height=1020):
         <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
         <style>
             body {{ margin: 0; padding: 0; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
+            .ivl-tabbar {{ display: flex; gap: 4px; align-items: center; padding: 8px 10px 6px 10px; border-bottom: 1px solid #E5E7EB; }}
+            .ivl-tab {{ font-size: 13px; font-weight: 700; color: #6B7280; padding: 5px 12px; border-radius: 6px; cursor: pointer; }}
+            .ivl-tab:hover {{ background: #F3F4F6; }}
+            .ivl-tab-active {{ color: #D97706; background: #FFF7ED; }}
         </style>
     </head>
     <body>
+        <div class="ivl-tabbar">{tab_buttons_html}</div>
         <div id="naverStyleChart"></div>
         <div id="chartErrorBox"></div>
         <script>
         try {{
             const D = {data_json};
+
+            function goInterval(ivl) {{
+                const url = window.parent.location.origin + window.parent.location.pathname
+                    + "?code=" + encodeURIComponent("{stock_code}")
+                    + "&view=analysis&name=" + encodeURIComponent("{stock_name}")
+                    + "&interval=" + encodeURIComponent(ivl);
+                window.parent.location.href = url;
+            }}
 
             function visTrace(name, y, color, width, extra) {{
                 extra = extra || {{}};
@@ -854,31 +913,31 @@ def render_naver_style_chart(hist_df, indicators, height=1020):
                    name: "가격", yaxis: "y", xaxis: "x",
                    increasing: {{ line: {{ color: "#DC2626" }} }}, decreasing: {{ line: {{ color: "#2563EB" }} }} }},
 
-                visTrace("5일선", D.sma5, "#16A34A", 1.1, {{ yaxis: "y" }}),
-                visTrace("20일선", D.sma20, "#DC2626", 1.1, {{ yaxis: "y" }}),
-                visTrace("60일선", D.sma60, "#F97316", 1.1, {{ yaxis: "y" }}),
-                visTrace("120일선", D.sma120, "#7C3AED", 1.1, {{ yaxis: "y" }}),
+                visTrace("5일선", D.sma5, "#16A34A", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
+                visTrace("20일선", D.sma20, "#DC2626", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
+                visTrace("60일선", D.sma60, "#F97316", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
+                visTrace("120일선", D.sma120, "#7C3AED", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
 
-                visTrace("볼린저 상단", D.bb_upper, "rgba(217,119,6,0.4)", 1, {{ yaxis: "y", visible: "legendonly", line: {{ dash: "dot" }} }}),
-                visTrace("볼린저 하단", D.bb_lower, "rgba(217,119,6,0.4)", 1, {{ yaxis: "y", visible: "legendonly", line: {{ dash: "dot" }}, fill: "tonexty", fillcolor: "rgba(244,162,97,0.06)" }}),
+                visTrace("볼린저 상단", D.bb_upper, "rgba(217,119,6,0.4)", 1, {{ yaxis: "y", visible: {json.dumps(vis("bb"))}, line: {{ dash: "dot" }} }}),
+                visTrace("볼린저 하단", D.bb_lower, "rgba(217,119,6,0.4)", 1, {{ yaxis: "y", visible: {json.dumps(vis("bb"))}, line: {{ dash: "dot" }}, fill: "tonexty", fillcolor: "rgba(244,162,97,0.06)" }}),
 
-                visTrace("전환선", D.tenkan, "#DC2626", 1, {{ yaxis: "y", visible: "legendonly" }}),
-                visTrace("기준선", D.kijun, "#2563EB", 1, {{ yaxis: "y", visible: "legendonly" }}),
-                visTrace("선행스팬A", D.senkou_a, "rgba(22,163,74,0.5)", 0.8, {{ yaxis: "y", visible: "legendonly" }}),
-                visTrace("구름(선행스팬B)", D.senkou_b, "rgba(220,38,38,0.5)", 0.8, {{ yaxis: "y", visible: "legendonly", fill: "tonexty", fillcolor: "rgba(148,163,184,0.15)" }}),
+                visTrace("전환선", D.tenkan, "#DC2626", 1, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
+                visTrace("기준선", D.kijun, "#2563EB", 1, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
+                visTrace("선행스팬A", D.senkou_a, "rgba(22,163,74,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
+                visTrace("구름(선행스팬B)", D.senkou_b, "rgba(220,38,38,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))}, fill: "tonexty", fillcolor: "rgba(148,163,184,0.15)" }}),
 
                 {{ type: "bar", x: D.dates, y: D.volume, name: "거래량", yaxis: "y2", marker: {{ color: D.vol_colors, opacity: 0.55 }} }},
-                visTrace("거래량 MA20", D.vol_ma20, "#D97706", 1.1, {{ yaxis: "y2", visible: "legendonly" }}),
+                visTrace("거래량 MA20", D.vol_ma20, "#D97706", 1.1, {{ yaxis: "y2", visible: {json.dumps(vis("vol_ma"))} }}),
 
-                visTrace("RSI(14)", D.rsi14, "#7C3AED", 1.3, {{ yaxis: "y3", visible: "legendonly" }}),
+                visTrace("RSI(14)", D.rsi14, "#7C3AED", 1.3, {{ yaxis: "y3", visible: {json.dumps(vis("rsi"))} }}),
 
-                visTrace("%K", D.stoch_k, "#0EA5E9", 1.2, {{ yaxis: "y4", visible: "legendonly" }}),
-                visTrace("%D", D.stoch_d, "#F97316", 1.2, {{ yaxis: "y4", visible: "legendonly" }}),
+                visTrace("%K", D.stoch_k, "#0EA5E9", 1.2, {{ yaxis: "y4", visible: {json.dumps(vis("stoch"))} }}),
+                visTrace("%D", D.stoch_d, "#F97316", 1.2, {{ yaxis: "y4", visible: {json.dumps(vis("stoch"))} }}),
 
                 {{ type: "bar", x: D.dates, y: D.macd_hist, name: "MACD 히스토그램", yaxis: "y5",
-                   marker: {{ color: "rgba(148,163,184,0.6)" }}, visible: "legendonly" }},
-                visTrace("MACD선", D.macd_line, "#D97706", 1.2, {{ yaxis: "y5", visible: "legendonly" }}),
-                visTrace("시그널선", D.macd_signal, "#2563EB", 1.2, {{ yaxis: "y5", visible: "legendonly" }}),
+                   marker: {{ color: "rgba(148,163,184,0.6)" }}, visible: {json.dumps(vis("macd"))} }},
+                visTrace("MACD선", D.macd_line, "#D97706", 1.2, {{ yaxis: "y5", visible: {json.dumps(vis("macd"))} }}),
+                visTrace("시그널선", D.macd_signal, "#2563EB", 1.2, {{ yaxis: "y5", visible: {json.dumps(vis("macd"))} }}),
             ];
 
             const domains = {{ price: [0.60, 1.0], vol: [0.46, 0.58], rsi: [0.33, 0.44], stoch: [0.19, 0.30], macd: [0.0, 0.16] }};
@@ -902,13 +961,6 @@ def render_naver_style_chart(hist_df, indicators, height=1020):
                     {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 30, y1: 30, line: {{ color: "#16A34A", width: 1, dash: "dash" }} }},
                     {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "#DC2626", width: 1, dash: "dash" }} }},
                     {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "#16A34A", width: 1, dash: "dash" }} }},
-                ],
-                annotations: [
-                    {{ text: "가격 · 이동평균선 · 볼린저밴드 · 일목균형표", xref: "paper", yref: "paper", x: 0, y: domains.price[1], showarrow: false, xanchor: "left", font: {{ size: 11, color: "#6B7280" }} }},
-                    {{ text: "거래량", xref: "paper", yref: "paper", x: 0, y: domains.vol[1], showarrow: false, xanchor: "left", font: {{ size: 11, color: "#6B7280" }} }},
-                    {{ text: "RSI", xref: "paper", yref: "paper", x: 0, y: domains.rsi[1], showarrow: false, xanchor: "left", font: {{ size: 11, color: "#6B7280" }} }},
-                    {{ text: "스토캐스틱", xref: "paper", yref: "paper", x: 0, y: domains.stoch[1], showarrow: false, xanchor: "left", font: {{ size: 11, color: "#6B7280" }} }},
-                    {{ text: "MACD", xref: "paper", yref: "paper", x: 0, y: domains.macd[1], showarrow: false, xanchor: "left", font: {{ size: 11, color: "#6B7280" }} }},
                 ],
             }};
 
@@ -998,7 +1050,7 @@ def render_naver_style_chart(hist_df, indicators, height=1020):
     </body>
     </html>
     """
-    components.html(custom_html, height=height + 20, scrolling=False)
+    components.html(custom_html, height=height + 50, scrolling=False)
 
 
 # ==========================================
@@ -1500,12 +1552,34 @@ elif selected_code and view_mode_param == "analysis":
         analysis_name = query_params.get("name", selected_code)
         st.markdown(f"### 📊 {analysis_name} ({selected_code}) 차트 분석 (Chart Analysis)")
 
-        period_choice_label = st.select_slider(
-            "조회 기간", options=["6mo", "1y", "3y", "5y", "10y", "전체(상장이후)"], value="1y",
-            help="공부·스윙매매용이라 실시간 갱신은 안 하고, 몇 시간 단위로 캐시된 데이터를 보여드려요.",
-        )
-        period_choice = "max" if period_choice_label == "전체(상장이후)" else period_choice_label
-        hist_df = get_chart_history(selected_code, period=period_choice)
+        # 기간 선택은 차트 안 탭 버튼(분봉/일봉/주봉/월봉/분기봉/년봉)이 담당 - 여기선 URL에서 읽기만 함
+        interval_choice = query_params.get("interval", "일봉")
+        if interval_choice not in INTERVAL_RESAMPLE_RULE and interval_choice != "분봉":
+            interval_choice = "일봉"
+
+        if interval_choice == "분봉":
+            hist_df = get_chart_history_intraday(selected_code, yf_interval="30m", period="60d")
+            st.caption("⏱️ 분봉은 무료 데이터 소스 제약상 최근 60일치만 제공돼요 (30분봉 기준).")
+        else:
+            base_hist_df = get_chart_history(selected_code, period="max")
+            hist_df = resample_ohlcv(base_hist_df, INTERVAL_RESAMPLE_RULE[interval_choice])
+
+        with st.expander("📊 표시할 지표 선택 - 기본은 전부 꺼져 있어요, 원하는 것만 골라서 켜보세요"):
+            vis_col1, vis_col2 = st.columns(2)
+            with vis_col1:
+                show_ma = st.checkbox("이동평균선 (5·20·60·120)", value=False, key="an_show_ma")
+                show_bb = st.checkbox("볼린저 밴드", value=False, key="an_show_bb")
+                show_ichimoku = st.checkbox("일목균형표", value=False, key="an_show_ichimoku")
+                show_vol_ma = st.checkbox("거래량 이동평균", value=False, key="an_show_vol_ma")
+            with vis_col2:
+                show_rsi = st.checkbox("RSI", value=False, key="an_show_rsi")
+                show_stoch = st.checkbox("스토캐스틱", value=False, key="an_show_stoch")
+                show_macd = st.checkbox("MACD", value=False, key="an_show_macd")
+
+        visible_map = {
+            "ma": show_ma, "bb": show_bb, "ichimoku": show_ichimoku, "vol_ma": show_vol_ma,
+            "rsi": show_rsi, "stoch": show_stoch, "macd": show_macd,
+        }
 
         with st.expander("⚙️ 지표 설정 (고급) - 기간을 직접 바꿔볼 수 있어요"):
             set_col1, set_col2, set_col3 = st.columns(3)
@@ -1537,9 +1611,12 @@ elif selected_code and view_mode_param == "analysis":
             st.caption(
                 "💡 마우스 휠로 확대/축소, 드래그로 좌우 이동할 수 있어요 - 이동/확대할 때마다 y축(가격·거래량·MACD)이 "
                 "보이는 구간에 맞춰 자동으로 다시 그려져요 (더블클릭하면 전체 구간으로 리셋). "
-                "이동평균선(5·20·60·120)은 기본으로 보이고, 나머지 지표는 범례를 클릭해서 켜보세요."
+                "차트 위쪽 탭에서 분봉/일봉/주봉/월봉/분기봉/년봉을 바로 바꿀 수 있고, 지표는 위 '표시할 지표 선택'에서 켜보세요."
             )
-            render_naver_style_chart(hist_df, indicators, height=1020)
+            render_naver_style_chart(
+                hist_df, indicators, stock_code=selected_code, stock_name=analysis_name,
+                current_interval=interval_choice, visible_map=visible_map, height=1020,
+            )
 
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             st.markdown("##### 🎓 지표별 강의 (지금 이 종목 기준) - 눌러서 펼쳐보세요")
@@ -1577,7 +1654,7 @@ elif selected_code and view_mode_param == "analysis":
                     st.markdown("**🔎 지금 이 종목 기준**")
                     st.markdown(f"<div class='indicator-card-desc'>{commentary}</div>", unsafe_allow_html=True)
         elif not hist_df.empty:
-            st.info("차트 데이터가 20일치 미만이라 지표를 계산하기엔 아직 부족해요. 기본 가격 흐름만 보여드릴게요.")
+            st.info(f"차트 데이터가 20개 캔들({interval_choice} 기준) 미만이라 지표를 계산하기엔 아직 부족해요. 기본 가격 흐름만 보여드릴게요.")
             st.line_chart(hist_df["Close"])
         else:
             st.info("실시간 차트 데이터를 불러올 수 없습니다.")
