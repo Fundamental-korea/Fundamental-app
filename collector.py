@@ -890,9 +890,33 @@ def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufact
     if df.empty:
         return None
 
-    result = _parse_report_financials(df, df_full=_fetch_full_statement_df(
+    df_full = _fetch_full_statement_df(
         stock_code, year, reprt_code=reprt_code, use_ofs_for_manufacturing=use_ofs_for_manufacturing
-    ))
+    )
+    result = _parse_report_financials(df, df_full=df_full)
+
+    # 보고기간 말일은 XBRL 재무제표의 thstrm_dt에서 추출한다.
+    # 일부 회사/보고서에서는 파서에 전달된 detail_df에만 날짜가 있거나 표기가 다르므로
+    # df와 전체 재무제표 양쪽의 모든 셀을 확인한다. 날짜가 없으면 임의 날짜를 만들지 않는다.
+    import re as _re
+    report_period_end = result.get("report_period_end")
+    if not report_period_end:
+        for source in (df_full, df):
+            if source is None or source.empty:
+                continue
+            for col in ("thstrm_dt", "thstrm_nm"):
+                if col not in source.columns:
+                    continue
+                for raw_dt in source[col].astype(str).tolist():
+                    m = _re.search(r"(\\d{4})[.\\-/](\\d{1,2})[.\\-/](\\d{1,2})", raw_dt)
+                    if m:
+                        report_period_end = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
+                        break
+                if report_period_end:
+                    break
+            if report_period_end:
+                break
+    result["report_period_end"] = report_period_end
     result["_report_year"] = year
     result["_report_code"] = reprt_code
     _set_cached_report_metrics(stock_code, year, reprt_code, use_ofs_for_manufacturing, result)
