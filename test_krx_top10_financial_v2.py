@@ -84,7 +84,7 @@ def main():
     if len(targets) != 8:
         raise SystemExit(f"Expected 8 targets, got {len(targets)}.")
 
-    rows = load_company_rows([c for _, c, _ in top10])
+    rows = load_company_rows([c for c, _ in top10])
     row_map = {str(r.get("stock_code") or "").zfill(6): r for r in rows}
     print("\n=== READ-ONLY KRX TOP-10 DART DIAGNOSTIC ===")
     print("DB WRITE: NO")
