@@ -14,6 +14,7 @@ as an EPS failure.
 """
 
 from kor_market_pipeline import fetch_market_snapshot_map
+from kor_market_snapshot import _request_daily_trade, _to_int
 import collector
 
 
@@ -66,6 +67,23 @@ def get_fresh_stock_total(code, years):
             print(f"  🔎 DART stock-total exception ({code}, {year}): {e}")
             attempts.append((year, None, None, str(e)))
     return None, None, None, attempts
+
+
+def fetch_krx_listed_shares_on_date(stock_code, date_str):
+    """보고기간 말일의 KRX 상장주식수. 현재 주식수를 과거 BPS 기준으로 대체하지 않는다."""
+    bas_dd = date_str.replace("-", "")
+    for api_id in ("stk_bydd_trd", "ksq_bydd_trd", "knx_bydd_trd"):
+        try:
+            rows = _request_daily_trade(api_id, bas_dd)
+            for row in rows:
+                code = str(row.get("ISU_CD") or row.get("isu_cd") or "").strip().zfill(6)
+                if code == stock_code:
+                    listed = _to_int(row.get("LIST_SHRS") or row.get("list_shrs"))
+                    if listed and listed > 0:
+                        return listed, api_id
+        except Exception as e:
+            print(f"  🔎 KRX {api_id} {date_str} lookup failed: {e}")
+    return None, None
 
 
 def main():
@@ -152,8 +170,17 @@ def main():
                           collector.get_latest_annual_year() - 2]
         )
 
-        bps = (equity / issued) if equity is not None and issued and issued > 0 else None
-        bps_source = f"DART equity / DART issued shares ({stock_year})" if bps is not None else "unavailable"
+        bps_shares = issued
+        bps_source = f"DART equity / DART issued shares ({stock_year})" if bps_shares else "unavailable"
+        if bps_shares is None and equity is not None:
+            # DART '주식총수'가 없는 회사는 현재 KRX 주식수를 쓰지 않는다.
+            # 대신 DART 보고기간 말일과 동일한 날짜의 KRX 상장주식수를 조회한다.
+            report_period_end = latest.get("report_period_end")
+            if report_period_end:
+                bps_shares, bps_market_source = fetch_krx_listed_shares_on_date(code, report_period_end)
+                if bps_shares:
+                    bps_source = f"KRX listed shares on report period end ({report_period_end}, {bps_market_source})"
+        bps = (equity / bps_shares) if equity is not None and bps_shares and bps_shares > 0 else None
 
         price = snap.get("stock_price")
         per = round(price / eps, 2) if price is not None and eps not in (None, 0) else None
@@ -163,6 +190,7 @@ def main():
         print(f"  EPS={eps} [{eps_source}]")
         print(f"  equity_for_bps={equity}")
         print(f"  DART shares={issued} (source year={stock_year})")
+        print(f"  BPS share basis={bps_shares} [{bps_source}]")
         print(f"  BPS={bps} [{bps_source}]")
         print(f"  KRX price={price} | listed_shares={snap.get('listed_shares')} | market_cap={snap.get('market_cap')}")
         print(f"  PER={per} | PBR={pbr}")
@@ -171,7 +199,7 @@ def main():
             hard_failures.append(f"{code}: EPS unavailable from DART")
         if bps is None:
             share_basis_issues.append(
-                f"{code}: DART stock-total unavailable; BPS cannot be validated on a period-end share basis"
+                f"{code}: no valid period-end share-count source; BPS cannot be validated"
             )
         if per is None and eps is not None:
             hard_failures.append(f"{code}: PER calculation failed")
