@@ -315,8 +315,15 @@ def install_market_snapshot_integration() -> dict:
                     else "KRX listed shares on nearest prior trading day"
                 )
 
-        # DART stock-total is a fallback only. It is never used as current market-cap shares.
-        if not period_end_shares and row.get("issued_shares"):
+        # DART annual stock-total may be used only when the latest financial report is
+        # itself an annual report. For quarter/semiannual snapshots, never silently reuse
+        # an older annual share count as the period-end denominator.
+        if (
+            not period_end_shares
+            and latest is not None
+            and latest.get("_report_code") == "11011"
+            and row.get("issued_shares")
+        ):
             try:
                 legacy_dart_shares = int(row["issued_shares"])
                 if legacy_dart_shares > 0:
@@ -375,9 +382,9 @@ def install_market_snapshot_integration() -> dict:
         print(
             f"  🏦 [{stock_name}] KRX 적용: "
             f"주가 {snapshot.get('stock_price'):,} / "
-            f"상장주식수 {listed_shares:,} / "
-            f"시총 {market_cap:,} / "
-            f"기간말주식수 {period_end_shares:,} / "
+            f"상장주식수 {listed_shares if listed_shares is not None else 0:,} / "
+            f"시총 {market_cap if market_cap is not None else 0:,} / "
+            f"기간말주식수 {period_end_shares if period_end_shares is not None else 0:,} / "
             f"기준일 {shares_basis_date or 'DART fallback'}"
         )
         return True
