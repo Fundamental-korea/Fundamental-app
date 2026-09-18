@@ -1998,47 +1998,49 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         current_price = fetch_current_price_via_datareader(stock_code)
         stock_total_df = fetch_stock_total_count_info(stock_code, get_latest_annual_year())
         issued_shares, distributed_shares = extract_issued_shares(stock_total_df)
-        issued_shares = issued_shares or 0
+        issued_shares = issued_shares or None
 
-        # 재무 스냅샷(EPS/BPS/손익)은 현재가 조회 성공 여부와 독립적으로 저장한다.
-        # 현재가/발행주식수는 시장 스냅샷 영역이고, DART 재무정보는 그와 분리되어야 한다.
-        # 그래야 FDR 가격 조회가 일시 실패해도 DART의 EPS/BPS가 NULL로 덮어써지지 않는다.
-        snapshot_fields = {}
-        if issued_shares > 0:
-            net_income = latest_report["net_income"]
-            total_equity = latest_report["total_equity"]
-            reported_eps = latest_report.get("reported_eps")
-            if reported_eps is not None:
-                eps = reported_eps
-                eps_is_reported = True
-            else:
-                float_shares = distributed_shares if distributed_shares else issued_shares
-                eps = (net_income / float_shares) if float_shares and float_shares > 0 else None
-                eps_is_reported = False
-            equity_for_bps = latest_report.get("equity_for_bps", total_equity)
-            bps = (equity_for_bps / issued_shares) if issued_shares > 0 else None
-            per = round(current_price / eps, 2) if (current_price is not None and eps) else None
-            pbr = round(current_price / bps, 2) if (current_price is not None and bps and bps > 0) else None
-
-            snapshot_fields = {
-                "stock_price": current_price if current_price is not None else None,
-                "issued_shares": issued_shares,
-                "per": per,
-                "pbr": pbr,
-                "eps": round(eps, 2) if eps is not None else None,
-                "eps_is_reported": eps_is_reported,
-                "bps": round(bps, 2) if bps is not None else None,
-                "revenue": int(latest_report["revenue"]),
-                "operating_income": int(latest_report["operating_income"]),
-                "net_income": int(latest_report["net_income"]),
-                "total_liabilities": int(latest_report["total_liabilities"]),
-                "total_equity": int(latest_report["total_equity"]),
-                "data_basis_label": data_basis_label,
-            }
-            if current_price is None:
-                print(f"  ⚠️ [{stock_name}] 현재가 조회 실패; 재무 스냅샷(EPS/BPS)은 정상 저장하고 PER/PBR은 NULL로 둡니다.")
+        # 재무 스냅샷은 DART 주식총수 리포트 존재 여부와 독립적으로 저장한다.
+        # EPS는 DART 공시 EPS를 우선 사용하고, 공시 EPS가 없을 때만 DART 주식총수로 근사한다.
+        # BPS의 주식수 분모는 market pipeline에서 보고기간 말 KRX 상장주식수로 보완할 수 있다.
+        # 따라서 DART 주식총수 부재를 재무 데이터 전체 실패로 취급하지 않는다.
+        net_income = latest_report["net_income"]
+        total_equity = latest_report["total_equity"]
+        reported_eps = latest_report.get("reported_eps")
+        if reported_eps is not None:
+            eps = reported_eps
+            eps_is_reported = True
         else:
-            print(f"  ⚠️ [{stock_name}] 발행주식수를 못 가져와서 EPS/BPS 포함 재무 스냅샷을 갱신 못 함 (점수는 정상 갱신).")
+            float_shares = distributed_shares or issued_shares
+            eps = (net_income / float_shares) if float_shares and float_shares > 0 else None
+            eps_is_reported = False
+
+        equity_for_bps = latest_report.get("equity_for_bps", total_equity)
+        bps = (equity_for_bps / issued_shares) if issued_shares else None
+        per = round(current_price / eps, 2) if (current_price is not None and eps) else None
+        pbr = round(current_price / bps, 2) if (current_price is not None and bps and bps > 0) else None
+
+        snapshot_fields = {
+            "eps": round(eps, 2) if eps is not None else None,
+            "eps_is_reported": eps_is_reported,
+            "bps": round(bps, 2) if bps is not None else None,
+            "revenue": int(latest_report["revenue"]),
+            "operating_income": int(latest_report["operating_income"]),
+            "net_income": int(latest_report["net_income"]),
+            "total_liabilities": int(latest_report["total_liabilities"]),
+            "total_equity": int(latest_report["total_equity"]),
+            "data_basis_label": data_basis_label,
+        }
+        if issued_shares:
+            snapshot_fields["issued_shares"] = issued_shares
+        if current_price is not None:
+            snapshot_fields["stock_price"] = current_price
+            snapshot_fields["per"] = per
+            snapshot_fields["pbr"] = pbr
+        else:
+            print(f"  ⚠️ [{stock_name}] 현재가 조회 실패; DART 재무 스냅샷은 정상 저장하고 시장/PER/PBR은 KRX 파이프라인에 맡깁니다.")
+        if issued_shares is None:
+            print(f"  ℹ️ [{stock_name}] DART 주식총수 없음: EPS는 보고 EPS를 사용하고 BPS 주식수는 KRX 기간말 fallback 대상입니다.")
 
         # 최근 4분기(최신 포함) 추이 - 매일 자동갱신 때도 같이 최신화 (DART 호출 종목당 +3회,
         # 사용자 확인 후 도입 - 비용 증가 감수)
