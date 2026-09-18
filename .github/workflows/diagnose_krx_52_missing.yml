@@ -1,12 +1,24 @@
 name: KRX Step 3 - Diagnose 52 Missing Snapshots
 
 on:
+  # GitHub allows push-triggered workflows to run from non-default branches.
+  # This is intentionally limited to one dedicated trigger file so normal
+  # commits on refactor/kor-market-snapshot do NOT execute the diagnostic.
+  push:
+    branches:
+      - refactor/kor-market-snapshot
+    paths:
+      - .github/krx_step3_trigger.txt
+
+  # Keep this for future manual/API dispatch once the workflow has an eligible
+  # run; the production/main branch is intentionally untouched.
   workflow_dispatch:
 
 jobs:
   diagnose:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
