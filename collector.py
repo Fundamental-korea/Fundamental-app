@@ -1909,8 +1909,11 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         issued_shares, distributed_shares = extract_issued_shares(stock_total_df)
         issued_shares = issued_shares or 0
 
+        # 재무 스냅샷(EPS/BPS/손익)은 현재가 조회 성공 여부와 독립적으로 저장한다.
+        # 현재가/발행주식수는 시장 스냅샷 영역이고, DART 재무정보는 그와 분리되어야 한다.
+        # 그래야 FDR 가격 조회가 일시 실패해도 DART의 EPS/BPS가 NULL로 덮어써지지 않는다.
         snapshot_fields = {}
-        if current_price is not None and issued_shares > 0:
+        if issued_shares > 0:
             net_income = latest_report["net_income"]
             total_equity = latest_report["total_equity"]
             reported_eps = latest_report.get("reported_eps")
@@ -1923,11 +1926,11 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
                 eps_is_reported = False
             equity_for_bps = latest_report.get("equity_for_bps", total_equity)
             bps = (equity_for_bps / issued_shares) if issued_shares > 0 else None
-            per = round(current_price / eps, 2) if eps else None
-            pbr = round(current_price / bps, 2) if (bps and bps > 0) else None
+            per = round(current_price / eps, 2) if (current_price is not None and eps) else None
+            pbr = round(current_price / bps, 2) if (current_price is not None and bps and bps > 0) else None
 
             snapshot_fields = {
-                "stock_price": current_price,
+                "stock_price": current_price if current_price is not None else None,
                 "issued_shares": issued_shares,
                 "per": per,
                 "pbr": pbr,
@@ -1941,8 +1944,10 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
                 "total_equity": int(latest_report["total_equity"]),
                 "data_basis_label": data_basis_label,
             }
+            if current_price is None:
+                print(f"  ⚠️ [{stock_name}] 현재가 조회 실패; 재무 스냅샷(EPS/BPS)은 정상 저장하고 PER/PBR은 NULL로 둡니다.")
         else:
-            print(f"  ⚠️ [{stock_name}] 현재가/발행주식수를 못 가져와서 스냅샷 필드는 이번엔 갱신 못 함 (점수는 정상 갱신).")
+            print(f"  ⚠️ [{stock_name}] 발행주식수를 못 가져와서 EPS/BPS 포함 재무 스냅샷을 갱신 못 함 (점수는 정상 갱신).")
 
         # 최근 4분기(최신 포함) 추이 - 매일 자동갱신 때도 같이 최신화 (DART 호출 종목당 +3회,
         # 사용자 확인 후 도입 - 비용 증가 감수)
