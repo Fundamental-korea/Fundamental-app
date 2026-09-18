@@ -78,7 +78,7 @@ def compute_ichimoku(high: pd.Series, low: pd.Series, close: pd.Series,
 # --------------------------------------------------------------------------
 
 DEFAULT_PARAMS = {
-    "sma_short": 20, "sma_mid": 60, "sma_long": 120,
+    "sma_tiny": 5, "sma_short": 20, "sma_mid": 60, "sma_long": 120,
     "bb_window": 20, "bb_std": 2.0,
     "rsi_window": 14,
     "macd_fast": 12, "macd_slow": 26, "macd_signal": 9,
@@ -97,6 +97,7 @@ def compute_all_indicators(hist_df: pd.DataFrame, params: dict = None) -> dict:
     low = hist_df["Low"]
     volume = hist_df["Volume"]
 
+    sma5 = compute_sma(close, p["sma_tiny"])
     sma20 = compute_sma(close, p["sma_short"])
     sma60 = compute_sma(close, p["sma_mid"])
     sma120 = compute_sma(close, p["sma_long"])
@@ -110,7 +111,7 @@ def compute_all_indicators(hist_df: pd.DataFrame, params: dict = None) -> dict:
     )
 
     return {
-        "sma20": sma20, "sma60": sma60, "sma120": sma120,
+        "sma5": sma5, "sma20": sma20, "sma60": sma60, "sma120": sma120,
         "bb_upper": bb_upper, "bb_mid": bb_mid, "bb_lower": bb_lower,
         "rsi14": rsi14,
         "macd_line": macd_line, "macd_signal": macd_signal, "macd_hist": macd_hist,
