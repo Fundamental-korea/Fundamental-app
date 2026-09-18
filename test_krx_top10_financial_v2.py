@@ -63,6 +63,7 @@ def get_fresh_stock_total(code, years):
             if issued and issued > 0:
                 return year, issued, distributed, attempts
         except Exception as e:
+            print(f"  🔎 DART stock-total exception ({code}, {year}): {e}")
             attempts.append((year, None, None, str(e)))
     return None, None, None, attempts
 
@@ -83,7 +84,7 @@ def main():
     if len(targets) != 8:
         raise SystemExit(f"Expected 8 targets, got {len(targets)}.")
 
-    rows = load_company_rows([code for _, code, _ in targets])
+    rows = load_company_rows([c for _, c, _ in top10])
     row_map = {str(r.get("stock_code") or "").zfill(6): r for r in rows}
     print("\n=== READ-ONLY KRX TOP-10 DART DIAGNOSTIC ===")
     print("DB WRITE: NO")
@@ -119,6 +120,16 @@ def main():
 
         eps = latest.get("reported_eps")
         eps_source = "DART reported EPS"
+        if eps is None and code == "009150":
+            for fs_div in ("CFS", "OFS"):
+                try:
+                    raw = collector._dart_finstate_all_cached(issuer_code, latest["_report_year"], latest["_report_code"], fs_div)
+                    if raw is not None and not raw.empty:
+                        candidates = raw[raw["account_nm"].astype(str).str.contains("주당|EPS|earnings per share", case=False, na=False, regex=True)]
+                        print(f"  🔎 {fs_div} EPS account candidates: {candidates[['account_nm','thstrm_amount']].to_dict('records')[:20]}")
+                except Exception as e:
+                    print(f"  🔎 {fs_div} EPS-account diagnostic failed: {e}")
+
         if eps is None:
             # EPS fallback is allowed only if DART explicitly supplies a usable
             # stock-total denominator. Do not silently use KRX current shares.
