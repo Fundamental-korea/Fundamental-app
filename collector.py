@@ -923,26 +923,107 @@ def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufact
     return result
 
 
+def _discover_periodic_reports_from_dart_list(stock_code, lookback_years=2):
+    """
+    달력 기준 보고서 코드/연도가 실제 회사 회계연도와 어긋나는 예외 종목용 보정.
+    DART 공시목록(kind=A)에서 실제 제출된 정기보고서의 보고기간과 접수일을 확인하고,
+    가장 최근 접수된 최종 정기보고서부터 재무 API를 재시도할 후보를 반환한다.
+    """
+    import re
+    from datetime import date
+    from pandas import DataFrame
+
+    end = date.today()
+    start = end.replace(year=end.year - lookback_years)
+    try:
+        df = dart.list(
+            stock_code,
+            start=start.strftime("%Y-%m-%d"),
+            end=end.strftime("%Y-%m-%d"),
+            kind="A",
+            final=True,
+        )
+    except Exception as exc:
+        print(f"  ⚠️ [{stock_code}] DART 공시목록 조회 실패: {exc}")
+        return []
+
+    if not isinstance(df, DataFrame) or df.empty:
+        return []
+
+    rows = []
+    for _, row in df.iterrows():
+        report_name = str(row.get("report_nm") or "")
+        report_code = None
+        if "사업보고서" in report_name:
+            report_code = "11011"
+        elif "반기보고서" in report_name:
+            report_code = "11012"
+        elif "3분기보고서" in report_name:
+            report_code = "11014"
+        elif "1분기보고서" in report_name or "분기보고서" in report_name:
+            report_code = "11013"
+        if report_code is None:
+            continue
+
+        # 정기보고서 제목은 일반적으로 '(...YYYY.MM...)' 형식으로 보고기간을 포함한다.
+        match = re.search(r"(20\\d{2})[./-]\\d{1,2}", report_name)
+        if match:
+            report_year = int(match.group(1))
+        else:
+            # 제목에서 기간을 읽지 못하면 접수일의 연도를 보조값으로 사용한다.
+            try:
+                report_year = int(str(row.get("rcept_dt"))[:4])
+            except Exception:
+                continue
+
+        rows.append({
+            "report_year": report_year,
+            "report_code": report_code,
+            "report_name": report_name,
+            "rcept_dt": str(row.get("rcept_dt") or ""),
+        })
+
+    rows.sort(key=lambda x: x["rcept_dt"], reverse=True)
+
+    # 동일 보고서의 중복/정정 행은 final=True로 대부분 제거되지만,
+    # 혹시 남아 있어도 같은 (연도, 보고서코드)는 한 번만 재시도한다.
+    unique = []
+    seen = set()
+    for item in rows:
+        key = (item["report_year"], item["report_code"])
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+    return unique
+
+
 def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True, force_refresh=False):
     """
-    1년(단기) 기간 전용: 실제로 조회 가능한 가장 최신 확정 분기/반기/연간 보고서를 사용한다.
-    달력상 최신 보고서가 특정 회사에서 제공되지 않는 경우 바로 이전 정기보고서로 내려가며,
-    최종 선택된 보고서의 연도/보고서 코드가 그대로 반환돼 data_basis_label에도 반영된다.
+    1년(단기) 기간 전용: 실제 회사가 제출한 가장 최신 확정 정기보고서를 우선 사용한다.
+    달력상 최신 코드가 회사 회계연도와 맞지 않으면 DART 공시목록(kind=A)에서
+    실제 보고기간/접수일을 확인해 최신 재무보고서를 찾는다.
     """
     year, reprt_code = get_latest_available_report()
 
-    # 회사별 공시 유무 차이(일부 금융/리츠/특수법인 등) 때문에
-    # 달력상 최신 보고서 하나만 시도하면 013(조회된 데이터 없음)으로 끝나는 종목이 생긴다.
-    # 최신 -> 이전 정기보고서 순으로 유효한 데이터를 찾는다.
-    candidates = []
-    current = (year, reprt_code)
-    for _ in range(4):
-        if current in candidates:
-            break
-        candidates.append(current)
-        current = _previous_report_period(*current)
+    # 대부분의 12월 결산사는 달력 기준 최신 보고서가 그대로 맞으므로 정상 경로는 1회 조회로 끝난다.
+    result = _fetch_report_metrics_for(
+        stock_code,
+        year,
+        reprt_code,
+        use_ofs_for_manufacturing,
+        force_refresh=force_refresh,
+    )
+    if result is not None:
+        return result
 
-    for candidate_year, candidate_code in candidates:
+    # 달력 기준 조회가 013(데이터 없음)인 예외 종목은 실제 DART 정기공시 이력을 확인한다.
+    # 이 경로는 44개 실패종목처럼 회계연도가 12월이 아니거나 특수 공시 주기를 가진 회사에만
+    # 추가 DART 공시목록 호출이 발생하도록 설계한다.
+    discovered = _discover_periodic_reports_from_dart_list(stock_code)
+    for item in discovered:
+        candidate_year = item["report_year"]
+        candidate_code = item["report_code"]
         result = _fetch_report_metrics_for(
             stock_code,
             candidate_year,
@@ -951,11 +1032,11 @@ def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True, forc
             force_refresh=force_refresh,
         )
         if result is not None:
-            if (candidate_year, candidate_code) != candidates[0]:
-                print(
-                    f"  ℹ️ [{stock_code}] 최신 보고서 {candidates[0][0]}년 {candidates[0][1]} "
-                    f"데이터 없음 → {candidate_year}년 {candidate_code}로 폴백"
-                )
+            print(
+                f"  ℹ️ [{stock_code}] 달력 기준 {year}년 {reprt_code} 없음 → "
+                f"DART 실제 최신 보고서 {candidate_year}년 {candidate_code} "
+                f"({item['report_name']}, 접수 {item['rcept_dt']}) 사용"
+            )
             return result
 
     return None
