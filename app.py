@@ -879,6 +879,14 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         height = 700 + 220 * n_extra
 
     dates = [d.strftime("%Y-%m-%d") for d in hist_df.index]
+
+    # 카테고리(순번) 축용 눈금 - 거래일만 순서대로 나열하니 Plotly가 날짜를 자동으로
+    # 예쁘게 포맷해주지 않아서, 8개 정도로 골라 직접 라벨을 만들어줌
+    n_pts = len(dates)
+    tick_step = max(1, n_pts // 8)
+    tick_indices = list(range(0, n_pts, tick_step))
+    tick_vals = [dates[i] for i in tick_indices]
+    tick_text = [hist_df.index[i].strftime("%b %d") for i in tick_indices]
     o, h, l, c = hist_df["Open"].tolist(), hist_df["High"].tolist(), hist_df["Low"].tolist(), hist_df["Close"].tolist()
     volume = hist_df["Volume"].tolist()
     # 색상 컨벤션: 국내 종목은 상승=빨강/하락=파랑, 해외(미국 등) 종목은 상승=초록/하락=빨강(월가 표준) -
@@ -897,15 +905,6 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     current_price = c[-1] if c else None
     high_pct = round((current_price - high_val) / high_val * 100, 2) if current_price and high_val else None
     low_pct = round((current_price - low_val) / low_val * 100, 2) if current_price and low_val else None
-
-    # 거래량 막대 폭을 명시적으로 계산 - Plotly의 자동 폭 계산이 rangebreaks(주말 제거)와 맞물리면
-    # 가끔 폭을 잘못 잡아서 막대끼리 겹쳐 보이는(반투명이라 줄무늬처럼 보임) 문제가 있어서,
-    # 실제 캔들 간격(중앙값)의 70%를 폭으로 직접 지정 - 일봉/주봉/월봉 등 어떤 간격이든 대응됨
-    if len(hist_df.index) >= 2:
-        median_gap_ms = hist_df.index.to_series().diff().dropna().median().total_seconds() * 1000
-    else:
-        median_gap_ms = 86400000  # 데이터가 1개뿐이면 하루(ms) 기본값
-    bar_width_ms = median_gap_ms * 0.7
 
     payload = {
         "dates": dates, "open": o, "high": h, "low": l, "close": c,
@@ -932,7 +931,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                 visTrace("기준선", D.kijun, "#2563EB", 1, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
                 visTrace("선행스팬A", D.senkou_a, "rgba(22,163,74,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
                 visTrace("구름(선행스팬B)", D.senkou_b, "rgba(220,38,38,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))}, fill: "tonexty", fillcolor: "rgba(148,163,184,0.15)" }}),
-                {{ type: "bar", x: D.dates, y: D.volume, name: "거래량", yaxis: "y2", width: {bar_width_ms}, marker: {{ color: D.vol_colors, opacity: 0.9 }} }},
+                {{ type: "bar", x: D.dates, y: D.volume, name: "거래량", yaxis: "y2", marker: {{ color: D.vol_colors, opacity: 0.9, line: {{ width: 0 }} }} }},
                 visTrace("거래량 MA20", D.vol_ma20, "#D97706", 1.1, {{ yaxis: "y2", visible: {json.dumps(vis("vol_ma"))} }}),
     """
 
@@ -1037,11 +1036,12 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                 showlegend: true,
                 legend: {{ orientation: "h", y: 1.03 }},
                 xaxis: {{
-                    type: "date", rangeslider: {{ visible: false }}, anchor: "y",
-                    // 주말(토·일)엔 거래 데이터가 없어서 그대로 두면 달력상 빈 칸이 생겨 평일들이
-                    // 뭉쳤다 끊겼다 하는 지그재그로 보임 - 네이버처럼 주말을 축에서 아예 제거해서
-                    // 평일만 균등한 간격으로 이어지게 함 (공휴일까지는 캘린더가 없어 못 뺌 - 사소한 한계)
-                    rangebreaks: [{{ pattern: "day of week", bounds: [6, 1] }}],
+                    // 카테고리(순번) 축 - 거래일만 순서대로 나열해서 주말이라는 개념 자체가
+                    // 축에 없음. "type: date" + rangebreaks 조합은 Plotly에서 막대(bar) 폭
+                    // 계산이 깨지는 걸로 알려진 문제가 있어서(거래량 막대가 얇은 선처럼 보이던
+                    // 원인) 아예 이 방식으로 바꿈 - 실제 트레이딩뷰 등도 이렇게 처리함.
+                    type: "category", anchor: "y", rangeslider: {{ visible: false }},
+                    tickvals: {json.dumps(tick_vals)}, ticktext: {json.dumps(tick_text)},
                 }},
                 yaxis: {{ domain: {json.dumps(domains['price'])}, anchor: "x", side: "right", title: "가격" }},
                 yaxis2: {{ domain: {json.dumps(domains['volume'])}, anchor: "x", side: "right", title: "거래량" }},
@@ -1068,13 +1068,20 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
             }});
 
             function visibleIndices(x0, x1) {{
-                const t0 = new Date(x0).getTime();
-                const t1 = new Date(x1).getTime();
-                const idxs = [];
-                for (let i = 0; i < D.dates.length; i++) {{
-                    const t = new Date(D.dates[i]).getTime();
-                    if (t >= t0 && t <= t1) idxs.push(i);
+                let i0, i1;
+                if (typeof x0 === "number" && typeof x1 === "number") {{
+                    i0 = x0; i1 = x1;
+                }} else {{
+                    // 카테고리 문자열(날짜)로 넘어온 경우 - 더블클릭 리셋 등
+                    i0 = D.dates.indexOf(x0);
+                    i1 = D.dates.indexOf(x1);
+                    if (i0 === -1) i0 = 0;
+                    if (i1 === -1) i1 = D.dates.length - 1;
                 }}
+                const lo = Math.max(0, Math.floor(Math.min(i0, i1)));
+                const hi = Math.min(D.dates.length - 1, Math.ceil(Math.max(i0, i1)));
+                const idxs = [];
+                for (let i = lo; i <= hi; i++) idxs.push(i);
                 return idxs;
             }}
 
