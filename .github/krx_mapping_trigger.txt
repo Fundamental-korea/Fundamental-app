@@ -1,0 +1,1 @@
+run KRX DB mapping diagnostic
