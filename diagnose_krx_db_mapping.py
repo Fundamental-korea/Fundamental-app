@@ -7,11 +7,13 @@ from kor_market_snapshot import _request_daily_trade
 
 TARGET_SAMPLE_CODES = {"001080", "004960", "005930", "000660"}
 
+
 def norm_name(value):
     s = str(value or "").strip().upper()
     s = re.sub(r"\s+", "", s)
     s = s.replace("(주)", "").replace("㈜", "")
     return s
+
 
 def load_db_rows():
     rows = []
@@ -31,17 +33,26 @@ def load_db_rows():
         start += page_size
     return rows
 
+
 def load_krx_names():
     names = {}
+    api_errors = []
     for api_id in ("stk_bydd_trd", "ksq_bydd_trd"):
-        rows = _request_daily_trade(api_id, "20260918")
-        print(f"{api_id}: {len(rows):,} rows")
+        try:
+            rows = _request_daily_trade(api_id, "20260918")
+            print(f"{api_id}: {len(rows):,} rows")
+        except Exception as exc:
+            api_errors.append((api_id, type(exc).__name__, str(exc)))
+            print(f"{api_id}: API_ERROR {type(exc).__name__}: {exc}")
+            continue
+
         for row in rows:
             code = str(row.get("ISU_CD") or row.get("isu_cd") or "").strip().zfill(6)
             name = str(row.get("ISU_NM") or row.get("isu_nm") or "").strip()
             if code and name:
                 names[code] = name
-    return names
+    return names, api_errors
+
 
 def main():
     print("=== KRX / FUNDAMENTAL CODE-NAME MAPPING DIAGNOSTIC ===")
@@ -60,7 +71,7 @@ def main():
     print(f"DB unique codes: {len(by_code):,}")
     print(f"Duplicate code rows: {len(duplicates):,}")
 
-    krx = load_krx_names()
+    krx, api_errors = load_krx_names()
     print(f"KRX official names: {len(krx):,}")
 
     mismatches = []
@@ -80,10 +91,16 @@ def main():
     print(f"Compared current KRX codes: {checked:,}")
     print(f"Exact/normalized matches: {matched:,}")
     print(f"Name mismatches: {len(mismatches):,}")
+    print(f"KRX API errors: {len(api_errors):,}")
 
     print("\n=== TARGET SAMPLE ===")
     for code in sorted(TARGET_SAMPLE_CODES):
         print(f"{code}: DB={by_code.get(code)!r} | KRX={krx.get(code)!r}")
+
+    if api_errors:
+        print("\n=== KRX API ERRORS ===")
+        for api_id, error_type, message in api_errors:
+            print(f"{api_id} | {error_type} | {message}")
 
     print("\n=== FIRST 100 MISMATCHES ===")
     for code, db_name, krx_name in mismatches[:100]:
@@ -95,6 +112,7 @@ def main():
             print(item)
 
     print("\nREAD_ONLY: no Supabase writes were executed.")
+
 
 if __name__ == "__main__":
     main()
