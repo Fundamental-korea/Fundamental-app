@@ -983,7 +983,8 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None)
             const traces = [
                 {{ type: "candlestick", x: D.dates, open: D.open, high: D.high, low: D.low, close: D.close,
                    name: "가격", yaxis: "y", xaxis: "x",
-                   increasing: {{ line: {{ color: "#DC2626" }} }}, decreasing: {{ line: {{ color: "#2563EB" }} }} }},
+                   increasing: {{ line: {{ color: "#DC2626", width: 1 }}, fillcolor: "#DC2626" }},
+                   decreasing: {{ line: {{ color: "#2563EB", width: 1 }}, fillcolor: "#2563EB" }} }},
                 {overlay_traces_js}
                 {row_traces_js}
             ];
@@ -996,7 +997,13 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None)
                 dragmode: "pan",
                 showlegend: true,
                 legend: {{ orientation: "h", y: 1.03 }},
-                xaxis: {{ type: "date", rangeslider: {{ visible: false }}, anchor: "y" }},
+                xaxis: {{
+                    type: "date", rangeslider: {{ visible: false }}, anchor: "y",
+                    // 주말(토·일)엔 거래 데이터가 없어서 그대로 두면 달력상 빈 칸이 생겨 평일들이
+                    // 뭉쳤다 끊겼다 하는 지그재그로 보임 - 네이버처럼 주말을 축에서 아예 제거해서
+                    // 평일만 균등한 간격으로 이어지게 함 (공휴일까지는 캘린더가 없어 못 뺌 - 사소한 한계)
+                    rangebreaks: [{{ pattern: "day of week", bounds: [6, 1] }}],
+                }},
                 yaxis: {{ domain: {json.dumps(domains['price'])}, anchor: "x", side: "right", title: "가격" }},
                 yaxis2: {{ domain: {json.dumps(domains['volume'])}, anchor: "x", side: "right", title: "거래량" }},
                 {extra_yaxes_js}
