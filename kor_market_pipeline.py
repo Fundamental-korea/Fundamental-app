@@ -7,7 +7,7 @@ Source policy:
   shares on the report period end when DART stock-total is unavailable.
 - Current market-cap shares are never substituted with an old DART share count.
 
-The daily pipeline fetches KOSPI/KOSDAQ once for the current snapshot. Historical KRX
+The daily pipeline fetches KOSPI/KOSDAQ/KONEX once for the current snapshot. Historical KRX
 share counts are fetched per unique report-period date only when needed and cached in
 memory for the run.
 """
@@ -22,7 +22,7 @@ import collector
 from kor_market_snapshot import _request_daily_trade, _to_int
 
 
-MARKET_API_IDS = ("stk_bydd_trd", "ksq_bydd_trd")
+MARKET_API_IDS = ("stk_bydd_trd", "ksq_bydd_trd", "knx_bydd_trd")
 _HISTORICAL_KRX_SHARE_CACHE: Dict[str, Dict[str, int]] = {}
 
 
@@ -47,7 +47,7 @@ def _parse_market_row(row: dict, snapshot_date: str) -> Optional[dict]:
 
 
 def fetch_market_snapshot_map(max_lookback_days: int = 7) -> Dict[str, dict]:
-    """Fetch KOSPI + KOSDAQ daily market data once and return code -> snapshot."""
+    """Fetch KOSPI + KOSDAQ + KONEX daily market data once and return code -> snapshot."""
     if not collector.os.environ.get("KRX_API_KEY", "").strip():
         print("⚠️ KRX_API_KEY가 없어 KRX market snapshot을 건너뜁니다.")
         return {}
