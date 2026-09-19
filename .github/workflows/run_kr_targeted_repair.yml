@@ -7,6 +7,8 @@ on:
       - refactor/kor-market-snapshot
     paths:
       - repair_kor_stocks.py
+      - collector.py
+      - kor_market_pipeline.py
       - .github/workflows/run_kr_targeted_repair.yml
 
 permissions:
