@@ -1,1 +1,1 @@
-trigger Step 8 real single sync diagnostic - fixed interceptor
+trigger Step 8 real single sync diagnostic - not_ proxy fix
