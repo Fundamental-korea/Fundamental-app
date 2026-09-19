@@ -3,7 +3,7 @@ from __future__ import annotations
 import collector
 import kor_market_pipeline as pipeline
 
-TARGET_CODE = "001080"
+TARGET_CODE = "004960"
 TARGET_NAME = "한신공영"
 
 class _WriteInterceptBuilder:
@@ -23,12 +23,16 @@ class _WriteInterceptBuilder:
         return attr
     def upsert(self, payload, *args, **kwargs):
         self._record_write("upsert", payload)
+        return self
     def insert(self, payload, *args, **kwargs):
         self._record_write("insert", payload)
+        return self
     def update(self, payload, *args, **kwargs):
         self._record_write("update", payload)
+        return self
     def delete(self, *args, **kwargs):
         self._record_write("delete", None)
+        return self
     def _record_write(self, operation, payload):
         self._recorder.append((self._table_name, operation, payload))
         if self._table_name == "Fundamental" and operation == "upsert":
