@@ -781,10 +781,14 @@ def get_stock_data(code):
 def get_chart_history(code, period="1y"):
     """Chart Analysis 전용 - 공부/스윙매매 목적이라 실시간 갱신은 불필요해서 6시간 캐시.
     get_stock_data()와 분리해둔 이유: 저 함수는 매 페이지뷰마다 yfinance를 새로 호출하는
-    기존 동작이라 - 여기서 캐시 정책을 바꿔도 메인 펀더멘탈 리포트 페이지는 영향 없음."""
+    기존 동작이라 - 여기서 캐시 정책을 바꿔도 메인 펀더멘탈 리포트 페이지는 영향 없음.
+    ⚠️ yfinance가 가끔 배당락/액션 처리 과정에서 같은 날짜가 중복되거나 정렬이 흐트러진
+    행을 섞어 반환하는 경우가 있어서 - 이러면 차트에서 선이 시간순으로 안 이어지고
+    지그재그로 튀어보임(RSI 톱니, 거래량 줄무늬의 흔한 원인) - 방어적으로 정렬+중복제거."""
     ticker_symbol = f"{code}.KS" if code.isdigit() else code
     try:
-        return yf.Ticker(ticker_symbol).history(period=period)
+        df = yf.Ticker(ticker_symbol).history(period=period)
+        return df[~df.index.duplicated(keep="last")].sort_index() if not df.empty else df
     except Exception:
         return pd.DataFrame()
 
@@ -796,7 +800,8 @@ def get_chart_history_intraday(code, yf_interval="30m", period="60d"):
     일봉(get_chart_history)과 별도 함수 + 짧은 캐시(30분)로 분리해둠."""
     ticker_symbol = f"{code}.KS" if code.isdigit() else code
     try:
-        return yf.Ticker(ticker_symbol).history(period=period, interval=yf_interval)
+        df = yf.Ticker(ticker_symbol).history(period=period, interval=yf_interval)
+        return df[~df.index.duplicated(keep="last")].sort_index() if not df.empty else df
     except Exception:
         return pd.DataFrame()
 
@@ -816,7 +821,7 @@ INTERVAL_RESAMPLE_RULE = {
 }
 
 
-def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None):
+def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None, is_korean_market=True):
     """네이버증권 스타일 차트 - Plotly.js를 components.html로 직접 임베드.
     st.plotly_chart(서버에서 그려서 넘김)로는 줌/팬 시 y축이 안 따라오는 게 기본 동작이라
     (Plotly는 x축만 자동으로 다시 그리고 y축 범위는 그대로 유지함), 이 함수는 브라우저에서
@@ -876,11 +881,31 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None)
     dates = [d.strftime("%Y-%m-%d") for d in hist_df.index]
     o, h, l, c = hist_df["Open"].tolist(), hist_df["High"].tolist(), hist_df["Low"].tolist(), hist_df["Close"].tolist()
     volume = hist_df["Volume"].tolist()
-    # 국내 관례: 상승(종가>=시가)=빨강, 하락=파랑 - 캔들/거래량 막대 모두 동일 색상 규칙 적용
-    vol_colors = ["#DC2626" if cc >= oo else "#2563EB" for oo, cc in zip(o, c)]
+    # 색상 컨벤션: 국내 종목은 상승=빨강/하락=파랑, 해외(미국 등) 종목은 상승=초록/하락=빨강(월가 표준) -
+    # 네이버증권도 국내/해외를 이 기준으로 다르게 표시함
+    up_color, down_color = ("#DC2626", "#2563EB") if is_korean_market else ("#16A34A", "#DC2626")
+    vol_colors = [up_color if cc >= oo else down_color for oo, cc in zip(o, c)]
 
     def s(key):
         return indicators[key].tolist()
+
+    # 최고/최저 지점 라벨용 - 지금 불러온 구간 전체 기준 (네이버처럼 확대/축소할 때마다 다시 계산하진 않음)
+    high_val = max(h)
+    low_val = min(l)
+    high_idx = h.index(high_val)
+    low_idx = l.index(low_val)
+    current_price = c[-1] if c else None
+    high_pct = round((current_price - high_val) / high_val * 100, 2) if current_price and high_val else None
+    low_pct = round((current_price - low_val) / low_val * 100, 2) if current_price and low_val else None
+
+    # 거래량 막대 폭을 명시적으로 계산 - Plotly의 자동 폭 계산이 rangebreaks(주말 제거)와 맞물리면
+    # 가끔 폭을 잘못 잡아서 막대끼리 겹쳐 보이는(반투명이라 줄무늬처럼 보임) 문제가 있어서,
+    # 실제 캔들 간격(중앙값)의 70%를 폭으로 직접 지정 - 일봉/주봉/월봉 등 어떤 간격이든 대응됨
+    if len(hist_df.index) >= 2:
+        median_gap_ms = hist_df.index.to_series().diff().dropna().median().total_seconds() * 1000
+    else:
+        median_gap_ms = 86400000  # 데이터가 1개뿐이면 하루(ms) 기본값
+    bar_width_ms = median_gap_ms * 0.7
 
     payload = {
         "dates": dates, "open": o, "high": h, "low": l, "close": c,
@@ -907,7 +932,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None)
                 visTrace("기준선", D.kijun, "#2563EB", 1, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
                 visTrace("선행스팬A", D.senkou_a, "rgba(22,163,74,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
                 visTrace("구름(선행스팬B)", D.senkou_b, "rgba(220,38,38,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))}, fill: "tonexty", fillcolor: "rgba(148,163,184,0.15)" }}),
-                {{ type: "bar", x: D.dates, y: D.volume, name: "거래량", yaxis: "y2", marker: {{ color: D.vol_colors, opacity: 0.55 }} }},
+                {{ type: "bar", x: D.dates, y: D.volume, name: "거래량", yaxis: "y2", width: {bar_width_ms}, marker: {{ color: D.vol_colors, opacity: 0.9 }} }},
                 visTrace("거래량 MA20", D.vol_ma20, "#D97706", 1.1, {{ yaxis: "y2", visible: {json.dumps(vis("vol_ma"))} }}),
     """
 
@@ -950,6 +975,20 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None)
 
     has_macd_js = json.dumps(vm["macd"])
 
+    def fmt_price(v):
+        return f"{v:,.0f}" if is_korean_market else f"{v:,.2f}"
+
+    annotations_js = ""
+    if high_pct is not None and low_pct is not None:
+        annotations_js = f"""
+                    {{ x: D.dates[{high_idx}], y: {high_val}, xref: "x", yref: "y",
+                       text: "최고 {fmt_price(high_val)} ({high_pct:+.2f}%)", showarrow: true, arrowhead: 0,
+                       ax: 0, ay: -30, font: {{ size: 11, color: "#1A1A1A" }} }},
+                    {{ x: D.dates[{low_idx}], y: {low_val}, xref: "x", yref: "y",
+                       text: "최저 {fmt_price(low_val)} ({low_pct:+.2f}%)", showarrow: true, arrowhead: 0,
+                       ax: 0, ay: 30, font: {{ size: 11, color: "#1A1A1A" }} }},
+        """
+
     custom_html = f"""
     <!DOCTYPE html>
     <html>
@@ -983,8 +1022,8 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None)
             const traces = [
                 {{ type: "candlestick", x: D.dates, open: D.open, high: D.high, low: D.low, close: D.close,
                    name: "가격", yaxis: "y", xaxis: "x",
-                   increasing: {{ line: {{ color: "#DC2626", width: 1 }}, fillcolor: "#DC2626" }},
-                   decreasing: {{ line: {{ color: "#2563EB", width: 1 }}, fillcolor: "#2563EB" }} }},
+                   increasing: {{ line: {{ color: "{up_color}", width: 1 }}, fillcolor: "{up_color}" }},
+                   decreasing: {{ line: {{ color: "{down_color}", width: 1 }}, fillcolor: "{down_color}" }} }},
                 {overlay_traces_js}
                 {row_traces_js}
             ];
@@ -1009,6 +1048,9 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None)
                 {extra_yaxes_js}
                 shapes: [
                     {extra_shapes_js}
+                ],
+                annotations: [
+                    {annotations_js}
                 ],
             }};
 
@@ -1679,7 +1721,10 @@ elif selected_code and view_mode_param == "analysis":
                 "보이는 구간에 맞춰 자동으로 다시 그려져요 (더블클릭하면 전체 구간으로 리셋). "
                 "위쪽 버튼으로 분봉/일봉/주봉/월봉/분기봉/년봉을 바꿀 수 있고, 지표는 '표시할 지표 선택'에서 켜보세요."
             )
-            render_naver_style_chart(hist_df, indicators, visible_map=visible_map)
+            render_naver_style_chart(
+                hist_df, indicators, visible_map=visible_map,
+                is_korean_market=selected_code.isdigit(),
+            )
 
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             st.markdown("##### 🎓 지표별 강의 (지금 이 종목 기준) - 눌러서 펼쳐보세요")
