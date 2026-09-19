@@ -1,5 +1,6 @@
 """Read-only Step 8: run the real 001080 sync path and intercept all Supabase writes."""
 from __future__ import annotations
+from types import SimpleNamespace
 import collector
 import kor_market_pipeline as pipeline
 
@@ -11,6 +12,7 @@ class _WriteInterceptBuilder:
         self._real = real
         self._table_name = table_name
         self._recorder = recorder
+        self._pending_write = False
     def __getattr__(self, name):
         attr = getattr(self._real, name)
         if name == "not_":
@@ -23,16 +25,25 @@ class _WriteInterceptBuilder:
         return attr
     def upsert(self, payload, *args, **kwargs):
         self._record_write("upsert", payload)
+        self._pending_write = True
         return self
     def insert(self, payload, *args, **kwargs):
         self._record_write("insert", payload)
+        self._pending_write = True
         return self
     def update(self, payload, *args, **kwargs):
         self._record_write("update", payload)
+        self._pending_write = True
         return self
     def delete(self, *args, **kwargs):
         self._record_write("delete", None)
+        self._pending_write = True
         return self
+    def execute(self, *args, **kwargs):
+        if self._pending_write:
+            self._pending_write = False
+            return SimpleNamespace(data=[], count=None)
+        return self._real.execute(*args, **kwargs)
     def _record_write(self, operation, payload):
         self._recorder.append((self._table_name, operation, payload))
         if self._table_name == "Fundamental" and operation == "upsert":
