@@ -1,0 +1,25 @@
+name: KRX Step 8 - Real Single Sync Write Intercept
+on:
+  push:
+    branches:
+      - refactor/kor-market-snapshot
+    paths:
+      - .github/krx_step8_trigger.txt
+  workflow_dispatch:
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install -r requirements.txt
+      - name: Run read-only real sync diagnostic
+        env:
+          KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          DART_API_KEY: ${{ secrets.DART_API_KEY }}
+        run: python diagnose_krx_real_single_sync.py
