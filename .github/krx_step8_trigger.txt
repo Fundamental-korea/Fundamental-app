@@ -1,0 +1,1 @@
+trigger Step 8 real single sync diagnostic\n
