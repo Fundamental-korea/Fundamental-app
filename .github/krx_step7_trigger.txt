@@ -1,0 +1,1 @@
+trigger Step 7 single wrapper path diagnostic\n
