@@ -8,7 +8,8 @@ from __future__ import annotations
 
 import sys
 
-from collector import get_1y_update_targets, sync_1y_only, get_kospi_mdd_cache
+import collector
+from collector import get_1y_update_targets, get_kospi_mdd_cache
 from kor_market_pipeline import install_market_snapshot_integration
 
 
@@ -55,7 +56,7 @@ def main() -> int:
 
         name = row.get("stock_name") or code
         try:
-            ok = sync_1y_only(
+            ok = collector.sync_1y_only(
                 code,
                 name,
                 sector=row.get("sector"),
