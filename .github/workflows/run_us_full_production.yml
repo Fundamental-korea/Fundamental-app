@@ -17,15 +17,19 @@ concurrency:
 
 jobs:
   collect:
-    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'START_US_FULL_PRODUCTION')
-    name: US full recollection shard ${{ matrix.shard_index + 1 }}/${{ matrix.shard_count }}
+    name: US full recollection shard ${{ matrix.shard_index }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     strategy:
       fail-fast: false
       matrix:
-        shard_index: [0, 1, 2]
-        shard_count: [3]
+        include:
+          - shard_index: 0
+            shard_count: 3
+          - shard_index: 1
+            shard_count: 3
+          - shard_index: 2
+            shard_count: 3
 
     steps:
       - name: Checkout
@@ -48,8 +52,7 @@ jobs:
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
-        run: |
-          python collector_us_fundamental.py             --all             --exclude-profile utility             --shard-index ${{ matrix.shard_index }}             --shard-count ${{ matrix.shard_count }}
+        run: python collector_us_fundamental.py --all --exclude-profile utility --shard-index ${{ matrix.shard_index }} --shard-count ${{ matrix.shard_count }}
 
       - name: Verify collector completed
         if: success()
