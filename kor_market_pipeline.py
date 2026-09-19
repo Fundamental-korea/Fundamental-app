@@ -164,27 +164,34 @@ def _get_dart_fiscal_month(stock_code: str) -> Optional[int]:
 
 
 def _derive_calendar_report_period_end(report_year: int, report_code: str, stock_code: str) -> Optional[str]:
-    """Safe fallback for companies confirmed by DART as December year-end.
+    """Derive actual report period-end from fiscal month and DART report code.
 
-    We do not derive a date for non-December fiscal years without an explicit DART
-    period-end, because a report code alone does not identify the calendar date for
-    those companies.
+    DART's bsns_year is the business-year label. For non-December fiscal years,
+    quarterly/half-year periods can end in the following calendar year, so deriving
+    the period-end from report code alone is not safe.
     """
     fiscal_month = _get_dart_fiscal_month(stock_code)
-    if fiscal_month != 12:
+    if fiscal_month is None or report_year is None:
         return None
 
-    month_day = {
-        "11011": (12, 31),
-        "11012": (6, 30),
-        "11013": (3, 31),
-        "11014": (9, 30),
-    }.get(str(report_code))
-    if not month_day or report_year is None:
-        return None
-    month, day = month_day
-    return f"{int(report_year):04d}-{month:02d}-{day:02d}"
+    code = str(report_code)
+    if code == "11011":
+        year = int(report_year)
+        month = int(fiscal_month)
+    else:
+        offset_months = {"11013": 3, "11012": 6, "11014": 9}.get(code)
+        if offset_months is None:
+            return None
 
+        start_year = int(report_year) if fiscal_month == 12 else int(report_year) - 1
+        start_month = int(fiscal_month) % 12 + 1
+        zero_based = (start_month - 1) + offset_months
+        year = start_year + zero_based // 12
+        month = zero_based % 12 + 1
+
+    import calendar
+    day = calendar.monthrange(year, month)[1]
+    return f"{year:04d}-{month:02d}-{day:02d}"
 
 def _get_latest_report_basis(stock_code: str) -> Optional[dict]:
     """Read the already-cached latest DART report metrics when possible."""
