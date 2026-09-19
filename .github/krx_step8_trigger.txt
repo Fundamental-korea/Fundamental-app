@@ -1,1 +1,1 @@
-trigger Step 8 real single sync diagnostic - not_ proxy fix
+trigger Step 8 real single sync diagnostic - 004960 Hanshin
