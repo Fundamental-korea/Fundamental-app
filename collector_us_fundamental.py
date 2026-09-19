@@ -522,14 +522,49 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
     return {"ticker": ticker, "cik": str(cik), "company_name": company_name, "sector": universe_row.get("sector_common") or classify_company(submissions), "base_year": latest_year, "period_scores": period_scores, "total_score": int(round(latest_score)) if latest_score is not None else None, "grade": latest_grade, "data_unavailable": not bool(period_scores), "data_reliability": reliability, "missing_metric_count": latest_missing, "updated_at": datetime.now(timezone.utc).isoformat(), "downturn_defense": downturn_value, "downturn_detail": downturn_detail, "snapshot": snapshot, "snapshot_fiscal_end": snapshot.get("fiscal_end") if snapshot else None, "snapshot_period": snapshot.get("fiscal_period") if snapshot else None, "snapshot_form": snapshot.get("form") if snapshot else None, "snapshot_filed": snapshot.get("filed") if snapshot else None, "snapshot_basis": snapshot.get("basis") if snapshot else None, "snapshot_updated_at": datetime.now(timezone.utc).isoformat()}
 
 
-def get_universe(sb, tickers=None, limit=None, all_rows=False):
+def get_universe(
+    sb,
+    tickers=None,
+    limit=None,
+    all_rows=False,
+    exclude_profile=None,
+    shard_index=0,
+    shard_count=1,
+):
     columns = "ticker,cik,company_name,sector_common,company_type,scoring_profile"
+
     if tickers:
-        return sb.table("US_Companies").select(columns).in_("ticker", tickers).eq("is_fundamental_eligible", True).execute().data
-    query = sb.table("US_Companies").select(columns).eq("is_fundamental_eligible", True).order("ticker")
-    if not all_rows:
-        query = query.limit(limit or 5)
-    return query.execute().data
+        query = (
+            sb.table("US_Companies")
+            .select(columns)
+            .in_("ticker", tickers)
+            .eq("is_fundamental_eligible", True)
+        )
+        if exclude_profile:
+            query = query.neq("scoring_profile", exclude_profile)
+        rows = query.execute().data
+    else:
+        query = (
+            sb.table("US_Companies")
+            .select(columns)
+            .eq("is_fundamental_eligible", True)
+            .order("ticker")
+        )
+        if exclude_profile:
+            query = query.neq("scoring_profile", exclude_profile)
+        if not all_rows:
+            query = query.limit(limit or 5)
+        rows = query.execute().data
+
+    if shard_count < 1:
+        raise ValueError("shard_count must be >= 1")
+    if not 0 <= shard_index < shard_count:
+        raise ValueError("shard_index must be in [0, shard_count)")
+
+    if shard_count > 1:
+        rows = rows[shard_index::shard_count]
+
+    return rows
 
 
 def main():
@@ -538,12 +573,28 @@ def main():
     parser.add_argument("--tickers")
     parser.add_argument("--limit", type=int, default=5)
     parser.add_argument("--all", action="store_true", dest="all_rows")
+    parser.add_argument("--exclude-profile", default=None)
+    parser.add_argument("--shard-index", type=int, default=0)
+    parser.add_argument("--shard-count", type=int, default=1)
     args = parser.parse_args()
     if not SUPABASE_KEY:
         raise RuntimeError("SUPABASE_SECRET_KEY or SUPABASE_KEY is required")
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
     tickers = [args.ticker.upper().strip()] if args.ticker else ([x.upper().strip() for x in args.tickers.split(",") if x.strip()] if args.tickers else None)
-    rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
+    rows = get_universe(
+        sb,
+        tickers=tickers,
+        limit=args.limit,
+        all_rows=args.all_rows,
+        exclude_profile=args.exclude_profile,
+        shard_index=args.shard_index,
+        shard_count=args.shard_count,
+    )
+    print(
+        f"[UNIVERSE] selected={len(rows)} "
+        f"exclude_profile={args.exclude_profile or '-'} "
+        f"shard={args.shard_index + 1}/{args.shard_count}"
+    )
     session = requests.Session()
     session.headers.update({"User-Agent": SEC_USER_AGENT})
     market = None
@@ -568,6 +619,9 @@ def main():
             print(f"[{i}/{len(rows)}] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} reliability={result['data_reliability']} snapshot={result.get('snapshot_fiscal_end')}")
         except Exception as exc:
             print(f"[{i}/{len(rows)}] {ticker}: FAILED: {exc}")
+        finally:
+            # Conservative aggregate SEC request pacing for parallel shards.
+            time.sleep(0.6)
     print("Completed.")
 
 
