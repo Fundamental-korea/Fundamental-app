@@ -925,11 +925,40 @@ def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufact
 
 def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True, force_refresh=False):
     """
-    1년(단기) 기간 전용: 연간 사업보고서가 아니라 '지금 시점 가장 최신' 분기/반기 보고서 기준으로
-    지표와 전년동기 대비 성장률을 계산 (최신성 우선).
+    1년(단기) 기간 전용: 실제로 조회 가능한 가장 최신 확정 분기/반기/연간 보고서를 사용한다.
+    달력상 최신 보고서가 특정 회사에서 제공되지 않는 경우 바로 이전 정기보고서로 내려가며,
+    최종 선택된 보고서의 연도/보고서 코드가 그대로 반환돼 data_basis_label에도 반영된다.
     """
     year, reprt_code = get_latest_available_report()
-    return _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufacturing, force_refresh=force_refresh)
+
+    # 회사별 공시 유무 차이(일부 금융/리츠/특수법인 등) 때문에
+    # 달력상 최신 보고서 하나만 시도하면 013(조회된 데이터 없음)으로 끝나는 종목이 생긴다.
+    # 최신 -> 이전 정기보고서 순으로 유효한 데이터를 찾는다.
+    candidates = []
+    current = (year, reprt_code)
+    for _ in range(4):
+        if current in candidates:
+            break
+        candidates.append(current)
+        current = _previous_report_period(*current)
+
+    for candidate_year, candidate_code in candidates:
+        result = _fetch_report_metrics_for(
+            stock_code,
+            candidate_year,
+            candidate_code,
+            use_ofs_for_manufacturing,
+            force_refresh=force_refresh,
+        )
+        if result is not None:
+            if (candidate_year, candidate_code) != candidates[0]:
+                print(
+                    f"  ℹ️ [{stock_code}] 최신 보고서 {candidates[0][0]}년 {candidates[0][1]} "
+                    f"데이터 없음 → {candidate_year}년 {candidate_code}로 폴백"
+                )
+            return result
+
+    return None
 
 
 REPORT_CODE_LABEL = {
