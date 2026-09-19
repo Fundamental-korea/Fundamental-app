@@ -2,6 +2,11 @@ name: US Full Fundamental Recollection
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - refactor/kor-market-snapshot
+    paths:
+      - .github/workflows/run_us_full_production.yml
 
 permissions:
   contents: read
@@ -12,6 +17,7 @@ concurrency:
 
 jobs:
   collect:
+    if: github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, 'START_US_FULL_PRODUCTION')
     name: US full recollection shard ${{ matrix.shard_index + 1 }}/${{ matrix.shard_count }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
