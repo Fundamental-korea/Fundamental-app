@@ -816,26 +816,62 @@ INTERVAL_RESAMPLE_RULE = {
 }
 
 
-def render_naver_style_chart(hist_df, indicators, stock_code, stock_name,
-                              current_interval="일봉", visible_map=None, height=1020):
+def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None):
     """네이버증권 스타일 차트 - Plotly.js를 components.html로 직접 임베드.
     st.plotly_chart(서버에서 그려서 넘김)로는 줌/팬 시 y축이 안 따라오는 게 기본 동작이라
     (Plotly는 x축만 자동으로 다시 그리고 y축 범위는 그대로 유지함), 이 함수는 브라우저에서
     직접 Plotly.js를 돌려서 'plotly_relayout' 이벤트(사용자가 줌/팬 할 때 발생)를 잡아
     화면에 보이는 구간의 고가/저가/거래량/MACD 범위로 y축을 다시 계산해서 그려줌.
-    네이버증권처럼 확대·이동할 때마다 y축이 그 구간에 맞게 재조정되는 느낌을 구현한 것.
-    RSI/스토캐스틱은 0~100 고정 범위라 원래도 재조정이 필요 없어서 그대로 둠.
 
     visible_map: {"ma": bool, "bb": bool, "ichimoku": bool, "vol_ma": bool,
                   "rsi": bool, "stoch": bool, "macd": bool} - 기본 전부 False(꺼짐).
-    current_interval: 상단 탭바에서 현재 선택된 값("분봉"/"일봉"/"주봉"/"월봉"/"분기봉"/"년봉") -
-    탭 클릭 시 같은 페이지를 ?interval=<선택값>으로 다시 불러오는 방식(네이버처럼 차트 안에 박힌 탭)."""
+    가격/거래량 위에 얹히는 오버레이 지표(ma/bb/ichimoku/vol_ma)는 트레이스만 숨기고 칸은 유지하지만,
+    RSI/스토캐스틱/MACD는 전용 서브플롯 행이 필요한 지표라 - 체크 안 하면 트레이스뿐 아니라
+    그 행(축·그리드·기준선) 자체를 아예 안 만들어서, 빈 표가 남아있는 문제를 없앰.
+    ⚠️ 기간 탭(분봉/일봉/주봉/월봉/분기봉/년봉)은 여기서 만들지 않음 - iframe 안에서
+    window.parent.location.href로 부모 페이지를 이동시키는 게 Streamlit의 iframe 샌드박스
+    정책상 막혀서(클릭해도 아무 반응 없던 원인) 호출부에서 진짜 Streamlit 버튼으로 처리함."""
 
     vm = {"ma": False, "bb": False, "ichimoku": False, "vol_ma": False, "rsi": False, "stoch": False, "macd": False}
     vm.update(visible_map or {})
 
     def vis(key):
         return True if vm[key] else "legendonly"
+
+    # RSI/스토캐스틱/MACD는 전용 행이 필요한 지표라, 체크 안 하면 행 자체를 안 만듦
+    row_order = ["price", "volume"]
+    if vm["rsi"]:
+        row_order.append("rsi")
+    if vm["stoch"]:
+        row_order.append("stoch")
+    if vm["macd"]:
+        row_order.append("macd")
+
+    n_extra = len(row_order) - 2
+    gap = 0.025
+    total_gap = gap * (len(row_order) - 1)
+    if n_extra == 0:
+        vol_h = 0.18
+        price_h = 1.0 - vol_h - total_gap
+        row_heights = {"price": price_h, "volume": vol_h}
+    else:
+        vol_h = 0.14
+        extra_h = 0.16
+        price_h = 1.0 - vol_h - extra_h * n_extra - total_gap
+        row_heights = {"price": price_h, "volume": vol_h}
+        for r in row_order[2:]:
+            row_heights[r] = extra_h
+
+    domains = {}
+    top = 1.0
+    for r in row_order:
+        bottom = top - row_heights[r]
+        domains[r] = [round(bottom, 4), round(top, 4)]
+        top = bottom - gap
+
+    axis_name = {"price": "y", "volume": "y2", "rsi": "y3", "stoch": "y4", "macd": "y5"}
+    if height is None:
+        height = 700 + 220 * n_extra
 
     dates = [d.strftime("%Y-%m-%d") for d in hist_df.index]
     o, h, l, c = hist_df["Open"].tolist(), hist_df["High"].tolist(), hist_df["Low"].tolist(), hist_df["Close"].tolist()
@@ -859,12 +895,60 @@ def render_naver_style_chart(hist_df, indicators, stock_code, stock_name,
     }
     data_json = json.dumps(payload)
 
-    intervals = ["분봉", "일봉", "주봉", "월봉", "분기봉", "년봉"]
-    tab_buttons_html = "".join(
-        f"""<div class="ivl-tab{' ivl-tab-active' if ivl == current_interval else ''}"
-                 onclick="goInterval('{ivl}')">{ivl}</div>"""
-        for ivl in intervals
-    )
+    # 오버레이 지표(가격/거래량 패널 위) 트레이스 - 항상 정의, visible로만 켜고 끔
+    overlay_traces_js = f"""
+                visTrace("5일선", D.sma5, "#16A34A", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
+                visTrace("20일선", D.sma20, "#DC2626", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
+                visTrace("60일선", D.sma60, "#F97316", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
+                visTrace("120일선", D.sma120, "#7C3AED", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
+                visTrace("볼린저 상단", D.bb_upper, "rgba(217,119,6,0.4)", 1, {{ yaxis: "y", visible: {json.dumps(vis("bb"))}, line: {{ dash: "dot" }} }}),
+                visTrace("볼린저 하단", D.bb_lower, "rgba(217,119,6,0.4)", 1, {{ yaxis: "y", visible: {json.dumps(vis("bb"))}, line: {{ dash: "dot" }}, fill: "tonexty", fillcolor: "rgba(244,162,97,0.06)" }}),
+                visTrace("전환선", D.tenkan, "#DC2626", 1, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
+                visTrace("기준선", D.kijun, "#2563EB", 1, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
+                visTrace("선행스팬A", D.senkou_a, "rgba(22,163,74,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
+                visTrace("구름(선행스팬B)", D.senkou_b, "rgba(220,38,38,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))}, fill: "tonexty", fillcolor: "rgba(148,163,184,0.15)" }}),
+                {{ type: "bar", x: D.dates, y: D.volume, name: "거래량", yaxis: "y2", marker: {{ color: D.vol_colors, opacity: 0.55 }} }},
+                visTrace("거래량 MA20", D.vol_ma20, "#D97706", 1.1, {{ yaxis: "y2", visible: {json.dumps(vis("vol_ma"))} }}),
+    """
+
+    # 행(row) 기반 지표 - 체크된 것만 트레이스 자체를 생성 (안 그러면 빈 축만 남는 문제가 다시 생김)
+    row_traces_js = ""
+    if vm["rsi"]:
+        row_traces_js += f"""
+                visTrace("RSI(14)", D.rsi14, "#7C3AED", 1.3, {{ yaxis: "{axis_name['rsi']}" }}),
+        """
+    if vm["stoch"]:
+        row_traces_js += f"""
+                visTrace("%K", D.stoch_k, "#0EA5E9", 1.2, {{ yaxis: "{axis_name['stoch']}" }}),
+                visTrace("%D", D.stoch_d, "#F97316", 1.2, {{ yaxis: "{axis_name['stoch']}" }}),
+        """
+    if vm["macd"]:
+        row_traces_js += f"""
+                {{ type: "bar", x: D.dates, y: D.macd_hist, name: "MACD 히스토그램", yaxis: "{axis_name['macd']}",
+                   marker: {{ color: "rgba(148,163,184,0.6)" }} }},
+                visTrace("MACD선", D.macd_line, "#D97706", 1.2, {{ yaxis: "{axis_name['macd']}" }}),
+                visTrace("시그널선", D.macd_signal, "#2563EB", 1.2, {{ yaxis: "{axis_name['macd']}" }}),
+        """
+
+    # 행 기반 지표의 y축 정의 + 기준선(70/30, 80/20) - 체크된 것만
+    extra_yaxes_js = ""
+    extra_shapes_js = ""
+    if vm["rsi"]:
+        extra_yaxes_js += f"""yaxis3: {{ domain: {json.dumps(domains['rsi'])}, anchor: "x", side: "right", title: "RSI", range: [0, 100] }},"""
+        extra_shapes_js += f"""
+                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 70, y1: 70, line: {{ color: "#DC2626", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 30, y1: 30, line: {{ color: "#16A34A", width: 1, dash: "dash" }} }},
+        """
+    if vm["stoch"]:
+        extra_yaxes_js += f"""yaxis4: {{ domain: {json.dumps(domains['stoch'])}, anchor: "x", side: "right", title: "Stoch", range: [0, 100] }},"""
+        extra_shapes_js += f"""
+                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "#DC2626", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "#16A34A", width: 1, dash: "dash" }} }},
+        """
+    if vm["macd"]:
+        extra_yaxes_js += f"""yaxis5: {{ domain: {json.dumps(domains['macd'])}, anchor: "x", side: "right", title: "MACD" }},"""
+
+    has_macd_js = json.dumps(vm["macd"])
 
     custom_html = f"""
     <!DOCTYPE html>
@@ -874,27 +958,15 @@ def render_naver_style_chart(hist_df, indicators, stock_code, stock_name,
         <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
         <style>
             body {{ margin: 0; padding: 0; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
-            .ivl-tabbar {{ display: flex; gap: 4px; align-items: center; padding: 8px 10px 6px 10px; border-bottom: 1px solid #E5E7EB; }}
-            .ivl-tab {{ font-size: 13px; font-weight: 700; color: #6B7280; padding: 5px 12px; border-radius: 6px; cursor: pointer; }}
-            .ivl-tab:hover {{ background: #F3F4F6; }}
-            .ivl-tab-active {{ color: #D97706; background: #FFF7ED; }}
         </style>
     </head>
     <body>
-        <div class="ivl-tabbar">{tab_buttons_html}</div>
         <div id="naverStyleChart"></div>
         <div id="chartErrorBox"></div>
         <script>
         try {{
             const D = {data_json};
-
-            function goInterval(ivl) {{
-                const url = window.parent.location.origin + window.parent.location.pathname
-                    + "?code=" + encodeURIComponent("{stock_code}")
-                    + "&view=analysis&name=" + encodeURIComponent("{stock_name}")
-                    + "&interval=" + encodeURIComponent(ivl);
-                window.parent.location.href = url;
-            }}
+            const HAS_MACD = {has_macd_js};
 
             function visTrace(name, y, color, width, extra) {{
                 extra = extra || {{}};
@@ -912,35 +984,9 @@ def render_naver_style_chart(hist_df, indicators, stock_code, stock_name,
                 {{ type: "candlestick", x: D.dates, open: D.open, high: D.high, low: D.low, close: D.close,
                    name: "가격", yaxis: "y", xaxis: "x",
                    increasing: {{ line: {{ color: "#DC2626" }} }}, decreasing: {{ line: {{ color: "#2563EB" }} }} }},
-
-                visTrace("5일선", D.sma5, "#16A34A", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
-                visTrace("20일선", D.sma20, "#DC2626", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
-                visTrace("60일선", D.sma60, "#F97316", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
-                visTrace("120일선", D.sma120, "#7C3AED", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("ma"))} }}),
-
-                visTrace("볼린저 상단", D.bb_upper, "rgba(217,119,6,0.4)", 1, {{ yaxis: "y", visible: {json.dumps(vis("bb"))}, line: {{ dash: "dot" }} }}),
-                visTrace("볼린저 하단", D.bb_lower, "rgba(217,119,6,0.4)", 1, {{ yaxis: "y", visible: {json.dumps(vis("bb"))}, line: {{ dash: "dot" }}, fill: "tonexty", fillcolor: "rgba(244,162,97,0.06)" }}),
-
-                visTrace("전환선", D.tenkan, "#DC2626", 1, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
-                visTrace("기준선", D.kijun, "#2563EB", 1, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
-                visTrace("선행스팬A", D.senkou_a, "rgba(22,163,74,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))} }}),
-                visTrace("구름(선행스팬B)", D.senkou_b, "rgba(220,38,38,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))}, fill: "tonexty", fillcolor: "rgba(148,163,184,0.15)" }}),
-
-                {{ type: "bar", x: D.dates, y: D.volume, name: "거래량", yaxis: "y2", marker: {{ color: D.vol_colors, opacity: 0.55 }} }},
-                visTrace("거래량 MA20", D.vol_ma20, "#D97706", 1.1, {{ yaxis: "y2", visible: {json.dumps(vis("vol_ma"))} }}),
-
-                visTrace("RSI(14)", D.rsi14, "#7C3AED", 1.3, {{ yaxis: "y3", visible: {json.dumps(vis("rsi"))} }}),
-
-                visTrace("%K", D.stoch_k, "#0EA5E9", 1.2, {{ yaxis: "y4", visible: {json.dumps(vis("stoch"))} }}),
-                visTrace("%D", D.stoch_d, "#F97316", 1.2, {{ yaxis: "y4", visible: {json.dumps(vis("stoch"))} }}),
-
-                {{ type: "bar", x: D.dates, y: D.macd_hist, name: "MACD 히스토그램", yaxis: "y5",
-                   marker: {{ color: "rgba(148,163,184,0.6)" }}, visible: {json.dumps(vis("macd"))} }},
-                visTrace("MACD선", D.macd_line, "#D97706", 1.2, {{ yaxis: "y5", visible: {json.dumps(vis("macd"))} }}),
-                visTrace("시그널선", D.macd_signal, "#2563EB", 1.2, {{ yaxis: "y5", visible: {json.dumps(vis("macd"))} }}),
+                {overlay_traces_js}
+                {row_traces_js}
             ];
-
-            const domains = {{ price: [0.60, 1.0], vol: [0.46, 0.58], rsi: [0.33, 0.44], stoch: [0.19, 0.30], macd: [0.0, 0.16] }};
 
             const layout = {{
                 height: {height},
@@ -951,16 +997,11 @@ def render_naver_style_chart(hist_df, indicators, stock_code, stock_name,
                 showlegend: true,
                 legend: {{ orientation: "h", y: 1.03 }},
                 xaxis: {{ type: "date", rangeslider: {{ visible: false }}, anchor: "y" }},
-                yaxis: {{ domain: domains.price, anchor: "x", side: "right", title: "가격" }},
-                yaxis2: {{ domain: domains.vol, anchor: "x", side: "right", title: "거래량" }},
-                yaxis3: {{ domain: domains.rsi, anchor: "x", side: "right", title: "RSI", range: [0, 100] }},
-                yaxis4: {{ domain: domains.stoch, anchor: "x", side: "right", title: "Stoch", range: [0, 100] }},
-                yaxis5: {{ domain: domains.macd, anchor: "x", side: "right", title: "MACD" }},
+                yaxis: {{ domain: {json.dumps(domains['price'])}, anchor: "x", side: "right", title: "가격" }},
+                yaxis2: {{ domain: {json.dumps(domains['volume'])}, anchor: "x", side: "right", title: "거래량" }},
+                {extra_yaxes_js}
                 shapes: [
-                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 70, y1: 70, line: {{ color: "#DC2626", width: 1, dash: "dash" }} }},
-                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 30, y1: 30, line: {{ color: "#16A34A", width: 1, dash: "dash" }} }},
-                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "#DC2626", width: 1, dash: "dash" }} }},
-                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "#16A34A", width: 1, dash: "dash" }} }},
+                    {extra_shapes_js}
                 ],
             }};
 
@@ -1010,15 +1051,17 @@ def render_naver_style_chart(hist_df, indicators, stock_code, stock_name,
 
                 const volHi = minMax(D.volume, idxs)[1];
 
-                const macdAll = D.macd_line.concat(D.macd_signal).concat(D.macd_hist);
-                const idxs2 = idxs.concat(idxs.map(i => i + D.dates.length)).concat(idxs.map(i => i + 2 * D.dates.length));
-                const [macdLo, macdHi] = minMax(macdAll, idxs2);
-                const macdPad = (isFinite(macdHi - macdLo) ? (macdHi - macdLo) * 0.15 : 1) || 1;
-
                 const update = {{}};
                 if (isFinite(priceLo) && isFinite(priceHi)) update["yaxis.range"] = [priceLo - pad, priceHi + pad];
                 if (isFinite(volHi)) update["yaxis2.range"] = [0, volHi * 1.15];
-                if (isFinite(macdLo) && isFinite(macdHi)) update["yaxis5.range"] = [macdLo - macdPad, macdHi + macdPad];
+
+                if (HAS_MACD) {{
+                    const macdAll = D.macd_line.concat(D.macd_signal).concat(D.macd_hist);
+                    const idxs2 = idxs.concat(idxs.map(i => i + D.dates.length)).concat(idxs.map(i => i + 2 * D.dates.length));
+                    const [macdLo, macdHi] = minMax(macdAll, idxs2);
+                    const macdPad = (isFinite(macdHi - macdLo) ? (macdHi - macdLo) * 0.15 : 1) || 1;
+                    if (isFinite(macdLo) && isFinite(macdHi)) update["yaxis5.range"] = [macdLo - macdPad, macdHi + macdPad];
+                }}
 
                 return Plotly.relayout(graphDiv, update);
             }}
@@ -1552,10 +1595,23 @@ elif selected_code and view_mode_param == "analysis":
         analysis_name = query_params.get("name", selected_code)
         st.markdown(f"### 📊 {analysis_name} ({selected_code}) 차트 분석 (Chart Analysis)")
 
-        # 기간 선택은 차트 안 탭 버튼(분봉/일봉/주봉/월봉/분기봉/년봉)이 담당 - 여기선 URL에서 읽기만 함
+        # ⚠️ 기간 탭은 차트 iframe 안 JS 버튼 대신 진짜 Streamlit 버튼으로 처리함 -
+        # components.html iframe 안에서 window.parent.location으로 부모 페이지를 이동시키는 건
+        # Streamlit의 iframe 샌드박스 정책상 막혀서 클릭해도 아무 반응이 없었음 (버그 아니라 브라우저 보안 제약).
         interval_choice = query_params.get("interval", "일봉")
         if interval_choice not in INTERVAL_RESAMPLE_RULE and interval_choice != "분봉":
             interval_choice = "일봉"
+
+        INTERVAL_TABS = ["분봉", "일봉", "주봉", "월봉", "분기봉", "년봉"]
+        tab_cols = st.columns(len(INTERVAL_TABS))
+        for i, ivl in enumerate(INTERVAL_TABS):
+            with tab_cols[i]:
+                if st.button(
+                    ivl, key=f"ivl_btn_{ivl}", use_container_width=True,
+                    type="primary" if ivl == interval_choice else "secondary",
+                ):
+                    st.query_params["interval"] = ivl
+                    st.rerun()
 
         if interval_choice == "분봉":
             hist_df = get_chart_history_intraday(selected_code, yf_interval="30m", period="60d")
@@ -1572,30 +1628,33 @@ elif selected_code and view_mode_param == "analysis":
                 show_ichimoku = st.checkbox("일목균형표", value=False, key="an_show_ichimoku")
                 show_vol_ma = st.checkbox("거래량 이동평균", value=False, key="an_show_vol_ma")
             with vis_col2:
-                show_rsi = st.checkbox("RSI", value=False, key="an_show_rsi")
-                show_stoch = st.checkbox("스토캐스틱", value=False, key="an_show_stoch")
-                show_macd = st.checkbox("MACD", value=False, key="an_show_macd")
+                show_rsi = st.checkbox("RSI (누르면 전용 칸이 새로 생겨요)", value=False, key="an_show_rsi")
+                show_stoch = st.checkbox("스토캐스틱 (누르면 전용 칸이 새로 생겨요)", value=False, key="an_show_stoch")
+                show_macd = st.checkbox("MACD (누르면 전용 칸이 새로 생겨요)", value=False, key="an_show_macd")
 
         visible_map = {
             "ma": show_ma, "bb": show_bb, "ichimoku": show_ichimoku, "vol_ma": show_vol_ma,
             "rsi": show_rsi, "stoch": show_stoch, "macd": show_macd,
         }
 
+        # 숫자 바꿀 때마다 매번 다시 계산하지 않도록 st.form으로 묶어서 "적용하기" 눌러야 반영되게 함
         with st.expander("⚙️ 지표 설정 (고급) - 기간을 직접 바꿔볼 수 있어요"):
-            set_col1, set_col2, set_col3 = st.columns(3)
-            with set_col1:
-                sma_tiny = st.number_input("초단기 이동평균(일)", 2, 20, 5, key="an_sma_tiny")
-                sma_short = st.number_input("단기 이동평균(일)", 5, 60, 20, key="an_sma_short")
-                sma_mid = st.number_input("중기 이동평균(일)", 10, 120, 60, key="an_sma_mid")
-                sma_long = st.number_input("장기 이동평균(일)", 20, 300, 120, key="an_sma_long")
-            with set_col2:
-                bb_window = st.number_input("볼린저 기간(일)", 5, 60, 20, key="an_bb_window")
-                bb_std = st.number_input("볼린저 표준편차 배수", 1.0, 4.0, 2.0, step=0.5, key="an_bb_std")
-                rsi_window = st.number_input("RSI 기간(일)", 5, 30, 14, key="an_rsi_window")
-            with set_col3:
-                macd_fast = st.number_input("MACD 단기", 5, 30, 12, key="an_macd_fast")
-                macd_slow = st.number_input("MACD 장기", 15, 60, 26, key="an_macd_slow")
-                macd_signal = st.number_input("MACD 시그널", 3, 20, 9, key="an_macd_signal")
+            with st.form("indicator_settings_form"):
+                set_col1, set_col2, set_col3 = st.columns(3)
+                with set_col1:
+                    sma_tiny = st.number_input("초단기 이동평균(일)", 2, 20, 5, key="an_sma_tiny")
+                    sma_short = st.number_input("단기 이동평균(일)", 5, 60, 20, key="an_sma_short")
+                    sma_mid = st.number_input("중기 이동평균(일)", 10, 120, 60, key="an_sma_mid")
+                    sma_long = st.number_input("장기 이동평균(일)", 20, 300, 120, key="an_sma_long")
+                with set_col2:
+                    bb_window = st.number_input("볼린저 기간(일)", 5, 60, 20, key="an_bb_window")
+                    bb_std = st.number_input("볼린저 표준편차 배수", 1.0, 4.0, 2.0, step=0.5, key="an_bb_std")
+                    rsi_window = st.number_input("RSI 기간(일)", 5, 30, 14, key="an_rsi_window")
+                with set_col3:
+                    macd_fast = st.number_input("MACD 단기", 5, 30, 12, key="an_macd_fast")
+                    macd_slow = st.number_input("MACD 장기", 15, 60, 26, key="an_macd_slow")
+                    macd_signal = st.number_input("MACD 시그널", 3, 20, 9, key="an_macd_signal")
+                st.form_submit_button("✅ 적용하기")
 
         custom_params = {
             "sma_tiny": sma_tiny, "sma_short": sma_short, "sma_mid": sma_mid, "sma_long": sma_long,
@@ -1611,12 +1670,9 @@ elif selected_code and view_mode_param == "analysis":
             st.caption(
                 "💡 마우스 휠로 확대/축소, 드래그로 좌우 이동할 수 있어요 - 이동/확대할 때마다 y축(가격·거래량·MACD)이 "
                 "보이는 구간에 맞춰 자동으로 다시 그려져요 (더블클릭하면 전체 구간으로 리셋). "
-                "차트 위쪽 탭에서 분봉/일봉/주봉/월봉/분기봉/년봉을 바로 바꿀 수 있고, 지표는 위 '표시할 지표 선택'에서 켜보세요."
+                "위쪽 버튼으로 분봉/일봉/주봉/월봉/분기봉/년봉을 바꿀 수 있고, 지표는 '표시할 지표 선택'에서 켜보세요."
             )
-            render_naver_style_chart(
-                hist_df, indicators, stock_code=selected_code, stock_name=analysis_name,
-                current_interval=interval_choice, visible_map=visible_map, height=1020,
-            )
+            render_naver_style_chart(hist_df, indicators, visible_map=visible_map)
 
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             st.markdown("##### 🎓 지표별 강의 (지금 이 종목 기준) - 눌러서 펼쳐보세요")
