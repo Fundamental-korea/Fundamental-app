@@ -544,17 +544,39 @@ def get_universe(
             query = query.neq("scoring_profile", exclude_profile)
         rows = query.execute().data
     else:
-        query = (
-            sb.table("US_Companies")
-            .select(columns)
-            .eq("is_fundamental_eligible", True)
-            .order("ticker")
-        )
-        if exclude_profile:
-            query = query.neq("scoring_profile", exclude_profile)
         if not all_rows:
-            query = query.limit(limit or 5)
-        rows = query.execute().data
+            query = (
+                sb.table("US_Companies")
+                .select(columns)
+                .eq("is_fundamental_eligible", True)
+                .order("ticker")
+            )
+            if exclude_profile:
+                query = query.neq("scoring_profile", exclude_profile)
+            rows = query.limit(limit or 5).execute().data
+        else:
+            rows = []
+            page_size = 1000
+            offset = 0
+            while True:
+                query = (
+                    sb.table("US_Companies")
+                    .select(columns)
+                    .eq("is_fundamental_eligible", True)
+                    .order("ticker")
+                    .range(offset, offset + page_size - 1)
+                )
+                if exclude_profile:
+                    query = query.neq("scoring_profile", exclude_profile)
+                batch = query.execute().data
+                rows.extend(batch)
+                print(
+                    f"[UNIVERSE] fetched {len(batch)} rows "
+                    f"(total={len(rows)})"
+                )
+                if len(batch) < page_size:
+                    break
+                offset += page_size
 
     if shard_count < 1:
         raise ValueError("shard_count must be >= 1")
