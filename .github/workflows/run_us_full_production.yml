@@ -1,0 +1,50 @@
+name: US Full Fundamental Recollection
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: us-full-production
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    name: US full recollection shard ${{ matrix.shard_index + 1 }}/${{ matrix.shard_count }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    strategy:
+      fail-fast: false
+      matrix:
+        shard_index: [0, 1, 2]
+        shard_count: [3]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run US full recollection
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          python collector_us_fundamental.py             --all             --exclude-profile utility             --shard-index ${{ matrix.shard_index }}             --shard-count ${{ matrix.shard_count }}
+
+      - name: Verify collector completed
+        if: success()
+        run: echo "US full recollection shard completed."
