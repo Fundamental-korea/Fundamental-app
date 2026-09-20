@@ -1,10 +1,10 @@
 {
   "summary": {
-    "generated_at_utc": "2026-09-20T01:33:03.855908Z",
+    "generated_at_utc": "2026-09-20T01:35:24.748996Z",
     "target_date": "2026-09-18",
     "sample_size": 100,
     "sources": {
-      "naver": {
+      "mk": {
         "available": 0,
         "exact_match": 0,
         "match_rate": 0,
@@ -12,77 +12,152 @@
         "max_abs_pct_diff": null,
         "mismatches": []
       },
-      "mk": {
-        "available": 92,
-        "exact_match": 89,
-        "match_rate": 96.74,
-        "avg_abs_pct_diff": 21.0707,
-        "max_abs_pct_diff": 971.066,
+      "daum": {
+        "available": 100,
+        "exact_match": 4,
+        "match_rate": 4.0,
+        "avg_abs_pct_diff": 0.507,
+        "max_abs_pct_diff": 1.8868,
         "mismatches": [
           {
-            "stock_code": "035420",
-            "stock_name": "NAVER",
-            "ours": 197700,
-            "external": 19430,
-            "abs_pct_diff": 917.4987
+            "stock_code": "005930",
+            "stock_name": "삼성전자",
+            "ours": 261000,
+            "external": 260000,
+            "abs_pct_diff": 0.3846
           },
           {
-            "stock_code": "011200",
-            "stock_name": "HMM",
-            "ours": 20800,
-            "external": 41550,
-            "abs_pct_diff": 49.9398
+            "stock_code": "000660",
+            "stock_name": "SK하이닉스",
+            "ours": 1857000,
+            "external": 1849000,
+            "abs_pct_diff": 0.4327
           },
           {
-            "stock_code": "006800",
-            "stock_name": "미래에셋증권",
-            "ours": 31650,
-            "external": 2955,
-            "abs_pct_diff": 971.066
-          }
-        ]
-      },
-      "hankyung": {
-        "available": 21,
-        "exact_match": 0,
-        "match_rate": 0.0,
-        "avg_abs_pct_diff": 525006.9546,
-        "max_abs_pct_diff": 3749900.0,
-        "mismatches": [
+            "stock_code": "005935",
+            "stock_name": "삼성전자우",
+            "ours": 196100,
+            "external": 196900,
+            "abs_pct_diff": 0.4063
+          },
+          {
+            "stock_code": "402340",
+            "stock_name": "SK스퀘어",
+            "ours": 1079000,
+            "external": 1072000,
+            "abs_pct_diff": 0.653
+          },
+          {
+            "stock_code": "373220",
+            "stock_name": "LG에너지솔루션",
+            "ours": 364000,
+            "external": 363500,
+            "abs_pct_diff": 0.1376
+          },
           {
             "stock_code": "005380",
             "stock_name": "현대차",
             "ours": 365000,
-            "external": 1340,
-            "abs_pct_diff": 27138.806
+            "external": 366500,
+            "abs_pct_diff": 0.4093
+          },
+          {
+            "stock_code": "207940",
+            "stock_name": "삼성바이오로직스",
+            "ours": 1398000,
+            "external": 1399000,
+            "abs_pct_diff": 0.0715
           },
           {
             "stock_code": "105560",
             "stock_name": "KB금융",
             "ours": 174900,
-            "external": 1340,
-            "abs_pct_diff": 12952.2388
+            "external": 175700,
+            "abs_pct_diff": 0.4553
+          },
+          {
+            "stock_code": "028260",
+            "stock_name": "삼성물산",
+            "ours": 351000,
+            "external": 353500,
+            "abs_pct_diff": 0.7072
+          },
+          {
+            "stock_code": "012450",
+            "stock_name": "한화에어로스페이스",
+            "ours": 1078000,
+            "external": 1092000,
+            "abs_pct_diff": 1.2821
+          },
+          {
+            "stock_code": "034020",
+            "stock_name": "두산에너빌리티",
+            "ours": 84900,
+            "external": 85700,
+            "abs_pct_diff": 0.9335
           },
           {
             "stock_code": "055550",
             "stock_name": "신한지주",
             "ours": 110100,
-            "external": 1340,
-            "abs_pct_diff": 8116.4179
+            "external": 111100,
+            "abs_pct_diff": 0.9001
+          },
+          {
+            "stock_code": "329180",
+            "stock_name": "HD현대중공업",
+            "ours": 460000,
+            "external": 462000,
+            "abs_pct_diff": 0.4329
           },
           {
             "stock_code": "000270",
             "stock_name": "기아",
             "ours": 121900,
-            "external": 1340,
-            "abs_pct_diff": 8997.0149
+            "external": 121600,
+            "abs_pct_diff": 0.2467
+          },
+          {
+            "stock_code": "006400",
+            "stock_name": "삼성SDI",
+            "ours": 541000,
+            "external": 542000,
+            "abs_pct_diff": 0.1845
+          },
+          {
+            "stock_code": "068270",
+            "stock_name": "셀트리온",
+            "ours": 179400,
+            "external": 180100,
+            "abs_pct_diff": 0.3887
+          },
+          {
+            "stock_code": "034730",
+            "stock_name": "SK",
+            "ours": 545000,
+            "external": 550000,
+            "abs_pct_diff": 0.9091
           },
           {
             "stock_code": "086790",
             "stock_name": "하나금융지주",
             "ours": 133100,
-            "external": 1340,
-            "abs_pct_diff": 9832.8358
+            "external": 133700,
+            "abs_pct_diff": 0.4488
+          },
+          {
+            "stock_code": "012330",
+            "stock_name": "현대모비스",
+            "ours": 379000,
+            "external": 380500,
+            "abs_pct_diff": 0.3942
+          },
+          {
+            "stock_code": "066570",
+            "stock_name": "LG전자",
+            "ours": 198400,
+            "external": 198700,
+            "abs_pct_diff": 0.151
           },
           {
             "stock_code": "010120",
@@ -92,111 +167,539 @@
             "abs_pct_diff": 1.4388
           },
           {
+            "stock_code": "035420",
+            "stock_name": "NAVER",
+            "ours": 197700,
+            "external": 197500,
+            "abs_pct_diff": 0.1013
+          },
+          {
             "stock_code": "000810",
             "stock_name": "삼성화재",
             "ours": 648000,
-            "external": 28,
-            "abs_pct_diff": 2314185.7143
+            "external": 655000,
+            "abs_pct_diff": 1.0687
+          },
+          {
+            "stock_code": "298040",
+            "stock_name": "효성중공업",
+            "ours": 2915000,
+            "external": 2888000,
+            "abs_pct_diff": 0.9349
           },
           {
             "stock_code": "316140",
             "stock_name": "우리금융지주",
             "ours": 36100,
-            "external": 1340,
-            "abs_pct_diff": 2594.0299
+            "external": 36150,
+            "abs_pct_diff": 0.1383
+          },
+          {
+            "stock_code": "267260",
+            "stock_name": "HD현대일렉트릭",
+            "ours": 725000,
+            "external": 727000,
+            "abs_pct_diff": 0.2751
+          },
+          {
+            "stock_code": "005490",
+            "stock_name": "POSCO홀딩스",
+            "ours": 323000,
+            "external": 325500,
+            "abs_pct_diff": 0.768
+          },
+          {
+            "stock_code": "042660",
+            "stock_name": "한화오션",
+            "ours": 82900,
+            "external": 83500,
+            "abs_pct_diff": 0.7186
+          },
+          {
+            "stock_code": "009540",
+            "stock_name": "HD한국조선해양",
+            "ours": 337500,
+            "external": 340000,
+            "abs_pct_diff": 0.7353
+          },
+          {
+            "stock_code": "010130",
+            "stock_name": "고려아연",
+            "ours": 1124000,
+            "external": 1132000,
+            "abs_pct_diff": 0.7067
+          },
+          {
+            "stock_code": "000150",
+            "stock_name": "두산",
+            "ours": 1447000,
+            "external": 1449000,
+            "abs_pct_diff": 0.138
+          },
+          {
+            "stock_code": "096770",
+            "stock_name": "SK이노베이션",
+            "ours": 136600,
+            "external": 137000,
+            "abs_pct_diff": 0.292
+          },
+          {
+            "stock_code": "042700",
+            "stock_name": "한미반도체",
+            "ours": 236000,
+            "external": 235000,
+            "abs_pct_diff": 0.4255
+          },
+          {
+            "stock_code": "138040",
+            "stock_name": "메리츠금융지주",
+            "ours": 126900,
+            "external": 126700,
+            "abs_pct_diff": 0.1579
           },
           {
             "stock_code": "015760",
             "stock_name": "한국전력",
             "ours": 30750,
-            "external": 7,
-            "abs_pct_diff": 439185.7143
+            "external": 30900,
+            "abs_pct_diff": 0.4854
+          },
+          {
+            "stock_code": "011200",
+            "stock_name": "HMM",
+            "ours": 20800,
+            "external": 20950,
+            "abs_pct_diff": 0.716
+          },
+          {
+            "stock_code": "017670",
+            "stock_name": "SK텔레콤",
+            "ours": 89200,
+            "external": 89100,
+            "abs_pct_diff": 0.1122
+          },
+          {
+            "stock_code": "051910",
+            "stock_name": "LG화학",
+            "ours": 267000,
+            "external": 268000,
+            "abs_pct_diff": 0.3731
+          },
+          {
+            "stock_code": "010140",
+            "stock_name": "삼성중공업",
+            "ours": 20800,
+            "external": 21050,
+            "abs_pct_diff": 1.1876
+          },
+          {
+            "stock_code": "033780",
+            "stock_name": "KT&G",
+            "ours": 172000,
+            "external": 172800,
+            "abs_pct_diff": 0.463
+          },
+          {
+            "stock_code": "196170",
+            "stock_name": "알테오젠",
+            "ours": 253500,
+            "external": 254000,
+            "abs_pct_diff": 0.1969
+          },
+          {
+            "stock_code": "006800",
+            "stock_name": "미래에셋증권",
+            "ours": 31650,
+            "external": 31600,
+            "abs_pct_diff": 0.1582
+          },
+          {
+            "stock_code": "018260",
+            "stock_name": "삼성에스디에스",
+            "ours": 219500,
+            "external": 220000,
+            "abs_pct_diff": 0.2273
+          },
+          {
+            "stock_code": "003550",
+            "stock_name": "LG",
+            "ours": 111900,
+            "external": 112100,
+            "abs_pct_diff": 0.1784
+          },
+          {
+            "stock_code": "010950",
+            "stock_name": "S-Oil",
+            "ours": 149500,
+            "external": 149700,
+            "abs_pct_diff": 0.1336
+          },
+          {
+            "stock_code": "267250",
+            "stock_name": "HD현대",
+            "ours": 208000,
+            "external": 212000,
+            "abs_pct_diff": 1.8868
           },
           {
             "stock_code": "079550",
             "stock_name": "LIG디펜스앤에어로스페이스",
             "ours": 744000,
-            "external": 144200,
-            "abs_pct_diff": 415.9501
+            "external": 737000,
+            "abs_pct_diff": 0.9498
+          },
+          {
+            "stock_code": "003670",
+            "stock_name": "포스코퓨처엠",
+            "ours": 183900,
+            "external": 183300,
+            "abs_pct_diff": 0.3273
+          },
+          {
+            "stock_code": "024110",
+            "stock_name": "기업은행",
+            "ours": 20050,
+            "external": 20150,
+            "abs_pct_diff": 0.4963
+          },
+          {
+            "stock_code": "086280",
+            "stock_name": "현대글로비스",
+            "ours": 203500,
+            "external": 204000,
+            "abs_pct_diff": 0.2451
           },
           {
             "stock_code": "272210",
             "stock_name": "한화시스템",
             "ours": 80000,
-            "external": 144200,
-            "abs_pct_diff": 44.5215
+            "external": 79900,
+            "abs_pct_diff": 0.1252
           },
           {
             "stock_code": "035720",
             "stock_name": "카카오",
             "ours": 33550,
-            "external": 3,
-            "abs_pct_diff": 1118233.3333
+            "external": 33600,
+            "abs_pct_diff": 0.1488
           },
           {
             "stock_code": "000720",
             "stock_name": "현대건설",
             "ours": 124800,
-            "external": 7,
-            "abs_pct_diff": 1782757.1429
+            "external": 125600,
+            "abs_pct_diff": 0.6369
+          },
+          {
+            "stock_code": "278470",
+            "stock_name": "에이피알",
+            "ours": 367000,
+            "external": 368000,
+            "abs_pct_diff": 0.2717
           },
           {
             "stock_code": "064350",
             "stock_name": "현대로템",
             "ours": 122500,
-            "external": 144200,
-            "abs_pct_diff": 15.0485
+            "external": 123500,
+            "abs_pct_diff": 0.8097
+          },
+          {
+            "stock_code": "030200",
+            "stock_name": "KT",
+            "ours": 53000,
+            "external": 53200,
+            "abs_pct_diff": 0.3759
+          },
+          {
+            "stock_code": "047810",
+            "stock_name": "한국항공우주",
+            "ours": 129800,
+            "external": 130200,
+            "abs_pct_diff": 0.3072
+          },
+          {
+            "stock_code": "011070",
+            "stock_name": "LG이노텍",
+            "ours": 532000,
+            "external": 531000,
+            "abs_pct_diff": 0.1883
           },
           {
             "stock_code": "005830",
             "stock_name": "DB손해보험",
             "ours": 186900,
-            "external": 3952,
-            "abs_pct_diff": 4629.251
+            "external": 188500,
+            "abs_pct_diff": 0.8488
+          },
+          {
+            "stock_code": "443060",
+            "stock_name": "HD현대마린솔루션",
+            "ours": 246000,
+            "external": 244000,
+            "abs_pct_diff": 0.8197
+          },
+          {
+            "stock_code": "086520",
+            "stock_name": "에코프로",
+            "ours": 81100,
+            "external": 81600,
+            "abs_pct_diff": 0.6127
           },
           {
             "stock_code": "003490",
             "stock_name": "대한항공",
             "ours": 29300,
-            "external": 1340,
-            "abs_pct_diff": 2086.5672
+            "external": 29150,
+            "abs_pct_diff": 0.5146
+          },
+          {
+            "stock_code": "078930",
+            "stock_name": "GS",
+            "ours": 113900,
+            "external": 114000,
+            "abs_pct_diff": 0.0877
+          },
+          {
+            "stock_code": "247540",
+            "stock_name": "에코프로비엠",
+            "ours": 104900,
+            "external": 105300,
+            "abs_pct_diff": 0.3799
+          },
+          {
+            "stock_code": "071050",
+            "stock_name": "한국금융지주",
+            "ours": 182300,
+            "external": 183000,
+            "abs_pct_diff": 0.3825
+          },
+          {
+            "stock_code": "006260",
+            "stock_name": "LS",
+            "ours": 325500,
+            "external": 324000,
+            "abs_pct_diff": 0.463
+          },
+          {
+            "stock_code": "028050",
+            "stock_name": "삼성E&A",
+            "ours": 51800,
+            "external": 52100,
+            "abs_pct_diff": 0.5758
+          },
+          {
+            "stock_code": "307950",
+            "stock_name": "현대오토에버",
+            "ours": 369500,
+            "external": 367500,
+            "abs_pct_diff": 0.5442
+          },
+          {
+            "stock_code": "047050",
+            "stock_name": "포스코인터내셔널",
+            "ours": 57300,
+            "external": 57100,
+            "abs_pct_diff": 0.3503
           },
           {
             "stock_code": "003230",
             "stock_name": "삼양식품",
             "ours": 1300000,
-            "external": 1340,
-            "abs_pct_diff": 96914.9254
+            "external": 1296000,
+            "abs_pct_diff": 0.3086
+          },
+          {
+            "stock_code": "323410",
+            "stock_name": "카카오뱅크",
+            "ours": 20450,
+            "external": 20550,
+            "abs_pct_diff": 0.4866
+          },
+          {
+            "stock_code": "000500",
+            "stock_name": "가온전선",
+            "ours": 327000,
+            "external": 322000,
+            "abs_pct_diff": 1.5528
+          },
+          {
+            "stock_code": "036930",
+            "stock_name": "주성엔지니어링",
+            "ours": 205500,
+            "external": 204500,
+            "abs_pct_diff": 0.489
+          },
+          {
+            "stock_code": "259960",
+            "stock_name": "크래프톤",
+            "ours": 205000,
+            "external": 204500,
+            "abs_pct_diff": 0.2445
+          },
+          {
+            "stock_code": "180640",
+            "stock_name": "한진칼",
+            "ours": 138800,
+            "external": 139200,
+            "abs_pct_diff": 0.2874
+          },
+          {
+            "stock_code": "277810",
+            "stock_name": "레인보우로보틱스",
+            "ours": 436000,
+            "external": 434500,
+            "abs_pct_diff": 0.3452
+          },
+          {
+            "stock_code": "090430",
+            "stock_name": "아모레퍼시픽",
+            "ours": 143400,
+            "external": 142700,
+            "abs_pct_diff": 0.4905
+          },
+          {
+            "stock_code": "0126Z0",
+            "stock_name": "삼성에피스홀딩스",
+            "ours": 327000,
+            "external": 331000,
+            "abs_pct_diff": 1.2085
           },
           {
             "stock_code": "047040",
             "stock_name": "대우건설",
             "ours": 18910,
-            "external": 7,
-            "abs_pct_diff": 270042.8571
+            "external": 19020,
+            "abs_pct_diff": 0.5783
+          },
+          {
+            "stock_code": "016360",
+            "stock_name": "삼성증권",
+            "ours": 85300,
+            "external": 85600,
+            "abs_pct_diff": 0.3505
+          },
+          {
+            "stock_code": "007660",
+            "stock_name": "이수페타시스",
+            "ours": 103700,
+            "external": 102400,
+            "abs_pct_diff": 1.2695
+          },
+          {
+            "stock_code": "161390",
+            "stock_name": "한국타이어앤테크놀로지",
+            "ours": 60600,
+            "external": 60700,
+            "abs_pct_diff": 0.1647
+          },
+          {
+            "stock_code": "021240",
+            "stock_name": "코웨이",
+            "ours": 101100,
+            "external": 101500,
+            "abs_pct_diff": 0.3941
+          },
+          {
+            "stock_code": "352820",
+            "stock_name": "하이브",
+            "ours": 165900,
+            "external": 166700,
+            "abs_pct_diff": 0.4799
+          },
+          {
+            "stock_code": "000880",
+            "stock_name": "한화",
+            "ours": 132500,
+            "external": 134100,
+            "abs_pct_diff": 1.1931
           },
           {
             "stock_code": "039490",
             "stock_name": "키움증권",
             "ours": 262500,
-            "external": 7,
-            "abs_pct_diff": 3749900.0
+            "external": 261500,
+            "abs_pct_diff": 0.3824
+          },
+          {
+            "stock_code": "064400",
+            "stock_name": "LG씨엔에스",
+            "ours": 70600,
+            "external": 70400,
+            "abs_pct_diff": 0.2841
+          },
+          {
+            "stock_code": "267270",
+            "stock_name": "HD건설기계",
+            "ours": 139800,
+            "external": 140400,
+            "abs_pct_diff": 0.4274
           },
           {
             "stock_code": "062040",
             "stock_name": "산일전기",
             "ours": 211500,
-            "external": 18,
-            "abs_pct_diff": 1174900.0
+            "external": 211000,
+            "abs_pct_diff": 0.237
+          },
+          {
+            "stock_code": "128940",
+            "stock_name": "한미약품",
+            "ours": 503000,
+            "external": 505000,
+            "abs_pct_diff": 0.396
+          },
+          {
+            "stock_code": "009830",
+            "stock_name": "한화솔루션",
+            "ours": 28400,
+            "external": 28650,
+            "abs_pct_diff": 0.8726
+          },
+          {
+            "stock_code": "001440",
+            "stock_name": "대한전선",
+            "ours": 31450,
+            "external": 31650,
+            "abs_pct_diff": 0.6319
+          },
+          {
+            "stock_code": "326030",
+            "stock_name": "SK바이오팜",
+            "ours": 77700,
+            "external": 77900,
+            "abs_pct_diff": 0.2567
+          },
+          {
+            "stock_code": "005387",
+            "stock_name": "현대차2우B",
+            "ours": 171100,
+            "external": 173400,
+            "abs_pct_diff": 1.3264
+          },
+          {
+            "stock_code": "032640",
+            "stock_name": "LG유플러스",
+            "ours": 14050,
+            "external": 14190,
+            "abs_pct_diff": 0.9866
           },
           {
             "stock_code": "175330",
             "stock_name": "JB금융지주",
             "ours": 30850,
-            "external": 1340,
-            "abs_pct_diff": 2202.2388
+            "external": 31050,
+            "abs_pct_diff": 0.6441
           }
         ]
+      },
+      "yahoo": {
+        "available": 100,
+        "exact_match": 100,
+        "match_rate": 100.0,
+        "avg_abs_pct_diff": 0.0,
+        "max_abs_pct_diff": 0.0,
+        "mismatches": []
       }
     },
     "internal": {
@@ -216,21 +719,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005930&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 260000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A005930?adjusted=true"
+        },
+        "yahoo": {
           "price": 261000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/005930.KS"
         }
       }
     },
@@ -245,21 +750,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000660&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 1849000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A000660?adjusted=true"
+        },
+        "yahoo": {
           "price": 1857000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/000660.KS"
         }
       }
     },
@@ -274,21 +781,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
-          "price": null,
-          "date": null,
-          "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005935&page=1"
-        },
         "mk": {
           "price": null,
           "date": null,
-          "date_verified": false
+          "date_verified": false,
+          "error": "name 'find_anchor' is not defined"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "daum": {
+          "price": 196900,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A005935?adjusted=true"
+        },
+        "yahoo": {
+          "price": 196100,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/005935.KS"
         }
       }
     },
@@ -303,21 +812,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=402340&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 1072000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A402340?adjusted=true"
+        },
+        "yahoo": {
           "price": 1079000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/402340.KS"
         }
       }
     },
@@ -332,21 +843,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=009150&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
           "price": 1388000,
           "date": "2026-09-18",
-          "date_verified": true
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A009150?adjusted=true"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "yahoo": {
+          "price": 1388000,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/009150.KS"
         }
       }
     },
@@ -361,21 +874,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=373220&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 363500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A373220?adjusted=true"
+        },
+        "yahoo": {
           "price": 364000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/373220.KS"
         }
       }
     },
@@ -390,22 +905,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005380&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 365000,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 1340,
+        "daum": {
+          "price": 366500,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/005380"
+          "url": "https://finance.daum.net/api/quotes/A005380?adjusted=true"
+        },
+        "yahoo": {
+          "price": 365000,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/005380.KS"
         }
       }
     },
@@ -420,21 +936,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=207940&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 1399000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A207940?adjusted=true"
+        },
+        "yahoo": {
           "price": 1398000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/207940.KS"
         }
       }
     },
@@ -449,22 +967,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=105560&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 174900,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 1340,
+        "daum": {
+          "price": 175700,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/105560"
+          "url": "https://finance.daum.net/api/quotes/A105560?adjusted=true"
+        },
+        "yahoo": {
+          "price": 174900,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/105560.KS"
         }
       }
     },
@@ -479,21 +998,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=028260&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 353500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A028260?adjusted=true"
+        },
+        "yahoo": {
           "price": 351000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/028260.KS"
         }
       }
     },
@@ -508,21 +1029,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=032830&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
           "price": 283500,
           "date": "2026-09-18",
-          "date_verified": true
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A032830?adjusted=true"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "yahoo": {
+          "price": 283500,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/032830.KS"
         }
       }
     },
@@ -537,21 +1060,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=012450&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 1092000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A012450?adjusted=true"
+        },
+        "yahoo": {
           "price": 1078000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/012450.KS"
         }
       }
     },
@@ -566,21 +1091,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=034020&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 85700,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A034020?adjusted=true"
+        },
+        "yahoo": {
           "price": 84900,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/034020.KS"
         }
       }
     },
@@ -595,22 +1122,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=055550&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 110100,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 1340,
+        "daum": {
+          "price": 111100,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/055550"
+          "url": "https://finance.daum.net/api/quotes/A055550?adjusted=true"
+        },
+        "yahoo": {
+          "price": 110100,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/055550.KS"
         }
       }
     },
@@ -625,21 +1153,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=329180&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 462000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A329180?adjusted=true"
+        },
+        "yahoo": {
           "price": 460000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/329180.KS"
         }
       }
     },
@@ -654,22 +1184,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000270&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 121900,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 1340,
+        "daum": {
+          "price": 121600,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/000270"
+          "url": "https://finance.daum.net/api/quotes/A000270?adjusted=true"
+        },
+        "yahoo": {
+          "price": 121900,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/000270.KS"
         }
       }
     },
@@ -684,21 +1215,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=006400&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 542000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A006400?adjusted=true"
+        },
+        "yahoo": {
           "price": 541000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/006400.KS"
         }
       }
     },
@@ -713,21 +1246,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=068270&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 180100,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A068270?adjusted=true"
+        },
+        "yahoo": {
           "price": 179400,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/068270.KS"
         }
       }
     },
@@ -742,21 +1277,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=034730&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 550000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A034730?adjusted=true"
+        },
+        "yahoo": {
           "price": 545000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/034730.KS"
         }
       }
     },
@@ -771,22 +1308,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=086790&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 133100,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 1340,
+        "daum": {
+          "price": 133700,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/086790"
+          "url": "https://finance.daum.net/api/quotes/A086790?adjusted=true"
+        },
+        "yahoo": {
+          "price": 133100,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/086790.KS"
         }
       }
     },
@@ -801,21 +1339,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=012330&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 380500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A012330?adjusted=true"
+        },
+        "yahoo": {
           "price": 379000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/012330.KS"
         }
       }
     },
@@ -830,21 +1370,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=066570&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 198700,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A066570?adjusted=true"
+        },
+        "yahoo": {
           "price": 198400,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/066570.KS"
         }
       }
     },
@@ -859,22 +1401,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=010120&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 211500,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
+        "daum": {
           "price": 208500,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/010120"
+          "url": "https://finance.daum.net/api/quotes/A010120?adjusted=true"
+        },
+        "yahoo": {
+          "price": 211500,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/010120.KS"
         }
       }
     },
@@ -889,21 +1432,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=035420&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 19430,
+        "daum": {
+          "price": 197500,
           "date": "2026-09-18",
-          "date_verified": true
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A035420?adjusted=true"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "yahoo": {
+          "price": 197700,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/035420.KS"
         }
       }
     },
@@ -918,22 +1463,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000810&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 648000,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 28,
+        "daum": {
+          "price": 655000,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/000810"
+          "url": "https://finance.daum.net/api/quotes/A000810?adjusted=true"
+        },
+        "yahoo": {
+          "price": 648000,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/000810.KS"
         }
       }
     },
@@ -948,21 +1494,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=298040&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 2888000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A298040?adjusted=true"
+        },
+        "yahoo": {
           "price": 2915000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/298040.KS"
         }
       }
     },
@@ -977,22 +1525,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=316140&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 36100,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 1340,
+        "daum": {
+          "price": 36150,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/316140"
+          "url": "https://finance.daum.net/api/quotes/A316140?adjusted=true"
+        },
+        "yahoo": {
+          "price": 36100,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/316140.KS"
         }
       }
     },
@@ -1007,21 +1556,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=267260&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 727000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A267260?adjusted=true"
+        },
+        "yahoo": {
           "price": 725000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/267260.KS"
         }
       }
     },
@@ -1036,21 +1587,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005490&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 325500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A005490?adjusted=true"
+        },
+        "yahoo": {
           "price": 323000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/005490.KS"
         }
       }
     },
@@ -1065,21 +1618,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=042660&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 83500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A042660?adjusted=true"
+        },
+        "yahoo": {
           "price": 82900,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/042660.KS"
         }
       }
     },
@@ -1094,21 +1649,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=009540&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 340000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A009540?adjusted=true"
+        },
+        "yahoo": {
           "price": 337500,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/009540.KS"
         }
       }
     },
@@ -1123,21 +1680,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=010130&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 1132000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A010130?adjusted=true"
+        },
+        "yahoo": {
           "price": 1124000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/010130.KS"
         }
       }
     },
@@ -1152,21 +1711,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000150&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 1449000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A000150?adjusted=true"
+        },
+        "yahoo": {
           "price": 1447000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/000150.KS"
         }
       }
     },
@@ -1181,21 +1742,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=096770&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 137000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A096770?adjusted=true"
+        },
+        "yahoo": {
           "price": 136600,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/096770.KS"
         }
       }
     },
@@ -1210,21 +1773,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=042700&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 235000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A042700?adjusted=true"
+        },
+        "yahoo": {
           "price": 236000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/042700.KS"
         }
       }
     },
@@ -1239,21 +1804,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=138040&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 126700,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A138040?adjusted=true"
+        },
+        "yahoo": {
           "price": 126900,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/138040.KS"
         }
       }
     },
@@ -1268,22 +1835,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=015760&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 30750,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 7,
+        "daum": {
+          "price": 30900,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/015760"
+          "url": "https://finance.daum.net/api/quotes/A015760?adjusted=true"
+        },
+        "yahoo": {
+          "price": 30750,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/015760.KS"
         }
       }
     },
@@ -1298,21 +1866,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=011200&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 41550,
+        "daum": {
+          "price": 20950,
           "date": "2026-09-18",
-          "date_verified": true
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A011200?adjusted=true"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "yahoo": {
+          "price": 20800,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/011200.KS"
         }
       }
     },
@@ -1327,21 +1897,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=017670&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 89100,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A017670?adjusted=true"
+        },
+        "yahoo": {
           "price": 89200,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/017670.KS"
         }
       }
     },
@@ -1356,21 +1928,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=051910&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 268000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A051910?adjusted=true"
+        },
+        "yahoo": {
           "price": 267000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/051910.KS"
         }
       }
     },
@@ -1385,21 +1959,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=010140&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 21050,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A010140?adjusted=true"
+        },
+        "yahoo": {
           "price": 20800,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/010140.KS"
         }
       }
     },
@@ -1414,21 +1990,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=033780&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 172800,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A033780?adjusted=true"
+        },
+        "yahoo": {
           "price": 172000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/033780.KS"
         }
       }
     },
@@ -1443,21 +2021,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
-          "price": null,
-          "date": null,
-          "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=196170&page=1"
-        },
         "mk": {
           "price": null,
           "date": null,
-          "date_verified": false
+          "date_verified": false,
+          "error": "name 'find_anchor' is not defined"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "daum": {
+          "price": 254000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A196170?adjusted=true"
+        },
+        "yahoo": {
+          "price": 253500,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/196170.KQ"
         }
       }
     },
@@ -1472,21 +2052,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=006800&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 2955,
+        "daum": {
+          "price": 31600,
           "date": "2026-09-18",
-          "date_verified": true
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A006800?adjusted=true"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "yahoo": {
+          "price": 31650,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/006800.KS"
         }
       }
     },
@@ -1501,21 +2083,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=018260&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 220000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A018260?adjusted=true"
+        },
+        "yahoo": {
           "price": 219500,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/018260.KS"
         }
       }
     },
@@ -1530,21 +2114,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=003550&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 112100,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A003550?adjusted=true"
+        },
+        "yahoo": {
           "price": 111900,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/003550.KS"
         }
       }
     },
@@ -1559,21 +2145,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=010950&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 149700,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A010950?adjusted=true"
+        },
+        "yahoo": {
           "price": 149500,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/010950.KS"
         }
       }
     },
@@ -1588,21 +2176,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=267250&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 212000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A267250?adjusted=true"
+        },
+        "yahoo": {
           "price": 208000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/267250.KS"
         }
       }
     },
@@ -1617,22 +2207,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=079550&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 744000,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 144200,
+        "daum": {
+          "price": 737000,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/079550"
+          "url": "https://finance.daum.net/api/quotes/A079550?adjusted=true"
+        },
+        "yahoo": {
+          "price": 744000,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/079550.KS"
         }
       }
     },
@@ -1647,21 +2238,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=003670&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 183300,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A003670?adjusted=true"
+        },
+        "yahoo": {
           "price": 183900,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/003670.KS"
         }
       }
     },
@@ -1676,21 +2269,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=024110&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 20150,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A024110?adjusted=true"
+        },
+        "yahoo": {
           "price": 20050,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/024110.KS"
         }
       }
     },
@@ -1705,21 +2300,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=086280&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 204000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A086280?adjusted=true"
+        },
+        "yahoo": {
           "price": 203500,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/086280.KS"
         }
       }
     },
@@ -1734,22 +2331,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=272210&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 80000,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 144200,
+        "daum": {
+          "price": 79900,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/272210"
+          "url": "https://finance.daum.net/api/quotes/A272210?adjusted=true"
+        },
+        "yahoo": {
+          "price": 80000,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/272210.KS"
         }
       }
     },
@@ -1764,22 +2362,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=035720&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 33550,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 3,
+        "daum": {
+          "price": 33600,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/035720"
+          "url": "https://finance.daum.net/api/quotes/A035720?adjusted=true"
+        },
+        "yahoo": {
+          "price": 33550,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/035720.KS"
         }
       }
     },
@@ -1794,22 +2393,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000720&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 124800,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 7,
+        "daum": {
+          "price": 125600,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/000720"
+          "url": "https://finance.daum.net/api/quotes/A000720?adjusted=true"
+        },
+        "yahoo": {
+          "price": 124800,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/000720.KS"
         }
       }
     },
@@ -1824,21 +2424,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=278470&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 368000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A278470?adjusted=true"
+        },
+        "yahoo": {
           "price": 367000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/278470.KS"
         }
       }
     },
@@ -1853,22 +2455,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=064350&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 122500,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 144200,
+        "daum": {
+          "price": 123500,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/064350"
+          "url": "https://finance.daum.net/api/quotes/A064350?adjusted=true"
+        },
+        "yahoo": {
+          "price": 122500,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/064350.KS"
         }
       }
     },
@@ -1883,21 +2486,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=030200&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 53200,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A030200?adjusted=true"
+        },
+        "yahoo": {
           "price": 53000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/030200.KS"
         }
       }
     },
@@ -1912,21 +2517,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=047810&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 130200,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A047810?adjusted=true"
+        },
+        "yahoo": {
           "price": 129800,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/047810.KS"
         }
       }
     },
@@ -1941,21 +2548,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=011070&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 531000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A011070?adjusted=true"
+        },
+        "yahoo": {
           "price": 532000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/011070.KS"
         }
       }
     },
@@ -1970,22 +2579,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005830&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 186900,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 3952,
+        "daum": {
+          "price": 188500,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/005830"
+          "url": "https://finance.daum.net/api/quotes/A005830?adjusted=true"
+        },
+        "yahoo": {
+          "price": 186900,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/005830.KS"
         }
       }
     },
@@ -2000,21 +2610,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=443060&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 244000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A443060?adjusted=true"
+        },
+        "yahoo": {
           "price": 246000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/443060.KS"
         }
       }
     },
@@ -2029,21 +2641,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
-          "price": null,
-          "date": null,
-          "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=086520&page=1"
-        },
         "mk": {
           "price": null,
           "date": null,
-          "date_verified": false
+          "date_verified": false,
+          "error": "name 'find_anchor' is not defined"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "daum": {
+          "price": 81600,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A086520?adjusted=true"
+        },
+        "yahoo": {
+          "price": 81100,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/086520.KQ"
         }
       }
     },
@@ -2058,22 +2672,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=003490&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 29300,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 1340,
+        "daum": {
+          "price": 29150,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/003490"
+          "url": "https://finance.daum.net/api/quotes/A003490?adjusted=true"
+        },
+        "yahoo": {
+          "price": 29300,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/003490.KS"
         }
       }
     },
@@ -2088,21 +2703,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=078930&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 114000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A078930?adjusted=true"
+        },
+        "yahoo": {
           "price": 113900,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/078930.KS"
         }
       }
     },
@@ -2117,21 +2734,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
-          "price": null,
-          "date": null,
-          "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=247540&page=1"
-        },
         "mk": {
           "price": null,
           "date": null,
-          "date_verified": false
+          "date_verified": false,
+          "error": "name 'find_anchor' is not defined"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "daum": {
+          "price": 105300,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A247540?adjusted=true"
+        },
+        "yahoo": {
+          "price": 104900,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/247540.KS"
         }
       }
     },
@@ -2146,21 +2765,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=071050&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 183000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A071050?adjusted=true"
+        },
+        "yahoo": {
           "price": 182300,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/071050.KS"
         }
       }
     },
@@ -2175,21 +2796,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=006260&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 324000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A006260?adjusted=true"
+        },
+        "yahoo": {
           "price": 325500,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/006260.KS"
         }
       }
     },
@@ -2204,21 +2827,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=028050&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 52100,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A028050?adjusted=true"
+        },
+        "yahoo": {
           "price": 51800,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/028050.KS"
         }
       }
     },
@@ -2233,21 +2858,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=307950&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 367500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A307950?adjusted=true"
+        },
+        "yahoo": {
           "price": 369500,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/307950.KS"
         }
       }
     },
@@ -2262,21 +2889,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=047050&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 57100,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A047050?adjusted=true"
+        },
+        "yahoo": {
           "price": 57300,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/047050.KS"
         }
       }
     },
@@ -2291,22 +2920,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=003230&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 1300000,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 1340,
+        "daum": {
+          "price": 1296000,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/003230"
+          "url": "https://finance.daum.net/api/quotes/A003230?adjusted=true"
+        },
+        "yahoo": {
+          "price": 1300000,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/003230.KS"
         }
       }
     },
@@ -2321,21 +2951,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=323410&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 20550,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A323410?adjusted=true"
+        },
+        "yahoo": {
           "price": 20450,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/323410.KS"
         }
       }
     },
@@ -2350,21 +2982,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000500&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 322000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A000500?adjusted=true"
+        },
+        "yahoo": {
           "price": 327000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/000500.KS"
         }
       }
     },
@@ -2379,21 +3013,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
-          "price": null,
-          "date": null,
-          "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=036930&page=1"
-        },
         "mk": {
           "price": null,
           "date": null,
-          "date_verified": false
+          "date_verified": false,
+          "error": "name 'find_anchor' is not defined"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "daum": {
+          "price": 204500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A036930?adjusted=true"
+        },
+        "yahoo": {
+          "price": 205500,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/036930.KQ"
         }
       }
     },
@@ -2408,21 +3044,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005940&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
           "price": 25550,
           "date": "2026-09-18",
-          "date_verified": true
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A005940?adjusted=true"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "yahoo": {
+          "price": 25550,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/005940.KS"
         }
       }
     },
@@ -2437,21 +3075,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=259960&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 204500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A259960?adjusted=true"
+        },
+        "yahoo": {
           "price": 205000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/259960.KS"
         }
       }
     },
@@ -2466,21 +3106,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=180640&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 139200,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A180640?adjusted=true"
+        },
+        "yahoo": {
           "price": 138800,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/180640.KS"
         }
       }
     },
@@ -2495,21 +3137,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
-          "price": null,
-          "date": null,
-          "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=277810&page=1"
-        },
         "mk": {
           "price": null,
           "date": null,
-          "date_verified": false
+          "date_verified": false,
+          "error": "name 'find_anchor' is not defined"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "daum": {
+          "price": 434500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A277810?adjusted=true"
+        },
+        "yahoo": {
+          "price": 436000,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/277810.KS"
         }
       }
     },
@@ -2524,21 +3168,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=090430&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 142700,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A090430?adjusted=true"
+        },
+        "yahoo": {
           "price": 143400,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/090430.KS"
         }
       }
     },
@@ -2553,21 +3199,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=0126Z0&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 331000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A0126Z0?adjusted=true"
+        },
+        "yahoo": {
           "price": 327000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/0126Z0.KS"
         }
       }
     },
@@ -2582,22 +3230,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=047040&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 18910,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 7,
+        "daum": {
+          "price": 19020,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/047040"
+          "url": "https://finance.daum.net/api/quotes/A047040?adjusted=true"
+        },
+        "yahoo": {
+          "price": 18910,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/047040.KS"
         }
       }
     },
@@ -2612,21 +3261,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=016360&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 85600,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A016360?adjusted=true"
+        },
+        "yahoo": {
           "price": 85300,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/016360.KS"
         }
       }
     },
@@ -2641,21 +3292,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=007660&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 102400,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A007660?adjusted=true"
+        },
+        "yahoo": {
           "price": 103700,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/007660.KS"
         }
       }
     },
@@ -2670,21 +3323,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=161390&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 60700,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A161390?adjusted=true"
+        },
+        "yahoo": {
           "price": 60600,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/161390.KS"
         }
       }
     },
@@ -2699,21 +3354,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=021240&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 101500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A021240?adjusted=true"
+        },
+        "yahoo": {
           "price": 101100,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/021240.KS"
         }
       }
     },
@@ -2728,21 +3385,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=352820&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 166700,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A352820?adjusted=true"
+        },
+        "yahoo": {
           "price": 165900,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/352820.KS"
         }
       }
     },
@@ -2757,21 +3416,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000880&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 134100,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A000880?adjusted=true"
+        },
+        "yahoo": {
           "price": 132500,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/000880.KS"
         }
       }
     },
@@ -2786,22 +3447,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=039490&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 262500,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 7,
+        "daum": {
+          "price": 261500,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/039490"
+          "url": "https://finance.daum.net/api/quotes/A039490?adjusted=true"
+        },
+        "yahoo": {
+          "price": 262500,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/039490.KS"
         }
       }
     },
@@ -2816,21 +3478,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=064400&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 70400,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A064400?adjusted=true"
+        },
+        "yahoo": {
           "price": 70600,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/064400.KS"
         }
       }
     },
@@ -2845,21 +3509,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=267270&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 140400,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A267270?adjusted=true"
+        },
+        "yahoo": {
           "price": 139800,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/267270.KS"
         }
       }
     },
@@ -2874,22 +3540,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=062040&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 211500,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 18,
+        "daum": {
+          "price": 211000,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/062040"
+          "url": "https://finance.daum.net/api/quotes/A062040?adjusted=true"
+        },
+        "yahoo": {
+          "price": 211500,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/062040.KS"
         }
       }
     },
@@ -2904,21 +3571,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=128940&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 505000,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A128940?adjusted=true"
+        },
+        "yahoo": {
           "price": 503000,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/128940.KS"
         }
       }
     },
@@ -2933,21 +3602,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=009830&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 28650,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A009830?adjusted=true"
+        },
+        "yahoo": {
           "price": 28400,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/009830.KS"
         }
       }
     },
@@ -2962,21 +3633,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=001440&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 31650,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A001440?adjusted=true"
+        },
+        "yahoo": {
           "price": 31450,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/001440.KS"
         }
       }
     },
@@ -2991,21 +3664,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=326030&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 77900,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A326030?adjusted=true"
+        },
+        "yahoo": {
           "price": 77700,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/326030.KS"
         }
       }
     },
@@ -3020,21 +3695,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
-          "price": null,
-          "date": null,
-          "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005387&page=1"
-        },
         "mk": {
           "price": null,
           "date": null,
-          "date_verified": false
+          "date_verified": false,
+          "error": "name 'find_anchor' is not defined"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "daum": {
+          "price": 173400,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A005387?adjusted=true"
+        },
+        "yahoo": {
+          "price": 171100,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/005387.KS"
         }
       }
     },
@@ -3049,21 +3726,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
-          "price": null,
-          "date": null,
-          "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=240810&page=1"
-        },
         "mk": {
           "price": null,
           "date": null,
-          "date_verified": false
+          "date_verified": false,
+          "error": "name 'find_anchor' is not defined"
         },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+        "daum": {
+          "price": 121500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A240810?adjusted=true"
+        },
+        "yahoo": {
+          "price": 121500,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/240810.KS"
         }
       }
     },
@@ -3078,21 +3757,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=032640&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
+        "daum": {
+          "price": 14190,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://finance.daum.net/api/quotes/A032640?adjusted=true"
+        },
+        "yahoo": {
           "price": 14050,
           "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": null,
-          "date": null,
-          "date_verified": false
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/032640.KS"
         }
       }
     },
@@ -3107,22 +3788,23 @@
         "source": "KRX_OPEN_API"
       },
       "external": {
-        "naver": {
+        "mk": {
           "price": null,
           "date": null,
           "date_verified": false,
-          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=175330&page=1"
+          "error": "name 'find_anchor' is not defined"
         },
-        "mk": {
-          "price": 30850,
-          "date": "2026-09-18",
-          "date_verified": true
-        },
-        "hankyung": {
-          "price": 1340,
+        "daum": {
+          "price": 31050,
           "date": "2026-09-18",
           "date_verified": false,
-          "url": "https://markets.hankyung.com/stock/175330"
+          "url": "https://finance.daum.net/api/quotes/A175330?adjusted=true"
+        },
+        "yahoo": {
+          "price": 30850,
+          "date": "2026-09-18",
+          "date_verified": true,
+          "url": "https://finance.yahoo.com/quote/175330.KS"
         }
       }
     }
