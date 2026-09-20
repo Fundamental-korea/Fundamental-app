@@ -23,6 +23,7 @@ from chart_indicators import (
     generate_volume_commentary,
     generate_stochastic_commentary,
     generate_ichimoku_commentary,
+    generate_adx_commentary,
     INDICATOR_LESSONS,
 )
 import requests
@@ -1397,7 +1398,7 @@ def get_chart_history(code, period="1y"):
         return pd.DataFrame()
 
 
-HISTORICAL_PATTERN_CACHE_VERSION = "2026-09-20-direction-v3-candidate-count"
+HISTORICAL_PATTERN_CACHE_VERSION = "2026-09-20-adx-v1"
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -1458,7 +1459,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     화면에 보이는 구간의 고가/저가/거래량/MACD 범위로 y축을 다시 계산해서 그려줌.
 
     visible_map: {"ma": bool, "bb": bool, "ichimoku": bool, "vol_ma": bool,
-                  "rsi": bool, "stoch": bool, "macd": bool} - 기본 전부 False(꺼짐).
+                  "rsi": bool, "stoch": bool, "adx": bool, "macd": bool} - 기본 전부 False(꺼짐).
     가격/거래량 위에 얹히는 오버레이 지표(ma/bb/ichimoku/vol_ma)는 트레이스만 숨기고 칸은 유지하지만,
     RSI/스토캐스틱/MACD는 전용 서브플롯 행이 필요한 지표라 - 체크 안 하면 트레이스뿐 아니라
     그 행(축·그리드·기준선) 자체를 아예 안 만들어서, 빈 표가 남아있는 문제를 없앰.
@@ -1466,7 +1467,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     window.parent.location.href로 부모 페이지를 이동시키는 게 Streamlit의 iframe 샌드박스
     정책상 막혀서(클릭해도 아무 반응 없던 원인) 호출부에서 진짜 Streamlit 버튼으로 처리함."""
 
-    vm = {"ma": False, "bb": False, "ichimoku": False, "vol_ma": False, "rsi": False, "stoch": False, "macd": False}
+    vm = {"ma": False, "bb": False, "ichimoku": False, "vol_ma": False, "rsi": False, "stoch": False, "adx": False, "macd": False}
     vm.update(visible_map or {})
 
     def vis(key):
@@ -1478,6 +1479,8 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         row_order.append("rsi")
     if vm["stoch"]:
         row_order.append("stoch")
+    if vm["adx"]:
+        row_order.append("adx")
     if vm["macd"]:
         row_order.append("macd")
 
@@ -1503,7 +1506,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         domains[r] = [round(bottom, 4), round(top, 4)]
         top = bottom - gap
 
-    axis_name = {"price": "y", "volume": "y2", "rsi": "y3", "stoch": "y4", "macd": "y5"}
+    axis_name = {"price": "y", "volume": "y2", "rsi": "y3", "stoch": "y4", "adx": "y5", "macd": "y6"}
     if height is None:
         height = 700 + 220 * n_extra
 
@@ -1564,6 +1567,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         "vol_ma20": s("vol_ma20"),
         "rsi14": s("rsi14"),
         "stoch_k": s("stoch_k"), "stoch_d": s("stoch_d"),
+        "adx14": s("adx14"), "plus_di14": s("plus_di14"), "minus_di14": s("minus_di14"),
         "macd_line": s("macd_line"), "macd_signal": s("macd_signal"), "macd_hist": s("macd_hist"),
     }
     data_json = json.dumps(payload)
@@ -1595,6 +1599,12 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                 visTrace("%K", D.stoch_k, "#0EA5E9", 1.2, {{ yaxis: "{axis_name['stoch']}" }}),
                 visTrace("%D", D.stoch_d, "#F97316", 1.2, {{ yaxis: "{axis_name['stoch']}" }}),
         """
+    if vm["adx"]:
+        row_traces_js += f"""
+                visTrace("ADX(14)", D.adx14, "#7C3AED", 1.3, {{ yaxis: "{axis_name['adx']}" }}),
+                visTrace("+DI", D.plus_di14, "#16A34A", 1.0, {{ yaxis: "{axis_name['adx']}" }}),
+                visTrace("-DI", D.minus_di14, "#DC2626", 1.0, {{ yaxis: "{axis_name['adx']}" }}),
+        """
     if vm["macd"]:
         row_traces_js += f"""
                 {{ type: "bar", x: D.dates, y: D.macd_hist, name: "MACD 히스토그램", yaxis: "{axis_name['macd']}",
@@ -1618,8 +1628,13 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                     {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
                     {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
         """
+    if vm["adx"]:
+        extra_yaxes_js += f"""yaxis5: {{ domain: {json.dumps(domains['adx'])}, anchor: "x", side: "right", title: "ADX / DI", range: [0, 100] }},"""
+        extra_shapes_js += f"""
+                    {{ type: "line", xref: "paper", yref: "y5", x0: 0, x1: 1, y0: 25, y1: 25, line: {{ color: "{THEME['accent']}", width: 1, dash: "dash" }} }},
+        """
     if vm["macd"]:
-        extra_yaxes_js += f"""yaxis5: {{ domain: {json.dumps(domains['macd'])}, anchor: "x", side: "right", title: "MACD" }},"""
+        extra_yaxes_js += f"""yaxis6: {{ domain: {json.dumps(domains['macd'])}, anchor: "x", side: "right", title: "MACD" }},"""
 
     has_macd_js = json.dumps(vm["macd"])
 
@@ -2625,12 +2640,13 @@ elif selected_code and view_mode_param == "analysis":
                 show_vol_ma = st.checkbox("거래량 이동평균", value=False, key="an_show_vol_ma")
             with vis_col2:
                 show_rsi = st.checkbox("RSI (누르면 전용 칸이 새로 생겨요)", value=False, key="an_show_rsi")
-                show_stoch = st.checkbox("스토캐스틱 (누르면 전용 칸이 새로 생겨요)", value=False, key="an_show_stoch")
-                show_macd = st.checkbox("MACD (누르면 전용 칸이 새로 생겨요)", value=False, key="an_show_macd")
+                show_stoch = st.checkbox("스토캐스틱 (전용 칸)", value=False, key="an_show_stoch")
+                show_adx = st.checkbox("ADX / DMI (전용 칸)", value=False, key="an_show_adx")
+                show_macd = st.checkbox("MACD (전용 칸)", value=False, key="an_show_macd")
 
         visible_map = {
             "ma": show_ma, "bb": show_bb, "ichimoku": show_ichimoku, "vol_ma": show_vol_ma,
-            "rsi": show_rsi, "stoch": show_stoch, "macd": show_macd,
+            "rsi": show_rsi, "stoch": show_stoch, "adx": show_adx, "macd": show_macd,
         }
 
         # 숫자 바꿀 때마다 매번 다시 계산하지 않도록 st.form으로 묶어서 "적용하기" 눌러야 반영되게 함
@@ -2646,6 +2662,7 @@ elif selected_code and view_mode_param == "analysis":
                     bb_window = st.number_input("볼린저 기간(일)", 5, 60, 20, key="an_bb_window")
                     bb_std = st.number_input("볼린저 표준편차 배수", 1.0, 4.0, 2.0, step=0.5, key="an_bb_std")
                     rsi_window = st.number_input("RSI 기간(일)", 5, 30, 14, key="an_rsi_window")
+                    adx_window = st.number_input("ADX 기간(일)", 5, 30, 14, key="an_adx_window")
                 with set_col3:
                     macd_fast = st.number_input("MACD 단기", 5, 30, 12, key="an_macd_fast")
                     macd_slow = st.number_input("MACD 장기", 15, 60, 26, key="an_macd_slow")
@@ -2655,7 +2672,7 @@ elif selected_code and view_mode_param == "analysis":
         custom_params = {
             "sma_tiny": sma_tiny, "sma_short": sma_short, "sma_mid": sma_mid, "sma_long": sma_long,
             "bb_window": bb_window, "bb_std": bb_std,
-            "rsi_window": rsi_window,
+            "rsi_window": rsi_window, "adx_window": adx_window,
             "macd_fast": macd_fast, "macd_slow": macd_slow, "macd_signal": macd_signal,
         }
 
@@ -2699,6 +2716,8 @@ elif selected_code and view_mode_param == "analysis":
                  generate_rsi_commentary(indicators["rsi14"])),
                 ("🌀 스토캐스틱", "stochastic",
                  generate_stochastic_commentary(indicators["stoch_k"], indicators["stoch_d"])),
+                ("📈 ADX / DMI (추세 강도)", "adx",
+                 generate_adx_commentary(indicators["adx14"], indicators["plus_di14"], indicators["minus_di14"])),
                 ("☁️ 일목균형표", "ichimoku",
                  generate_ichimoku_commentary(close, indicators["tenkan"], indicators["kijun"],
                                                indicators["senkou_a"], indicators["senkou_b"])),
@@ -2935,7 +2954,7 @@ elif not selected_code:
                 unsafe_allow_html=True,
             )
             st.info(
-                "📊 **Chart Analysis**: 이동평균선·볼린저밴드·RSI·MACD·스토캐스틱·일목균형표·거래량까지, "
+                "📊 **Chart Analysis**: 이동평균선·볼린저밴드·RSI·MACD·스토캐스틱·ADX/DMI·일목균형표·거래량까지, "
                 "지금 이 종목 기준 자동 해설과 함께 전문 차트를 볼 수 있는 전용 화면이 새 창으로 열려요."
             )
             st.markdown(
