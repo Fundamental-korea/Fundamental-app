@@ -15,10 +15,15 @@ import re
 import xml.etree.ElementTree as ET
 from typing import Any
 import requests
+import time
 
 SEC_ARCHIVE = "https://www.sec.gov/Archives/edgar/data"
 XLINK = "http://www.w3.org/1999/xlink"
 ANNUAL_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+
+# Conservative process-wide SEC request pacing.
+SEC_MIN_REQUEST_INTERVAL = 0.25
+_SEC_LAST_REQUEST = 0.0
 
 # Semantic search vocabulary. These are candidates, not automatic aliases.
 METRIC_TERMS = {
@@ -118,17 +123,69 @@ class SECXBRLSearch:
     def __init__(self, user_agent: str = "Fundamental-app contact@example.com", session: requests.Session | None = None):
         self.session = session or requests.Session()
         self.session.headers.update({"User-Agent": user_agent, "Accept-Encoding": "gzip, deflate"})
+        self._company_facts_cache = {}
+        self._submissions_cache = {}
+        self._filing_index_cache = {}
+
+    @staticmethod
+    def _sec_sleep():
+        global _SEC_LAST_REQUEST
+        now = time.monotonic()
+        wait = SEC_MIN_REQUEST_INTERVAL - (now - _SEC_LAST_REQUEST)
+        if wait > 0:
+            time.sleep(wait)
+        _SEC_LAST_REQUEST = time.monotonic()
+
+    @staticmethod
+    def _retry_after(response, attempt):
+        raw = response.headers.get("Retry-After") if response is not None else None
+        try:
+            value = float(raw)
+        except (TypeError, ValueError):
+            value = None
+        if value is not None and value >= 0:
+            return min(max(value, 1.0), 30.0)
+        return min(2.0 ** attempt, 16.0)
 
     def _get(self, url: str, timeout: int = 45) -> requests.Response:
-        r = self.session.get(url, timeout=timeout)
-        r.raise_for_status()
-        return r
+        last_response = None
+        for attempt in range(4):
+            self._sec_sleep()
+            try:
+                r = self.session.get(url, timeout=timeout)
+                last_response = r
+                if r.status_code == 200:
+                    return r
+                if r.status_code in (429, 500, 502, 503, 504) and attempt < 3:
+                    time.sleep(self._retry_after(r, attempt))
+                    continue
+                r.raise_for_status()
+            except requests.RequestException:
+                if attempt >= 3:
+                    raise
+                time.sleep(self._retry_after(last_response, attempt))
+        raise RuntimeError(f"SEC request failed after retries: {url}")
+
+    def prime_company(self, cik, company_facts, submissions):
+        key = str(int(cik))
+        self._company_facts_cache[key] = company_facts
+        self._submissions_cache[key] = submissions
 
     def company_facts(self, cik: str | int) -> dict[str, Any]:
-        return self._get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{int(cik):010d}.json").json()
+        key = str(int(cik))
+        if key not in self._company_facts_cache:
+            self._company_facts_cache[key] = self._get(
+                f"https://data.sec.gov/api/xbrl/companyfacts/CIK{int(cik):010d}.json"
+            ).json()
+        return self._company_facts_cache[key]
 
     def submissions(self, cik: str | int) -> dict[str, Any]:
-        return self._get(f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json").json()
+        key = str(int(cik))
+        if key not in self._submissions_cache:
+            self._submissions_cache[key] = self._get(
+                f"https://data.sec.gov/submissions/CIK{int(cik):010d}.json"
+            ).json()
+        return self._submissions_cache[key]
 
     def latest_annual_filing(self, submissions: dict[str, Any]) -> tuple[str | None, str | None, str | None]:
         recent = submissions.get("filings", {}).get("recent", {})
