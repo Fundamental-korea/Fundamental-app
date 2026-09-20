@@ -10,6 +10,7 @@ import yfinance as yf
 import base64
 
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
+from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
 from chart_indicators import (
     compute_all_indicators,
     generate_ma_commentary,
@@ -744,22 +745,47 @@ def get_combined_stock_db():
 
 
 def get_stock_data(code):
-    """Supabase에 펀더멘탈 스코어 데이터가 있으면 그걸 우선 사용, 없으면 yfinance로 가격 정보만 폴백"""
+    """Load the correct fundamental source for KR numeric codes or US tickers."""
     supabase_data = None
+    us_company_data = None
+
     if supabase:
         try:
-            res = (
-                supabase.table("Fundamental")
-                .select("*")
-                .eq("stock_code", code)
-                .execute()
-            )
-            if res.data and len(res.data) > 0:
-                supabase_data = res.data[0]
+            if str(code).isdigit():
+                res = (
+                    supabase.table("Fundamental")
+                    .select("*")
+                    .eq("stock_code", code)
+                    .execute()
+                )
+                if res.data:
+                    supabase_data = res.data[0]
+            else:
+                ticker_code = str(code).upper()
+                us_res = (
+                    supabase.table("US_Fundamental")
+                    .select("*")
+                    .eq("ticker", ticker_code)
+                    .execute()
+                )
+                if us_res.data:
+                    supabase_data = us_res.data[0]
+
+                company_res = (
+                    supabase.table("US_Companies")
+                    .select(
+                        "ticker,company_name,sector_common,sector_common_ko,"
+                        "company_type,scoring_profile"
+                    )
+                    .eq("ticker", ticker_code)
+                    .execute()
+                )
+                if company_res.data:
+                    us_company_data = company_res.data[0]
         except Exception:
             pass
 
-    ticker_symbol = f"{code}.KS" if code.isdigit() else code
+    ticker_symbol = f"{code}.KS" if str(code).isdigit() else str(code).upper()
     try:
         ticker = yf.Ticker(ticker_symbol)
         info = ticker.info
@@ -768,13 +794,203 @@ def get_stock_data(code):
         info, hist = {}, pd.DataFrame()
 
     result = {
-        "stock_name": (supabase_data or {}).get("stock_name") or info.get("shortName", code),
+        "stock_name": (
+            (us_company_data or {}).get("company_name")
+            if not str(code).isdigit()
+            else (supabase_data or {}).get("stock_name")
+        ) or (supabase_data or {}).get("company_name") or info.get("shortName", code),
         "stock_price": (supabase_data or {}).get("stock_price") or info.get("currentPrice", 0),
         "hist": hist,
         "info": info,
         "supabase_data": supabase_data,
+        "us_company_data": us_company_data,
     }
     return result
+
+
+def render_us_fundamental_report(code, data):
+    """Render the US SEC scoring report."""
+    us_data = data.get("supabase_data") or {}
+    company = data.get("us_company_data") or {}
+    profile = company.get("scoring_profile") or "standard"
+    profile_label = PROFILE_LABELS.get(profile, profile.title())
+    profile_desc = PROFILE_DESCRIPTIONS.get(profile, "미국 기업용 펀더멘탈 모델")
+    period_scores = us_data.get("period_scores") or {}
+
+    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
+
+    with col_logo:
+        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
+
+    with col_quote:
+        render_quote_box()
+
+    with col_login:
+        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+        if st.button("⬅️ 메인으로", use_container_width=True, key="us_report_home"):
+            st.query_params.clear()
+            st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    left_ad, main_content, right_ad = st.columns([0.6, 6.8, 0.6])
+
+    with left_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
+    with main_content:
+        company_name = us_data.get("company_name") or data.get("stock_name") or code
+        sector = (
+            company.get("sector_common_ko")
+            or company.get("sector_common")
+            or us_data.get("sector")
+            or "미분류"
+        )
+        company_type = company.get("company_type") or "standard"
+
+        st.markdown(f"## 🇺🇸 [{company_name}] 미국 펀더멘탈 방어력 분석")
+        st.caption(f"SEC 공시 기반 · {profile_label} · {profile_desc}")
+
+        if not period_scores:
+            st.warning(
+                "⚠️ 아직 이 종목의 미국 펀더멘탈 스코어 데이터가 없습니다. "
+                "SEC 수집기가 데이터를 완료하면 이 화면에 자동 반영됩니다."
+            )
+        else:
+            latest = period_scores.get("1") or next(iter(period_scores.values()))
+            latest_scores = latest.get("scores") or {}
+            total_score = latest_scores.get("total_score")
+            grade = latest_scores.get("grade", "N/A")
+            coverage_pct = latest_scores.get("coverage_pct")
+            missing_count = latest_scores.get("missing_metric_count")
+            cap = latest_scores.get("score_cap")
+            reliability = us_data.get("data_reliability")
+
+            badge_text = (
+                f"**🏷️ 모델:** {profile_label} · "
+                f"**🏭 유형:** {company_type} · "
+                f"**📚 업종:** {sector}"
+            )
+            if coverage_pct is not None:
+                badge_text += f" · **📐 커버리지:** {coverage_pct:.1f}%"
+            if missing_count is not None:
+                badge_text += f" · **🧩 결측:** {missing_count}개"
+            if reliability:
+                badge_text += f" · **📋 신뢰도:** {reliability}"
+
+            st.markdown(f"### {total_score if total_score is not None else 'N/A'} / 100  ·  {grade}")
+            st.markdown(badge_text)
+
+            if cap is not None and cap < 100:
+                st.caption(f"ℹ️ 데이터 커버리지 때문에 해당 기간 점수 상한이 {cap:.0f}점으로 적용됐습니다.")
+
+            snapshot = us_data.get("snapshot") or {}
+            flows = snapshot.get("flows") or {}
+
+            st.markdown("#### 📋 최신 SEC 재무 스냅샷")
+            snap_cols = st.columns(6)
+            snap_items = [
+                ("회계기간", snapshot.get("fiscal_end") or us_data.get("snapshot_fiscal_end") or "N/A"),
+                ("공시형태", snapshot.get("form") or us_data.get("snapshot_form") or "N/A"),
+                ("공시일", snapshot.get("filed") or us_data.get("snapshot_filed") or "N/A"),
+                ("매출", (flows.get("revenue") or {}).get("reported", {}).get("value")),
+                ("영업이익", (flows.get("operating_income") or {}).get("reported", {}).get("value")),
+                ("순이익", (flows.get("net_income") or {}).get("reported", {}).get("value")),
+            ]
+
+            for idx, (label, value) in enumerate(snap_items):
+                with snap_cols[idx]:
+                    if isinstance(value, (int, float)):
+                        st.metric(label, f"USD {float(value):,.0f}")
+                    else:
+                        st.metric(label, str(value))
+
+            period_keys = [p for p in ("1", "3", "5", "10") if p in period_scores]
+            period_labels = {"1": "📅 1년", "3": "📆 3년", "5": "🗓️ 5년", "10": "📈 10년"}
+            tabs = st.tabs([period_labels[p] for p in period_keys])
+
+            metric_meta = {
+                "revenue_growth": ("매출 성장률", "Revenue Growth", "%"),
+                "eps_growth": ("EPS 성장률", "EPS Growth", "%"),
+                "opm": ("영업이익률", "OPM", "%"),
+                "roic": ("투하자본이익률", "ROIC", "%"),
+                "roa": ("총자산이익률", "ROA", "%"),
+                "debt_rate": ("부채비율", "Debt Rate", "%"),
+                "quick_ratio": ("당좌비율", "Quick Ratio", "배"),
+                "interest_coverage": ("이자보상배율", "Interest Coverage", "배"),
+                "ocf_ratio": ("영업현금흐름 비율", "OCF Ratio", "배"),
+                "sga_ratio": ("판관비 비율", "SG&A Ratio", "%"),
+                "downturn_defense": ("하락장 방어력", "Downturn Defense", "%p"),
+                "debt_capital": ("부채·자본 구조", "Debt / Capital", "%"),
+                "ocf_debt": ("영업현금흐름 / 부채", "OCF / Debt", "%"),
+                "fcf_debt": ("잉여현금흐름 / 부채", "FCF / Debt", "%"),
+                "dividend_coverage": ("배당커버리지", "Dividend Coverage", "배"),
+                "dividend_payout": ("배당성향", "Dividend Payout", "%"),
+            }
+
+            for pkey, tab in zip(period_keys, tabs):
+                with tab:
+                    pdata = period_scores[pkey]
+                    scored = pdata.get("scores") or {}
+                    st.caption(
+                        f"기준 회계연도: {pdata.get('base_year') or '-'} · "
+                        f"성장률은 CAGR, 비율 지표는 기간 내 최악값"
+                    )
+
+                    sub_scores = scored.get("sub_scores") or {}
+                    if sub_scores:
+                        sub_text = "  ".join(
+                            f"**{name}:** {value:.1f}"
+                            for name, value in sub_scores.items()
+                            if value is not None
+                        )
+                        if sub_text:
+                            st.markdown(sub_text)
+
+                    metric_scores = scored.get("metric_scores") or {}
+                    for metric, entry in metric_scores.items():
+                        meta = metric_meta.get(metric)
+                        if not meta:
+                            continue
+
+                        title, english, unit = meta
+                        value = entry.get("value")
+                        score = entry.get("score")
+                        weight = entry.get("weight")
+                        contribution = entry.get("weighted_score")
+                        excluded = entry.get("excluded_from_total", False)
+
+                        value_display = "N/A" if value is None else f"{float(value):,.2f}{unit}"
+                        score_display = "결측 제외" if excluded else (
+                            f"{score}/10" if score is not None else "N/A"
+                        )
+                        contribution_display = "총점 제외" if excluded else (
+                            f"{contribution:.1f}/{weight}점"
+                            if contribution is not None and weight is not None
+                            else "-"
+                        )
+
+                        with st.expander(
+                            f"{title} | {value_display} | {score_display} | 총점 기여 {contribution_display}"
+                        ):
+                            st.caption(english)
+                            if metric in ("debt_rate", "debt_capital", "sga_ratio", "dividend_payout"):
+                                st.write("낮을수록 재무·비용 부담이 작다고 보아 점수가 높아집니다.")
+                            elif metric in ("quick_ratio", "interest_coverage", "ocf_ratio", "dividend_coverage"):
+                                st.write("배수가 높을수록 단기 재무 여력 또는 현금·커버리지 수준이 높습니다.")
+                            elif metric == "downturn_defense":
+                                st.write("실제 과거 하락장에서 시장 대비 방어한 정도를 반영합니다.")
+                            else:
+                                st.write("미국 기업 재무구조에 맞춘 US 전용 점수구간과 가중치로 계산됩니다.")
+                            st.caption(
+                                f"배점 {weight}점 · 실제 획득 {contribution if contribution is not None else '-'}점"
+                            )
+
+                            if entry.get("is_extreme"):
+                                st.caption("ℹ️ 극단값으로 표시된 수치입니다. 점수 자체에는 추가 패널티를 주지 않습니다.")
+
+    with right_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
 
 @st.cache_data(ttl=6 * 3600, show_spinner=False)
@@ -1986,6 +2202,10 @@ else:
     # [스케치 기반] 펀더멘탈 상세 분석 리포트 페이지
     # ==========================================
     data = get_stock_data(selected_code)
+
+    if selected_code and not str(selected_code).isdigit():
+        render_us_fundamental_report(selected_code, data)
+        st.stop()
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
