@@ -11,6 +11,7 @@ import base64
 
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
+from historical_pattern import analyze_all_indicator_patterns
 from chart_indicators import (
     compute_all_indicators,
     generate_ma_commentary,
@@ -1380,6 +1381,22 @@ def get_chart_history(code, period="1y"):
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
+@st.cache_data(ttl=3600, show_spinner=False)
+def get_cached_pattern_analysis(code, params_items):
+    """일봉 max history 기반 과거 유사상황 통계.
+    분봉/주봉 UI와 무관하게 5/20/60 '거래일' 결과를 유지한다."""
+    try:
+        daily_df = get_chart_history(code, period="max")
+        if daily_df is None or daily_df.empty or len(daily_df) < 150:
+            return {}
+        params = dict(params_items)
+        daily_indicators = compute_all_indicators(daily_df, params=params)
+        return analyze_all_indicator_patterns(daily_df, daily_indicators)
+    except Exception:
+        return {}
+
+
+
 def get_chart_history_intraday(code, yf_interval="30m", period="60d"):
     """분봉 전용. yfinance 자체가 분봉은 최근 구간만 제공하는 제약이 있어서
     (30분봉 기준 최근 60일 정도) 일/주/월봉처럼 전체 기간을 볼 수는 없음 - 그래서
@@ -2552,6 +2569,13 @@ elif selected_code and view_mode_param == "analysis":
             "macd_fast": macd_fast, "macd_slow": macd_slow, "macd_signal": macd_signal,
         }
 
+        # 과거 유사상황 통계는 선택한 차트 주기와 무관하게 '일봉' 기준으로 계산.
+        # 같은 설정값을 사용하되 현재 분석 UI가 분봉이어도 5/20/60 거래일로 해석한다.
+        pattern_results = get_cached_pattern_analysis(
+            selected_code,
+            tuple(sorted(custom_params.items())),
+        )
+
         if not hist_df.empty and len(hist_df) >= 20:
             indicators = compute_all_indicators(hist_df, params=custom_params)
             p = indicators["params"]
@@ -2601,6 +2625,55 @@ elif selected_code and view_mode_param == "analysis":
                     st.markdown(f"<div class='indicator-card-desc'>{lesson['common_mistakes']}</div>", unsafe_allow_html=True)
                     st.markdown("**🔎 지금 이 종목 기준**")
                     st.markdown(f"<div class='indicator-card-desc'>{commentary}</div>", unsafe_allow_html=True)
+
+                    # ------------------------------------------------------
+                    # 과거 유사상황 통계
+                    # 현재 상태와 비슷한 과거 일봉을 찾아 그 이후 실제 결과를
+                    # 5/20/60 거래일 단위로 집계한다. 미래 예측값이 아니다.
+                    # ------------------------------------------------------
+                    pattern = pattern_results.get(lesson_key) if pattern_results else None
+                    st.markdown("**📈 과거 유사 상황 통계**")
+                    if not pattern:
+                        st.caption("과거 일봉 데이터를 충분히 불러오지 못해 통계를 계산할 수 없어요.")
+                    elif pattern.get("status") != "ok":
+                        matched = pattern.get("matches", 0)
+                        st.caption(
+                            f"현재와 유사한 과거 사례가 {matched}건으로 부족해 "
+                            f"통계를 표시하지 않아요. (최소 {pattern.get('min_required', 12)}건 필요)"
+                        )
+                    else:
+                        st.caption(
+                            f"현재 상태와 비슷했던 과거 일봉 사례 {pattern['matches']}건을 찾았습니다. "
+                            "아래 값은 그 사례 이후 실제 주가가 움직인 비율입니다."
+                        )
+                        horizon_cols = st.columns(3)
+                        horizon_labels = {"5": "5거래일 후", "20": "20거래일 후", "60": "60거래일 후"}
+                        for col, horizon in zip(horizon_cols, ("5", "20", "60")):
+                            stats = pattern.get("horizons", {}).get(horizon)
+                            with col:
+                                st.markdown(f"**{horizon_labels[horizon]}**")
+                                if not stats:
+                                    st.caption("표본 부족")
+                                else:
+                                    st.metric(
+                                        "과거 상승 사례 비율",
+                                        f"{stats['up_probability']:.1f}%",
+                                        help="미래 예측 확률이 아니라, 선택된 과거 유사 사례 중 해당 기간 후 종가가 상승했던 비율입니다.",
+                                    )
+                                    st.caption(
+                                        f"중앙값 {stats['median_return']:+.1f}% · "
+                                        f"평균 {stats['mean_return']:+.1f}% · "
+                                        f"사례 {stats['samples']}건"
+                                    )
+                        if pattern.get("avg_similarity") is not None:
+                            st.caption(
+                                f"유사도 평균: {pattern['avg_similarity']:.1f}/100 · "
+                                "표본 기간 전체의 과거 실제 결과를 집계한 참고 통계입니다."
+                            )
+                        st.caption(
+                            "※ 과거 유사 조건에서 실제로 나타났던 결과를 집계한 것이며, "
+                            "미래 가격이나 수익률을 보장하는 예측값은 아닙니다."
+                        )
         elif not hist_df.empty:
             st.info(f"차트 데이터가 20개 캔들({interval_choice} 기준) 미만이라 지표를 계산하기엔 아직 부족해요. 기본 가격 흐름만 보여드릴게요.")
             st.line_chart(hist_df["Close"])
