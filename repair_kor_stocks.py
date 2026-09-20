@@ -21,6 +21,9 @@ REPAIR_CODES = (
     "092440",  # 기신정기 — positive EPS+BPS
     "189690",  # 포시에스 — positive EPS+BPS
     "020180",  # 대신정보통신 — positive EPS+BPS
+    "351020",  # 미쥬 — KONEX / positive EPS+BPS
+    "311060",  # 엘에이티 — KONEX / positive EPS
+    "217950",  # 파마리서치바이오 — KONEX / positive EPS+BPS
 )
 
 def main() -> int:
