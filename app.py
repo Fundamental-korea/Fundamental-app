@@ -1009,7 +1009,7 @@ def get_combined_stock_db():
             res = (
                 supabase.table("US_Companies")
                 .select(
-                    "ticker, company_name, exchange, is_fundamental_eligible"
+                    "ticker, company_name, company_name_ko, exchange, is_fundamental_eligible"
                 )
                 .eq("is_fundamental_eligible", True)
                 .range(start, start + page_size - 1)
@@ -1028,11 +1028,12 @@ def get_combined_stock_db():
             flag = "🇺🇸"
             ticker = str(row.get("ticker") or "")
             company_name = str(row.get("company_name") or ticker or "")
+            company_name_ko = str(row.get("company_name_ko") or "")
             us_stocks.append(
                 {
                     "ticker": ticker,
                     "name": company_name,
-                    "aliases": aliases_for(ticker, company_name),
+                    "aliases": aliases_for(ticker, company_name, company_name_ko),
                     "exch": f"Equities - {exchange}",
                     "flag": flag,
                 }
