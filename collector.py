@@ -245,6 +245,28 @@ def get_parent_equity(df, detail_df=None):
     return None
 
 
+def get_parent_net_income(df, detail_df=None):
+    """
+    Valuation EPS 전용 '지배기업 소유주 귀속 당기순이익' 추출.
+    연결재무제표에서 비지배지분을 포함한 당기순이익을 그대로 TTM EPS에 쓰지 않도록
+    지배주주 귀속 순이익 계정을 우선 찾는다.
+    """
+    controlling_kw = [
+        "지배기업의 소유주에게 귀속되는 당기순이익",
+        "지배기업의 소유주에게 귀속되는 당기순이익(손실)",
+        "지배기업 소유주 귀속 당기순이익",
+        "지배주주지분당기순이익",
+        "지배기업의 소유주에게 귀속되는 순이익",
+    ]
+
+    for source_df in (df, detail_df):
+        if source_df is None or source_df.empty:
+            continue
+        value = _find_account_value(source_df, controlling_kw, field="thstrm_amount")
+        if value is not None:
+            return value
+    return None
+
 def resolve_interest_coverage(op_profit, interest_exp, debt_rate):
     """
     interest_coverage 기본값(25점 만점) 오남용 방지 (버그2 수정).
@@ -718,6 +740,7 @@ def _parse_year_financials(df, df_full=None):
     # 우선 사용 (순이익÷발행주식수로 자체 근사하면 자사주 미차감 등으로 부정확 - 버그9 수정).
     # 못 찾으면 None -> 호출부(sync_kor_stock_fundamental)에서 근사치로 폴백.
     reported_eps = _find_common_basic_eps(detail_df, field="thstrm_amount")
+    parent_net_income = get_parent_net_income(df, detail_df)
 
     # 투하자본 근사치: 자산총계 - 유동부채 (이자부채만 정확히 구분하기 어려워 유동부채 전체를 차감하는 간이 추정)
     invested_capital = total_assets - current_liab
@@ -746,6 +769,7 @@ def _parse_year_financials(df, df_full=None):
         "equity_for_bps": equity_for_bps,
         "interest_exp_is_approx": interest_exp_is_approx,
         "reported_eps": reported_eps,
+        "parent_net_income": parent_net_income,
     }
 
     return {**ratios, **raw}
