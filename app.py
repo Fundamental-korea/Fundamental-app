@@ -14,7 +14,6 @@ from search_aliases import aliases_for
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
 from historical_pattern import analyze_all_indicator_patterns
-from technical_report import render_technical_report
 import importlib
 import chart_indicators as _chart_indicators
 _chart_indicators = importlib.reload(_chart_indicators)
@@ -2851,19 +2850,6 @@ elif selected_code and view_mode_param == "analysis":
                 hist_df, indicators, visible_map=visible_map,
                 is_korean_market=selected_code.isdigit(),
             )
-
-            st.markdown("<div style='margin: 18px 0 8px;'></div>", unsafe_allow_html=True)
-            with st.expander("📑 기술적 시장분석 종합보고서", expanded=False):
-                st.caption("정부·공공기관 보고서 형식으로 현재 지표, 역사적 유사조건, 상승·하락 비율 및 데이터 품질을 통합 정리합니다.")
-                render_technical_report(
-                    ticker=selected_code,
-                    name=analysis_name,
-                    hist_df=hist_df,
-                    indicators=indicators,
-                    pattern_results=pattern_results,
-                    market_condition=market_condition,
-                    interval_label=interval_choice,
-                )
 
             st.markdown("<div style='margin-top: 10px;'></div>", unsafe_allow_html=True)
             st.markdown("##### 🎓 지표별 강의 (지금 이 종목 기준) - 눌러서 펼쳐보세요")
