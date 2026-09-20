@@ -248,6 +248,7 @@ def main():
         ticker, cik = row["ticker"], row["cik"]
         try:
             facts, submissions = load_company(session, ticker, cik)
+            resolver.prime_company(cik, facts, submissions)
             if ticker not in stock_cache:
                 try:
                     from downturn_us import _close_series
