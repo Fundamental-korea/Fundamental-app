@@ -1397,7 +1397,7 @@ def get_chart_history(code, period="1y"):
         return pd.DataFrame()
 
 
-HISTORICAL_PATTERN_CACHE_VERSION = "2026-09-20-direction-v2"
+HISTORICAL_PATTERN_CACHE_VERSION = "2026-09-20-direction-v3-candidate-count"
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -2780,7 +2780,8 @@ elif selected_code and view_mode_param == "analysis":
                         min_similarity = pattern.get("min_similarity", 65.0)
                         st.caption(
                             f"최근 {lookback_years}년 안에서 유사도 {min_similarity:.0f}/100 이상인 "
-                            f"과거 유사 조건 {pattern.get('matches', 0)}건을 찾았습니다. "
+                            f"후보 {pattern.get('candidate_matches', pattern.get('matches', 0))}건 중 "
+                            f"5거래일 이상 간격을 둔 유사 조건 {pattern.get('matches', 0)}건을 사용합니다. "
                             f"각 기간별 숫자는 그중 실제 주가 결과가 존재하는 사례만 집계합니다."
                         )
                         horizon_cols = st.columns(3)
