@@ -67,6 +67,12 @@ METRIC_SCORE_BANDS = {
 }
 
 LEVERAGE_EXEMPT_METRICS = {"debt_rate", "quick_ratio", "interest_coverage"}
+
+# Quick Ratio가 지나치게 큰 경우의 참고용 표시 기준.
+# 점수에는 영향을 주지 않으며, 유동부채가 극히 작거나 0에 가까운 기업에서
+# 분모 효과로 실제 계산값이 매우 커질 수 있음을 사용자에게 안내하기 위한 플래그다.
+QUICK_RATIO_EXTREME_THRESHOLD = 20.0
+
 PROVISIONAL_GRADE_CUTOFFS = {"S": 76, "A": 64, "B": 53, "C": 42}
 
 
@@ -140,6 +146,8 @@ def calculate_fundamental_score(metrics: dict, leverage_exempt: bool = False, is
         weight = METRIC_WEIGHTS[key]
         weighted = raw_score * (weight / 10.0)
         entry = {"value": value, "score": raw_score, "weighted_score": round(weighted, 2)}
+        if key == "quick_ratio" and value is not None and value >= QUICK_RATIO_EXTREME_THRESHOLD:
+            entry["is_extreme"] = True
         if key in excluded:
             entry["excluded_from_total"] = True
         else:
