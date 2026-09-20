@@ -636,125 +636,213 @@ if THEME_MODE == "dark":
     st.markdown(
         f"""
         <style>
+        /* =========================================================
+           Dark theme: force readable typography/control states.
+           Important: the original app has many light-mode !important
+           rules and inline colors, so these selectors intentionally
+           have strong specificity and are ordered after the base CSS.
+           ========================================================= */
+
         html, body, [data-testid="stAppViewContainer"], .stApp,
-        [data-testid="stHeader"], [data-testid="stToolbar"] {{
+        [data-testid="stHeader"], [data-testid="stToolbar"],
+        [data-testid="stMain"], [data-testid="stSidebar"] {
             background-color: {THEME["page"]} !important;
             color: {THEME["text"]} !important;
-        }}
+        }
 
-        p, span, div, label, h1, h2, h3, h4, h5, h6 {{
+        /* Main typography */
+        p, span, div, label, h1, h2, h3, h4, h5, h6,
+        a, b, strong, small, summary {
             color: {THEME["text"]} !important;
-        }}
+        }
 
-        .quote-box-v2, .grade-hero-box {{
-            background: {THEME["surface_warm"]} !important;
-            border-color: {THEME["accent"]} !important;
-            box-shadow: 0 4px 16px rgba(0,0,0,0.28) !important;
-        }}
+        /* Streamlit native widgets */
+        [data-testid="stMetric"],
+        [data-testid="stMetric"] *,
+        [data-testid="stWidgetLabel"],
+        [data-testid="stWidgetLabel"] *,
+        [data-testid="stRadio"],
+        [data-testid="stRadio"] *,
+        [data-testid="stCheckbox"],
+        [data-testid="stCheckbox"] *,
+        [data-testid="stToggle"],
+        [data-testid="stToggle"] *,
+        [data-testid="stSelectbox"],
+        [data-testid="stSelectbox"] *,
+        [data-testid="stNumberInput"],
+        [data-testid="stNumberInput"] *,
+        [data-testid="stForm"],
+        [data-testid="stForm"] *,
+        [data-baseweb="radio"],
+        [data-baseweb="checkbox"],
+        [data-baseweb="select"],
+        [role="radio"],
+        [role="switch"] {
+            color: {THEME["text"]} !important;
+        }
 
-        .logo-box, .sketch-card, .sketch-item-box, .finstat-item,
-        .overview-cell, .indicator-card {{
+        input, textarea {
             background-color: {THEME["surface"]} !important;
             color: {THEME["text"]} !important;
             border-color: {THEME["border"]} !important;
-        }}
+            caret-color: {THEME["accent"]} !important;
+        }
 
-        .quote-en, .quote-ko, .quote-author,
-        .grade-hero-score, .grade-hero-badge,
-        .sketch-item-title, .sketch-item-score,
-        .finstat-value, .overview-value,
-        .indicator-card-title, .indicator-card-desc,
-        .stock-link {{
-            color: {THEME["text"]} !important;
-        }}
-
-        .overview-label, .finstat-label, .sketch-item-desc,
-        .indicator-card-def, .overview-subvalue {{
-            color: {THEME["text_muted"]} !important;
-        }}
-
-        .quote-divider {{
-            border-top-color: {THEME["accent"]} !important;
-        }}
-
-        .status-pill, .mini-stat-badge {{
-            background-color: {THEME["surface_muted"]} !important;
-            border-color: {THEME["border"]} !important;
-            color: {THEME["text"]} !important;
-        }}
-
-        .value-up, .reliability-good, .vol-high {{
-            color: {THEME["positive"]} !important;
-        }}
-        .value-down {{
-            color: {THEME["negative"]} !important;
-        }}
-        .vol-low, .neutral, .reliability-mid, .reliability-low {{
-            color: {THEME["text_muted"]} !important;
-        }}
-
-        .impairment-warn, .tier-c {{
-            background-color: {THEME["warning_bg"]} !important;
-            color: {THEME["warning_text"]} !important;
-            border-color: {THEME["accent"]} !important;
-        }}
-
-        div[data-testid="stButton"] > button,
-        div[data-testid="stLinkButton"] > a,
-        div[data-testid="stDownloadButton"] > button {{
+        [data-baseweb="select"] > div {
             background-color: {THEME["surface"]} !important;
             color: {THEME["text"]} !important;
             border-color: {THEME["border"]} !important;
-        }}
-        div[data-testid="stButton"] > button:hover,
-        div[data-testid="stLinkButton"] > a:hover,
-        div[data-testid="stDownloadButton"] > button:hover {{
+        }
+
+        /* Buttons: secondary buttons use dark surfaces; primary buttons retain
+           the site's orange identity. */
+        [data-testid="stButton"] button,
+        [data-testid="stLinkButton"] a,
+        [data-testid="stDownloadButton"] button {
+            background-color: {THEME["surface"]} !important;
+            color: {THEME["text"]} !important;
+            border-color: {THEME["border"]} !important;
+        }
+        [data-testid="stButton"] button *,
+        [data-testid="stLinkButton"] a *,
+        [data-testid="stDownloadButton"] button * {
+            color: {THEME["text"]} !important;
+        }
+        [data-testid="stButton"] button:hover,
+        [data-testid="stLinkButton"] a:hover,
+        [data-testid="stDownloadButton"] button:hover {
             background-color: {THEME["surface_warm"]} !important;
             color: {THEME["accent_strong"]} !important;
             border-color: {THEME["accent"]} !important;
-        }}
+        }
+        [data-testid="stButton"] button:hover *,
+        [data-testid="stLinkButton"] a:hover * {
+            color: {THEME["accent_strong"]} !important;
+        }
+        [data-testid="stButton"] button[kind="primary"],
+        [data-testid="stButton"] button[kind="primary"] *,
+        [data-testid="stButton"] button[data-testid="baseButton-primary"],
+        [data-testid="stButton"] button[data-testid="baseButton-primary"] * {
+            background-color: {THEME["accent_strong"]} !important;
+            color: #FFFFFF !important;
+            border-color: {THEME["accent"]} !important;
+        }
 
-        input, textarea, [data-baseweb="select"] > div,
-        [data-testid="stExpander"] details,
-        [data-testid="stExpander"] summary {{
-            background-color: {THEME["surface"]} !important;
+        /* Toggle itself */
+        [data-testid="stToggle"] label,
+        [data-testid="stToggle"] label *,
+        [role="switch"] {
             color: {THEME["text"]} !important;
-            border-color: {THEME["border"]} !important;
-        }}
+        }
+        [role="switch"][aria-checked="true"] {
+            background-color: {THEME["accent"]} !important;
+            border-color: {THEME["accent"]} !important;
+        }
 
-        [data-testid="stDataFrame"], [data-testid="stDataFrame"] *,
-        [data-testid="stTabs"] {{
-            background-color: {THEME["surface_muted"]} !important;
+        /* Tabs / expanders */
+        [data-testid="stTabs"],
+        [data-testid="stTabs"] *,
+        [data-testid="stExpander"],
+        [data-testid="stExpander"] *,
+        [data-testid="stExpander"] summary,
+        [data-testid="stExpander"] summary * {
             color: {THEME["text"]} !important;
-            border-color: {THEME["border"]} !important;
-        }}
-
-        [data-testid="stTabs"] [aria-selected="true"] {{
+        }
+        [data-testid="stTabs"] [aria-selected="true"] {
             border-bottom-color: {THEME["accent"]} !important;
-        }}
-
-        .ad-box-tall {{
-            background-color: {THEME["surface_muted"]} !important;
-            color: {THEME["text_muted"]} !important;
-            border-color: {THEME["border"]} !important;
-        }}
-
-        /* Common inline-style remnants from the original light theme. */
-        [style*="#1A1A1A"], [style*="#111827"], [style*="#0F172A"] {{
-            color: {THEME["text"]} !important;
-        }}
-        [style*="#92400E"] {{
-            color: {THEME["warning_text"]} !important;
-        }}
-        [style*="#DC2626"] {{
-            color: {THEME["positive"]} !important;
-        }}
-        [style*="#2563EB"] {{
-            color: {THEME["negative"]} !important;
-        }}
-        [style*="#FFFFFF"], [style*="#FFFDF9"], [style*="#FAFAFA"] {{
+        }
+        [data-testid="stExpander"] details,
+        [data-testid="stExpander"] summary {
             background-color: {THEME["surface"]} !important;
-        }}
+            border-color: {THEME["border"]} !important;
+        }
+
+        /* Cards / score / quote / snapshot */
+        .logo-box,
+        .quote-box-v2,
+        .sketch-card,
+        .sketch-item-box,
+        .grade-hero-box,
+        .finstat-item,
+        .overview-cell,
+        .indicator-card,
+        .indicator-card-desc {
+            background-color: {THEME["surface"]} !important;
+            color: {THEME["text"]} !important;
+            border-color: {THEME["border"]} !important;
+        }
+        .quote-box-v2,
+        .grade-hero-box {
+            background-color: {THEME["surface_warm"]} !important;
+            border-color: {THEME["accent"]} !important;
+        }
+        .quote-box-v2 *,
+        .grade-hero-box *,
+        .sketch-card *,
+        .sketch-item-box *,
+        .finstat-item *,
+        .overview-cell *,
+        .indicator-card * {
+            color: {THEME["text"]} !important;
+        }
+        .overview-label, .finstat-label, .sketch-item-desc,
+        .indicator-card-def, .overview-subvalue {
+            color: {THEME["text-muted"]} !important;
+        }
+        .quote-divider {
+            border-top-color: {THEME["accent"]} !important;
+        }
+
+        /* Keep financial meaning colors after the broad text reset above. */
+        .value-up, .reliability-good, .vol-high {
+            color: {THEME["positive"]} !important;
+        }
+        .value-down {
+            color: {THEME["negative"]} !important;
+        }
+        .vol-low, .neutral, .reliability-mid, .reliability-low {
+            color: {THEME["text-muted"]} !important;
+        }
+        .impairment-warn, .tier-c {
+            background-color: {THEME["warning_bg"]} !important;
+            color: {THEME["warning_text"]} !important;
+            border-color: {THEME["accent"]} !important;
+        }
+
+        /* Inline light-mode colors that cannot be changed by the base theme. */
+        [style*="#1A1A1A"], [style*="#1a1a1a"],
+        [style*="#111827"], [style*="#0F172A"] {
+            color: {THEME["text"]} !important;
+        }
+        [style*="#92400E"], [style*="#9A3412"] {
+            color: {THEME["warning_text"]} !important;
+        }
+        [style*="#DC2626"] {
+            color: {THEME["positive"]} !important;
+        }
+        [style*="#2563EB"] {
+            color: {THEME["negative"]} !important;
+        }
+        [style*="#16A34A"] {
+            color: {THEME["success"]} !important;
+        }
+        [style*="#64748B"], [style*="#6B7280"], [style*="#475569"],
+        [style*="#334155"], [style*="#94A3B8"] {
+            color: {THEME["text-muted"]} !important;
+        }
+
+        /* Light backgrounds embedded in inline HTML. */
+        [style*="#FFFFFF"], [style*="#ffffff"],
+        [style*="#FFFDF9"], [style*="#FAFAFA"],
+        [style*="#F8FAFC"], [style*="#F1F5F9"] {
+            background-color: {THEME["surface"]} !important;
+        }
+
+        .ad-box-tall {
+            background-color: {THEME["surface-muted"]} !important;
+            color: {THEME["text-muted"]} !important;
+            border-color: {THEME["border"]} !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,
