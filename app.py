@@ -784,10 +784,17 @@ def get_chart_history(code, period="1y"):
     기존 동작이라 - 여기서 캐시 정책을 바꿔도 메인 펀더멘탈 리포트 페이지는 영향 없음.
     ⚠️ yfinance가 가끔 배당락/액션 처리 과정에서 같은 날짜가 중복되거나 정렬이 흐트러진
     행을 섞어 반환하는 경우가 있어서 - 이러면 차트에서 선이 시간순으로 안 이어지고
-    지그재그로 튀어보임(RSI 톱니, 거래량 줄무늬의 흔한 원인) - 방어적으로 정렬+중복제거."""
-    ticker_symbol = f"{code}.KS" if code.isdigit() else code
+    지그재그로 튀어보임(RSI 톱니, 거래량 줄무늬의 흔한 원인) - 방어적으로 정렬+중복제거.
+    ⚠️ 코스피(.KS)/코스닥(.KQ) 접미사 문제 - 국내 종목이 어느 시장인지 별도 조회 없이,
+    .KS로 먼저 시도해보고 데이터가 비어있으면 .KQ로 한 번 더 시도함 (일부 종목이
+    데이터를 못 가져오던 원인 - 코스닥 종목에 .KS를 붙이면 야후 파이낸스가 못 찾음)."""
     try:
-        df = yf.Ticker(ticker_symbol).history(period=period)
+        if code.isdigit():
+            df = yf.Ticker(f"{code}.KS").history(period=period)
+            if df.empty:
+                df = yf.Ticker(f"{code}.KQ").history(period=period)
+        else:
+            df = yf.Ticker(code).history(period=period)
         return df[~df.index.duplicated(keep="last")].sort_index() if not df.empty else df
     except Exception:
         return pd.DataFrame()
@@ -797,10 +804,15 @@ def get_chart_history(code, period="1y"):
 def get_chart_history_intraday(code, yf_interval="30m", period="60d"):
     """분봉 전용. yfinance 자체가 분봉은 최근 구간만 제공하는 제약이 있어서
     (30분봉 기준 최근 60일 정도) 일/주/월봉처럼 전체 기간을 볼 수는 없음 - 그래서
-    일봉(get_chart_history)과 별도 함수 + 짧은 캐시(30분)로 분리해둠."""
-    ticker_symbol = f"{code}.KS" if code.isdigit() else code
+    일봉(get_chart_history)과 별도 함수 + 짧은 캐시(30분)로 분리해둠.
+    ⚠️ get_chart_history()와 동일한 이유로 .KS 실패 시 .KQ(코스닥)로 폴백."""
     try:
-        df = yf.Ticker(ticker_symbol).history(period=period, interval=yf_interval)
+        if code.isdigit():
+            df = yf.Ticker(f"{code}.KS").history(period=period, interval=yf_interval)
+            if df.empty:
+                df = yf.Ticker(f"{code}.KQ").history(period=period, interval=yf_interval)
+        else:
+            df = yf.Ticker(code).history(period=period, interval=yf_interval)
         return df[~df.index.duplicated(keep="last")].sort_index() if not df.empty else df
     except Exception:
         return pd.DataFrame()
@@ -878,7 +890,18 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     if height is None:
         height = 700 + 220 * n_extra
 
-    dates = [d.strftime("%Y-%m-%d") for d in hist_df.index]
+    # 분봉처럼 하루 안에 캔들이 여러 개인 경우, 날짜만으로 카테고리를 만들면 같은 날의
+    # 모든 캔들이 한 자리에 겹쳐버림(분봉 캔들 색이 섞여 보이던 원인) - 캔들 간 평균 간격이
+    # 하루보다 훨씬 짧으면(분봉) 시:분까지 포함해서 각 캔들이 고유한 자리를 갖게 함
+    if len(hist_df.index) >= 2:
+        typical_gap = hist_df.index.to_series().diff().median()
+        is_intraday = typical_gap < pd.Timedelta(hours=20)
+    else:
+        is_intraday = False
+    date_fmt = "%Y-%m-%d %H:%M" if is_intraday else "%Y-%m-%d"
+    tick_date_fmt = "%m/%d %H:%M" if is_intraday else "%b %d"
+
+    dates = [d.strftime(date_fmt) for d in hist_df.index]
 
     # 카테고리(순번) 축용 눈금 - 거래일만 순서대로 나열하니 Plotly가 날짜를 자동으로
     # 예쁘게 포맷해주지 않아서, 8개 정도로 골라 직접 라벨을 만들어줌
@@ -886,7 +909,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     tick_step = max(1, n_pts // 8)
     tick_indices = list(range(0, n_pts, tick_step))
     tick_vals = [dates[i] for i in tick_indices]
-    tick_text = [hist_df.index[i].strftime("%b %d") for i in tick_indices]
+    tick_text = [hist_df.index[i].strftime(tick_date_fmt) for i in tick_indices]
     o, h, l, c = hist_df["Open"].tolist(), hist_df["High"].tolist(), hist_df["Low"].tolist(), hist_df["Close"].tolist()
     volume = hist_df["Volume"].tolist()
     # 색상 컨벤션: 국내 종목은 상승=빨강/하락=파랑, 해외(미국 등) 종목은 상승=초록/하락=빨강(월가 표준) -
@@ -2540,11 +2563,8 @@ else:
 
                         # 값 포맷팅 조정 (성장률이나 비율 지표는 뒤에 % 또는 %p 추가)
                         if value is not None:
-                            if metric_key in ["revenue_growth", "eps_growth", "opm", "roic", "roa", "debt_rate", "sga_ratio"]:
+                            if metric_key in ["revenue_growth", "eps_growth", "opm", "roic", "roa", "debt_rate", "quick_ratio", "sga_ratio"]:
                                 value_display = f"{value}%"
-                            elif metric_key == "quick_ratio":
-                                # DB에는 채점 일관성을 위해 배율(예: 0.7599)로 저장하고 화면에는 %로 표시.
-                                value_display = f"{value * 100:.2f}%"
                             elif metric_key == "downturn_defense":
                                 value_display = f"{value}%p"
                             else:
@@ -2664,11 +2684,7 @@ else:
                                 st.markdown(period_chart_title)
                                 unit_label = METRIC_UNITS.get(metric_key, "%")
                                 x_labels = [h[0] for h in history]
-                                history_values = [
-                                    h[1] * 100 if metric_key == "quick_ratio" else h[1]
-                                    for h in history
-                                ]
-                                trend_df = pd.DataFrame({"기간": x_labels, "실측값": history_values})
+                                trend_df = pd.DataFrame({"기간": x_labels, "실측값": [h[1] for h in history]})
                                 chart_type = st.radio(
                                     "차트 유형",
                                     ["선", "막대"],
