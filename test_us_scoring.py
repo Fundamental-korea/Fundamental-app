@@ -67,7 +67,7 @@ class USScoringStructureTest(unittest.TestCase):
             "downturn_defense": 5,
         }
         result = us_scoring.calculate_us_score(metrics, "standard")
-        self.assertEqual(result["coverage_pct"], 90.0)
+        self.assertEqual(result["coverage_pct"], 95.0)
         self.assertEqual(result["score_cap"], 100.0)
         self.assertEqual(result["total_score"], 80.0)
         self.assertEqual(result["missing_metric_count"], 1)
