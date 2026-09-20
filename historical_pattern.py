@@ -24,6 +24,7 @@ _TOLERANCES = {
     "stochastic": {"k": 12.0, "d": 12.0, "k_minus_d": 10.0, "return20": 0.12},
     "ichimoku": {"cloud_position": 1.0, "tenkan_kijun": 0.04, "cloud_thickness": 0.06, "return20": 0.12},
     "volume": {"volume_ratio": 0.50, "volume_ratio_change5": 0.75, "return5": 0.08, "return20": 0.12},
+    "adx": {"adx": 10.0, "plus_di": 10.0, "minus_di": 10.0, "adx_change5": 8.0, "return20": 0.12},
 }
 
 
@@ -109,6 +110,16 @@ def _features(hist_df: pd.DataFrame, ind: Dict[str, pd.Series], key: str) -> pd.
         out["cloud_position"] = pos
         out["tenkan_kijun"] = (tenkan - kijun) / nz
         out["cloud_thickness"] = (top - bottom) / nz
+        out["return20"] = _ret(close, 20)
+
+    elif key == "adx":
+        adx = pd.to_numeric(ind["adx14"], errors="coerce")
+        plus_di = pd.to_numeric(ind["plus_di14"], errors="coerce")
+        minus_di = pd.to_numeric(ind["minus_di14"], errors="coerce")
+        out["adx"] = adx
+        out["plus_di"] = plus_di
+        out["minus_di"] = minus_di
+        out["adx_change5"] = adx - adx.shift(5)
         out["return20"] = _ret(close, 20)
 
     elif key == "volume":
@@ -355,6 +366,10 @@ def classify_current_condition(
     if macd_hist is not None and len(macd_hist) > 5:
         hist_change5 = _safe_float(macd_hist.iloc[-1] - macd_hist.iloc[-6])
 
+    adx = _latest_series_value(indicators, "adx14")
+    plus_di = _latest_series_value(indicators, "plus_di14")
+    minus_di = _latest_series_value(indicators, "minus_di14")
+
     weakness_signals = 0
     weakness_reasons = []
     if rsi_change5 is not None and rsi_change5 <= -3.0:
@@ -377,6 +392,13 @@ def classify_current_condition(
     else:
         state = "neutral"
         primary_direction = "up"
+
+    adx_trend_context = None
+    if adx is not None and plus_di is not None and minus_di is not None and adx >= 25:
+        if plus_di > minus_di:
+            adx_trend_context = "강한 상승추세"
+        elif minus_di > plus_di:
+            adx_trend_context = "강한 하락추세"
 
     if state.startswith("overbought") and momentum == "weakening":
         context = "과매수 + 모멘텀 둔화"
@@ -414,7 +436,11 @@ def classify_current_condition(
         "oversold_count": oversold_count,
         "trend": trend,
         "momentum": momentum,
+        "adx_trend_context": adx_trend_context,
         "signals": signals,
+        "adx": adx,
+        "plus_di": plus_di,
+        "minus_di": minus_di,
         "weakness_reasons": weakness_reasons,
         "rsi": rsi,
         "stoch_k": stoch_k,
@@ -473,7 +499,7 @@ def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Se
 
 
 def analyze_all_indicator_patterns(hist_df: pd.DataFrame, indicators: Dict[str, pd.Series]) -> Dict[str, Dict]:
-    keys = ("ma", "bollinger", "rsi", "stochastic", "ichimoku", "macd", "volume")
+    keys = ("ma", "bollinger", "rsi", "stochastic", "ichimoku", "macd", "adx", "volume")
     results = {key: analyze_indicator_pattern(hist_df, indicators, key) for key in keys}
     results["_market_condition"] = classify_current_condition(hist_df, indicators)
     return results
