@@ -6,6 +6,7 @@ from historical_pattern import (
     HORIZONS,
     LOOKBACK_YEARS,
     MIN_SIMILARITY,
+    _features,
     _similarity,
     _outcome_stats,
     _select_matches,
@@ -34,6 +35,50 @@ class HistoricalPatternTests(unittest.TestCase):
         self.assertGreater(stats["median_return"], 0.0)
         self.assertGreaterEqual(stats["down_probability_ci_low"], 0.0)
         self.assertLessEqual(stats["down_probability_ci_high"], 100.0)
+
+    def test_new_indicator_features_exist(self):
+        df = pd.DataFrame(
+            {
+                "Close": np.linspace(100, 130, 100),
+                "Volume": np.linspace(1_000_000, 1_500_000, 100),
+            }
+        )
+        idx = pd.bdate_range("2025-01-01", periods=100)
+        df.index = idx
+        high = df["Close"] + 2.0
+        low = df["Close"] - 2.0
+
+        from chart_indicators import compute_all_indicators
+        indicators = compute_all_indicators(
+            pd.DataFrame(
+                {
+                    "Open": df["Close"],
+                    "High": high,
+                    "Low": low,
+                    "Close": df["Close"],
+                    "Volume": df["Volume"],
+                },
+                index=idx,
+            )
+        )
+
+        expected = {
+            "atr": {"atr_pct", "atr_change5", "return20"},
+            "obv": {"obv_change5_norm", "obv_change20_norm", "return20"},
+            "mfi": {"mfi", "mfi_change5", "return20"},
+            "vwap": {"vwap_gap", "vwap_change5", "return20"},
+        }
+        hist_ohlcv = pd.DataFrame(
+            {
+                "Close": df["Close"],
+                "Volume": df["Volume"],
+            },
+            index=idx,
+        )
+        for key, feature_names in expected.items():
+            features = _features(hist_ohlcv, indicators, key)
+            self.assertTrue(feature_names.issubset(set(features.columns)))
+            self.assertGreater(features[feature_names].notna().sum().sum(), 0)
 
     def test_horizons_are_fixed_trading_day_offsets(self):
         self.assertEqual(HORIZONS, (5, 20, 60))
