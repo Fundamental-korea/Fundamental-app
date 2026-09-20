@@ -30,6 +30,9 @@ SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT", "Fundamental-app contact@examp
 
 SEC_FACTS_URL = "https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json"
 SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions/CIK{cik}.json"
+
+SEC_MIN_REQUEST_INTERVAL = 0.25
+_SEC_LAST_REQUEST = 0.0
 PERIODS = (1, 3, 5, 10)
 FLOW_FORMS = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
 SNAPSHOT_FORMS = {"10-Q", "10-Q/A", "10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
@@ -478,15 +481,34 @@ def classify_company(submissions):
     return sic_desc or (f"SIC {sic}" if sic else None)
 
 
-def fetch_json(session, url, retries=3):
+def fetch_json(session, url, retries=4):
+    global _SEC_LAST_REQUEST
+    last_response = None
     for attempt in range(retries):
-        response = session.get(url, timeout=30)
-        if response.status_code == 200:
-            return response.json()
-        if response.status_code in (429, 500, 502, 503, 504):
-            time.sleep(1.5 * (attempt + 1))
-            continue
-        response.raise_for_status()
+        wait = SEC_MIN_REQUEST_INTERVAL - (time.monotonic() - _SEC_LAST_REQUEST)
+        if wait > 0:
+            time.sleep(wait)
+        _SEC_LAST_REQUEST = time.monotonic()
+        try:
+            response = session.get(url, timeout=30)
+            last_response = response
+            if response.status_code == 200:
+                return response.json()
+            if response.status_code in (429, 500, 502, 503, 504):
+                if attempt < retries - 1:
+                    raw = response.headers.get("Retry-After")
+                    try:
+                        retry_after = float(raw)
+                    except (TypeError, ValueError):
+                        retry_after = None
+                    delay = min(max(retry_after, 1.0), 30.0) if retry_after is not None and retry_after >= 0 else min(2.0 ** attempt, 16.0)
+                    time.sleep(delay)
+                    continue
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            if attempt >= retries - 1:
+                raise
+            time.sleep(min(2.0 ** attempt, 16.0))
     raise RuntimeError(f"SEC request failed after {retries} retries: {url}")
 
 
