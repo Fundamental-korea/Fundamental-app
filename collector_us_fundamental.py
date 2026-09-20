@@ -44,6 +44,9 @@ FACT_ALIASES = {
     "equity": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
     "equity_nci": ["MinorityInterest", "NoncontrollingInterestInConsolidatedEntity", "NoncontrollingInterestInConsolidatedEntityIncludingPortionAttributableToRedeemableNoncontrollingInterest"],
     "liabilities": ["Liabilities"],
+    "debt_current": ["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent", "CurrentBorrowings", "CurrentPortionOfLongtermBorrowings"],
+    "debt_noncurrent": ["LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligationsNoncurrent", "NoncurrentBorrowings", "LongtermBorrowings", "Borrowings"],
+    "debt_total": ["LongTermDebt", "DebtAndCapitalLeaseObligations", "LongTermDebtCurrentAndNoncurrent", "DebtInstrumentCarryingAmount"],
     "current_assets": ["AssetsCurrent"],
     "current_liabilities": ["LiabilitiesCurrent"],
     "inventory": ["InventoryNet", "InventoryGross"],
@@ -65,6 +68,9 @@ IFRS_FACT_ALIASES = {
     "equity": ["EquityAttributableToOwnersOfParent", "Equity"],
     "equity_nci": ["NoncontrollingInterestsInEquity", "NoncontrollingInterestInConsolidatedEntity", "MinorityInterest"],
     "liabilities": ["Liabilities"],
+    "debt_current": ["CurrentBorrowings", "CurrentPortionOfLongtermBorrowings", "ShorttermBorrowings"],
+    "debt_noncurrent": ["LongtermBorrowings", "NoncurrentBorrowings", "Borrowings"],
+    "debt_total": ["Borrowings", "LoansAndBorrowings"],
     "current_assets": ["CurrentAssets"],
     "current_liabilities": ["CurrentLiabilities"],
     "inventory": ["Inventories"],
@@ -445,10 +451,21 @@ def annual_metrics(index, year):
     ocf = latest_annual_value(index, "operating_cash_flow", year)
     sga = latest_annual_value(index, "sga", year)
     eps = latest_annual_value(index, "eps", year)
+    debt_current = latest_annual_value(index, "debt_current", year)
+    debt_noncurrent = latest_annual_value(index, "debt_noncurrent", year)
+    debt_total = latest_annual_value(index, "debt_total", year)
+    debt = (
+        (debt_current or 0.0) + (debt_noncurrent or 0.0)
+        if debt_current is not None or debt_noncurrent is not None
+        else debt_total
+    )
+    # ROIC uses invested operating capital rather than total liabilities:
+    # equity + interest-bearing debt - cash. This avoids counting payables,
+    # deferred revenue, and other operating liabilities as invested capital.
     nopat = opinc * 0.78 if opinc is not None else None
     invested_capital = None
-    if equity is not None or liabilities is not None:
-        invested_capital = (equity or 0.0) + (liabilities or 0.0) - (cash or 0.0)
+    if equity is not None and debt is not None:
+        invested_capital = equity + debt - (cash or 0.0)
         if invested_capital <= 0:
             invested_capital = None
     quick_assets = current_assets - (inventory or 0.0) if current_assets is not None else ((cash or 0.0) + (receivables or 0.0) if cash is not None or receivables is not None else None)
