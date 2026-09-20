@@ -174,7 +174,7 @@ BDC_BANDS = {
 # Standard US metric bands. Its only specialization is the weight mix below.
 DEFENSE_BANDS = STANDARD_BANDS
 
-# Utility model v2.4# Utility model v2.4 is kept as the integrated utility profile.
+# Utility model v2.4 is kept as the integrated utility profile.
 UTILITY_BANDS = {
     "revenue_growth": [(20,10),(15,9),(10,8),(5,7),(0,6),(-5,5),(-10,4),(-20,3),(-35,2),(-50,1)],
     "eps_growth": [(20,10),(15,9),(10,8),(5,7),(0,6),(-5,5),(-10,4),(-20,3),(-35,2),(-50,1)],
@@ -185,7 +185,7 @@ UTILITY_BANDS = {
     "fcf_debt": [(10,10),(8,9),(6,8),(4,7),(3,6),(2,5),(1,4),(0,3),(-2,2),(-5,1)],
     "interest_coverage": [(8,10),(6,9),(5,8),(4,7),(3,6),(2.5,5),(2,4),(1.5,3),(1,2),(.5,1)],
     "dividend_coverage": [(6,10),(4.5,9),(3.5,8),(2.75,7),(2.25,6),(1.75,5),(1.5,4),(1.25,3),(1,2),(.75,1)],
-    "dividend_payout": [(40,10),(50,9),(60,8),(70,6),(80,4),(90,2),(100,1)],
+    "dividend_payout": [(30,10),(40,9),(50,8),(60,7),(70,6),(80,5),(90,4),(100,3),(110,2),(120,1)],
     "downturn_defense": [(20,10),(15,9),(10,8),(5,7),(0,6),(-5,5),(-10,4),(-15,3),(-25,2),(-40,1)],
 }
 
@@ -283,7 +283,34 @@ PROFILE_BANDS = {
 PROFILE_SUBGROUPS = {
     "standard": {
         "growth": {"revenue_growth", "eps_growth"},
-        "defense": {
+        "profitability": {"opm", "roic"},
+        "financial_strength": {
+            "debt_rate", "quick_ratio", "interest_coverage",
+            "ocf_ratio", "sga_ratio",
+        },
+        "defense": {"downturn_defense"},
+    },
+    "financial": {
+        "growth": {"revenue_growth", "eps_growth"},
+        "defense": {"roa", "downturn_defense"},
+    },
+    "reit": {
+        "growth": {"revenue_growth", "eps_growth"},
+        "financial_strength": {
+            "debt_rate", "ocf_ratio", "interest_coverage",
+        },
+        "profitability": {"roa"},
+        "defense": {"downturn_defense"},
+    },
+    "bdc": {
+        "growth": {"eps_growth"},
+        "financial_strength": {
+            "debt_rate", "ocf_ratio", "interest_coverage",
+        },
+        "profitability": {"roa"},
+        "defense": {"downturn_defense"},
+    },
+    "defense": {
         "growth": {"revenue_growth", "eps_growth"},
         "profitability": {"opm", "roic"},
         "financial_strength": {
@@ -291,7 +318,8 @@ PROFILE_SUBGROUPS = {
             "ocf_ratio", "sga_ratio",
         },
         "defense": {"downturn_defense"},
-    },    "utility": {
+    },
+    "utility": {
         "growth": {"revenue_growth", "eps_growth"},
         "profitability": {"opm", "roa"},
         "financial_strength": {
