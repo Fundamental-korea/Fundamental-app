@@ -1,0 +1,50 @@
+name: US Unupdated Fundamental Recovery
+
+on:
+  push:
+    paths:
+      - "US_RECOVERY_TRIGGER.txt"
+  workflow_dispatch:
+    inputs:
+      since:
+        description: "Previous full recollection start time (ISO-8601)"
+        required: true
+        default: "2026-09-20T15:48:41Z"
+
+permissions:
+  contents: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Read recovery cutoff
+        id: cutoff
+        run: |
+          cutoff="$(cat US_RECOVERY_TRIGGER.txt)"
+          echo "since=$cutoff" >> "$GITHUB_OUTPUT"
+
+      - name: Run targeted US recovery
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          python collector_us_recover_unupdated.py --since "${{ steps.cutoff.outputs.since }}"
