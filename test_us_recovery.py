@@ -125,22 +125,14 @@ class RecoveryRegressionTests(unittest.TestCase):
                 "filing-xbrl": {
                     "RegulatedAndUnregulatedOperatingRevenue": {
                         "USD": [
-                            {"val": 100.0, "end": "2024-12-31", "start": "2024-01-01", "form": "10-K"}
+                            {"val": 100.0, "end": "2024-12-31", "start": "2024-01-01", "form": "10-K", "filing_annual": True},
+                            {"val": 110.0, "end": "2025-12-31", "start": "2025-01-01", "form": "10-K", "filing_annual": True}
                         ]
                     },
                     "OperatingIncomeLoss": {
                         "USD": [
-                            {"val": 20.0, "end": "2024-12-31", "start": "2024-01-01", "form": "10-K"}
-                        ]
-                    },
-                    "Revenue": {
-                        "USD": [
-                            {"val": 110.0, "end": "2025-12-31", "start": "2025-01-01", "form": "10-K"}
-                        ]
-                    },
-                    "OperatingIncomeLossCustom": {
-                        "USD": [
-                            {"val": 22.0, "end": "2025-12-31", "start": "2025-01-01", "form": "10-K"}
+                            {"val": 20.0, "end": "2024-12-31", "start": "2024-01-01", "form": "10-K", "filing_annual": True},
+                            {"val": 22.0, "end": "2025-12-31", "start": "2025-01-01", "form": "10-K", "filing_annual": True}
                         ]
                     },
                 }
