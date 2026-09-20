@@ -752,7 +752,7 @@ def _parse_report_financials(df, df_full=None):
         "roic": round(nopat / invested_capital * 100, 2) if invested_capital > 0 else None,
         "roa": round(net_income / total_assets * 100, 2) if total_assets > 0 else None,  # 금융섹터 대체지표
         "debt_rate": debt_rate,
-        "quick_ratio": round((current_assets - inventory) / current_liab * 100, 2) if current_liab > 0 else None,
+        "quick_ratio": round((current_assets - inventory) / current_liab, 4) if current_liab > 0 else None,
         "interest_coverage": resolve_interest_coverage(op_profit, interest_exp, debt_rate),
         "ocf_ratio": round(operating_cf / net_income, 2) if net_income > 0 else None,
         "sga_ratio": round(sga_costs / revenue * 100, 2) if revenue > 0 else None,
