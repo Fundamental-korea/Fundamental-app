@@ -2664,7 +2664,11 @@ else:
                                 st.markdown(period_chart_title)
                                 unit_label = METRIC_UNITS.get(metric_key, "%")
                                 x_labels = [h[0] for h in history]
-                                trend_df = pd.DataFrame({"기간": x_labels, "실측값": [h[1] for h in history]})
+                                history_values = [
+                                    h[1] * 100 if metric_key == "quick_ratio" else h[1]
+                                    for h in history
+                                ]
+                                trend_df = pd.DataFrame({"기간": x_labels, "실측값": history_values})
                                 chart_type = st.radio(
                                     "차트 유형",
                                     ["선", "막대"],
