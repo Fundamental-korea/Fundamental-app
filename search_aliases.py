@@ -117,10 +117,14 @@ SEARCH_ALIASES_BY_TICKER = {
 }
 
 
-def aliases_for(ticker: str, company_name: str = "") -> list[str]:
+def aliases_for(ticker: str, company_name: str = "", company_name_ko: str = "") -> list[str]:
     """Return deduplicated aliases while preserving canonical ticker/name."""
     key = str(ticker or "").upper().strip()
-    values = [str(ticker or "").strip(), str(company_name or "").strip()]
+    values = [
+        str(ticker or "").strip(),
+        str(company_name or "").strip(),
+        str(company_name_ko or "").strip(),
+    ]
     values.extend(SEARCH_ALIASES_BY_TICKER.get(key, []))
 
     seen: set[str] = set()
