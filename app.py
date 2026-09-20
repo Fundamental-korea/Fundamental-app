@@ -1562,23 +1562,11 @@ if selected_code and view_mode_param == "chart":
             fin_per = chart_supabase_data.get("per")
             fin_pbr = chart_supabase_data.get("pbr")
             fin_price = chart_supabase_data.get("stock_price")
-            fin_snapshot_date = chart_supabase_data.get("market_snapshot_date")
             fin_base_year = chart_supabase_data.get("base_year")
             fin_wics = chart_supabase_data.get("wics_sector")
 
-            if fin_snapshot_date:
-                try:
-                    fin_price_date = pd.Timestamp(fin_snapshot_date)
-                    fin_price_label = (
-                        f"현재가 ({fin_price_date.year}-{fin_price_date.month:02d}-{fin_price_date.day:02d} 종가)"
-                    )
-                except Exception:
-                    fin_price_label = f"현재가 ({fin_snapshot_date} 종가)"
-            else:
-                fin_price_label = "현재가 (기준일 종가)"
-
             finstat_items = [
-                (fin_price_label, _fmt_won(fin_price)),
+                ("현재가(기준일 종가)", _fmt_won(fin_price)),
                 ("기준 회계연도", str(fin_base_year) if fin_base_year else "N/A"),
                 ("업종(WICS)", fin_wics or "N/A"),
                 ("매출액", _fmt_won(fin_revenue)),
@@ -1597,10 +1585,7 @@ if selected_code and view_mode_param == "chart":
                 for label, value in finstat_items
             )
             st.markdown(f'<div class="finstat-grid">{finstat_items_html}</div>', unsafe_allow_html=True)
-            st.caption(
-                "ℹ️ 주가는 표시된 거래일의 종가 기준입니다. 재무 수치는 DART 기준 최신 확정 공시를 사용하며, "
-                "새로운 분기/반기 공시가 나오면 자동 갱신됩니다."
-            )
+            st.caption("ℹ️ 위 재무 수치는 DART 공시 기준 최신 확정 연간 사업보고서(기준 회계연도) 데이터입니다.")
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
@@ -1642,27 +1627,12 @@ elif view_mode_param == "analysis_search":
 elif selected_code and view_mode_param == "analysis":
     # ==========================================
     # [5-1] 차트 분석(기술적 지표) 페이지 - 전용 검색 화면에서 검색해 새 창으로 열림
+    # ⚠️ 네이버증권처럼 로고/명언/광고 없이 차트+지표에만 집중하는 미니멀 레이아웃 -
+    # 다른 페이지(메인/리포트)와 달리 이 페이지만 별도로 이렇게 구성함 (요청사항)
     # ==========================================
-    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
+    st.link_button("📊 리포트로 돌아가기", f"?code={selected_code}")
 
-    with col_logo:
-        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
-
-    with col_quote:
-        render_quote_box()
-
-    with col_login:
-        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
-        st.link_button("📊 리포트로 돌아가기", f"?code={selected_code}", use_container_width=True)
-
-    st.markdown("<br>", unsafe_allow_html=True)
-
-    left_ad, analysis_main, right_ad = st.columns([0.6, 6.8, 0.6])
-
-    with left_ad:
-        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
-
-    with analysis_main:
+    with st.container():
         analysis_name = query_params.get("name", selected_code)
         st.markdown(f"### 📊 {analysis_name} ({selected_code}) 차트 분석 (Chart Analysis)")
 
@@ -1788,9 +1758,6 @@ elif selected_code and view_mode_param == "analysis":
             st.line_chart(hist_df["Close"])
         else:
             st.info("실시간 차트 데이터를 불러올 수 없습니다.")
-
-    with right_ad:
-        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
 elif not selected_code:
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
@@ -2122,11 +2089,10 @@ else:
                     "up" if pct_from_high >= 0 else "down",
                 )
 
-        # PER/PBR/배당 관련 값은 바로 위 '시세 스냅샷'과 반드시 같은 가격 기준을 사용한다.
-        # 한국 종목은 DB에 검증·저장된 market_snapshot_date / stock_price를 기준가로 사용하고,
-        # 미국 종목은 기존 OHLCV 최근 종가(live_price)를 그대로 사용한다.
-        # 이렇게 해야 웹페이지 안에서 표시되는 '주가 스냅샷'과 PER/PBR/배당수익률이 서로 다른
-        # 날짜의 주가를 사용해서 어긋나는 문제가 생기지 않는다.
+        # collector.py가 이미 DART 공시 기준 EPS/BPS/주당배당금을 원시값으로 저장해두고 있어서
+        # (PER/PBR을 거꾸로 나눠서 추정할 필요 없이) 그 원시값을 그대로 쓰고, PER/PBR/배당수익률은
+        # '오늘 주가 ÷ 원시값'으로 매일 갱신되는 라이브 값을 계산한다. 아직 CFS 재수집 전이라
+        # eps/bps 원시값이 없는 종목만 예전 방식(저장된 per/pbr에서 역산)으로 폴백한다.
         overview_supabase_data = data.get("supabase_data") or {}
         ov_per_stored = overview_supabase_data.get("per")
         ov_pbr_stored = overview_supabase_data.get("pbr")
@@ -2135,49 +2101,41 @@ else:
         ov_dps = overview_supabase_data.get("dividend_per_share")
         ov_dividend_yield_stored = overview_supabase_data.get("dividend_yield")
         ov_net_income = overview_supabase_data.get("net_income")
-        snapshot_price = overview_supabase_data.get("stock_price")
 
         if live_price is None:
-            live_price = snapshot_price
-
-        # 한국 주식의 밸류에이션/배당 수익률 기준가는 항상 시세 스냅샷 가격으로 고정한다.
-        # 미국 주식은 기존 live_price 경로를 유지한다.
-        valuation_price = (
-            snapshot_price if is_kr_stock and snapshot_price is not None else live_price
-        )
+            live_price = overview_supabase_data.get("stock_price")
 
         if ov_eps is not None:
             overview["EPS"] = (f"{ov_eps:,.0f}{won}", "neutral")
-            if valuation_price and ov_eps != 0:
-                overview["PER"] = (f"{valuation_price / ov_eps:.2f}", "neutral")
+            if live_price and ov_eps != 0:
+                overview["PER"] = (f"{live_price / ov_eps:.2f}", "neutral")
                 if ov_net_income:
                     shares_est = ov_net_income / ov_eps
                     if shares_est > 0:
-                        overview["시가총액(추정)"] = (_format_krw_compact(shares_est * valuation_price), "neutral")
-        elif ov_per_stored is not None and ov_per_stored > 0 and valuation_price:
+                        overview["시가총액(추정)"] = (_format_krw_compact(shares_est * live_price), "neutral")
+        elif ov_per_stored is not None and ov_per_stored > 0 and live_price:
             # 폴백: 아직 재수집 전이라 eps 원시값이 없는 종목만 예전처럼 역산 + '(추정)' 라벨
-            eps_est = valuation_price / ov_per_stored
+            eps_est = live_price / ov_per_stored
             overview["EPS(추정)"] = (f"{eps_est:,.0f}{won}", "neutral")
             overview["PER"] = (f"{ov_per_stored}", "neutral")
 
         if ov_bps is not None:
             overview["BPS"] = (f"{ov_bps:,.0f}{won}", "neutral")
-            if valuation_price and ov_bps > 0:
-                overview["PBR"] = (f"{valuation_price / ov_bps:.2f}", "neutral")
-        elif ov_pbr_stored is not None and ov_pbr_stored > 0 and valuation_price:
-            bps_est = valuation_price / ov_pbr_stored
+            if live_price and ov_bps > 0:
+                overview["PBR"] = (f"{live_price / ov_bps:.2f}", "neutral")
+        elif ov_pbr_stored is not None and ov_pbr_stored > 0 and live_price:
+            bps_est = live_price / ov_pbr_stored
             overview["BPS(추정)"] = (f"{bps_est:,.0f}{won}", "neutral")
             overview["PBR"] = (f"{ov_pbr_stored}", "neutral")
 
         if ov_dps is not None:
             overview["주당배당금"] = (f"{ov_dps:,.0f}{won}", "neutral")
-            if valuation_price:
-                overview["배당수익률"] = (f"{ov_dps / valuation_price * 100:.2f}%", "neutral")
+            if live_price:
+                overview["배당수익률"] = (f"{ov_dps / live_price * 100:.2f}%", "neutral")
         elif ov_dividend_yield_stored is not None:
             overview["배당수익률"] = (f"{ov_dividend_yield_stored}%", "neutral")
-            if valuation_price:
-                # 저장된 배당수익률만 있는 종목은 스냅샷 기준가로 일관되게 추정한다.
-                dps_est = ov_dividend_yield_stored / 100 * valuation_price
+            if live_price:
+                dps_est = ov_dividend_yield_stored / 100 * live_price
                 overview["주당배당금(추정)"] = (f"{dps_est:,.0f}{won}", "neutral")
 
         # 아직 소스가 없는 항목은 값 대신 "준비 중"으로 명시 (없는 척 숨기지 않고 투명하게 표시)
@@ -2196,17 +2154,6 @@ else:
             data_basis_label = overview_supabase_data.get("data_basis_label")
             if data_basis_label:
                 st.caption(f"📅 EPS/BPS/PER/PBR/매출/순이익 등 재무 수치 기준: **{data_basis_label}** (최신 공시가 나오면 자동 갱신됩니다)")
-
-            # 주가와 재무 공시의 기준일은 서로 다를 수 있으므로 별도로 명시.
-            # 주말/공휴일에는 market_snapshot_date가 직전 거래일(예: 금요일)을 가리킨다.
-            market_snapshot_date = overview_supabase_data.get("market_snapshot_date")
-            if market_snapshot_date:
-                try:
-                    price_date = pd.Timestamp(market_snapshot_date)
-                    price_date_text = f"{price_date.year}년 {price_date.month}월 {price_date.day}일"
-                except Exception:
-                    price_date_text = str(market_snapshot_date)
-                st.caption(f"📈 주가 스냅샷 기준: **{price_date_text} 종가**")
         else:
             st.info("시세 스냅샷 데이터를 불러올 수 없습니다.")
 
