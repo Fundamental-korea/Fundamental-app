@@ -2611,6 +2611,14 @@ else:
                                 "근사치로 계산된 값입니다. 실제보다 다소 보수적으로 잡혔을 수 있습니다."
                                 "</span>"
                             )
+                        elif metric_key == "quick_ratio" and entry.get("is_extreme"):
+                            growth_guard_note = (
+                                "<br><span style='font-size:12px; color:#92400E;'>"
+                                "ℹ️ Quick Ratio가 20배 이상인 경우, 유동부채가 극히 작거나 0에 가까운 "
+                                "기업에서는 실제 계산값 자체가 매우 커질 수 있습니다. "
+                                "분모 규모를 함께 확인해 해석하세요."
+                                "</span>"
+                            )
 
                         if excluded:
                             if metric_key in ("revenue_growth", "eps_growth"):
