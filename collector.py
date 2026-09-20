@@ -223,24 +223,24 @@ def get_total_equity(df, detail_df=None):
 
 def get_parent_equity(df, detail_df=None):
     """
-    BPS/PBR 전용 '지배기업 소유주지분' 추출 (get_total_equity와는 목적이 다름).
-    get_total_equity()가 반환하는 자본총계는 debt_rate 등 재무건전성 지표에는 맞는 분모지만,
-    BPS(주당순자산)는 업계 표준상 지배기업 소유주지분 ÷ 발행주식수여야 함 - 자본총계(지배+비지배
-    합산)를 그대로 쓰면 비지배지분이 큰 종목에서 BPS/PBR이 과대평가됨.
-    지배지분 라벨을 못 찾으면 None을 반환하고, 호출부에서 total_equity로 폴백한다
-    (지배주주만 있어 애초에 라벨이 안 쪼개지는 회사가 깨지지 않도록).
+    BPS/PBR 전용 '지배기업 소유주지분' 추출.
+    계정명 공백/표기 변형을 정규화해 업계 표준의 지배주주지분을 우선 사용한다.
     """
-    controlling_kw = ["지배기업의 소유주에게 귀속되는 자본", "지배기업소유주지분", "지배기업의 소유지분"]
+    controlling_kw = [
+        "지배기업의 소유주에게 귀속되는 자본",
+        "지배기업의 소유주에게 귀속되는 지분",
+        "지배기업 소유주지분",
+        "지배기업소유주지분",
+        "지배기업의 소유지분",
+        "지배기업의 소유주에게 귀속되는 자본총계",
+    ]
 
-    for source_df in [df, detail_df]:
-        if source_df is None:
+    for source_df in (df, detail_df):
+        if source_df is None or source_df.empty:
             continue
-        for kw in controlling_kw:
-            row = source_df[source_df["account_nm"].str.contains(kw, na=False, regex=False)]
-            if not row.empty:
-                val_str = str(row.iloc[0]["thstrm_amount"]).replace(",", "")
-                if val_str and val_str != "-":
-                    return float(val_str)
+        value = _find_account_value(source_df, controlling_kw, field="thstrm_amount")
+        if value is not None:
+            return value
 
     return None
 
@@ -927,22 +927,19 @@ def _discover_periodic_reports_from_dart_list(stock_code, lookback_years=2):
     """
     달력 기준 보고서 코드/연도가 실제 회사 회계연도와 어긋나는 예외 종목용 보정.
 
-    DART 공시목록의 실제 보고기간(YYYY.MM)과 회사 결산월을 함께 사용해
+    DART 공시목록의 실제 보고기간(YYYY.MM)과 회사의 실제 결산월을 함께 사용해
     OpenDART 재무 API에 필요한 (사업연도, reprt_code)를 복원한다.
-    - 사업연도는 회사의 회계연도 종료 연도 기준
-    - 3개월/6개월/9개월 시점은 각각 11013/11012/11014
+    결산월은 별도 company() 호출보다 최근 사업보고서 제목의 결산기준월을 우선 사용한다.
     """
     import re
-    import calendar
-    from datetime import date
+    from datetime import date, timedelta
     from pandas import DataFrame
 
     end_date = date.today()
     try:
         start_date = end_date.replace(year=end_date.year - lookback_years)
     except ValueError:
-        # Leap-day 안전 fallback
-        start_date = end_date - __import__("datetime").timedelta(days=365 * lookback_years)
+        start_date = end_date - timedelta(days=365 * lookback_years)
 
     try:
         df = dart.list(
@@ -959,75 +956,78 @@ def _discover_periodic_reports_from_dart_list(stock_code, lookback_years=2):
     if not isinstance(df, DataFrame) or df.empty:
         return []
 
-    fiscal_month = _get_company_fiscal_month_for_discovery(stock_code)
-
-    rows = []
+    parsed = []
     for _, row in df.iterrows():
         report_name = str(row.get("report_nm") or "")
         rcept_dt = str(row.get("rcept_dt") or "")
 
-        # 정기보고서명에서 실제 보고기간 말(YYYY.MM)을 추출한다.
         match = re.search(r"(20\d{2})[./-](\d{1,2})", report_name)
-        period_year = None
-        period_month = None
-        if match:
-            period_year = int(match.group(1))
-            period_month = int(match.group(2))
-
-        if period_year is None:
+        if not match:
             match = re.search(r"(20\d{2})[./-](\d{1,2})", rcept_dt)
-            if match:
-                period_year = int(match.group(1))
-                period_month = int(match.group(2))
-
-        if period_year is None or period_month is None:
+        if not match:
             continue
+
+        parsed.append({
+            "report_name": report_name,
+            "rcept_dt": rcept_dt,
+            "period_year": int(match.group(1)),
+            "period_month": int(match.group(2)),
+        })
+
+    if not parsed:
+        return []
+
+    # 실제 사업연도 종료월은 최근 사업보고서의 보고기간 월에서 복원한다.
+    annuals = [x for x in parsed if "사업보고서" in x["report_name"]]
+    if annuals:
+        annuals.sort(key=lambda x: x["rcept_dt"], reverse=True)
+        fiscal_month = annuals[0]["period_month"]
+    else:
+        fiscal_month = _get_company_fiscal_month_for_discovery(stock_code)
+
+    rows = []
+    for item in parsed:
+        period_year = item["period_year"]
+        period_month = item["period_month"]
 
         report_code = None
         business_year = period_year
 
         if fiscal_month:
-            # 회사의 회계연도 종료 연도를 결정한다.
-            # 기간 말 월이 결산월보다 뒤면 다음 해에 끝나는 회계연도에 속한다.
             business_year = period_year if period_month <= fiscal_month else period_year + 1
-
-            # 보고기간이 결산월과 몇 개월 떨어져 있는지로 보고서 코드를 판별한다.
             months_from_fye = (period_month - fiscal_month) % 12
+
             if months_from_fye == 0:
-                report_code = "11011"  # 사업보고서
-            elif months_from_fye == 9:
-                report_code = "11014"  # 3분기보고서
-            elif months_from_fye == 6:
-                report_code = "11012"  # 반기보고서
-            elif months_from_fye == 3:
-                report_code = "11013"  # 1분기보고서
-
-        # 결산월 정보를 못 구하거나 위 계산으로 판별되지 않는 경우에만 제목을 보조한다.
-        if report_code is None:
-            if "사업보고서" in report_name:
                 report_code = "11011"
-            elif "반기보고서" in report_name:
+            elif months_from_fye == 3:
+                report_code = "11013"
+            elif months_from_fye == 6:
                 report_code = "11012"
-            elif "3분기보고서" in report_name:
+            elif months_from_fye == 9:
                 report_code = "11014"
-            elif "1분기보고서" in report_name:
-                report_code = "11013"
-            elif "분기보고서" in report_name:
-                report_code = "11013"
 
-            # 보조 경로에서는 DART 제목의 연도를 사업연도로 사용한다.
-            business_year = period_year
-
+        # 결산월 복원이 불가능한 회사만 제목을 보조적으로 사용한다.
         if report_code is None:
-            continue
+            if "사업보고서" in item["report_name"]:
+                report_code = "11011"
+            elif "반기보고서" in item["report_name"]:
+                report_code = "11012"
+            elif "3분기보고서" in item["report_name"]:
+                report_code = "11014"
+            elif "1분기보고서" in item["report_name"]:
+                report_code = "11013"
+            elif "분기보고서" in item["report_name"]:
+                report_code = "11013"
+            else:
+                continue
 
         rows.append({
             "report_year": int(business_year),
             "report_code": report_code,
-            "report_name": report_name,
+            "report_name": item["report_name"],
             "period_year": period_year,
             "period_month": period_month,
-            "rcept_dt": rcept_dt,
+            "rcept_dt": item["rcept_dt"],
         })
 
     rows.sort(key=lambda x: x["rcept_dt"], reverse=True)
