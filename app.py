@@ -2122,10 +2122,11 @@ else:
                     "up" if pct_from_high >= 0 else "down",
                 )
 
-        # collector.py가 이미 DART 공시 기준 EPS/BPS/주당배당금을 원시값으로 저장해두고 있어서
-        # (PER/PBR을 거꾸로 나눠서 추정할 필요 없이) 그 원시값을 그대로 쓰고, PER/PBR/배당수익률은
-        # '오늘 주가 ÷ 원시값'으로 매일 갱신되는 라이브 값을 계산한다. 아직 CFS 재수집 전이라
-        # eps/bps 원시값이 없는 종목만 예전 방식(저장된 per/pbr에서 역산)으로 폴백한다.
+        # PER/PBR/배당 관련 값은 바로 위 '시세 스냅샷'과 반드시 같은 가격 기준을 사용한다.
+        # 한국 종목은 DB에 검증·저장된 market_snapshot_date / stock_price를 기준가로 사용하고,
+        # 미국 종목은 기존 OHLCV 최근 종가(live_price)를 그대로 사용한다.
+        # 이렇게 해야 웹페이지 안에서 표시되는 '주가 스냅샷'과 PER/PBR/배당수익률이 서로 다른
+        # 날짜의 주가를 사용해서 어긋나는 문제가 생기지 않는다.
         overview_supabase_data = data.get("supabase_data") or {}
         ov_per_stored = overview_supabase_data.get("per")
         ov_pbr_stored = overview_supabase_data.get("pbr")
@@ -2134,41 +2135,49 @@ else:
         ov_dps = overview_supabase_data.get("dividend_per_share")
         ov_dividend_yield_stored = overview_supabase_data.get("dividend_yield")
         ov_net_income = overview_supabase_data.get("net_income")
+        snapshot_price = overview_supabase_data.get("stock_price")
 
         if live_price is None:
-            live_price = overview_supabase_data.get("stock_price")
+            live_price = snapshot_price
+
+        # 한국 주식의 밸류에이션/배당 수익률 기준가는 항상 시세 스냅샷 가격으로 고정한다.
+        # 미국 주식은 기존 live_price 경로를 유지한다.
+        valuation_price = (
+            snapshot_price if is_kr_stock and snapshot_price is not None else live_price
+        )
 
         if ov_eps is not None:
             overview["EPS"] = (f"{ov_eps:,.0f}{won}", "neutral")
-            if live_price and ov_eps != 0:
-                overview["PER"] = (f"{live_price / ov_eps:.2f}", "neutral")
+            if valuation_price and ov_eps != 0:
+                overview["PER"] = (f"{valuation_price / ov_eps:.2f}", "neutral")
                 if ov_net_income:
                     shares_est = ov_net_income / ov_eps
                     if shares_est > 0:
-                        overview["시가총액(추정)"] = (_format_krw_compact(shares_est * live_price), "neutral")
-        elif ov_per_stored is not None and ov_per_stored > 0 and live_price:
+                        overview["시가총액(추정)"] = (_format_krw_compact(shares_est * valuation_price), "neutral")
+        elif ov_per_stored is not None and ov_per_stored > 0 and valuation_price:
             # 폴백: 아직 재수집 전이라 eps 원시값이 없는 종목만 예전처럼 역산 + '(추정)' 라벨
-            eps_est = live_price / ov_per_stored
+            eps_est = valuation_price / ov_per_stored
             overview["EPS(추정)"] = (f"{eps_est:,.0f}{won}", "neutral")
             overview["PER"] = (f"{ov_per_stored}", "neutral")
 
         if ov_bps is not None:
             overview["BPS"] = (f"{ov_bps:,.0f}{won}", "neutral")
-            if live_price and ov_bps > 0:
-                overview["PBR"] = (f"{live_price / ov_bps:.2f}", "neutral")
-        elif ov_pbr_stored is not None and ov_pbr_stored > 0 and live_price:
-            bps_est = live_price / ov_pbr_stored
+            if valuation_price and ov_bps > 0:
+                overview["PBR"] = (f"{valuation_price / ov_bps:.2f}", "neutral")
+        elif ov_pbr_stored is not None and ov_pbr_stored > 0 and valuation_price:
+            bps_est = valuation_price / ov_pbr_stored
             overview["BPS(추정)"] = (f"{bps_est:,.0f}{won}", "neutral")
             overview["PBR"] = (f"{ov_pbr_stored}", "neutral")
 
         if ov_dps is not None:
             overview["주당배당금"] = (f"{ov_dps:,.0f}{won}", "neutral")
-            if live_price:
-                overview["배당수익률"] = (f"{ov_dps / live_price * 100:.2f}%", "neutral")
+            if valuation_price:
+                overview["배당수익률"] = (f"{ov_dps / valuation_price * 100:.2f}%", "neutral")
         elif ov_dividend_yield_stored is not None:
             overview["배당수익률"] = (f"{ov_dividend_yield_stored}%", "neutral")
-            if live_price:
-                dps_est = ov_dividend_yield_stored / 100 * live_price
+            if valuation_price:
+                # 저장된 배당수익률만 있는 종목은 스냅샷 기준가로 일관되게 추정한다.
+                dps_est = ov_dividend_yield_stored / 100 * valuation_price
                 overview["주당배당금(추정)"] = (f"{dps_est:,.0f}{won}", "neutral")
 
         # 아직 소스가 없는 항목은 값 대신 "준비 중"으로 명시 (없는 척 숨기지 않고 투명하게 표시)
