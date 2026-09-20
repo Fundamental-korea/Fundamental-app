@@ -1562,11 +1562,23 @@ if selected_code and view_mode_param == "chart":
             fin_per = chart_supabase_data.get("per")
             fin_pbr = chart_supabase_data.get("pbr")
             fin_price = chart_supabase_data.get("stock_price")
+            fin_snapshot_date = chart_supabase_data.get("market_snapshot_date")
             fin_base_year = chart_supabase_data.get("base_year")
             fin_wics = chart_supabase_data.get("wics_sector")
 
+            if fin_snapshot_date:
+                try:
+                    fin_price_date = pd.Timestamp(fin_snapshot_date)
+                    fin_price_label = (
+                        f"현재가 ({fin_price_date.year}-{fin_price_date.month:02d}-{fin_price_date.day:02d} 종가)"
+                    )
+                except Exception:
+                    fin_price_label = f"현재가 ({fin_snapshot_date} 종가)"
+            else:
+                fin_price_label = "현재가 (기준일 종가)"
+
             finstat_items = [
-                ("현재가(기준일 종가)", _fmt_won(fin_price)),
+                (fin_price_label, _fmt_won(fin_price)),
                 ("기준 회계연도", str(fin_base_year) if fin_base_year else "N/A"),
                 ("업종(WICS)", fin_wics or "N/A"),
                 ("매출액", _fmt_won(fin_revenue)),
@@ -1585,7 +1597,10 @@ if selected_code and view_mode_param == "chart":
                 for label, value in finstat_items
             )
             st.markdown(f'<div class="finstat-grid">{finstat_items_html}</div>', unsafe_allow_html=True)
-            st.caption("ℹ️ 위 재무 수치는 DART 공시 기준 최신 확정 연간 사업보고서(기준 회계연도) 데이터입니다.")
+            st.caption(
+                "ℹ️ 주가는 표시된 거래일의 종가 기준입니다. 재무 수치는 DART 기준 최신 확정 공시를 사용하며, "
+                "새로운 분기/반기 공시가 나오면 자동 갱신됩니다."
+            )
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
@@ -2172,6 +2187,17 @@ else:
             data_basis_label = overview_supabase_data.get("data_basis_label")
             if data_basis_label:
                 st.caption(f"📅 EPS/BPS/PER/PBR/매출/순이익 등 재무 수치 기준: **{data_basis_label}** (최신 공시가 나오면 자동 갱신됩니다)")
+
+            # 주가와 재무 공시의 기준일은 서로 다를 수 있으므로 별도로 명시.
+            # 주말/공휴일에는 market_snapshot_date가 직전 거래일(예: 금요일)을 가리킨다.
+            market_snapshot_date = overview_supabase_data.get("market_snapshot_date")
+            if market_snapshot_date:
+                try:
+                    price_date = pd.Timestamp(market_snapshot_date)
+                    price_date_text = f"{price_date.year}년 {price_date.month}월 {price_date.day}일"
+                except Exception:
+                    price_date_text = str(market_snapshot_date)
+                st.caption(f"📈 주가 스냅샷 기준: **{price_date_text} 종가**")
         else:
             st.info("시세 스냅샷 데이터를 불러올 수 없습니다.")
 
