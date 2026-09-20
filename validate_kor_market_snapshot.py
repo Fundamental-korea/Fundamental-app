@@ -8,6 +8,7 @@ import json
 import os
 import re
 import time
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 
@@ -148,27 +149,32 @@ def stats(rows, source):
 
 def main():
     target, sample = load_sample()
-    mk_soup = BeautifulSoup(get("https://stock.mk.co.kr/domestic/all_stocks"), "html.parser")
-    rows = []
+    print(f"TARGET_DATE={target}")
+    print(f"TOP_N={len(sample)}")
 
-    for i, row in enumerate(sample, 1):
+    # MK 전종목 페이지는 종목별 개별 호출이 필요 없어서 1회만 가져온다.
+    mk_soup = BeautifulSoup(get("https://stock.mk.co.kr/domestic/all_stocks"), "html.parser")
+
+    def validate_one(row):
         code = str(row["stock_code"])
-        print(f"[{i}/{len(sample)}] {row['stock_name']} ({code})")
         external = {}
+
         try:
             external["naver"] = naver(code, target)
         except Exception as e:
-            external["naver"] = {"price": None, "error": str(e)}
+            external["naver"] = {"price": None, "date": None, "date_verified": False, "error": str(e)}
+
         try:
             external["mk"] = mk_from_html(mk_soup, code)
         except Exception as e:
-            external["mk"] = {"price": None, "error": str(e)}
+            external["mk"] = {"price": None, "date": None, "date_verified": False, "error": str(e)}
+
         try:
             external["hankyung"] = hankyung(code, target)
         except Exception as e:
-            external["hankyung"] = {"price": None, "error": str(e)}
+            external["hankyung"] = {"price": None, "date": None, "date_verified": False, "error": str(e)}
 
-        rows.append({
+        return {
             "ours": {
                 "stock_code": code,
                 "stock_name": row["stock_name"],
@@ -179,8 +185,18 @@ def main():
                 "source": row["market_data_source"],
             },
             "external": external,
-        })
-        time.sleep(0.2)
+        }
+
+    rows = []
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {executor.submit(validate_one, row): row for row in sample}
+        for i, future in enumerate(as_completed(futures), 1):
+            rows.append(future.result())
+            print(f"[{i}/{len(sample)}] 완료")
+
+    # 순서를 시총 순으로 다시 맞춰 결과 파일을 읽기 쉽게 유지.
+    rank_map = {str(r["stock_code"]): i for i, r in enumerate(sample)}
+    rows.sort(key=lambda r: rank_map.get(r["ours"]["stock_code"], 9999))
 
     internal_mismatch = []
     for r in rows:
