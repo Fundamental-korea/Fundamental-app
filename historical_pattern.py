@@ -223,20 +223,203 @@ def _outcome_stats(close: pd.Series, matches: Iterable[Tuple[int, float]], horiz
         return None
     s = pd.Series(returns, dtype="float64")
     up_count = int((s > 0).sum())
+    down_count = int((s < 0).sum())
     n = int(len(s))
-    ci_low, ci_high = _wilson_interval(up_count, n)
+    up_ci_low, up_ci_high = _wilson_interval(up_count, n)
+    down_ci_low, down_ci_high = _wilson_interval(down_count, n)
 
     return {
         "samples": n,
         "up_probability": round(float((s > 0).mean() * 100), 1),
-        "up_probability_ci_low": ci_low,
-        "up_probability_ci_high": ci_high,
+        "up_probability_ci_low": up_ci_low,
+        "up_probability_ci_high": up_ci_high,
         "down_probability": round(float((s < 0).mean() * 100), 1),
+        "down_probability_ci_low": down_ci_low,
+        "down_probability_ci_high": down_ci_high,
         "mean_return": round(float(s.mean() * 100), 2),
         "median_return": round(float(s.median() * 100), 2),
         "p25_return": round(float(s.quantile(0.25) * 100), 2),
         "p75_return": round(float(s.quantile(0.75) * 100), 2),
         "avg_similarity": round(float(pd.Series(sims).mean()), 1),
+    }
+
+
+# Current-state presentation thresholds.
+# These are display-mode triggers, not predictions:
+# 4 signals are checked symmetrically for overbought/oversold.
+OVERBOUGHT_RSI = 70.0
+OVERSOLD_RSI = 30.0
+OVERBOUGHT_STOCH = 80.0
+OVERSOLD_STOCH = 20.0
+OVERBOUGHT_BB_PERCENT_B = 1.0
+OVERSOLD_BB_PERCENT_B = 0.0
+OVERBOUGHT_MA_GAP = 0.08
+OVERSOLD_MA_GAP = -0.08
+
+
+def _latest_series_value(indicators: Dict[str, pd.Series], key: str):
+    series = indicators.get(key)
+    if series is None or len(series) == 0:
+        return None
+    return _safe_float(series.iloc[-1])
+
+
+def classify_current_condition(
+    hist_df: pd.DataFrame,
+    indicators: Dict[str, pd.Series],
+) -> Dict:
+    """Classify the latest daily technical state for probability presentation.
+
+    The classifier decides which historical outcome direction is shown first.
+    It does not change the historical-match calculation and does not predict
+    future prices.
+    """
+    if hist_df is None or hist_df.empty or "Close" not in hist_df.columns:
+        return {"state": "unknown", "primary_direction": "up", "signals": []}
+
+    close = _safe_float(pd.to_numeric(hist_df["Close"], errors="coerce").iloc[-1])
+    sma20 = _latest_series_value(indicators, "sma20")
+    sma60 = _latest_series_value(indicators, "sma60")
+    rsi = _latest_series_value(indicators, "rsi14")
+    stoch_k = _latest_series_value(indicators, "stoch_k")
+    stoch_d = _latest_series_value(indicators, "stoch_d")
+    bb_upper = _latest_series_value(indicators, "bb_upper")
+    bb_lower = _latest_series_value(indicators, "bb_lower")
+    bb_mid = _latest_series_value(indicators, "bb_mid")
+
+    signals = []
+    overbought_count = 0
+    oversold_count = 0
+
+    if rsi is not None:
+        if rsi >= OVERBOUGHT_RSI:
+            overbought_count += 1
+            signals.append("RSI 과매수")
+        elif rsi <= OVERSOLD_RSI:
+            oversold_count += 1
+            signals.append("RSI 과매도")
+
+    if stoch_k is not None:
+        if stoch_k >= OVERBOUGHT_STOCH:
+            overbought_count += 1
+            signals.append("스토캐스틱 과매수")
+        elif stoch_k <= OVERSOLD_STOCH:
+            oversold_count += 1
+            signals.append("스토캐스틱 과매도")
+
+    if (
+        close is not None
+        and bb_upper is not None
+        and bb_lower is not None
+        and bb_upper != bb_lower
+    ):
+        percent_b = (close - bb_lower) / (bb_upper - bb_lower)
+        if percent_b >= OVERBOUGHT_BB_PERCENT_B:
+            overbought_count += 1
+            signals.append("볼린저 상단 돌파")
+        elif percent_b <= OVERSOLD_BB_PERCENT_B:
+            oversold_count += 1
+            signals.append("볼린저 하단 이탈")
+
+    ma_gap = None
+    if close is not None and sma20 not in (None, 0):
+        ma_gap = close / sma20 - 1.0
+        if ma_gap >= OVERBOUGHT_MA_GAP:
+            overbought_count += 1
+            signals.append(f"20일선 대비 +{ma_gap * 100:.1f}%")
+        elif ma_gap <= OVERSOLD_MA_GAP:
+            oversold_count += 1
+            signals.append(f"20일선 대비 {ma_gap * 100:.1f}%")
+
+    if close is not None and sma20 is not None and sma60 is not None:
+        if close > sma20 > sma60:
+            trend = "uptrend"
+        elif close < sma20 < sma60:
+            trend = "downtrend"
+        else:
+            trend = "mixed"
+    else:
+        trend = "unknown"
+
+    rsi_change5 = None
+    rsi_series = indicators.get("rsi14")
+    if rsi_series is not None and len(rsi_series) > 5:
+        rsi_change5 = _safe_float(rsi_series.iloc[-1] - rsi_series.iloc[-6])
+
+    hist_change5 = None
+    macd_hist = indicators.get("macd_hist")
+    if macd_hist is not None and len(macd_hist) > 5:
+        hist_change5 = _safe_float(macd_hist.iloc[-1] - macd_hist.iloc[-6])
+
+    weakness_signals = 0
+    weakness_reasons = []
+    if rsi_change5 is not None and rsi_change5 <= -3.0:
+        weakness_signals += 1
+        weakness_reasons.append("RSI 5일 둔화")
+    if stoch_k is not None and stoch_d is not None and stoch_k < stoch_d:
+        weakness_signals += 1
+        weakness_reasons.append("스토캐스틱 하향")
+    if hist_change5 is not None and hist_change5 < 0:
+        weakness_signals += 1
+        weakness_reasons.append("MACD 히스토그램 둔화")
+    momentum = "weakening" if weakness_signals >= 2 else "not_weakening"
+
+    if overbought_count >= 2 and oversold_count == 0:
+        state = "overbought_strong" if overbought_count >= 3 else "overbought"
+        primary_direction = "down"
+    elif oversold_count >= 2 and overbought_count == 0:
+        state = "oversold_strong" if oversold_count >= 3 else "oversold"
+        primary_direction = "up"
+    else:
+        state = "neutral"
+        primary_direction = "up"
+
+    if state.startswith("overbought") and momentum == "weakening":
+        context = "과매수 + 모멘텀 둔화"
+    elif state.startswith("oversold") and momentum == "weakening":
+        context = "과매도 + 모멘텀 둔화"
+    elif state.startswith("overbought") and trend == "uptrend":
+        context = "과매수 + 상승추세"
+    elif state.startswith("oversold") and trend == "downtrend":
+        context = "과매도 + 하락추세"
+    elif state.startswith("overbought"):
+        context = "과매수"
+    elif state.startswith("oversold"):
+        context = "과매도"
+    elif trend == "uptrend":
+        context = "상승추세"
+    elif trend == "downtrend":
+        context = "하락추세"
+    else:
+        context = "중립/혼조"
+
+    label_map = {
+        "overbought": "과매수",
+        "overbought_strong": "강한 과매수",
+        "oversold": "과매도",
+        "oversold_strong": "강한 과매도",
+        "neutral": "일반",
+    }
+    return {
+        "state": state,
+        "label": label_map.get(state, "알 수 없음"),
+        "context": context,
+        "primary_direction": primary_direction,
+        "signal_count": max(overbought_count, oversold_count),
+        "overbought_count": overbought_count,
+        "oversold_count": oversold_count,
+        "trend": trend,
+        "momentum": momentum,
+        "signals": signals,
+        "weakness_reasons": weakness_reasons,
+        "rsi": rsi,
+        "stoch_k": stoch_k,
+        "bb_percent_b": (
+            round((close - bb_lower) / (bb_upper - bb_lower), 3)
+            if close is not None and bb_upper is not None and bb_lower is not None and bb_upper != bb_lower
+            else None
+        ),
+        "ma_gap": ma_gap,
     }
 
 
@@ -280,4 +463,6 @@ def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Se
 
 def analyze_all_indicator_patterns(hist_df: pd.DataFrame, indicators: Dict[str, pd.Series]) -> Dict[str, Dict]:
     keys = ("ma", "bollinger", "rsi", "stochastic", "ichimoku", "macd", "volume")
-    return {key: analyze_indicator_pattern(hist_df, indicators, key) for key in keys}
+    results = {key: analyze_indicator_pattern(hist_df, indicators, key) for key in keys}
+    results["_market_condition"] = classify_current_condition(hist_df, indicators)
+    return results
