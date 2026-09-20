@@ -24,7 +24,7 @@ from supabase import create_client
 # --------------------------------------------------------------------------
 # 설정
 # --------------------------------------------------------------------------
-DRY_RUN = True  # True: DB에 쓰지 않고 통계/샘플만 출력. False: 실제 반영.
+DRY_RUN = False  # 실제 DB 반영 모드. 필요 시 True로 바꿔 dry-run 검증 가능.
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
