@@ -25,7 +25,7 @@ from typing import Callable
 # Version / grades
 # ---------------------------------------------------------------------------
 
-US_SCORING_VERSION = "1.0"
+US_SCORING_VERSION = "1.1"
 US_PROFILES = {"standard", "financial", "reit", "bdc", "defense", "utility"}
 
 US_GRADE_CUTOFFS = {
@@ -170,42 +170,11 @@ BDC_BANDS = {
     ],
 }
 
-DEFENSE_BANDS = {
-    "revenue_growth": [
-        (15, 10), (10, 9), (7, 8), (5, 7), (3, 6),
-        (0, 5), (-5, 4), (-10, 3), (-20, 2), (-35, 1),
-    ],
-    "eps_growth": [
-        (20, 10), (15, 9), (10, 8), (7, 7), (5, 6),
-        (0, 5), (-5, 4), (-10, 3), (-20, 2), (-35, 1),
-    ],
-    "opm": [
-        (25, 10), (20, 9), (15, 8), (12, 7), (9, 6),
-        (7, 5), (5, 4), (3, 3), (1, 2), (0, 1),
-    ],
-    "roic": [
-        (15, 10), (12, 9), (10, 8), (8, 7), (6, 6),
-        (4, 5), (3, 4), (2, 3), (0, 2), (-5, 1),
-    ],
-    "debt_rate": [
-        (50, 10), (75, 9), (100, 8), (125, 7), (150, 6),
-        (175, 5), (225, 4), (300, 3), (500, 2), (800, 1),
-    ],
-    "interest_coverage": [
-        (15, 10), (10, 9), (7, 8), (5, 7), (3, 6),
-        (2, 5), (1.5, 4), (1.0, 3), (0.5, 2), (0, 1),
-    ],
-    "ocf_ratio": [
-        (1.5, 10), (1.3, 9), (1.1, 8), (1.0, 7), (0.8, 6),
-        (0.6, 5), (0.4, 4), (0.2, 3), (0, 2), (-0.5, 1),
-    ],
-    "downturn_defense": [
-        (15, 10), (10, 9), (5, 8), (2, 7), (0, 6),
-        (-3, 5), (-6, 4), (-10, 3), (-15, 2), (-25, 1),
-    ],
-}
+# Defense is an industrial/manufacturing business model, so it reuses the
+# Standard US metric bands. Its only specialization is the weight mix below.
+DEFENSE_BANDS = STANDARD_BANDS
 
-# Utility model v2.4 is kept as the integrated utility profile.
+# Utility model v2.4# Utility model v2.4 is kept as the integrated utility profile.
 UTILITY_BANDS = {
     "revenue_growth": [(20,10),(15,9),(10,8),(5,7),(0,6),(-5,5),(-10,4),(-20,3),(-35,2),(-50,1)],
     "eps_growth": [(20,10),(15,9),(10,8),(5,7),(0,6),(-5,5),(-10,4),(-20,3),(-35,2),(-50,1)],
@@ -222,15 +191,17 @@ UTILITY_BANDS = {
 
 PROFILE_METRICS = {
     "standard": {
+        # US standard: emphasize core operating efficiency/cash generation while
+        # keeping sparse Interest Coverage / SG&A fields low-impact.
         "revenue_growth": 5,
         "eps_growth": 5,
         "opm": 10,
-        "roic": 10,
+        "roic": 15,
         "debt_rate": 10,
         "quick_ratio": 10,
-        "interest_coverage": 10,
-        "ocf_ratio": 10,
-        "sga_ratio": 10,
+        "interest_coverage": 5,
+        "ocf_ratio": 15,
+        "sga_ratio": 5,
         "downturn_defense": 20,
     },
     "financial": {
@@ -257,16 +228,18 @@ PROFILE_METRICS = {
         "downturn_defense": 35,
     },
     "defense": {
-        "revenue_growth": 10,
-        "eps_growth": 10,
-        "opm": 15,
+        # Standard-variant: no separate threshold table, only different emphasis.
+        "revenue_growth": 7,
+        "eps_growth": 7,
+        "opm": 12,
         "roic": 15,
         "debt_rate": 10,
-        "interest_coverage": 10,
-        "ocf_ratio": 15,
-        "downturn_defense": 15,
-    },
-    "utility": {
+        "quick_ratio": 7,
+        "interest_coverage": 3,
+        "ocf_ratio": 16,
+        "sga_ratio": 5,
+        "downturn_defense": 18,
+    },    "utility": {
         "revenue_growth": 7,
         "eps_growth": 7,
         "opm": 10,
@@ -281,6 +254,23 @@ PROFILE_METRICS = {
     },
 }
 
+PROFILE_LABELS = {
+    "standard": "Standard",
+    "financial": "Financial",
+    "reit": "REIT",
+    "bdc": "BDC",
+    "defense": "Defense · Standard Variant",
+    "utility": "Utility · Specialized",
+}
+
+PROFILE_DESCRIPTIONS = {
+    "standard": "일반적인 미국 상장 기업용 공통 모델",
+    "financial": "은행·보험·자산운용·브로커 등 금융업 특화",
+    "reit": "부동산 임대업의 레버리지·현금흐름 특화",
+    "bdc": "BDC의 자산수익성·레버리지·현금흐름 특화",
+    "defense": "방산·항공우주 제조업 — Standard 지표를 재가중",
+    "utility": "규제/통합 유틸리티 전용 세부 모델",
+}
 PROFILE_BANDS = {
     "standard": STANDARD_BANDS,
     "financial": FINANCIAL_BANDS,
@@ -294,38 +284,14 @@ PROFILE_SUBGROUPS = {
     "standard": {
         "growth": {"revenue_growth", "eps_growth"},
         "defense": {
-            "opm", "roic", "debt_rate", "quick_ratio",
-            "interest_coverage", "ocf_ratio", "sga_ratio",
-            "downturn_defense",
-        },
-    },
-    "financial": {
         "growth": {"revenue_growth", "eps_growth"},
-        "defense": {"roa", "downturn_defense"},
-    },
-    "reit": {
-        "growth": {"revenue_growth", "eps_growth"},
-        "defense": {
-            "roa", "debt_rate", "ocf_ratio",
-            "interest_coverage", "downturn_defense",
+        "profitability": {"opm", "roic"},
+        "financial_strength": {
+            "debt_rate", "quick_ratio", "interest_coverage",
+            "ocf_ratio", "sga_ratio",
         },
-    },
-    "bdc": {
-        "growth": {"eps_growth"},
-        "defense": {
-            "roa", "debt_rate", "ocf_ratio",
-            "interest_coverage", "downturn_defense",
-        },
-    },
-    "defense": {
-        "growth": {"revenue_growth", "eps_growth"},
-        "defense": {
-            "opm", "roic", "debt_rate",
-            "interest_coverage", "ocf_ratio",
-            "downturn_defense",
-        },
-    },
-    "utility": {
+        "defense": {"downturn_defense"},
+    },    "utility": {
         "growth": {"revenue_growth", "eps_growth"},
         "profitability": {"opm", "roa"},
         "financial_strength": {
