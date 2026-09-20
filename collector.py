@@ -1852,7 +1852,8 @@ def sync_all_kor_stocks_b_group(limit=None, sleep_sec=0.1, use_ofs_for_manufactu
 
 def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
                   existing_period_scores, kospi_mdd_cache, use_ofs_for_manufacturing=True,
-                  force_refresh=False):
+                  force_refresh=False, existing_stock_price=None, existing_market_snapshot_date=None,
+                  existing_market_data_source=None):
     """
     단일 종목의 1y 지표만 갱신. 3y/5y/10y는 existing_period_scores에서 그대로 유지.
     이미 annual baseline 수집이 끝난 종목 대상 - sector/wics_sector/holding_company는
@@ -1925,9 +1926,18 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         # 여기서도 같이 최신화하도록 추가함 (사용자 요청: "우리의 정보는 2026년 제2분기에
         # 맞춰야지, 또 업데이트되면 3분기에 맞추고"). 배당 정보는 연 1회성 공시라 여기선
         # 갱신하지 않고 최근 annual sync 때 저장된 값을 그대로 둠.
-        market_snapshot = fetch_market_snapshot_via_datareader(stock_code)
-        current_price = market_snapshot[0] if market_snapshot else None
-        market_snapshot_date = market_snapshot[1] if market_snapshot else None
+        # 시장 스냅샷은 KRX_OPEN_API 같은 별도 시장 데이터 파이프라인이 관리할 수 있다.
+        # 이미 DB에 가격과 기준일이 있으면 일일 DART 갱신에서 FDR 값으로 덮어쓰지 않는다.
+        if existing_stock_price not in (None, 0) and existing_market_snapshot_date:
+            current_price = int(existing_stock_price)
+            market_snapshot_date = str(existing_market_snapshot_date)
+            market_data_source = existing_market_data_source or "existing_market_snapshot"
+        else:
+            market_snapshot = fetch_market_snapshot_via_datareader(stock_code)
+            current_price = market_snapshot[0] if market_snapshot else None
+            market_snapshot_date = market_snapshot[1] if market_snapshot else None
+            market_data_source = "FinanceDataReader" if market_snapshot else None
+
         stock_total_df = fetch_stock_total_count_info(stock_code, get_latest_annual_year())
         issued_shares, distributed_shares = extract_issued_shares(stock_total_df)
         issued_shares = issued_shares or 0
@@ -1952,7 +1962,7 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
             snapshot_fields = {
                 "stock_price": current_price,
                 "market_snapshot_date": market_snapshot_date,
-                "market_data_source": "FinanceDataReader",
+                "market_data_source": market_data_source,
                 "issued_shares": issued_shares,
                 "per": per,
                 "pbr": pbr,
@@ -2035,7 +2045,7 @@ def get_1y_update_targets():
     while True:
         res = (
             supabase.table("Fundamental")
-            .select("stock_code, stock_name, sector, wics_sector, holding_company, period_scores")
+            .select("stock_code, stock_name, sector, wics_sector, holding_company, period_scores, stock_price, market_snapshot_date, market_data_source")
             .not_.is_("period_scores", "null")
             .range(start, start + page_size - 1)
             .execute()
@@ -2090,6 +2100,9 @@ def sync_all_kor_stocks_1y_only(limit=None, sleep_sec=0.05, use_ofs_for_manufact
             kospi_mdd_cache=kospi_mdd_cache,
             use_ofs_for_manufacturing=use_ofs_for_manufacturing,
             force_refresh=force_refresh,
+            existing_stock_price=row.get("stock_price"),
+            existing_market_snapshot_date=row.get("market_snapshot_date"),
+            existing_market_data_source=row.get("market_data_source"),
         )
         if sleep_sec:
             time.sleep(sleep_sec)
