@@ -155,52 +155,6 @@ def _state_text(key, ind, close):
     return "—"
 
 
-def _setting_rows(indicators):
-    p = indicators.get("params", {}) if isinstance(indicators, dict) else {}
-    rows = []
-    for label, key, unit in [
-        ("초단기 이동평균", "sma_tiny", "일"), ("단기 이동평균", "sma_short", "일"),
-        ("중기 이동평균", "sma_mid", "일"), ("장기 이동평균", "sma_long", "일"),
-        ("볼린저 기간", "bb_window", "일"), ("볼린저 표준편차", "bb_std", "배"),
-        ("RSI 기간", "rsi_window", "일"), ("ADX 기간", "adx_window", "일"),
-        ("ATR 기간", "atr_window", "일"), ("MFI 기간", "mfi_window", "일"),
-        ("VWAP 기간", "vwap_window", "봉"), ("Williams %R 기간", "williams_r_window", "일"),
-        ("CCI 기간", "cci_window", "일"), ("ROC 기간", "roc_window", "일"),
-        ("PSAR 가속계수", "psar_step", ""), ("PSAR 최대 가속계수", "psar_max_step", ""),
-        ("CMF 기간", "cmf_window", "일"),
-    ]:
-        value = p.get(key, "—")
-        if value != "—":
-            value = f"{value:.2f}" if isinstance(value, float) else str(value)
-            value += unit
-        rows.append([label, value])
-    rows.append(["MACD 단기 / 장기 / 시그널", f"{p.get('macd_fast', '—')} / {p.get('macd_slow', '—')} / {p.get('macd_signal', '—')}"])
-    return rows
-
-
-def _trend_ko(value):
-    return {"uptrend": "상승추세", "downtrend": "하락추세", "mixed": "혼조", "unknown": "판정 불가"}.get(value, value)
-
-
-def _momentum_ko(value):
-    return {"strengthening": "강화", "weakening": "둔화", "mixed": "혼조"}.get(value, value)
-
-
-def _build_executive_summary(condition, ok_patterns, avg_sim, close):
-    context = condition.get("context", "중립/혼조")
-    trend = _trend_ko(condition.get("trend", "unknown"))
-    momentum = _momentum_ko(condition.get("momentum", "mixed"))
-    return (
-        f"현재 가격은 {close:,.2f}이며 기술적 문맥은 <b>{context}</b>로 분류된다. "
-        f"추세는 <b>{trend}</b>, 모멘텀은 <b>{momentum}</b> 상태다. "
-        f"현재 과매수 신호는 {condition.get('overbought_count', 0)}건, "
-        f"과매도 신호는 {condition.get('oversold_count', 0)}건이다. "
-        f"{('17개 지표 가운데 ' + str(len(ok_patterns)) + '개에서 최근 10년 역사자료 유사조건 분석이 가능했으며, 산출 가능한 지표들의 평균 유사도는 ' + f'{avg_sim:.1f}/100 수준이다. ' ) if ok_patterns else '현재 데이터에서는 최소 표본 기준을 충족하는 역사적 유사조건 분석이 제한적이다. '}"
-        "역사적 상승·하락 비율과 수익률은 과거 유사조건에서 관측된 실제 결과의 통계이며, "
-        "현재 이후 가격의 발생 가능성을 의미하는 예측값으로 해석하지 않는다."
-    )
-
-
 def _history_cells(pattern):
     if not pattern or pattern.get("status") != "ok":
         return ("—", "—", "—", "—")
@@ -272,8 +226,15 @@ def render_technical_report(
     ) + "</table>", unsafe_allow_html=True)
 
     st.markdown("<div class='gov-section'>Ⅰ. 요약 및 현재 기술적 상태</div>", unsafe_allow_html=True)
-    summary = _build_executive_summary(condition, ok_patterns, avg_sim or 0.0, close)
-    st.markdown(f"<div class='gov-highlight'>{summary}</div>", unsafe_allow_html=True)
+    st.markdown(
+        f"<div class='gov-highlight'>현재 종목의 기술적 상태는 <b>{context}</b>로 분류됩니다. "
+        f"추세 상태는 <b>{trend}</b>, 모멘텀 상태는 <b>{momentum}</b>입니다. "
+        f"17개 지표 중 현재 상태와 과거 유사사례 통계가 모두 산출된 지표는 <b>{len(ok_patterns)}개</b>이며, "
+        f"해당 사례의 누적 관측 건수는 <b>{total_matches:,}건</b>입니다. "
+        f"{'평균 유사도는 ' + f'{avg_sim:.1f}/100입니다.' if avg_sim is not None else '역사적 유사사례 통계가 충분하지 않은 지표가 존재합니다.'}"
+        "</div>",
+        unsafe_allow_html=True,
+    )
 
     kpi_cols = st.columns(4)
     kpis = [
@@ -286,15 +247,7 @@ def render_technical_report(
         with col:
             st.markdown(f"<div class='gov-kpi'><div class='gov-kpi-label'>{label}</div><div class='gov-kpi-value'>{value}</div></div>", unsafe_allow_html=True)
 
-    st.markdown("<div class='gov-section'>Ⅱ. 적용 지표 설정값</div>", unsafe_allow_html=True)
-    settings_df = pd.DataFrame(_setting_rows(indicators), columns=["설정항목", "적용값"])
-    st.dataframe(settings_df, use_container_width=True, hide_index=True, height=520)
-    st.markdown(
-        "<div class='gov-note'>위 설정값은 현재 차트에 실제 적용된 파라미터다. 역사적 유사조건 분석은 동일 계산 결과를 사용하므로 설정을 변경하면 현재 상태와 역사 통계가 함께 달라질 수 있다.</div>",
-        unsafe_allow_html=True,
-    )
-
-    st.markdown("<div class='gov-section'>Ⅲ. 17개 기술지표 종합 현황</div>", unsafe_allow_html=True)
+    st.markdown("<div class='gov-section'>Ⅱ. 17개 기술지표 종합 현황</div>", unsafe_allow_html=True)
     rows = []
     for key in REPORT_ORDER:
         pattern = pattern_results.get(key, {}) if pattern_results else {}
@@ -309,7 +262,7 @@ def render_technical_report(
     df = pd.DataFrame(rows, columns=["지표","현재값","현재 상태","+5D 상승/하락"," +20D 상승/하락","+60D 상승/하락","사례수"])
     st.dataframe(df, use_container_width=True, hide_index=True, height=620)
 
-    st.markdown("<div class='gov-section'>Ⅳ. 역사적 유사조건 분석</div>", unsafe_allow_html=True)
+    st.markdown("<div class='gov-section'>Ⅲ. 역사적 유사조건 분석</div>", unsafe_allow_html=True)
     st.markdown(
         "<div class='gov-note'>아래 확률은 미래 예측확률이 아닙니다. 최근 10년의 일봉 자료에서 현재 상태와 유사도 65 이상인 과거 날짜를 "
         "선별하고, 해당 날짜 이후 실제 종가가 상승 또는 하락한 비율을 계산한 통계입니다. 각 사례는 최소 5거래일 간격을 두어 중복 영향을 줄였습니다.</div>",
@@ -338,7 +291,7 @@ def render_technical_report(
     else:
         st.info("현재 데이터에서는 최소 표본 기준을 충족하는 역사적 유사조건 결과가 없습니다.")
 
-    st.markdown("<div class='gov-section'>Ⅴ. 분석상 유의사항 및 데이터 품질</div>", unsafe_allow_html=True)
+    st.markdown("<div class='gov-section'>Ⅳ. 분석상 유의사항 및 데이터 품질</div>", unsafe_allow_html=True)
     st.markdown(
         "<div class='gov-note'>① 본 보고서는 기술적 지표와 과거 유사조건의 실제 결과를 정리한 통계자료입니다. "
         "② 과거 발생빈도는 미래 가격의 결과를 보장하지 않습니다. "
@@ -347,7 +300,7 @@ def render_technical_report(
         "⑤ 결측 또는 계산 불가능한 지표는 임의의 값으로 대체하지 않습니다.</div>",
         unsafe_allow_html=True,
     )
-    st.markdown("<div class='gov-section'>Ⅵ. 분석기준</div>", unsafe_allow_html=True)
+    st.markdown("<div class='gov-section'>Ⅴ. 분석기준</div>", unsafe_allow_html=True)
     st.markdown(
         "<div class='gov-note'>사용 지표: MA, Bollinger Bands, RSI, Stochastic, Ichimoku, MACD, ADX/DMI, ATR, OBV, MFI, "
         "Rolling VWAP, Volume, Williams %R, CCI, ROC, Parabolic SAR, CMF. "
