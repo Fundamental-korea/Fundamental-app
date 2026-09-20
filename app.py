@@ -2089,7 +2089,7 @@ def render_unified_search_box(stock_db, target_view=None):
             }}
 
             function escapeRegExp(value) {{
-                return String(value).replace(/[.*+?^[object Object]()|[\]\\]/g, '\\$&');
+                return String(value).replace(/[.*+?^\[object Object]()|[\]\\]/g, '\\                return String(value).replace(/[.*+?^[object Object]()|[\]\\]/g, '\\$&');');
             }}
 
             function highlightMatch(text, query) {{
@@ -2113,7 +2113,7 @@ def render_unified_search_box(stock_db, target_view=None):
 
                 const ranked = searchStocks(q);
                 if (ranked.length === 0) {{
-                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:__MUTED_COLOR__;">일치하는 종목이 없습니다.</div>';
+                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:{THEME['text_muted']};">일치하는 종목이 없습니다.</div>';
                     return;
                 }}
 
