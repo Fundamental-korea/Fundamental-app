@@ -155,6 +155,53 @@ class HistoricalPatternTests(unittest.TestCase):
         self.assertEqual(condition["primary_direction"], "up")
 
 
+    def test_new_oscillators_participate_in_overbought_oversold_context(self):
+        idx = pd.bdate_range("2025-01-01", periods=80)
+        close = pd.Series(np.linspace(100, 108, len(idx)), index=idx)
+        indicators = {
+            "sma20": pd.Series(103.0, index=idx),
+            "sma60": pd.Series(101.0, index=idx),
+            "williams_r": pd.Series(-10.0, index=idx),
+            "cci": pd.Series(140.0, index=idx),
+            "roc": pd.Series(3.0, index=idx),
+            "psar": pd.Series(99.0, index=idx),
+            "cmf": pd.Series(0.15, index=idx),
+        }
+        condition = classify_current_condition(pd.DataFrame({"Close": close}, index=idx), indicators)
+        self.assertTrue(condition["state"].startswith("overbought"))
+        self.assertEqual(condition["primary_direction"], "down")
+        self.assertIn("Williams %R 과매수", condition["signals"])
+        self.assertIn("CCI 과매수", condition["signals"])
+
+    def test_new_oscillators_participate_in_oversold_context(self):
+        idx = pd.bdate_range("2025-01-01", periods=80)
+        close = pd.Series(np.linspace(110, 100, len(idx)), index=idx)
+        indicators = {
+            "sma20": pd.Series(104.0, index=idx),
+            "sma60": pd.Series(106.0, index=idx),
+            "williams_r": pd.Series(-90.0, index=idx),
+            "cci": pd.Series(-140.0, index=idx),
+            "roc": pd.Series(-4.0, index=idx),
+            "psar": pd.Series(111.0, index=idx),
+            "cmf": pd.Series(-0.15, index=idx),
+        }
+        condition = classify_current_condition(pd.DataFrame({"Close": close}, index=idx), indicators)
+        self.assertTrue(condition["state"].startswith("oversold"))
+        self.assertEqual(condition["primary_direction"], "up")
+        self.assertIn("Williams %R 과매도", condition["signals"])
+        self.assertIn("CCI 과매도", condition["signals"])
+
+    def test_insufficient_data_is_distinguished_from_insufficient_matches(self):
+        idx = pd.bdate_range("2025-01-01", periods=100)
+        hist = pd.DataFrame({"Close": np.linspace(100, 110, len(idx)), "Volume": 1_000_000.0}, index=idx)
+        indicators = {
+            "rsi14": pd.Series(50.0, index=idx),
+        }
+        from historical_pattern import analyze_indicator_pattern
+        result = analyze_indicator_pattern(hist, indicators, "rsi")
+        self.assertEqual(result["status"], "insufficient_data")
+        self.assertIn("데이터가 부족합니다", result["message"])
+
     def test_match_selection_has_no_fixed_100_case_cap(self):
         idx = pd.bdate_range("2020-01-01", periods=800)
         features = pd.DataFrame(
