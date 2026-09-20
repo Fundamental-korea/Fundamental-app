@@ -2067,11 +2067,21 @@ def render_unified_search_box(stock_db, target_view=None):
                 if (name === query) best = Math.max(best, 1150);
 
                 for (const alias of aliases) {{
-                    best = Math.max(best, scoreField(alias, query) + 20);
+                    const aliasScore = scoreField(alias, query);
+                    if (aliasScore > 0) {{
+                        best = Math.max(best, aliasScore + 20);
+                    }}
                 }}
 
-                best = Math.max(best, scoreField(item.name, query));
-                best = Math.max(best, scoreField(item.ticker, query) + 10);
+                const nameScore = scoreField(item.name, query);
+                if (nameScore > 0) {{
+                    best = Math.max(best, nameScore);
+                }}
+
+                const tickerScore = scoreField(item.ticker, query);
+                if (tickerScore > 0) {{
+                    best = Math.max(best, tickerScore + 10);
+                }}
                 return best;
             }}
 
