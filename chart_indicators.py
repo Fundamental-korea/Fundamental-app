@@ -2,7 +2,7 @@
 # chart_indicators.py
 # 초보자를 위한 기술적 지표 계산 + 자동 해설 생성 모듈.
 # 외부 의존성 없음 - yfinance가 이미 주는 OHLCV(pandas)만으로 전부 계산.
-# 기술적 지표: MA / Bollinger / RSI / MACD / Volume / ADX-DMI / ATR / OBV / MFI / Rolling VWAP
+# 기술적 지표: MA / Bollinger / RSI / Stochastic / Ichimoku / MACD / Volume / ADX-DMI / ATR / OBV / MFI / Rolling VWAP / Williams %R / CCI / ROC / Parabolic SAR / CMF
 
 import pandas as pd
 
@@ -191,6 +191,124 @@ def compute_rolling_vwap(
     return pv_sum / vol_sum.replace(0, pd.NA)
 
 
+
+def compute_williams_r(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 14) -> pd.Series:
+    """Williams %R. 최근 구간의 최고가~최저가 대비 현재 종가 위치를 -100~0으로 표시."""
+    highest_high = high.rolling(window=window, min_periods=window).max()
+    lowest_low = low.rolling(window=window, min_periods=window).min()
+    denominator = (highest_high - lowest_low).replace(0, pd.NA)
+    return -100.0 * (highest_high - close) / denominator
+
+
+def compute_cci(high: pd.Series, low: pd.Series, close: pd.Series, window: int = 20) -> pd.Series:
+    """Commodity Channel Index. Typical Price의 평균 대비 편차를 표준화."""
+    typical_price = (high + low + close) / 3.0
+    mean = typical_price.rolling(window=window, min_periods=window).mean()
+    mean_dev = typical_price.rolling(window=window, min_periods=window).apply(
+        lambda x: float(abs(x - x.mean()).mean()), raw=True
+    )
+    return (typical_price - mean) / (0.015 * mean_dev.replace(0, pd.NA))
+
+
+def compute_roc(close: pd.Series, window: int = 12) -> pd.Series:
+    """Rate of Change. N기간 전 종가 대비 가격 변화율(%)."""
+    base = close.shift(window).replace(0, pd.NA)
+    return (close - base) / base * 100.0
+
+
+def compute_parabolic_sar(
+    high: pd.Series,
+    low: pd.Series,
+    step: float = 0.02,
+    max_step: float = 0.20,
+) -> pd.Series:
+    """Wilder식 Parabolic SAR. 추세별 SAR과 극값(EP)을 순차 계산."""
+    high = pd.to_numeric(high, errors="coerce")
+    low = pd.to_numeric(low, errors="coerce")
+    if len(high) == 0:
+        return pd.Series(dtype="float64", index=high.index)
+
+    step = float(step)
+    max_step = float(max_step)
+    if step <= 0 or max_step < step:
+        raise ValueError("Parabolic SAR step must be > 0 and max_step must be >= step.")
+
+    sar = pd.Series(index=high.index, dtype="float64")
+    if len(high) == 1:
+        sar.iloc[0] = low.iloc[0]
+        return sar
+
+    rising = True
+    if pd.notna(high.iloc[1]) and pd.notna(high.iloc[0]):
+        rising = high.iloc[1] >= high.iloc[0]
+
+    if rising:
+        sar.iloc[0] = low.iloc[0]
+        ep = high.iloc[0]
+    else:
+        sar.iloc[0] = high.iloc[0]
+        ep = low.iloc[0]
+    af = step
+
+    for i in range(1, len(high)):
+        prev_sar = sar.iloc[i - 1]
+        if pd.isna(prev_sar) or pd.isna(high.iloc[i]) or pd.isna(low.iloc[i]):
+            sar.iloc[i] = prev_sar
+            continue
+
+        current_sar = prev_sar + af * (ep - prev_sar)
+
+        if rising:
+            prior_low_1 = low.iloc[i - 1]
+            prior_low_2 = low.iloc[i - 2] if i >= 2 else prior_low_1
+            current_sar = min(current_sar, prior_low_1, prior_low_2)
+            if low.iloc[i] < current_sar:
+                rising = False
+                current_sar = ep
+                ep = low.iloc[i]
+                af = step
+            elif high.iloc[i] > ep:
+                ep = high.iloc[i]
+                af = min(max_step, af + step)
+        else:
+            prior_high_1 = high.iloc[i - 1]
+            prior_high_2 = high.iloc[i - 2] if i >= 2 else prior_high_1
+            current_sar = max(current_sar, prior_high_1, prior_high_2)
+            if high.iloc[i] > current_sar:
+                rising = True
+                current_sar = ep
+                ep = high.iloc[i]
+                af = step
+            elif low.iloc[i] < ep:
+                ep = low.iloc[i]
+                af = min(max_step, af + step)
+
+        sar.iloc[i] = current_sar
+
+    return sar
+
+
+def compute_cmf(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    window: int = 20,
+) -> pd.Series:
+    """Chaikin Money Flow. 종가의 일중 위치로 거래량의 매수/매도 압력을 가중."""
+    high = pd.to_numeric(high, errors="coerce")
+    low = pd.to_numeric(low, errors="coerce")
+    close = pd.to_numeric(close, errors="coerce")
+    volume = pd.to_numeric(volume, errors="coerce").fillna(0.0)
+
+    range_ = (high - low).replace(0, pd.NA)
+    money_flow_multiplier = ((close - low) - (high - close)) / range_
+    money_flow_volume = money_flow_multiplier * volume
+    volume_sum = volume.rolling(window=window, min_periods=window).sum()
+    mfv_sum = money_flow_volume.rolling(window=window, min_periods=window).sum()
+    return mfv_sum / volume_sum.replace(0, pd.NA)
+
+
 def compute_stochastic(high: pd.Series, low: pd.Series, close: pd.Series,
                         k_window: int = 14, d_window: int = 3, smooth_k: int = 3):
     """스토캐스틱 슬로우(Slow Stochastic) - 국내 HTS 기본값(14,3,3)과 동일."""
@@ -234,6 +352,8 @@ DEFAULT_PARAMS = {
     "vwap_window": 20,
     "stoch_k": 14, "stoch_d": 3, "stoch_smooth": 3,
     "ichimoku_tenkan": 9, "ichimoku_kijun": 26, "ichimoku_senkou_b": 52,
+    "williams_r_window": 14, "cci_window": 20, "roc_window": 12,
+    "psar_step": 0.02, "psar_max_step": 0.20, "cmf_window": 20,
 }
 
 
@@ -263,6 +383,11 @@ def compute_all_indicators(hist_df: pd.DataFrame, params: dict = None) -> dict:
     tenkan, kijun, senkou_a, senkou_b, chikou = compute_ichimoku(
         high, low, close, p["ichimoku_tenkan"], p["ichimoku_kijun"], p["ichimoku_senkou_b"]
     )
+    williams_r = compute_williams_r(high, low, close, p["williams_r_window"])
+    cci = compute_cci(high, low, close, p["cci_window"])
+    roc = compute_roc(close, p["roc_window"])
+    psar = compute_parabolic_sar(high, low, p["psar_step"], p["psar_max_step"])
+    cmf = compute_cmf(high, low, close, volume, p["cmf_window"])
 
     return {
         "sma5": sma5, "sma20": sma20, "sma60": sma60, "sma120": sma120,
@@ -274,6 +399,7 @@ def compute_all_indicators(hist_df: pd.DataFrame, params: dict = None) -> dict:
         "atr14": atr14, "obv": obv, "mfi14": mfi14, "rolling_vwap20": rolling_vwap20,
         "stoch_k": stoch_k, "stoch_d": stoch_d,
         "tenkan": tenkan, "kijun": kijun, "senkou_a": senkou_a, "senkou_b": senkou_b, "chikou": chikou,
+        "williams_r": williams_r, "cci": cci, "roc": roc, "psar": psar, "cmf": cmf,
         "params": p,  # UI 라벨링용(예: f"SMA{p['sma_short']}") - 커스텀 기간 반영해서 표시하려고 같이 반환
     }
 
@@ -503,6 +629,58 @@ def generate_vwap_commentary(close: pd.Series, rolling_vwap20: pd.Series) -> str
     )
 
 
+
+def generate_williams_r_commentary(williams_r: pd.Series) -> str:
+    if len(williams_r) == 0 or pd.isna(williams_r.iloc[-1]):
+        return "데이터가 아직 충분히 쌓이지 않아 Williams %R을 계산할 수 없어요."
+    value = float(williams_r.iloc[-1])
+    if value <= -80:
+        zone = "과매도 구간"
+    elif value >= -20:
+        zone = "과매수 구간"
+    else:
+        zone = "중립 구간"
+    return f"현재 Williams %R은 {value:.1f}으로 {zone}이에요. 최근 구간의 고점·저점 범위 안에서 종가가 어디에 위치하는지 보는 민감한 모멘텀 지표예요."
+
+
+def generate_cci_commentary(cci: pd.Series) -> str:
+    if len(cci) == 0 or pd.isna(cci.iloc[-1]):
+        return "데이터가 아직 충분히 쌓이지 않아 CCI를 계산할 수 없어요."
+    value = float(cci.iloc[-1])
+    if value >= 100:
+        zone = "+100 이상으로 강한 상승 압력 구간"
+    elif value <= -100:
+        zone = "-100 이하로 강한 하락 압력 구간"
+    else:
+        zone = "-100~+100 사이의 중립 구간"
+    return f"현재 CCI(20)는 {value:.1f}으로 {zone}이에요. 전형가격이 최근 평균에서 얼마나 크게 벗어났는지를 보는 추세·모멘텀 지표예요."
+
+
+def generate_roc_commentary(roc: pd.Series) -> str:
+    if len(roc) == 0 or pd.isna(roc.iloc[-1]):
+        return "데이터가 아직 충분히 쌓이지 않아 ROC를 계산할 수 없어요."
+    value = float(roc.iloc[-1])
+    direction = "상승 모멘텀" if value > 0 else "하락 모멘텀" if value < 0 else "변화가 거의 없는 상태"
+    return f"현재 ROC(12)는 {value:+.2f}%로 {direction}을 보여줘요. 12기간 전 종가와 비교한 순수한 가격 변화율이라 모멘텀을 직관적으로 확인하기 좋아요."
+
+
+def generate_psar_commentary(close: pd.Series, psar: pd.Series) -> str:
+    if len(close) == 0 or len(psar) == 0 or pd.isna(close.iloc[-1]) or pd.isna(psar.iloc[-1]):
+        return "데이터가 아직 충분히 쌓이지 않아 Parabolic SAR를 계산할 수 없어요."
+    price = float(close.iloc[-1])
+    sar = float(psar.iloc[-1])
+    position = "현재가 아래" if price >= sar else "현재가 위"
+    return f"현재 Parabolic SAR는 {_fmt(sar, 2)}로 {position}에 있어요. SAR은 추세 방향과 후행 손절 기준을 시각화하는 데 자주 쓰이며, 가격이 SAR을 반대편으로 넘을 때 추세 전환 신호로 참고합니다."
+
+
+def generate_cmf_commentary(cmf: pd.Series) -> str:
+    if len(cmf) == 0 or pd.isna(cmf.iloc[-1]):
+        return "데이터가 아직 충분히 쌓이지 않아 CMF를 계산할 수 없어요."
+    value = float(cmf.iloc[-1])
+    pressure = "매수 압력 우세" if value > 0 else "매도 압력 우세" if value < 0 else "중립"
+    return f"현재 CMF(20)는 {value:+.3f}으로 {pressure} 구간이에요. 종가가 당일 고가·저가 범위에서 어디에 위치했는지와 거래량을 함께 반영해 자금 흐름을 봅니다."
+
+
 def generate_stochastic_commentary(stoch_k: pd.Series, stoch_d: pd.Series) -> str:
     if pd.isna(stoch_k.iloc[-1]) or pd.isna(stoch_d.iloc[-1]):
         return "데이터가 아직 충분히 쌓이지 않아 스토캐스틱을 계산할 수 없어요."
@@ -568,6 +746,37 @@ INDICATOR_LESSONS = {
         "calculation": "각 봉의 전형가격(고가+저가+종가의 평균)에 거래량을 곱한 값을 최근 20개 봉에서 합산한 뒤, 같은 기간 거래량 합계로 나눕니다.",
         "how_to_use": "현재가가 Rolling VWAP 위에 있으면 최근 거래량이 반영된 평균가격보다 높은 위치, 아래면 낮은 위치라는 식으로 상대적인 가격 위치를 확인할 수 있어요.",
         "common_mistakes": "장중 정식 VWAP은 보통 거래일마다 시작점이 초기화되므로 Rolling VWAP과 동일하지 않아요. 이 앱의 값은 일봉 이상의 모든 주기를 공통으로 분석하기 위한 Rolling 버전이라는 점을 기억하세요.",
+    },
+
+    "williams_r": {
+        "concept": "Williams %R은 최근 일정 기간의 최고가와 최저가 사이에서 현재 종가가 어디에 위치하는지를 -100~0으로 보여주는 모멘텀 지표예요.",
+        "calculation": "최근 14기간의 최고가와 최저가를 구하고, 최고가에서 현재 종가까지의 거리를 전체 범위로 나눠 -100~0으로 변환합니다.",
+        "how_to_use": "-20 이상은 과매수, -80 이하는 과매도로 흔히 참고해요. 스토캐스틱과 구조가 매우 비슷해서 둘을 동시에 켜면 신호 중복이 생길 수 있어요.",
+        "common_mistakes": "과매수·과매도 자체가 즉시 반전한다는 뜻은 아니에요. 강한 추세에서는 극단값이 오래 유지될 수 있습니다.",
+    },
+    "cci": {
+        "concept": "CCI는 전형가격이 최근 평균에서 얼마나 크게 벗어났는지를 표준화해 보여주는 추세·모멘텀 지표예요.",
+        "calculation": "전형가격(고가+저가+종가의 평균)에서 그 기간 평균을 뺀 뒤 평균편차로 나눠 0.015를 기준으로 스케일링합니다.",
+        "how_to_use": "+100 이상은 강한 상승 압력, -100 이하는 강한 하락 압력으로 참고하는 경우가 많고, 0선 돌파는 추세 방향 확인에 활용할 수 있어요.",
+        "common_mistakes": "CCI의 ±100은 절대적인 매수·매도선이 아니에요. 종목과 기간에 따라 극단값이 오래 지속될 수 있습니다.",
+    },
+    "roc": {
+        "concept": "ROC는 N기간 전 가격과 비교해 현재 가격이 몇 % 변했는지를 바로 보여주는 순수 가격 모멘텀 지표예요.",
+        "calculation": "현재 종가와 N기간 전 종가의 차이를 N기간 전 종가로 나눈 뒤 백분율로 표시합니다.",
+        "how_to_use": "0선 위면 N기간 전보다 가격이 높고, 아래면 낮다는 뜻이에요. ROC의 방향과 기울기를 추세·모멘텀 확인에 함께 사용할 수 있어요.",
+        "common_mistakes": "ROC는 가격의 변화율만 보므로 거래량이나 변동성 정보는 포함하지 않아요. 단독으로 방향을 확정하기보다 다른 지표와 함께 확인하세요.",
+    },
+    "psar": {
+        "concept": "Parabolic SAR은 가격 위·아래에 점을 배치해 현재 추세 방향과 후행형 추세 전환 기준을 보여주는 지표예요.",
+        "calculation": "추세의 극값(EP)과 가속계수(AF)를 이용해 SAR을 순차 계산하고, 추세가 바뀌면 SAR 계산 방향과 극값을 초기화합니다.",
+        "how_to_use": "SAR 점이 가격 아래에 있으면 상승 추세, 위에 있으면 하락 추세로 해석하는 경우가 많고 트레일링 스탑 기준으로도 활용합니다.",
+        "common_mistakes": "횡보장에서는 점이 가격 위·아래로 자주 뒤집혀 휩쏘가 많아질 수 있어요. ADX 같은 추세 강도 지표와 함께 확인하는 게 좋습니다.",
+    },
+    "cmf": {
+        "concept": "Chaikin Money Flow는 종가가 그날 고가·저가 범위의 어디에 위치했는지와 거래량을 결합해 매수·매도 압력을 측정하는 지표예요.",
+        "calculation": "종가의 일중 위치로 Money Flow Multiplier를 만들고 거래량을 곱한 뒤, 최근 20기간의 합계를 같은 기간 거래량 합계로 나눕니다.",
+        "how_to_use": "0 위는 매수 압력, 0 아래는 매도 압력이 우세한 상태로 참고할 수 있어요. 가격과 CMF가 엇갈리는 다이버전스도 확인할 수 있습니다.",
+        "common_mistakes": "CMF의 짧은 기간 교차는 잡음이 많을 수 있어요. 추세와 가격 구조를 함께 보고, 설정 기간에 따라 신호 빈도가 달라진다는 점을 기억하세요.",
     },
     "ma": {
         "concept": "일정 기간 동안의 종가를 평균 내서 이어놓은 선이에요. 하루하루의 등락(노이즈)을 지우고, 가격이 전체적으로 어느 방향으로 가고 있는지를 보여주는 게 목적이에요.",
