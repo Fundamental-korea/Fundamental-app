@@ -1409,7 +1409,6 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                 return Plotly.relayout(graphDiv, update);
             }}
 
-            let rescaleTimer = null;
             graphDiv.on("plotly_relayout", function(evt) {{
                 if (isRescaling) return;
                 let newRange = null;
@@ -1421,15 +1420,10 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                     newRange = [D.dates[0], D.dates[D.dates.length - 1]];
                 }}
                 if (newRange) {{
-                    // 마우스 휠로 빠르게 연속 줌할 때마다 y축 재계산이 매번 걸리면 버벅여서,
-                    // 스크롤이 잠깐(80ms) 멈췄을 때 한 번만 재계산 - 네이버처럼 부드럽게 느껴지게 함
-                    if (rescaleTimer) clearTimeout(rescaleTimer);
-                    rescaleTimer = setTimeout(function() {{
-                        isRescaling = true;
-                        rescaleYAxes(newRange[0], newRange[1])
-                            .then(function() {{ isRescaling = false; }})
-                            .catch(function() {{ isRescaling = false; }});
-                    }}, 80);
+                    isRescaling = true;
+                    rescaleYAxes(newRange[0], newRange[1])
+                        .then(function() {{ isRescaling = false; }})
+                        .catch(function() {{ isRescaling = false; }});
                 }}
             }});
         }} catch (err) {{
@@ -1676,61 +1670,33 @@ def render_unified_search_box(stock_db, target_view=None):
             const listEl = document.getElementById('unified_search_list');
             const footerQueryEl = document.getElementById('unified_search_footer_query');
 
-            let currentFiltered = [];
-            let selectedIndex = 0;
-
-            // 정확히 일치하는 종목이 우선순위에서 밀리던 문제(예: "현대차" 검색 시
-            // "현대차2우B"가 위로 오던 것) 수정 - 이름/티커 완전일치 > 이름 시작일치 >
-            // 티커 시작일치 > 포함 순으로 정렬
-            function rankScore(item, q) {{
-                const name = item.name.toLowerCase();
-                const ticker = item.ticker.toLowerCase();
-                if (name === q || ticker === q) return 0;
-                if (name.startsWith(q)) return 1;
-                if (ticker.startsWith(q)) return 2;
-                if (name.includes(q)) return 3;
-                return 4;
-            }}
-
-            function getFiltered(query) {{
-                const q = query.trim().toLowerCase();
-                if (!q) return [];
-                return STOCKS.filter(s =>
-                    s.ticker.toLowerCase().includes(q) ||
-                    s.name.toLowerCase().includes(q)
-                ).sort((a, b) => rankScore(a, q) - rankScore(b, q));
-            }}
-
             function renderList(query) {{
                 const q = query.trim().toLowerCase();
-
+                
                 if (!q) {{
                     modalEl.style.display = 'none';
-                    currentFiltered = [];
                     return;
                 }}
 
                 modalEl.style.display = 'flex';
                 footerQueryEl.innerText = q;
 
-                currentFiltered = getFiltered(query).slice(0, 30);
-                selectedIndex = 0;
+                const filtered = STOCKS.filter(s => 
+                    s.ticker.toLowerCase().includes(q) || 
+                    s.name.toLowerCase().includes(q)
+                );
 
-                if (currentFiltered.length === 0) {{
-                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:#94A3B8;">해당 종목을 찾을 수 없어요. 다시 확인해주세요.</div>';
+                if (filtered.length === 0) {{
+                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:#94A3B8;">일치하는 종목이 없습니다.</div>';
                     return;
                 }}
 
-                renderRows(q);
-            }}
-
-            function renderRows(q) {{
                 let html = '';
-                currentFiltered.forEach((item, idx) => {{
+                filtered.slice(0, 30).forEach((item, idx) => {{
                     const highlightTicker = highlightMatch(item.ticker, q);
                     const highlightName = highlightMatch(item.name, q);
                     html += `
-                        <div class="stock-row ${{idx === selectedIndex ? 'active' : ''}}" onclick="selectStock('${{item.ticker}}')">
+                        <div class="stock-row ${{idx === 0 ? 'active' : ''}}" onclick="selectStock('${{item.ticker}}')">
                             <div class="stock-info">
                                 <span class="flag">${{item.flag}}</span>
                                 <span class="ticker">${{highlightTicker}}</span>
@@ -1741,16 +1707,6 @@ def render_unified_search_box(stock_db, target_view=None):
                     `;
                 }});
                 listEl.innerHTML = html;
-            }}
-
-            function moveSelection(delta) {{
-                if (currentFiltered.length === 0) return;
-                selectedIndex = Math.max(0, Math.min(currentFiltered.length - 1, selectedIndex + delta));
-                Array.from(listEl.children).forEach((el, idx) => {{
-                    el.classList.toggle('active', idx === selectedIndex);
-                }});
-                const activeEl = listEl.children[selectedIndex];
-                if (activeEl) activeEl.scrollIntoView({{ block: 'nearest' }});
             }}
 
             function highlightMatch(text, query) {{
@@ -1768,30 +1724,20 @@ def render_unified_search_box(stock_db, target_view=None):
                 const q = inputEl.value.trim();
                 if (!q) return;
 
-                if (currentFiltered.length === 0) {{
-                    currentFiltered = getFiltered(q).slice(0, 30);
-                }}
-                if (currentFiltered.length === 0) {{
-                    // 일치하는 종목이 없으면 아무 곳으로도 이동하지 않음 - 드롭다운에
-                    // 이미 "해당 종목을 찾을 수 없어요" 안내가 떠 있는 상태를 유지함
-                    modalEl.style.display = 'flex';
-                    return;
-                }}
-                selectStock(currentFiltered[selectedIndex].ticker);
+                const filtered = STOCKS.filter(s => 
+                    s.ticker.toLowerCase().includes(q.toLowerCase()) || 
+                    s.name.toLowerCase().includes(q.toLowerCase())
+                );
+                const targetCode = filtered.length > 0 ? filtered[0].ticker : q;
+                selectStock(targetCode);
             }}
 
             inputEl.addEventListener('input', (e) => {{
                 renderList(e.target.value);
             }});
 
-            inputEl.addEventListener('keydown', (e) => {{
-                if (e.key === 'ArrowDown') {{
-                    e.preventDefault();
-                    moveSelection(1);
-                }} else if (e.key === 'ArrowUp') {{
-                    e.preventDefault();
-                    moveSelection(-1);
-                }} else if (e.key === 'Enter') {{
+            inputEl.addEventListener('keypress', (e) => {{
+                if (e.key === 'Enter') {{
                     triggerSearch();
                 }}
             }});
