@@ -50,6 +50,52 @@ st.set_page_config(
     layout="wide",
 )
 
+THEME_PALETTES = {
+    "light": {
+        "page": "#FFFFFF", "surface": "#FFFFFF", "surface_warm": "#FFFDF9", "surface_muted": "#FAFAFA",
+        "text": "#1A1A1A", "text_muted": "#6B7280", "text_secondary": "#4B5563",
+        "border": "#E5E7EB", "border_soft": "#F0E4D8", "accent": "#F4A261", "accent_strong": "#D97706",
+        "positive": "#D93025", "negative": "#2563EB", "success": "#047857",
+        "warning_bg": "#FFF7ED", "warning_text": "#92400E", "danger_bg": "#FEF2F2",
+        "danger_border": "#FCA5A5", "success_bg": "#ECFDF5", "success_border": "#A7F3D0",
+        "plot_bg": "#FFFFFF", "plot_grid": "#E2E8F0", "plot_axis": "#6B7280", "plot_text": "#1A1A1A",
+        "toolbar_bg": "#F1F3F6",
+    },
+    "dark": {
+        "page": "#0F1115", "surface": "#171A1F", "surface_warm": "#1C1A17", "surface_muted": "#20242A",
+        "text": "#F3F4F6", "text_muted": "#A8B0BC", "text_secondary": "#C1C7D0",
+        "border": "#374151", "border_soft": "#4B5563", "accent": "#F4A261", "accent_strong": "#FDBA74",
+        "positive": "#F87171", "negative": "#60A5FA", "success": "#6EE7B7",
+        "warning_bg": "#2A2117", "warning_text": "#FDBA74", "danger_bg": "#2A181B",
+        "danger_border": "#7F1D1D", "success_bg": "#10231B", "success_border": "#166534",
+        "plot_bg": "#0F1115", "plot_grid": "#374151", "plot_axis": "#9CA3AF", "plot_text": "#E5E7EB",
+        "toolbar_bg": "#1B2027",
+    },
+}
+
+def get_theme_mode():
+    mode = st.query_params.get("theme", "light")
+    return "dark" if str(mode).lower() == "dark" else "light"
+
+THEME_MODE = get_theme_mode()
+THEME = THEME_PALETTES[THEME_MODE]
+
+def render_theme_toggle(key="theme_toggle"):
+    current_dark = THEME_MODE == "dark"
+    selected = st.toggle(
+        "🌙 다크모드" if not current_dark else "☀️ 라이트모드",
+        value=current_dark,
+        key=key,
+        help="눈의 피로를 줄이기 위한 어두운 화면으로 전환합니다.",
+    )
+    desired = "dark" if selected else "light"
+    if desired != THEME_MODE:
+        st.query_params["theme"] = desired
+        st.rerun()
+
+
+st.markdown(f'<div id="fundamental-theme-state" data-theme="{THEME_MODE}"></div>', unsafe_allow_html=True)
+
 st.markdown(
     """
     <style>
@@ -580,6 +626,167 @@ st.markdown(
         line-height: 1.55;
     }
     </style>
+    <style>
+    /* Fundamental theme layer */
+    body:has(#fundamental-theme-state[data-theme="dark"]) {
+        --theme-page: #0F1115;
+        --theme-surface: #171A1F;
+        --theme-surface-warm: #1C1A17;
+        --theme-surface-muted: #20242A;
+        --theme-text: #F3F4F6;
+        --theme-text-muted: #A8B0BC;
+        --theme-border: #374151;
+        --theme-accent: #F4A261;
+        --theme-accent-strong: #FDBA74;
+        --theme-positive: #F87171;
+        --theme-negative: #60A5FA;
+        --theme-warning-bg: #2A2117;
+        --theme-warning-text: #FDBA74;
+        --theme-danger-bg: #2A181B;
+        --theme-danger-border: #7F1D1D;
+        --theme-success-bg: #10231B;
+        --theme-success-border: #166534;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]),
+    body:has(#fundamental-theme-state[data-theme="dark"]) #fundamental-theme-state {
+        background-color: var(--theme-page) !important;
+        color: var(--theme-text) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) [data-testid="stAppViewContainer"],
+    body:has(#fundamental-theme-state[data-theme="dark"]) .stApp,
+    body:has(#fundamental-theme-state[data-theme="dark"]) [data-testid="stHeader"] {
+        background-color: var(--theme-page) !important;
+        color: var(--theme-text) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) p,
+    body:has(#fundamental-theme-state[data-theme="dark"]) span,
+    body:has(#fundamental-theme-state[data-theme="dark"]) div,
+    body:has(#fundamental-theme-state[data-theme="dark"]) label,
+    body:has(#fundamental-theme-state[data-theme="dark"]) h1,
+    body:has(#fundamental-theme-state[data-theme="dark"]) h2,
+    body:has(#fundamental-theme-state[data-theme="dark"]) h3,
+    body:has(#fundamental-theme-state[data-theme="dark"]) h4,
+    body:has(#fundamental-theme-state[data-theme="dark"]) h5,
+    body:has(#fundamental-theme-state[data-theme="dark"]) h6 {
+        color: var(--theme-text) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .logo-box,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-box-v2,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .sketch-card,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .sketch-item-box,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .grade-hero-box,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .finstat-item,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .overview-cell,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .indicator-card {
+        background-color: var(--theme-surface) !important;
+        color: var(--theme-text) !important;
+        border-color: var(--theme-border) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-box-v2,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .grade-hero-box {
+        background-color: var(--theme-surface-warm) !important;
+        border-color: var(--theme-accent) !important;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.25);
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .overview-label,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .finstat-label,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .sketch-item-desc,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .indicator-card-def {
+        color: var(--theme-text-muted) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .overview-value,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .finstat-value,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .sketch-item-title,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .indicator-card-title,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .indicator-card-desc {
+        color: var(--theme-text) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-en,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-ko,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-author {
+        color: var(--theme-text) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-divider {
+        border-top-color: var(--theme-accent) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .status-pill,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .mini-stat-badge {
+        border-color: var(--theme-border) !important;
+        background-color: var(--theme-surface-muted) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .value-up,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .reliability-good,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .vol-high {
+        color: var(--theme-positive) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .value-down {
+        color: var(--theme-negative) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .vol-low,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .neutral,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .reliability-mid,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .reliability-low {
+        color: var(--theme-text-muted) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .impairment-warn,
+    body:has(#fundamental-theme-state[data-theme="dark"]) .tier-c {
+        color: var(--theme-warning-text) !important;
+        background-color: var(--theme-warning-bg) !important;
+        border-color: var(--theme-accent) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stButton"] > button,
+    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stLinkButton"] > a,
+    body:has(#fundamental-theme-state[data-theme="dark"]) input,
+    body:has(#fundamental-theme-state[data-theme="dark"]) textarea,
+    body:has(#fundamental-theme-state[data-theme="dark"]) [data-baseweb="select"] > div {
+        background-color: var(--theme-surface) !important;
+        color: var(--theme-text) !important;
+        border-color: var(--theme-border) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stButton"] > button:hover,
+    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stLinkButton"] > a:hover {
+        background-color: var(--theme-surface-warm) !important;
+        color: var(--theme-accent-strong) !important;
+        border-color: var(--theme-accent) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stExpander"] summary,
+    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stDataFrame"],
+    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stDataFrame"] *,
+    body:has(#fundamental-theme-state[data-theme="dark"]) [data-testid="stTabs"] {
+        background-color: var(--theme-surface-muted) !important;
+        color: var(--theme-text) !important;
+        border-color: var(--theme-border) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stTabs"] [aria-selected="true"] {
+        border-bottom-color: var(--theme-accent) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) .ad-box-tall {
+        background-color: var(--theme-surface-muted) !important;
+        border-color: var(--theme-border) !important;
+        color: var(--theme-text-muted) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#1A1A1A"],
+    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#111827"],
+    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#0F172A"] {
+        color: var(--theme-text) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#92400E"] {
+        color: var(--theme-warning-text) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#DC2626"] {
+        color: var(--theme-positive) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#2563EB"] {
+        color: var(--theme-negative) !important;
+    }
+    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#FFFFFF"],
+    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#FFFDF9"],
+    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#FAFAFA"] {
+        background-color: var(--theme-surface) !important;
+    }
+    #fundamental-theme-state { display: none !important; width: 0; height: 0; overflow: hidden; }
+    </style>
+
 """,
     unsafe_allow_html=True,
 )
@@ -867,7 +1074,7 @@ def render_us_fundamental_report(code, data):
         render_quote_box()
 
     with col_login:
-        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+        render_theme_toggle("theme_toggle_us_report")
         if st.button("⬅️ 메인으로", use_container_width=True, key="us_report_home"):
             st.query_params.clear()
             st.rerun()
@@ -1178,7 +1385,16 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     volume = hist_df["Volume"].tolist()
     # 색상 컨벤션: 국내 종목은 상승=빨강/하락=파랑, 해외(미국 등) 종목은 상승=초록/하락=빨강(월가 표준) -
     # 네이버증권도 국내/해외를 이 기준으로 다르게 표시함
-    up_color, down_color = ("#DC2626", "#2563EB") if is_korean_market else ("#16A34A", "#DC2626")
+    chart_bg = THEME["plot_bg"]
+    chart_grid = THEME["plot_grid"]
+    chart_axis = THEME["plot_axis"]
+    chart_text = THEME["plot_text"]
+    if is_korean_market:
+        up_color = "#F87171" if THEME_MODE == "dark" else "#DC2626"
+        down_color = "#60A5FA" if THEME_MODE == "dark" else "#2563EB"
+    else:
+        up_color = "#4ADE80" if THEME_MODE == "dark" else "#16A34A"
+        down_color = "#F87171" if THEME_MODE == "dark" else "#DC2626"
     vol_colors = [up_color if cc >= oo else down_color for oo, cc in zip(o, c)]
 
     def s(key):
@@ -1247,8 +1463,8 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     if vm["rsi"]:
         extra_yaxes_js += f"""yaxis3: {{ domain: {json.dumps(domains['rsi'])}, anchor: "x", side: "right", title: "RSI", range: [0, 100] }},"""
         extra_shapes_js += f"""
-                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 70, y1: 70, line: {{ color: "#DC2626", width: 1, dash: "dash" }} }},
-                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 30, y1: 30, line: {{ color: "#16A34A", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 70, y1: 70, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 30, y1: 30, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
         """
     if vm["stoch"]:
         extra_yaxes_js += f"""yaxis4: {{ domain: {json.dumps(domains['stoch'])}, anchor: "x", side: "right", title: "Stoch", range: [0, 100] }},"""
@@ -1269,7 +1485,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         annotations_js = f"""
                     {{ x: D.dates[{high_idx}], y: {high_val}, xref: "x", yref: "y",
                        text: "최고 {fmt_price(high_val)} ({high_pct:+.2f}%)", showarrow: true, arrowhead: 0,
-                       ax: 0, ay: -30, font: {{ size: 11, color: "#1A1A1A" }} }},
+                       ax: 0, ay: -30, font: {{ size: 11, color: "{chart_text}" }} }},
                     {{ x: D.dates[{low_idx}], y: {low_val}, xref: "x", yref: "y",
                        text: "최저 {fmt_price(low_val)} ({low_pct:+.2f}%)", showarrow: true, arrowhead: 0,
                        ax: 0, ay: 30, font: {{ size: 11, color: "#1A1A1A" }} }},
@@ -1282,7 +1498,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         <meta charset="utf-8">
         <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
         <style>
-            body {{ margin: 0; padding: 0; background: #FFFFFF; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
+            body {{ margin: 0; padding: 0; background: {chart_bg}; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }}
         </style>
     </head>
     <body>
@@ -1317,8 +1533,8 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
             const layout = {{
                 height: {height},
                 margin: {{ l: 55, r: 55, t: 10, b: 30 }},
-                paper_bgcolor: "#FFFFFF", plot_bgcolor: "#FFFFFF",
-                font: {{ color: "#1A1A1A", size: 11 }},
+                paper_bgcolor: "{chart_bg}", plot_bgcolor: "{chart_bg}",
+                font: {{ color: "{chart_text}", size: 11 }},
                 dragmode: "pan",
                 showlegend: true,
                 legend: {{ orientation: "h", y: 1.03 }},
@@ -1447,6 +1663,7 @@ def render_unified_search_box(stock_db, target_view=None):
     # target_view가 주어지면 검색 결과가 ?code=...&view=<target_view>로 이동함
     # (예: "analysis" -> 차트 분석 페이지). 기존 탭들은 인자를 안 넘기므로 동작 그대로 유지.
     view_query_suffix = f"&view={target_view}" if target_view else ""
+    view_query_suffix += f"&theme={THEME_MODE}"
 
     custom_html = f"""
     <!DOCTYPE html>
@@ -1471,17 +1688,17 @@ def render_unified_search_box(stock_db, target_view=None):
                 width: 100%;
                 height: 54px;
                 padding: 0 50px 0 20px;
-                border: 2px solid #F4A261;
+                border: 2px solid {THEME['accent']};
                 border-radius: 12px;
                 font-size: 16px;
                 font-weight: 600;
                 outline: none;
-                background: #FFFDF9;
-                color: #1A1A1A;
+                background: {THEME['surface_warm']};
+                color: {THEME['text']};
                 box-shadow: 0 4px 12px rgba(244, 162, 97, 0.15);
             }}
             .input-box:focus {{
-                border-color: #D97706;
+                border-color: {THEME['accent_strong']};
                 box-shadow: 0 0 10px rgba(217, 119, 6, 0.25);
             }}
             .search-icon {{
@@ -1489,7 +1706,7 @@ def render_unified_search_box(stock_db, target_view=None):
                 right: 18px;
                 top: 15px;
                 font-size: 20px;
-                color: #D97706;
+                color: {THEME['accent_strong']};
                 cursor: pointer;
             }}
 
@@ -1500,8 +1717,8 @@ def render_unified_search_box(stock_db, target_view=None):
                 top: 60px;
                 left: 0;
                 width: 100%;
-                background: #FFFFFF;
-                border: 1px solid #E2E8F0;
+                background: {THEME['surface']};
+                border: 1px solid {THEME['border']};
                 border-radius: 12px;
                 box-shadow: 0 10px 30px rgba(0,0,0,0.15);
                 z-index: 9999;
@@ -1515,7 +1732,7 @@ def render_unified_search_box(stock_db, target_view=None):
 
             .left-pane {{
                 flex: 65;
-                border-right: 1px solid #F1F5F9;
+                border-right: 1px solid {THEME['surface_muted']};
                 padding: 10px 0;
                 max-height: 360px;
                 overflow-y: auto;
@@ -1523,7 +1740,7 @@ def render_unified_search_box(stock_db, target_view=None):
             .pane-title {{
                 font-size: 12px;
                 font-weight: 700;
-                color: #64748B;
+                color: {THEME['text_muted']};
                 padding: 6px 16px;
                 text-transform: uppercase;
             }}
@@ -1548,24 +1765,24 @@ def render_unified_search_box(stock_db, target_view=None):
             .flag {{ font-size: 16px; }}
             .ticker {{
                 font-weight: 700;
-                color: #0F172A;
+                color: {THEME['text']};
                 font-size: 14px;
                 min-width: 65px;
             }}
             .name {{
                 font-size: 13px;
-                color: #475569;
+                color: {THEME['text_secondary']};
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
             }}
             .exch {{
                 font-size: 11px;
-                color: #94A3B8;
+                color: {THEME['text_muted']};
                 white-space: nowrap;
             }}
             .highlight {{
-                color: #D97706;
+                color: {THEME['accent_strong']};
                 font-weight: 800;
                 background-color: #FEF3C7;
                 padding: 0 2px;
@@ -1602,11 +1819,11 @@ def render_unified_search_box(stock_db, target_view=None):
             }}
             .news-item:hover {{
                 text-decoration: underline;
-                color: #D97706;
+                color: {THEME['accent_strong']};
             }}
 
             .modal-footer {{
-                border-top: 1px solid #F1F5F9;
+                border-top: 1px solid {THEME['surface_muted']};
                 padding: 10px 16px;
                 background: #F8FAFC;
                 font-size: 13px;
@@ -1618,7 +1835,7 @@ def render_unified_search_box(stock_db, target_view=None):
                 gap: 6px;
             }}
             .modal-footer:hover {{
-                background: #F1F5F9;
+                background: {THEME['surface_muted']};
             }}
         </style>
     </head>
@@ -1687,7 +1904,7 @@ def render_unified_search_box(stock_db, target_view=None):
                 );
 
                 if (filtered.length === 0) {{
-                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:#94A3B8;">일치하는 종목이 없습니다.</div>';
+                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:{THEME['text_muted']};">일치하는 종목이 없습니다.</div>';
                     return;
                 }}
 
@@ -1774,8 +1991,8 @@ if selected_code and view_mode_param == "chart":
         render_quote_box()
 
     with col_login:
-        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
-        st.link_button("📊 리포트로 돌아가기", f"?code={selected_code}", use_container_width=True)
+        render_theme_toggle("theme_toggle_chart")
+        st.link_button("📊 리포트로 돌아가기", f"?code={selected_code}&theme={THEME_MODE}", use_container_width=True)
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1801,10 +2018,10 @@ if selected_code and view_mode_param == "chart":
                 "symbol": "{tv_symbol}",
                 "interval": "D",
                 "timezone": "Asia/Seoul",
-                "theme": "light",
+                "theme": "{THEME_MODE}",
                 "style": "1",
                 "locale": "kr",
-                "toolbar_bg": "#f1f3f6",
+                "toolbar_bg": "{THEME['toolbar_bg']}",
                 "enable_publishing": false,
                 "allow_symbol_change": true,
                 "container_id": "tradingview_chart"
@@ -1890,7 +2107,7 @@ elif view_mode_param == "analysis_search":
         render_quote_box()
 
     with col_login:
-        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+        render_theme_toggle("theme_toggle_analysis_search")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
@@ -1917,7 +2134,7 @@ elif selected_code and view_mode_param == "analysis":
     # ⚠️ 네이버증권처럼 로고/명언/광고 없이 차트+지표에만 집중하는 미니멀 레이아웃 -
     # 다른 페이지(메인/리포트)와 달리 이 페이지만 별도로 이렇게 구성함 (요청사항)
     # ==========================================
-    st.link_button("📊 리포트로 돌아가기", f"?code={selected_code}")
+    st.link_button("📊 리포트로 돌아가기", f"?code={selected_code}&theme={THEME_MODE}")
 
     with st.container():
         analysis_name = query_params.get("name", selected_code)
@@ -2059,9 +2276,7 @@ elif not selected_code:
         render_quote_box()
 
     with col_login:
-        st.markdown(
-            "<div style='height: 40px;'></div>", unsafe_allow_html=True
-        )
+        render_theme_toggle("theme_toggle_home")
         if st.button("Log in", use_container_width=True):
             st.toast("로그인 기능 준비 중입니다!")
 
@@ -2127,7 +2342,7 @@ elif not selected_code:
             )
             st.markdown(
                 """
-                <a href="?view=analysis_search" target="_blank" style="
+                <a href="?view=analysis_search&theme={THEME_MODE}" target="_blank" style="
                     display:block; text-align:center; text-decoration:none;
                     background-color:#FFFFFF; color:#1A1A1A; border:1.5px solid #D1D5DB;
                     border-radius:10px; font-size:16px; font-weight:800; padding:12px 0;
@@ -2980,10 +3195,10 @@ else:
                                 )
                                 # 막대그래프는 양수/음수 색을 다르게 (양수=주황, 음수=빨강)
                                 sign_color = alt.condition(
-                                    alt.datum.실측값 >= 0, alt.value("#DC2626"), alt.value("#2563EB")
+                                    alt.datum.실측값 >= 0, alt.value(THEME["positive"]), alt.value(THEME["negative"])
                                 )
                                 if chart_type == "선":
-                                    chart = base.mark_line(point=True, color="#D97706")
+                                    chart = base.mark_line(point=True, color=THEME["accent_strong"])
                                 else:
                                     chart = base.mark_bar().encode(color=sign_color)
                                 chart = chart.properties(height=150)
