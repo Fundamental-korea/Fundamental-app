@@ -1022,19 +1022,37 @@ def extract_issued_shares(df):
     )
 
 
-def fetch_current_price_via_datareader(stock_code):
+def fetch_market_snapshot_via_datareader(stock_code):
     """
-    fdr.StockListing('KRX')가 CSV URL 404로 죽어서(2026-09 진단 확인) 현재가 조회를
-    fdr.DataReader로 대체. DataReader는 완전히 별도 경로라 정상 작동 확인됨.
+    FinanceDataReader의 일봉 데이터에서 가장 최근 거래일 종가와 그 거래일을 함께 반환.
+    주말/공휴일에는 자연스럽게 직전 거래일(예: 금요일) 종가와 날짜를 반환하므로,
+    Supabase의 market_snapshot_date를 실제 가격 기준일과 일치시킬 수 있다.
+    반환값: (close_price, snapshot_date_iso) 또는 None.
     """
     try:
         df = fdr.DataReader(stock_code)
         if df is None or df.empty:
             return None
-        return int(df.iloc[-1]["Close"])
+
+        last_row = df.iloc[-1]
+        close_price = last_row.get("Close")
+        if pd.isna(close_price):
+            return None
+
+        snapshot_date = pd.Timestamp(df.index[-1]).date().isoformat()
+        return int(close_price), snapshot_date
     except Exception as e:
-        print(f"  ⚠️ [{stock_code}] 현재가 조회 실패(fdr.DataReader): {e}")
+        print(f"  ⚠️ [{stock_code}] 시세 스냅샷 조회 실패(fdr.DataReader): {e}")
         return None
+
+
+def fetch_current_price_via_datareader(stock_code):
+    """
+    기존 호출부와의 호환성을 위해 유지하는 현재가 전용 래퍼.
+    실제 데이터 조회는 fetch_market_snapshot_via_datareader()가 담당한다.
+    """
+    snapshot = fetch_market_snapshot_via_datareader(stock_code)
+    return snapshot[0] if snapshot else None
 
 
 def get_kr_stock_universe():
@@ -1329,10 +1347,11 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
         if kospi_mdd_cache is None:
             kospi_mdd_cache = get_kospi_mdd_cache()
 
-        current_price = fetch_current_price_via_datareader(stock_code)
-        if current_price is None:
-            print(f"❌ [{stock_name}] 현재가를 가져올 수 없습니다 (fdr.DataReader 실패) - 스킵합니다.")
+        market_snapshot = fetch_market_snapshot_via_datareader(stock_code)
+        if market_snapshot is None:
+            print(f"❌ [{stock_name}] 시세 스냅샷을 가져올 수 없습니다 (fdr.DataReader 실패) - 스킵합니다.")
             return
+        current_price, market_snapshot_date = market_snapshot
 
         stock_total_df = fetch_stock_total_count_info(stock_code, get_latest_annual_year())
         issued_shares, distributed_shares = extract_issued_shares(stock_total_df)
@@ -1500,6 +1519,8 @@ def sync_kor_stock_fundamental(stock_code, stock_name, df_krx=None, sector_map=N
             "base_year": base_year,  # 3/5/10y 추세 점수 계산 기준 연도 (연간 데이터 필요)
             "data_basis_label": data_basis_label,  # 현재 스냅샷(revenue~pbr)이 어느 시점 공시 기준인지 (예: "2026년 반기보고서")
             "stock_price": current_price,
+            "market_snapshot_date": market_snapshot_date,  # 실제 시세가 발생한 거래일(주말에는 직전 거래일)
+            "market_data_source": "FinanceDataReader",
             "issued_shares": issued_shares,
             "per": per,
             "pbr": pbr,
@@ -1904,7 +1925,9 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
         # 여기서도 같이 최신화하도록 추가함 (사용자 요청: "우리의 정보는 2026년 제2분기에
         # 맞춰야지, 또 업데이트되면 3분기에 맞추고"). 배당 정보는 연 1회성 공시라 여기선
         # 갱신하지 않고 최근 annual sync 때 저장된 값을 그대로 둠.
-        current_price = fetch_current_price_via_datareader(stock_code)
+        market_snapshot = fetch_market_snapshot_via_datareader(stock_code)
+        current_price = market_snapshot[0] if market_snapshot else None
+        market_snapshot_date = market_snapshot[1] if market_snapshot else None
         stock_total_df = fetch_stock_total_count_info(stock_code, get_latest_annual_year())
         issued_shares, distributed_shares = extract_issued_shares(stock_total_df)
         issued_shares = issued_shares or 0
@@ -1928,6 +1951,8 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
 
             snapshot_fields = {
                 "stock_price": current_price,
+                "market_snapshot_date": market_snapshot_date,
+                "market_data_source": "FinanceDataReader",
                 "issued_shares": issued_shares,
                 "per": per,
                 "pbr": pbr,
