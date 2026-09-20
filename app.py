@@ -1076,7 +1076,10 @@ def render_us_fundamental_report(code, data):
     with col_login:
         render_theme_toggle("theme_toggle_us_report")
         if st.button("⬅️ 메인으로", use_container_width=True, key="us_report_home"):
+            current_theme = THEME_MODE
             st.query_params.clear()
+            if current_theme == "dark":
+                st.query_params["theme"] = "dark"
             st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
@@ -1488,7 +1491,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                        ax: 0, ay: -30, font: {{ size: 11, color: "{chart_text}" }} }},
                     {{ x: D.dates[{low_idx}], y: {low_val}, xref: "x", yref: "y",
                        text: "최저 {fmt_price(low_val)} ({low_pct:+.2f}%)", showarrow: true, arrowhead: 0,
-                       ax: 0, ay: 30, font: {{ size: 11, color: "#1A1A1A" }} }},
+                       ax: 0, ay: 30, font: {{ size: 11, color: "{chart_text}" }} }},
         """
 
     custom_html = f"""
