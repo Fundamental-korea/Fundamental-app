@@ -1397,11 +1397,15 @@ def get_chart_history(code, period="1y"):
         return pd.DataFrame()
 
 
+HISTORICAL_PATTERN_CACHE_VERSION = "2026-09-20-direction-v2"
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
-@st.cache_data(ttl=3600, show_spinner=False)
-def get_cached_pattern_analysis(code, params_items):
+def get_cached_pattern_analysis(code, params_items, cache_version=HISTORICAL_PATTERN_CACHE_VERSION):
     """일봉 max history 기반 과거 유사상황 통계.
-    분봉/주봉 UI와 무관하게 5/20/60 '거래일' 결과를 유지한다."""
+    분봉/주봉 UI와 무관하게 5/20/60 '거래일' 결과를 유지한다.
+    cache_version는 historical_pattern.py 로직 변경 시 이전 결과가 남지 않도록
+    의도적으로 캐시 키에 포함한다."""
     try:
         daily_df = get_chart_history(code, period="max")
         if daily_df is None or daily_df.empty or len(daily_df) < 150:
@@ -2660,6 +2664,7 @@ elif selected_code and view_mode_param == "analysis":
         pattern_results = get_cached_pattern_analysis(
             selected_code,
             tuple(sorted(custom_params.items())),
+            HISTORICAL_PATTERN_CACHE_VERSION,
         )
         market_condition = (
             pattern_results.get("_market_condition", {})
@@ -2775,7 +2780,8 @@ elif selected_code and view_mode_param == "analysis":
                         min_similarity = pattern.get("min_similarity", 65.0)
                         st.caption(
                             f"최근 {lookback_years}년 안에서 유사도 {min_similarity:.0f}/100 이상인 "
-                            f"과거 조건을 찾았습니다. 각 기간별 숫자는 실제 주가 결과가 존재하는 사례만 집계합니다."
+                            f"과거 유사 조건 {pattern.get('matches', 0)}건을 찾았습니다. "
+                            f"각 기간별 숫자는 그중 실제 주가 결과가 존재하는 사례만 집계합니다."
                         )
                         horizon_cols = st.columns(3)
                         horizon_labels = {"5": "5거래일 후", "20": "20거래일 후", "60": "60거래일 후"}
@@ -2831,7 +2837,7 @@ elif selected_code and view_mode_param == "analysis":
                                     st.caption(
                                         f"중앙값 {stats['median_return']:+.1f}% · "
                                         f"평균 {stats['mean_return']:+.1f}% · "
-                                        f"실제 사례 {stats['samples']}건"
+                                        f"실제 결과 사례 {stats['samples']}건"
                                     )
                                     if primary_ci_low is not None and primary_ci_high is not None:
                                         st.caption(
