@@ -1780,7 +1780,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                     const idxs2 = idxs.concat(idxs.map(i => i + D.dates.length)).concat(idxs.map(i => i + 2 * D.dates.length));
                     const [macdLo, macdHi] = minMax(macdAll, idxs2);
                     const macdPad = (isFinite(macdHi - macdLo) ? (macdHi - macdLo) * 0.15 : 1) || 1;
-                    if (isFinite(macdLo) && isFinite(macdHi)) update["yaxis5.range"] = [macdLo - macdPad, macdHi + macdPad];
+                    if (isFinite(macdLo) && isFinite(macdHi)) update["yaxis6.range"] = [macdLo - macdPad, macdHi + macdPad];
                 }}
 
                 return Plotly.relayout(graphDiv, update);
