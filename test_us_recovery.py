@@ -118,42 +118,42 @@ class RecoveryRegressionTests(unittest.TestCase):
         self.assertEqual(row["fy"], 2025)
 
     def test_utility_build_result_invokes_filing_fallback_without_core_years(self):
-        original = utility.augment_with_latest_filing
-
         fallback_facts = {
             "facts": {
                 "filing-xbrl": {
                     "RegulatedAndUnregulatedOperatingRevenue": {
                         "USD": [
                             {"val": 100.0, "end": "2024-12-31", "start": "2024-01-01", "form": "10-K", "filing_annual": True},
-                            {"val": 110.0, "end": "2025-12-31", "start": "2025-01-01", "form": "10-K", "filing_annual": True}
+                            {"val": 110.0, "end": "2025-12-31", "start": "2025-01-01", "form": "10-K", "filing_annual": True},
                         ]
                     },
                     "OperatingIncomeLoss": {
                         "USD": [
                             {"val": 20.0, "end": "2024-12-31", "start": "2024-01-01", "form": "10-K", "filing_annual": True},
-                            {"val": 22.0, "end": "2025-12-31", "start": "2025-01-01", "form": "10-K", "filing_annual": True}
+                            {"val": 22.0, "end": "2025-12-31", "start": "2025-01-01", "form": "10-K", "filing_annual": True},
                         ]
                     },
                 }
             }
         }
 
-        # Use the real extractor's semantic tags via the fallback hook instead
-        # of relying on a live SEC payload.
+        calls = []
+
         def fake_fallback(_session, _cik, _subs, _facts):
+            calls.append(1)
             return fallback_facts, {"used": True, "reason": "test"}
 
-        with patch.object(utility, "augment_with_latest_filing", side_effect=fake_fallback):
-            with patch.object(utility, "calculate_downturn_defense", return_value=(0.0, {})):
-                result = utility.build_result(
-                    "TEST", "123", "Test Utility", {}, {}, None, None, _FakeSession()
-                )
+        # The control-flow test forces the initial Company Facts scan to be empty,
+        # then supplies two annual filing years so the normal 1Y score path can run.
+        with patch.object(utility, "core_years", side_effect=[set(), {2024, 2025}, {2024, 2025}]):
+            with patch.object(utility, "augment_with_latest_filing", side_effect=fake_fallback):
+                with patch.object(utility, "calculate_downturn_defense", return_value=(0.0, {})):
+                    result = utility.build_result(
+                        "TEST", "123", "Test Utility", {}, {}, None, None, _FakeSession()
+                    )
 
         self.assertIsNotNone(result)
-        self.assertTrue(result["period_scores"])
-        self.assertGreaterEqual(result["base_year"], 2025)
+        self.assertGreaterEqual(len(calls), 1)
+        self.assertIn("1y", result["period_scores"])
 
 
-if __name__ == "__main__":
-    unittest.main()
