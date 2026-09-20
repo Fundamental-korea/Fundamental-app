@@ -1,0 +1,41 @@
+name: US Full Fundamental Recollection
+
+on:
+  # One-shot bootstrap trigger. This workflow is deliberately scoped to the
+  # trigger file so ordinary commits do not launch a 7k-company collection.
+  push:
+    paths:
+      - "FULL_US_RECOLLECT_TRIGGER.txt"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  full-us-recollect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 330
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run full US recollection
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          python collector_us_full_recollect.py
