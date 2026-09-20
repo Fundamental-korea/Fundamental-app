@@ -1,0 +1,906 @@
+{
+  "target_date": "2026-09-18",
+  "sample_size": 100,
+  "rows": [
+    {
+      "stock_code": "005930",
+      "stock_name": "삼성전자",
+      "stock_price": 261000,
+      "listed_shares": 5846278608,
+      "market_cap": 1525878716688000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "000660",
+      "stock_name": "SK하이닉스",
+      "stock_price": 1857000,
+      "listed_shares": 730492365,
+      "market_cap": 1356524321805000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "005935",
+      "stock_name": "삼성전자우",
+      "stock_price": 196100,
+      "listed_shares": 802371203,
+      "market_cap": 157344992908300,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "402340",
+      "stock_name": "SK스퀘어",
+      "stock_price": 1079000,
+      "listed_shares": 131923998,
+      "market_cap": 142345993842000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "009150",
+      "stock_name": "삼성전기",
+      "stock_price": 1388000,
+      "listed_shares": 74693696,
+      "market_cap": 103674850048000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "373220",
+      "stock_name": "LG에너지솔루션",
+      "stock_price": 364000,
+      "listed_shares": 234000000,
+      "market_cap": 85176000000000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "005380",
+      "stock_name": "현대차",
+      "stock_price": 365000,
+      "listed_shares": 204757766,
+      "market_cap": 74736584590000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "207940",
+      "stock_name": "삼성바이오로직스",
+      "stock_price": 1398000,
+      "listed_shares": 46290951,
+      "market_cap": 64714749498000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "105560",
+      "stock_name": "KB금융",
+      "stock_price": 174900,
+      "listed_shares": 354687734,
+      "market_cap": 62034884676600,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "028260",
+      "stock_name": "삼성물산",
+      "stock_price": 351000,
+      "listed_shares": 162167581,
+      "market_cap": 56920820931000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "032830",
+      "stock_name": "삼성생명",
+      "stock_price": 283500,
+      "listed_shares": 200000000,
+      "market_cap": 56700000000000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "012450",
+      "stock_name": "한화에어로스페이스",
+      "stock_price": 1078000,
+      "listed_shares": 51563401,
+      "market_cap": 55585346278000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "034020",
+      "stock_name": "두산에너빌리티",
+      "stock_price": 84900,
+      "listed_shares": 640561146,
+      "market_cap": 54383641295400,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "055550",
+      "stock_name": "신한지주",
+      "stock_price": 110100,
+      "listed_shares": 469450239,
+      "market_cap": 51686471313900,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "329180",
+      "stock_name": "HD현대중공업",
+      "stock_price": 460000,
+      "listed_shares": 104961225,
+      "market_cap": 48282163500000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "000270",
+      "stock_name": "기아",
+      "stock_price": 121900,
+      "listed_shares": 390412998,
+      "market_cap": 47591344456200,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "006400",
+      "stock_name": "삼성SDI",
+      "stock_price": 541000,
+      "listed_shares": 80585530,
+      "market_cap": 43596771730000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "068270",
+      "stock_name": "셀트리온",
+      "stock_price": 179400,
+      "listed_shares": 232617176,
+      "market_cap": 41731521374400,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "034730",
+      "stock_name": "SK",
+      "stock_price": 545000,
+      "listed_shares": 72502703,
+      "market_cap": 39513973135000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "086790",
+      "stock_name": "하나금융지주",
+      "stock_price": 133100,
+      "listed_shares": 270969910,
+      "market_cap": 36066095021000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "012330",
+      "stock_name": "현대모비스",
+      "stock_price": 379000,
+      "listed_shares": 89820585,
+      "market_cap": 34042001715000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "066570",
+      "stock_name": "LG전자",
+      "stock_price": 198400,
+      "listed_shares": 162884638,
+      "market_cap": 32316312179200,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "010120",
+      "stock_name": "LS ELECTRIC",
+      "stock_price": 211500,
+      "listed_shares": 150000000,
+      "market_cap": 31725000000000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "035420",
+      "stock_name": "NAVER",
+      "stock_price": 197700,
+      "listed_shares": 152094369,
+      "market_cap": 30069056751300,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "000810",
+      "stock_name": "삼성화재",
+      "stock_price": 648000,
+      "listed_shares": 44647473,
+      "market_cap": 28931562504000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "298040",
+      "stock_name": "효성중공업",
+      "stock_price": 2915000,
+      "listed_shares": 9324548,
+      "market_cap": 27181057420000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "316140",
+      "stock_name": "우리금융지주",
+      "stock_price": 36100,
+      "listed_shares": 736786557,
+      "market_cap": 26597994707700,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "267260",
+      "stock_name": "HD현대일렉트릭",
+      "stock_price": 725000,
+      "listed_shares": 36047135,
+      "market_cap": 26134172875000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "005490",
+      "stock_name": "POSCO홀딩스",
+      "stock_price": 323000,
+      "listed_shares": 79241527,
+      "market_cap": 25595013221000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "042660",
+      "stock_name": "한화오션",
+      "stock_price": 82900,
+      "listed_shares": 306413394,
+      "market_cap": 25401670362600,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "009540",
+      "stock_name": "HD한국조선해양",
+      "stock_price": 337500,
+      "listed_shares": 70773116,
+      "market_cap": 23885926650000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "010130",
+      "stock_name": "고려아연",
+      "stock_price": 1124000,
+      "listed_shares": 20872969,
+      "market_cap": 23461217156000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "000150",
+      "stock_name": "두산",
+      "stock_price": 1447000,
+      "listed_shares": 16193835,
+      "market_cap": 23432479245000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "096770",
+      "stock_name": "SK이노베이션",
+      "stock_price": 136600,
+      "listed_shares": 169052788,
+      "market_cap": 23092610840800,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "042700",
+      "stock_name": "한미반도체",
+      "stock_price": 236000,
+      "listed_shares": 95312200,
+      "market_cap": 22493679200000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "138040",
+      "stock_name": "메리츠금융지주",
+      "stock_price": 126900,
+      "listed_shares": 167347273,
+      "market_cap": 21236368943700,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "015760",
+      "stock_name": "한국전력",
+      "stock_price": 30750,
+      "listed_shares": 641964077,
+      "market_cap": 19740395367750,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "011200",
+      "stock_name": "HMM",
+      "stock_price": 20800,
+      "listed_shares": 943237970,
+      "market_cap": 19619349776000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "017670",
+      "stock_name": "SK텔레콤",
+      "stock_price": 89200,
+      "listed_shares": 214790053,
+      "market_cap": 19159272727600,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "051910",
+      "stock_name": "LG화학",
+      "stock_price": 267000,
+      "listed_shares": 70592343,
+      "market_cap": 18848155581000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "010140",
+      "stock_name": "삼성중공업",
+      "stock_price": 20800,
+      "listed_shares": 880000000,
+      "market_cap": 18304000000000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "033780",
+      "stock_name": "KT&G",
+      "stock_price": 172000,
+      "listed_shares": 103810456,
+      "market_cap": 17855398432000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "196170",
+      "stock_name": "알테오젠",
+      "stock_price": 253500,
+      "listed_shares": 69655133,
+      "market_cap": 17657576215500,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "006800",
+      "stock_name": "미래에셋증권",
+      "stock_price": 31650,
+      "listed_shares": 543021051,
+      "market_cap": 17186616264150,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "018260",
+      "stock_name": "삼성에스디에스",
+      "stock_price": 219500,
+      "listed_shares": 77377800,
+      "market_cap": 16984427100000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "003550",
+      "stock_name": "LG",
+      "stock_price": 111900,
+      "listed_shares": 151192004,
+      "market_cap": 16918385247600,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "010950",
+      "stock_name": "S-Oil",
+      "stock_price": 149500,
+      "listed_shares": 112582792,
+      "market_cap": 16831127404000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "267250",
+      "stock_name": "HD현대",
+      "stock_price": 208000,
+      "listed_shares": 78993085,
+      "market_cap": 16430561680000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "079550",
+      "stock_name": "LIG디펜스앤에어로스페이스",
+      "stock_price": 744000,
+      "listed_shares": 22000000,
+      "market_cap": 16368000000000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "003670",
+      "stock_name": "포스코퓨처엠",
+      "stock_price": 183900,
+      "listed_shares": 88946220,
+      "market_cap": 16357209858000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "024110",
+      "stock_name": "기업은행",
+      "stock_price": 20050,
+      "listed_shares": 797425869,
+      "market_cap": 15988388673450,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "086280",
+      "stock_name": "현대글로비스",
+      "stock_price": 203500,
+      "listed_shares": 75000000,
+      "market_cap": 15262500000000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "272210",
+      "stock_name": "한화시스템",
+      "stock_price": 80000,
+      "listed_shares": 188919389,
+      "market_cap": 15113551120000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "035720",
+      "stock_name": "카카오",
+      "stock_price": 33550,
+      "listed_shares": 442999903,
+      "market_cap": 14862646745650,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "000720",
+      "stock_name": "현대건설",
+      "stock_price": 124800,
+      "listed_shares": 111355765,
+      "market_cap": 13897199472000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "278470",
+      "stock_name": "에이피알",
+      "stock_price": 367000,
+      "listed_shares": 37438155,
+      "market_cap": 13739802885000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "064350",
+      "stock_name": "현대로템",
+      "stock_price": 122500,
+      "listed_shares": 109142293,
+      "market_cap": 13369930892500,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "030200",
+      "stock_name": "KT",
+      "stock_price": 53000,
+      "listed_shares": 252021685,
+      "market_cap": 13357149305000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "047810",
+      "stock_name": "한국항공우주",
+      "stock_price": 129800,
+      "listed_shares": 97475107,
+      "market_cap": 12652268888600,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "011070",
+      "stock_name": "LG이노텍",
+      "stock_price": 532000,
+      "listed_shares": 23667107,
+      "market_cap": 12590900924000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "005830",
+      "stock_name": "DB손해보험",
+      "stock_price": 186900,
+      "listed_shares": 65500349,
+      "market_cap": 12242015228100,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "443060",
+      "stock_name": "HD현대마린솔루션",
+      "stock_price": 246000,
+      "listed_shares": 44833460,
+      "market_cap": 11029031160000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "086520",
+      "stock_name": "에코프로",
+      "stock_price": 81100,
+      "listed_shares": 135776152,
+      "market_cap": 11011445927200,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "003490",
+      "stock_name": "대한항공",
+      "stock_price": 29300,
+      "listed_shares": 368220609,
+      "market_cap": 10788863843700,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "078930",
+      "stock_name": "GS",
+      "stock_price": 113900,
+      "listed_shares": 92895495,
+      "market_cap": 10580796880500,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "247540",
+      "stock_name": "에코프로비엠",
+      "stock_price": 104900,
+      "listed_shares": 97830434,
+      "market_cap": 10262412526600,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "071050",
+      "stock_name": "한국금융지주",
+      "stock_price": 182300,
+      "listed_shares": 55725992,
+      "market_cap": 10158848341600,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "006260",
+      "stock_name": "LS",
+      "stock_price": 325500,
+      "listed_shares": 31200000,
+      "market_cap": 10155600000000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "028050",
+      "stock_name": "삼성E&A",
+      "stock_price": 51800,
+      "listed_shares": 196000000,
+      "market_cap": 10152800000000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "307950",
+      "stock_name": "현대오토에버",
+      "stock_price": 369500,
+      "listed_shares": 27423982,
+      "market_cap": 10133161349000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "047050",
+      "stock_name": "포스코인터내셔널",
+      "stock_price": 57300,
+      "listed_shares": 175922788,
+      "market_cap": 10080375752400,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "003230",
+      "stock_name": "삼양식품",
+      "stock_price": 1300000,
+      "listed_shares": 7533015,
+      "market_cap": 9792919500000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "323410",
+      "stock_name": "카카오뱅크",
+      "stock_price": 20450,
+      "listed_shares": 477120437,
+      "market_cap": 9757112936650,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "000500",
+      "stock_name": "가온전선",
+      "stock_price": 327000,
+      "listed_shares": 29777607,
+      "market_cap": 9737277489000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "036930",
+      "stock_name": "주성엔지니어링",
+      "stock_price": 205500,
+      "listed_shares": 46481121,
+      "market_cap": 9551870365500,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "005940",
+      "stock_name": "NH투자증권",
+      "stock_price": 25550,
+      "listed_shares": 369206105,
+      "market_cap": 9433215982750,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "259960",
+      "stock_name": "크래프톤",
+      "stock_price": 205000,
+      "listed_shares": 45747943,
+      "market_cap": 9378328315000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "180640",
+      "stock_name": "한진칼",
+      "stock_price": 138800,
+      "listed_shares": 66762275,
+      "market_cap": 9266603770000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "277810",
+      "stock_name": "레인보우로보틱스",
+      "stock_price": 436000,
+      "listed_shares": 19399858,
+      "market_cap": 8458338088000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "090430",
+      "stock_name": "아모레퍼시픽",
+      "stock_price": 143400,
+      "listed_shares": 58492759,
+      "market_cap": 8387861640600,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "0126Z0",
+      "stock_name": "삼성에피스홀딩스",
+      "stock_price": 327000,
+      "listed_shares": 24883049,
+      "market_cap": 8136757023000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "047040",
+      "stock_name": "대우건설",
+      "stock_price": 18910,
+      "listed_shares": 410907638,
+      "market_cap": 7770263434580,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "016360",
+      "stock_name": "삼성증권",
+      "stock_price": 85300,
+      "listed_shares": 89300000,
+      "market_cap": 7617290000000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "007660",
+      "stock_name": "이수페타시스",
+      "stock_price": 103700,
+      "listed_shares": 73409219,
+      "market_cap": 7612536010300,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "161390",
+      "stock_name": "한국타이어앤테크놀로지",
+      "stock_price": 60600,
+      "listed_shares": 123875069,
+      "market_cap": 7506829181400,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "021240",
+      "stock_name": "코웨이",
+      "stock_price": 101100,
+      "listed_shares": 70767426,
+      "market_cap": 7154586768600,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "352820",
+      "stock_name": "하이브",
+      "stock_price": 165900,
+      "listed_shares": 43106836,
+      "market_cap": 7151424092400,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "000880",
+      "stock_name": "한화",
+      "stock_price": 132500,
+      "listed_shares": 53328897,
+      "market_cap": 7066078852500,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "039490",
+      "stock_name": "키움증권",
+      "stock_price": 262500,
+      "listed_shares": 26228316,
+      "market_cap": 6884932950000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "064400",
+      "stock_name": "LG씨엔에스",
+      "stock_price": 70600,
+      "listed_shares": 96885948,
+      "market_cap": 6840147928800,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "267270",
+      "stock_name": "HD건설기계",
+      "stock_price": 139800,
+      "listed_shares": 47497386,
+      "market_cap": 6640134562800,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "062040",
+      "stock_name": "산일전기",
+      "stock_price": 211500,
+      "listed_shares": 30642850,
+      "market_cap": 6480962775000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "128940",
+      "stock_name": "한미약품",
+      "stock_price": 503000,
+      "listed_shares": 12810991,
+      "market_cap": 6443928473000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "009830",
+      "stock_name": "한화솔루션",
+      "stock_price": 28400,
+      "listed_shares": 224892536,
+      "market_cap": 6386948022400,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "001440",
+      "stock_name": "대한전선",
+      "stock_price": 31450,
+      "listed_shares": 195992596,
+      "market_cap": 6163967144200,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "326030",
+      "stock_name": "SK바이오팜",
+      "stock_price": 77700,
+      "listed_shares": 78313250,
+      "market_cap": 6084939525000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "005387",
+      "stock_name": "현대차2우B",
+      "stock_price": 171100,
+      "listed_shares": 34963930,
+      "market_cap": 5982328423000,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "240810",
+      "stock_name": "원익IPS",
+      "stock_price": 121500,
+      "listed_shares": 49083901,
+      "market_cap": 5963693971500,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "032640",
+      "stock_name": "LG유플러스",
+      "stock_price": 14050,
+      "listed_shares": 424427732,
+      "market_cap": 5963209634600,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    },
+    {
+      "stock_code": "175330",
+      "stock_name": "JB금융지주",
+      "stock_price": 30850,
+      "listed_shares": 186521824,
+      "market_cap": 5754198270400,
+      "market_snapshot_date": "2026-09-18",
+      "market_data_source": "KRX_OPEN_API"
+    }
+  ]
+}
