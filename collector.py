@@ -832,7 +832,7 @@ def _parse_report_financials(df, df_full=None):
             dt = str(raw_dt).strip()
             if dt and dt.lower() not in ("nan", "none", "-"):
                 import re as _re
-                m = _re.search(r"(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})", dt)
+                m = _re.search(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})", dt)
                 if m:
                     report_period_end = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
                     break
@@ -908,7 +908,7 @@ def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufact
                 if col not in source.columns:
                     continue
                 for raw_dt in source[col].astype(str).tolist():
-                    m = _re.search(r"(\\d{4})[./-](\\d{1,2})[./-](\\d{1,2})", raw_dt)
+                    m = _re.search(r"(\d{4})[./-](\d{1,2})[./-](\d{1,2})", raw_dt)
                     if m:
                         report_period_end = f"{m.group(1)}-{int(m.group(2)):02d}-{int(m.group(3)):02d}"
                         break
@@ -926,20 +926,29 @@ def _fetch_report_metrics_for(stock_code, year, reprt_code, use_ofs_for_manufact
 def _discover_periodic_reports_from_dart_list(stock_code, lookback_years=2):
     """
     달력 기준 보고서 코드/연도가 실제 회사 회계연도와 어긋나는 예외 종목용 보정.
-    DART 공시목록(kind=A)에서 실제 제출된 정기보고서의 보고기간과 접수일을 확인하고,
-    가장 최근 접수된 최종 정기보고서부터 재무 API를 재시도할 후보를 반환한다.
+
+    DART 공시목록의 실제 보고기간(YYYY.MM)과 회사 결산월을 함께 사용해
+    OpenDART 재무 API에 필요한 (사업연도, reprt_code)를 복원한다.
+    - 사업연도는 회사의 회계연도 종료 연도 기준
+    - 3개월/6개월/9개월 시점은 각각 11013/11012/11014
     """
     import re
+    import calendar
     from datetime import date
     from pandas import DataFrame
 
-    end = date.today()
-    start = end.replace(year=end.year - lookback_years)
+    end_date = date.today()
+    try:
+        start_date = end_date.replace(year=end_date.year - lookback_years)
+    except ValueError:
+        # Leap-day 안전 fallback
+        start_date = end_date - __import__("datetime").timedelta(days=365 * lookback_years)
+
     try:
         df = dart.list(
             stock_code,
-            start=start.strftime("%Y-%m-%d"),
-            end=end.strftime("%Y-%m-%d"),
+            start=start_date.strftime("%Y-%m-%d"),
+            end=end_date.strftime("%Y-%m-%d"),
             kind="A",
             final=True,
         )
@@ -950,43 +959,79 @@ def _discover_periodic_reports_from_dart_list(stock_code, lookback_years=2):
     if not isinstance(df, DataFrame) or df.empty:
         return []
 
+    fiscal_month = _get_company_fiscal_month_for_discovery(stock_code)
+
     rows = []
     for _, row in df.iterrows():
         report_name = str(row.get("report_nm") or "")
+        rcept_dt = str(row.get("rcept_dt") or "")
+
+        # 정기보고서명에서 실제 보고기간 말(YYYY.MM)을 추출한다.
+        match = re.search(r"(20\d{2})[./-](\d{1,2})", report_name)
+        period_year = None
+        period_month = None
+        if match:
+            period_year = int(match.group(1))
+            period_month = int(match.group(2))
+
+        if period_year is None:
+            match = re.search(r"(20\d{2})[./-](\d{1,2})", rcept_dt)
+            if match:
+                period_year = int(match.group(1))
+                period_month = int(match.group(2))
+
+        if period_year is None or period_month is None:
+            continue
+
         report_code = None
-        if "사업보고서" in report_name:
-            report_code = "11011"
-        elif "반기보고서" in report_name:
-            report_code = "11012"
-        elif "3분기보고서" in report_name:
-            report_code = "11014"
-        elif "1분기보고서" in report_name or "분기보고서" in report_name:
-            report_code = "11013"
+        business_year = period_year
+
+        if fiscal_month:
+            # 회사의 회계연도 종료 연도를 결정한다.
+            # 기간 말 월이 결산월보다 뒤면 다음 해에 끝나는 회계연도에 속한다.
+            business_year = period_year if period_month <= fiscal_month else period_year + 1
+
+            # 보고기간이 결산월과 몇 개월 떨어져 있는지로 보고서 코드를 판별한다.
+            months_from_fye = (period_month - fiscal_month) % 12
+            if months_from_fye == 0:
+                report_code = "11011"  # 사업보고서
+            elif months_from_fye == 9:
+                report_code = "11014"  # 3분기보고서
+            elif months_from_fye == 6:
+                report_code = "11012"  # 반기보고서
+            elif months_from_fye == 3:
+                report_code = "11013"  # 1분기보고서
+
+        # 결산월 정보를 못 구하거나 위 계산으로 판별되지 않는 경우에만 제목을 보조한다.
+        if report_code is None:
+            if "사업보고서" in report_name:
+                report_code = "11011"
+            elif "반기보고서" in report_name:
+                report_code = "11012"
+            elif "3분기보고서" in report_name:
+                report_code = "11014"
+            elif "1분기보고서" in report_name:
+                report_code = "11013"
+            elif "분기보고서" in report_name:
+                report_code = "11013"
+
+            # 보조 경로에서는 DART 제목의 연도를 사업연도로 사용한다.
+            business_year = period_year
+
         if report_code is None:
             continue
 
-        # 정기보고서 제목은 일반적으로 '(...YYYY.MM...)' 형식으로 보고기간을 포함한다.
-        match = re.search(r"(20\\d{2})[./-]\\d{1,2}", report_name)
-        if match:
-            report_year = int(match.group(1))
-        else:
-            # 제목에서 기간을 읽지 못하면 접수일의 연도를 보조값으로 사용한다.
-            try:
-                report_year = int(str(row.get("rcept_dt"))[:4])
-            except Exception:
-                continue
-
         rows.append({
-            "report_year": report_year,
+            "report_year": int(business_year),
             "report_code": report_code,
             "report_name": report_name,
-            "rcept_dt": str(row.get("rcept_dt") or ""),
+            "period_year": period_year,
+            "period_month": period_month,
+            "rcept_dt": rcept_dt,
         })
 
     rows.sort(key=lambda x: x["rcept_dt"], reverse=True)
 
-    # 동일 보고서의 중복/정정 행은 final=True로 대부분 제거되지만,
-    # 혹시 남아 있어도 같은 (연도, 보고서코드)는 한 번만 재시도한다.
     unique = []
     seen = set()
     for item in rows:
@@ -996,6 +1041,19 @@ def _discover_periodic_reports_from_dart_list(stock_code, lookback_years=2):
         seen.add(key)
         unique.append(item)
     return unique
+
+
+def _get_company_fiscal_month_for_discovery(stock_code):
+    """Return DART fiscal-year-end month as int, or None."""
+    try:
+        info = dart.company(str(stock_code).zfill(6))
+        raw = _extract_company_value(info, "acc_mt", "accMt")
+        if raw:
+            month = int(raw)
+            return month if 1 <= month <= 12 else None
+    except Exception as exc:
+        print(f"  ⚠️ [{stock_code}] 결산월 조회 실패: {exc}")
+    return None
 
 
 def fetch_latest_report_metrics(stock_code, use_ofs_for_manufacturing=True, force_refresh=False):
