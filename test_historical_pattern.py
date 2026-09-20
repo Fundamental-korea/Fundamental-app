@@ -67,6 +67,11 @@ class HistoricalPatternTests(unittest.TestCase):
             "obv": {"obv_change5_norm", "obv_change20_norm", "return20"},
             "mfi": {"mfi", "mfi_change5", "return20"},
             "vwap": {"vwap_gap", "vwap_change5", "return20"},
+            "williams_r": {"williams_r", "williams_r_change5", "return20"},
+            "cci": {"cci", "cci_change5", "return20"},
+            "roc": {"roc", "roc_change5", "return20"},
+            "psar": {"psar_gap", "psar_gap_change5", "return20"},
+            "cmf": {"cmf", "cmf_change5", "return20"},
         }
         hist_ohlcv = pd.DataFrame(
             {
