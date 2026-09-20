@@ -7,9 +7,8 @@ Supabase 시총 상위 100개를 고정하고 Naver Finance, 매일경제 Market
 import json
 import os
 import re
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import requests
@@ -62,64 +61,93 @@ def get(url):
     r.raise_for_status()
     return r.text
 
-def naver(code, target):
-    target_dot = target.replace("-", ".")
-    for page in (1, 2, 3):
-        html = get(f"https://finance.naver.com/item/sise_day.naver?code={code}&page={page}")
-        soup = BeautifulSoup(html, "html.parser")
-        for tr in soup.select("table.type2 tr"):
-            td = tr.select("td")
-            if len(td) < 2:
-                continue
-            d = td[0].get_text(" ", strip=True)
-            if d == target_dot:
-                v = num(td[1].get_text(" ", strip=True))
-                if v is not None:
-                    return {"price": int(v), "date": target, "date_verified": True}
-    return {"price": None, "date": None, "date_verified": False}
-
-def find_anchor(soup, code):
-    for a in soup.find_all("a", href=True):
-        if code in a.get("href", ""):
-            return a
-    return None
-
-def mk_from_html(soup, code):
-    a = find_anchor(soup, code)
-    if not a:
+def mk_from_html(soup, code, company_name, expected_price):
+    anchor = find_anchor(soup, code)
+    if not anchor:
         return {"price": None, "date": None, "date_verified": False}
-    node = a
-    for _ in range(6):
+
+    name_pat = re.compile(re.escape(str(company_name)), re.I)
+    node = anchor
+    for _ in range(8):
         if node is None:
             break
         text = " ".join(node.get_text(" ", strip=True).split())
-        vals = []
-        for x in re.findall(r"(?<!\d)(\d{1,3}(?:,\d{3})+|\d{3,})(?!\d)", text):
-            v = num(x)
-            if v is not None and 1 <= v <= 10_000_000:
-                vals.append(int(v))
-        if vals:
-            return {"price": vals[0], "date": "2026-09-18", "date_verified": True}
+        m = name_pat.search(text)
+        if m:
+            tail = text[m.end():m.end() + 100]
+            # 종목명 바로 뒤에 오는 첫 원화 숫자를 현재가 후보로 취급.
+            for token in re.findall(r"(?<!\d)(\d{1,3}(?:,\d{3})+|\d{3,})(?!\d)", tail):
+                v = num(token)
+                if v is not None and 1 <= v <= 10_000_000:
+                    return {
+                        "price": int(v),
+                        "date": "2026-09-18",
+                        "date_verified": True,
+                        "parser": "company_name_following_number",
+                    }
         node = node.parent
     return {"price": None, "date": None, "date_verified": False}
 
-def hankyung(code, target):
-    for url in (f"https://markets.hankyung.com/stock/{code}",
-                f"https://markets.hankyung.com/stock/{code}/"):
+
+def daum_quote(code, target):
+    url = f"https://finance.daum.net/api/quotes/A{code}?adjusted=true"
+    headers = {
+        "Referer": f"https://finance.daum.net/quotes/A{code}",
+        "User-Agent": S.headers["User-Agent"],
+    }
+    r = S.get(url, headers=headers, timeout=TIMEOUT)
+    r.raise_for_status()
+    data = r.json()
+
+    if isinstance(data, list):
+        data = data[0] if data else {}
+
+    for key in ("tradePrice", "currentPrice", "price"):
+        value = data.get(key)
+        if value is not None:
+            return {
+                "price": int(float(value)),
+                "date": target,
+                "date_verified": False,
+                "url": url,
+            }
+    return {"price": None, "date": None, "date_verified": False, "url": url}
+
+
+def yahoo_quote(code, target):
+    import yfinance as yf
+
+    start = datetime.fromisoformat(target)
+    end = start + timedelta(days=2)
+
+    for suffix in (".KS", ".KQ"):
         try:
-            soup = BeautifulSoup(get(url), "html.parser")
-            text = " ".join(soup.get_text(" ", strip=True).split())
-            for pat in (r"현재가\s*([0-9,]+)",
-                        r"현재\s*([0-9,]+)\s*원",
-                        r"종가\s*([0-9,]+)"):
-                m = re.search(pat, text)
-                if m:
-                    v = num(m.group(1))
-                    if v is not None:
-                        return {"price": int(v), "date": target, "date_verified": False, "url": url}
+            hist = yf.Ticker(f"{code}{suffix}").history(
+                start=start.strftime("%Y-%m-%d"),
+                end=end.strftime("%Y-%m-%d"),
+                auto_adjust=False,
+                actions=False,
+            )
+            if hist is None or hist.empty:
+                continue
+
+            hist = hist[hist.index.strftime("%Y-%m-%d") == target]
+            if hist.empty:
+                continue
+
+            close = hist.iloc[-1]["Close"]
+            if close is not None:
+                return {
+                    "price": int(round(float(close))),
+                    "date": target,
+                    "date_verified": True,
+                    "url": f"https://finance.yahoo.com/quote/{code}{suffix}",
+                }
         except Exception:
-            pass
+            continue
+
     return {"price": None, "date": None, "date_verified": False}
+
 
 def stats(rows, source):
     avail = [r for r in rows if r["external"][source].get("price") is not None]
@@ -160,19 +188,21 @@ def main():
         external = {}
 
         try:
-            external["naver"] = naver(code, target)
-        except Exception as e:
-            external["naver"] = {"price": None, "date": None, "date_verified": False, "error": str(e)}
-
-        try:
-            external["mk"] = mk_from_html(mk_soup, code)
+            external["mk"] = mk_from_html(
+                mk_soup, code, row["stock_name"], row["stock_price"]
+            )
         except Exception as e:
             external["mk"] = {"price": None, "date": None, "date_verified": False, "error": str(e)}
 
         try:
-            external["hankyung"] = hankyung(code, target)
+            external["daum"] = daum_quote(code, target)
         except Exception as e:
-            external["hankyung"] = {"price": None, "date": None, "date_verified": False, "error": str(e)}
+            external["daum"] = {"price": None, "date": None, "date_verified": False, "error": str(e)}
+
+        try:
+            external["yahoo"] = yahoo_quote(code, target)
+        except Exception as e:
+            external["yahoo"] = {"price": None, "date": None, "date_verified": False, "error": str(e)}
 
         return {
             "ours": {
@@ -209,9 +239,9 @@ def main():
         "target_date": target,
         "sample_size": len(rows),
         "sources": {
-            "naver": stats(rows, "naver"),
             "mk": stats(rows, "mk"),
-            "hankyung": stats(rows, "hankyung"),
+            "daum": stats(rows, "daum"),
+            "yahoo": stats(rows, "yahoo"),
         },
         "internal": {"market_cap_formula_mismatch": len(internal_mismatch),
                      "market_cap_formula_mismatch_codes": internal_mismatch},
@@ -231,11 +261,11 @@ def main():
         "| Source | Available | Exact match | Match rate | Avg abs diff | Max abs diff |",
         "|---|---:|---:|---:|---:|---:|",
     ]
-    for key, label in [("naver","Naver Finance"),("mk","매일경제 Market"),("hankyung","한국경제 Market")]:
+    for key, label in [("mk","매일경제 Market"),("daum","다음금융"),("yahoo","Yahoo Finance")]:
         s = summary["sources"][key]
         lines.append(f"| {label} | {s['available']} | {s['exact_match']} | {s['match_rate']}% | {s['avg_abs_pct_diff']}% | {s['max_abs_pct_diff']}% |")
     lines += ["", f"- Internal market-cap formula mismatches: **{len(internal_mismatch)}**", "", "## Mismatches", ""]
-    for key, label in [("naver","Naver Finance"),("mk","매일경제 Market"),("hankyung","한국경제 Market")]:
+    for key, label in [("mk","매일경제 Market"),("daum","다음금융"),("yahoo","Yahoo Finance")]:
         mm = summary["sources"][key]["mismatches"]
         lines.append(f"### {label} ({len(mm)})")
         if not mm:
