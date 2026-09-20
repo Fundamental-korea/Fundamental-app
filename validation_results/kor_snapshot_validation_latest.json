@@ -1,0 +1,3130 @@
+{
+  "summary": {
+    "generated_at_utc": "2026-09-20T01:33:03.855908Z",
+    "target_date": "2026-09-18",
+    "sample_size": 100,
+    "sources": {
+      "naver": {
+        "available": 0,
+        "exact_match": 0,
+        "match_rate": 0,
+        "avg_abs_pct_diff": null,
+        "max_abs_pct_diff": null,
+        "mismatches": []
+      },
+      "mk": {
+        "available": 92,
+        "exact_match": 89,
+        "match_rate": 96.74,
+        "avg_abs_pct_diff": 21.0707,
+        "max_abs_pct_diff": 971.066,
+        "mismatches": [
+          {
+            "stock_code": "035420",
+            "stock_name": "NAVER",
+            "ours": 197700,
+            "external": 19430,
+            "abs_pct_diff": 917.4987
+          },
+          {
+            "stock_code": "011200",
+            "stock_name": "HMM",
+            "ours": 20800,
+            "external": 41550,
+            "abs_pct_diff": 49.9398
+          },
+          {
+            "stock_code": "006800",
+            "stock_name": "미래에셋증권",
+            "ours": 31650,
+            "external": 2955,
+            "abs_pct_diff": 971.066
+          }
+        ]
+      },
+      "hankyung": {
+        "available": 21,
+        "exact_match": 0,
+        "match_rate": 0.0,
+        "avg_abs_pct_diff": 525006.9546,
+        "max_abs_pct_diff": 3749900.0,
+        "mismatches": [
+          {
+            "stock_code": "005380",
+            "stock_name": "현대차",
+            "ours": 365000,
+            "external": 1340,
+            "abs_pct_diff": 27138.806
+          },
+          {
+            "stock_code": "105560",
+            "stock_name": "KB금융",
+            "ours": 174900,
+            "external": 1340,
+            "abs_pct_diff": 12952.2388
+          },
+          {
+            "stock_code": "055550",
+            "stock_name": "신한지주",
+            "ours": 110100,
+            "external": 1340,
+            "abs_pct_diff": 8116.4179
+          },
+          {
+            "stock_code": "000270",
+            "stock_name": "기아",
+            "ours": 121900,
+            "external": 1340,
+            "abs_pct_diff": 8997.0149
+          },
+          {
+            "stock_code": "086790",
+            "stock_name": "하나금융지주",
+            "ours": 133100,
+            "external": 1340,
+            "abs_pct_diff": 9832.8358
+          },
+          {
+            "stock_code": "010120",
+            "stock_name": "LS ELECTRIC",
+            "ours": 211500,
+            "external": 208500,
+            "abs_pct_diff": 1.4388
+          },
+          {
+            "stock_code": "000810",
+            "stock_name": "삼성화재",
+            "ours": 648000,
+            "external": 28,
+            "abs_pct_diff": 2314185.7143
+          },
+          {
+            "stock_code": "316140",
+            "stock_name": "우리금융지주",
+            "ours": 36100,
+            "external": 1340,
+            "abs_pct_diff": 2594.0299
+          },
+          {
+            "stock_code": "015760",
+            "stock_name": "한국전력",
+            "ours": 30750,
+            "external": 7,
+            "abs_pct_diff": 439185.7143
+          },
+          {
+            "stock_code": "079550",
+            "stock_name": "LIG디펜스앤에어로스페이스",
+            "ours": 744000,
+            "external": 144200,
+            "abs_pct_diff": 415.9501
+          },
+          {
+            "stock_code": "272210",
+            "stock_name": "한화시스템",
+            "ours": 80000,
+            "external": 144200,
+            "abs_pct_diff": 44.5215
+          },
+          {
+            "stock_code": "035720",
+            "stock_name": "카카오",
+            "ours": 33550,
+            "external": 3,
+            "abs_pct_diff": 1118233.3333
+          },
+          {
+            "stock_code": "000720",
+            "stock_name": "현대건설",
+            "ours": 124800,
+            "external": 7,
+            "abs_pct_diff": 1782757.1429
+          },
+          {
+            "stock_code": "064350",
+            "stock_name": "현대로템",
+            "ours": 122500,
+            "external": 144200,
+            "abs_pct_diff": 15.0485
+          },
+          {
+            "stock_code": "005830",
+            "stock_name": "DB손해보험",
+            "ours": 186900,
+            "external": 3952,
+            "abs_pct_diff": 4629.251
+          },
+          {
+            "stock_code": "003490",
+            "stock_name": "대한항공",
+            "ours": 29300,
+            "external": 1340,
+            "abs_pct_diff": 2086.5672
+          },
+          {
+            "stock_code": "003230",
+            "stock_name": "삼양식품",
+            "ours": 1300000,
+            "external": 1340,
+            "abs_pct_diff": 96914.9254
+          },
+          {
+            "stock_code": "047040",
+            "stock_name": "대우건설",
+            "ours": 18910,
+            "external": 7,
+            "abs_pct_diff": 270042.8571
+          },
+          {
+            "stock_code": "039490",
+            "stock_name": "키움증권",
+            "ours": 262500,
+            "external": 7,
+            "abs_pct_diff": 3749900.0
+          },
+          {
+            "stock_code": "062040",
+            "stock_name": "산일전기",
+            "ours": 211500,
+            "external": 18,
+            "abs_pct_diff": 1174900.0
+          },
+          {
+            "stock_code": "175330",
+            "stock_name": "JB금융지주",
+            "ours": 30850,
+            "external": 1340,
+            "abs_pct_diff": 2202.2388
+          }
+        ]
+      }
+    },
+    "internal": {
+      "market_cap_formula_mismatch": 0,
+      "market_cap_formula_mismatch_codes": []
+    }
+  },
+  "rows": [
+    {
+      "ours": {
+        "stock_code": "005930",
+        "stock_name": "삼성전자",
+        "price": 261000,
+        "listed_shares": 5846278608,
+        "market_cap": 1525878716688000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005930&page=1"
+        },
+        "mk": {
+          "price": 261000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "000660",
+        "stock_name": "SK하이닉스",
+        "price": 1857000,
+        "listed_shares": 730492365,
+        "market_cap": 1356524321805000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000660&page=1"
+        },
+        "mk": {
+          "price": 1857000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "005935",
+        "stock_name": "삼성전자우",
+        "price": 196100,
+        "listed_shares": 802371203,
+        "market_cap": 157344992908300,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005935&page=1"
+        },
+        "mk": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "402340",
+        "stock_name": "SK스퀘어",
+        "price": 1079000,
+        "listed_shares": 131923998,
+        "market_cap": 142345993842000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=402340&page=1"
+        },
+        "mk": {
+          "price": 1079000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "009150",
+        "stock_name": "삼성전기",
+        "price": 1388000,
+        "listed_shares": 74693696,
+        "market_cap": 103674850048000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=009150&page=1"
+        },
+        "mk": {
+          "price": 1388000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "373220",
+        "stock_name": "LG에너지솔루션",
+        "price": 364000,
+        "listed_shares": 234000000,
+        "market_cap": 85176000000000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=373220&page=1"
+        },
+        "mk": {
+          "price": 364000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "005380",
+        "stock_name": "현대차",
+        "price": 365000,
+        "listed_shares": 204757766,
+        "market_cap": 74736584590000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005380&page=1"
+        },
+        "mk": {
+          "price": 365000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 1340,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/005380"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "207940",
+        "stock_name": "삼성바이오로직스",
+        "price": 1398000,
+        "listed_shares": 46290951,
+        "market_cap": 64714749498000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=207940&page=1"
+        },
+        "mk": {
+          "price": 1398000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "105560",
+        "stock_name": "KB금융",
+        "price": 174900,
+        "listed_shares": 354687734,
+        "market_cap": 62034884676600,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=105560&page=1"
+        },
+        "mk": {
+          "price": 174900,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 1340,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/105560"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "028260",
+        "stock_name": "삼성물산",
+        "price": 351000,
+        "listed_shares": 162167581,
+        "market_cap": 56920820931000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=028260&page=1"
+        },
+        "mk": {
+          "price": 351000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "032830",
+        "stock_name": "삼성생명",
+        "price": 283500,
+        "listed_shares": 200000000,
+        "market_cap": 56700000000000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=032830&page=1"
+        },
+        "mk": {
+          "price": 283500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "012450",
+        "stock_name": "한화에어로스페이스",
+        "price": 1078000,
+        "listed_shares": 51563401,
+        "market_cap": 55585346278000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=012450&page=1"
+        },
+        "mk": {
+          "price": 1078000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "034020",
+        "stock_name": "두산에너빌리티",
+        "price": 84900,
+        "listed_shares": 640561146,
+        "market_cap": 54383641295400,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=034020&page=1"
+        },
+        "mk": {
+          "price": 84900,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "055550",
+        "stock_name": "신한지주",
+        "price": 110100,
+        "listed_shares": 469450239,
+        "market_cap": 51686471313900,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=055550&page=1"
+        },
+        "mk": {
+          "price": 110100,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 1340,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/055550"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "329180",
+        "stock_name": "HD현대중공업",
+        "price": 460000,
+        "listed_shares": 104961225,
+        "market_cap": 48282163500000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=329180&page=1"
+        },
+        "mk": {
+          "price": 460000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "000270",
+        "stock_name": "기아",
+        "price": 121900,
+        "listed_shares": 390412998,
+        "market_cap": 47591344456200,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000270&page=1"
+        },
+        "mk": {
+          "price": 121900,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 1340,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/000270"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "006400",
+        "stock_name": "삼성SDI",
+        "price": 541000,
+        "listed_shares": 80585530,
+        "market_cap": 43596771730000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=006400&page=1"
+        },
+        "mk": {
+          "price": 541000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "068270",
+        "stock_name": "셀트리온",
+        "price": 179400,
+        "listed_shares": 232617176,
+        "market_cap": 41731521374400,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=068270&page=1"
+        },
+        "mk": {
+          "price": 179400,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "034730",
+        "stock_name": "SK",
+        "price": 545000,
+        "listed_shares": 72502703,
+        "market_cap": 39513973135000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=034730&page=1"
+        },
+        "mk": {
+          "price": 545000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "086790",
+        "stock_name": "하나금융지주",
+        "price": 133100,
+        "listed_shares": 270969910,
+        "market_cap": 36066095021000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=086790&page=1"
+        },
+        "mk": {
+          "price": 133100,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 1340,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/086790"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "012330",
+        "stock_name": "현대모비스",
+        "price": 379000,
+        "listed_shares": 89820585,
+        "market_cap": 34042001715000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=012330&page=1"
+        },
+        "mk": {
+          "price": 379000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "066570",
+        "stock_name": "LG전자",
+        "price": 198400,
+        "listed_shares": 162884638,
+        "market_cap": 32316312179200,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=066570&page=1"
+        },
+        "mk": {
+          "price": 198400,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "010120",
+        "stock_name": "LS ELECTRIC",
+        "price": 211500,
+        "listed_shares": 150000000,
+        "market_cap": 31725000000000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=010120&page=1"
+        },
+        "mk": {
+          "price": 211500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 208500,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/010120"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "035420",
+        "stock_name": "NAVER",
+        "price": 197700,
+        "listed_shares": 152094369,
+        "market_cap": 30069056751300,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=035420&page=1"
+        },
+        "mk": {
+          "price": 19430,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "000810",
+        "stock_name": "삼성화재",
+        "price": 648000,
+        "listed_shares": 44647473,
+        "market_cap": 28931562504000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000810&page=1"
+        },
+        "mk": {
+          "price": 648000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 28,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/000810"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "298040",
+        "stock_name": "효성중공업",
+        "price": 2915000,
+        "listed_shares": 9324548,
+        "market_cap": 27181057420000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=298040&page=1"
+        },
+        "mk": {
+          "price": 2915000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "316140",
+        "stock_name": "우리금융지주",
+        "price": 36100,
+        "listed_shares": 736786557,
+        "market_cap": 26597994707700,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=316140&page=1"
+        },
+        "mk": {
+          "price": 36100,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 1340,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/316140"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "267260",
+        "stock_name": "HD현대일렉트릭",
+        "price": 725000,
+        "listed_shares": 36047135,
+        "market_cap": 26134172875000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=267260&page=1"
+        },
+        "mk": {
+          "price": 725000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "005490",
+        "stock_name": "POSCO홀딩스",
+        "price": 323000,
+        "listed_shares": 79241527,
+        "market_cap": 25595013221000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005490&page=1"
+        },
+        "mk": {
+          "price": 323000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "042660",
+        "stock_name": "한화오션",
+        "price": 82900,
+        "listed_shares": 306413394,
+        "market_cap": 25401670362600,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=042660&page=1"
+        },
+        "mk": {
+          "price": 82900,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "009540",
+        "stock_name": "HD한국조선해양",
+        "price": 337500,
+        "listed_shares": 70773116,
+        "market_cap": 23885926650000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=009540&page=1"
+        },
+        "mk": {
+          "price": 337500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "010130",
+        "stock_name": "고려아연",
+        "price": 1124000,
+        "listed_shares": 20872969,
+        "market_cap": 23461217156000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=010130&page=1"
+        },
+        "mk": {
+          "price": 1124000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "000150",
+        "stock_name": "두산",
+        "price": 1447000,
+        "listed_shares": 16193835,
+        "market_cap": 23432479245000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000150&page=1"
+        },
+        "mk": {
+          "price": 1447000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "096770",
+        "stock_name": "SK이노베이션",
+        "price": 136600,
+        "listed_shares": 169052788,
+        "market_cap": 23092610840800,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=096770&page=1"
+        },
+        "mk": {
+          "price": 136600,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "042700",
+        "stock_name": "한미반도체",
+        "price": 236000,
+        "listed_shares": 95312200,
+        "market_cap": 22493679200000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=042700&page=1"
+        },
+        "mk": {
+          "price": 236000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "138040",
+        "stock_name": "메리츠금융지주",
+        "price": 126900,
+        "listed_shares": 167347273,
+        "market_cap": 21236368943700,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=138040&page=1"
+        },
+        "mk": {
+          "price": 126900,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "015760",
+        "stock_name": "한국전력",
+        "price": 30750,
+        "listed_shares": 641964077,
+        "market_cap": 19740395367750,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=015760&page=1"
+        },
+        "mk": {
+          "price": 30750,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 7,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/015760"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "011200",
+        "stock_name": "HMM",
+        "price": 20800,
+        "listed_shares": 943237970,
+        "market_cap": 19619349776000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=011200&page=1"
+        },
+        "mk": {
+          "price": 41550,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "017670",
+        "stock_name": "SK텔레콤",
+        "price": 89200,
+        "listed_shares": 214790053,
+        "market_cap": 19159272727600,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=017670&page=1"
+        },
+        "mk": {
+          "price": 89200,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "051910",
+        "stock_name": "LG화학",
+        "price": 267000,
+        "listed_shares": 70592343,
+        "market_cap": 18848155581000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=051910&page=1"
+        },
+        "mk": {
+          "price": 267000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "010140",
+        "stock_name": "삼성중공업",
+        "price": 20800,
+        "listed_shares": 880000000,
+        "market_cap": 18304000000000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=010140&page=1"
+        },
+        "mk": {
+          "price": 20800,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "033780",
+        "stock_name": "KT&G",
+        "price": 172000,
+        "listed_shares": 103810456,
+        "market_cap": 17855398432000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=033780&page=1"
+        },
+        "mk": {
+          "price": 172000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "196170",
+        "stock_name": "알테오젠",
+        "price": 253500,
+        "listed_shares": 69655133,
+        "market_cap": 17657576215500,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=196170&page=1"
+        },
+        "mk": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "006800",
+        "stock_name": "미래에셋증권",
+        "price": 31650,
+        "listed_shares": 543021051,
+        "market_cap": 17186616264150,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=006800&page=1"
+        },
+        "mk": {
+          "price": 2955,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "018260",
+        "stock_name": "삼성에스디에스",
+        "price": 219500,
+        "listed_shares": 77377800,
+        "market_cap": 16984427100000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=018260&page=1"
+        },
+        "mk": {
+          "price": 219500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "003550",
+        "stock_name": "LG",
+        "price": 111900,
+        "listed_shares": 151192004,
+        "market_cap": 16918385247600,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=003550&page=1"
+        },
+        "mk": {
+          "price": 111900,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "010950",
+        "stock_name": "S-Oil",
+        "price": 149500,
+        "listed_shares": 112582792,
+        "market_cap": 16831127404000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=010950&page=1"
+        },
+        "mk": {
+          "price": 149500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "267250",
+        "stock_name": "HD현대",
+        "price": 208000,
+        "listed_shares": 78993085,
+        "market_cap": 16430561680000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=267250&page=1"
+        },
+        "mk": {
+          "price": 208000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "079550",
+        "stock_name": "LIG디펜스앤에어로스페이스",
+        "price": 744000,
+        "listed_shares": 22000000,
+        "market_cap": 16368000000000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=079550&page=1"
+        },
+        "mk": {
+          "price": 744000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 144200,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/079550"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "003670",
+        "stock_name": "포스코퓨처엠",
+        "price": 183900,
+        "listed_shares": 88946220,
+        "market_cap": 16357209858000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=003670&page=1"
+        },
+        "mk": {
+          "price": 183900,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "024110",
+        "stock_name": "기업은행",
+        "price": 20050,
+        "listed_shares": 797425869,
+        "market_cap": 15988388673450,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=024110&page=1"
+        },
+        "mk": {
+          "price": 20050,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "086280",
+        "stock_name": "현대글로비스",
+        "price": 203500,
+        "listed_shares": 75000000,
+        "market_cap": 15262500000000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=086280&page=1"
+        },
+        "mk": {
+          "price": 203500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "272210",
+        "stock_name": "한화시스템",
+        "price": 80000,
+        "listed_shares": 188919389,
+        "market_cap": 15113551120000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=272210&page=1"
+        },
+        "mk": {
+          "price": 80000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 144200,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/272210"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "035720",
+        "stock_name": "카카오",
+        "price": 33550,
+        "listed_shares": 442999903,
+        "market_cap": 14862646745650,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=035720&page=1"
+        },
+        "mk": {
+          "price": 33550,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 3,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/035720"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "000720",
+        "stock_name": "현대건설",
+        "price": 124800,
+        "listed_shares": 111355765,
+        "market_cap": 13897199472000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000720&page=1"
+        },
+        "mk": {
+          "price": 124800,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 7,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/000720"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "278470",
+        "stock_name": "에이피알",
+        "price": 367000,
+        "listed_shares": 37438155,
+        "market_cap": 13739802885000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=278470&page=1"
+        },
+        "mk": {
+          "price": 367000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "064350",
+        "stock_name": "현대로템",
+        "price": 122500,
+        "listed_shares": 109142293,
+        "market_cap": 13369930892500,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=064350&page=1"
+        },
+        "mk": {
+          "price": 122500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 144200,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/064350"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "030200",
+        "stock_name": "KT",
+        "price": 53000,
+        "listed_shares": 252021685,
+        "market_cap": 13357149305000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=030200&page=1"
+        },
+        "mk": {
+          "price": 53000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "047810",
+        "stock_name": "한국항공우주",
+        "price": 129800,
+        "listed_shares": 97475107,
+        "market_cap": 12652268888600,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=047810&page=1"
+        },
+        "mk": {
+          "price": 129800,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "011070",
+        "stock_name": "LG이노텍",
+        "price": 532000,
+        "listed_shares": 23667107,
+        "market_cap": 12590900924000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=011070&page=1"
+        },
+        "mk": {
+          "price": 532000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "005830",
+        "stock_name": "DB손해보험",
+        "price": 186900,
+        "listed_shares": 65500349,
+        "market_cap": 12242015228100,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005830&page=1"
+        },
+        "mk": {
+          "price": 186900,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 3952,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/005830"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "443060",
+        "stock_name": "HD현대마린솔루션",
+        "price": 246000,
+        "listed_shares": 44833460,
+        "market_cap": 11029031160000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=443060&page=1"
+        },
+        "mk": {
+          "price": 246000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "086520",
+        "stock_name": "에코프로",
+        "price": 81100,
+        "listed_shares": 135776152,
+        "market_cap": 11011445927200,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=086520&page=1"
+        },
+        "mk": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "003490",
+        "stock_name": "대한항공",
+        "price": 29300,
+        "listed_shares": 368220609,
+        "market_cap": 10788863843700,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=003490&page=1"
+        },
+        "mk": {
+          "price": 29300,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 1340,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/003490"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "078930",
+        "stock_name": "GS",
+        "price": 113900,
+        "listed_shares": 92895495,
+        "market_cap": 10580796880500,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=078930&page=1"
+        },
+        "mk": {
+          "price": 113900,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "247540",
+        "stock_name": "에코프로비엠",
+        "price": 104900,
+        "listed_shares": 97830434,
+        "market_cap": 10262412526600,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=247540&page=1"
+        },
+        "mk": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "071050",
+        "stock_name": "한국금융지주",
+        "price": 182300,
+        "listed_shares": 55725992,
+        "market_cap": 10158848341600,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=071050&page=1"
+        },
+        "mk": {
+          "price": 182300,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "006260",
+        "stock_name": "LS",
+        "price": 325500,
+        "listed_shares": 31200000,
+        "market_cap": 10155600000000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=006260&page=1"
+        },
+        "mk": {
+          "price": 325500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "028050",
+        "stock_name": "삼성E&A",
+        "price": 51800,
+        "listed_shares": 196000000,
+        "market_cap": 10152800000000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=028050&page=1"
+        },
+        "mk": {
+          "price": 51800,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "307950",
+        "stock_name": "현대오토에버",
+        "price": 369500,
+        "listed_shares": 27423982,
+        "market_cap": 10133161349000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=307950&page=1"
+        },
+        "mk": {
+          "price": 369500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "047050",
+        "stock_name": "포스코인터내셔널",
+        "price": 57300,
+        "listed_shares": 175922788,
+        "market_cap": 10080375752400,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=047050&page=1"
+        },
+        "mk": {
+          "price": 57300,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "003230",
+        "stock_name": "삼양식품",
+        "price": 1300000,
+        "listed_shares": 7533015,
+        "market_cap": 9792919500000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=003230&page=1"
+        },
+        "mk": {
+          "price": 1300000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 1340,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/003230"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "323410",
+        "stock_name": "카카오뱅크",
+        "price": 20450,
+        "listed_shares": 477120437,
+        "market_cap": 9757112936650,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=323410&page=1"
+        },
+        "mk": {
+          "price": 20450,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "000500",
+        "stock_name": "가온전선",
+        "price": 327000,
+        "listed_shares": 29777607,
+        "market_cap": 9737277489000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000500&page=1"
+        },
+        "mk": {
+          "price": 327000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "036930",
+        "stock_name": "주성엔지니어링",
+        "price": 205500,
+        "listed_shares": 46481121,
+        "market_cap": 9551870365500,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=036930&page=1"
+        },
+        "mk": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "005940",
+        "stock_name": "NH투자증권",
+        "price": 25550,
+        "listed_shares": 369206105,
+        "market_cap": 9433215982750,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005940&page=1"
+        },
+        "mk": {
+          "price": 25550,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "259960",
+        "stock_name": "크래프톤",
+        "price": 205000,
+        "listed_shares": 45747943,
+        "market_cap": 9378328315000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=259960&page=1"
+        },
+        "mk": {
+          "price": 205000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "180640",
+        "stock_name": "한진칼",
+        "price": 138800,
+        "listed_shares": 66762275,
+        "market_cap": 9266603770000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=180640&page=1"
+        },
+        "mk": {
+          "price": 138800,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "277810",
+        "stock_name": "레인보우로보틱스",
+        "price": 436000,
+        "listed_shares": 19399858,
+        "market_cap": 8458338088000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=277810&page=1"
+        },
+        "mk": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "090430",
+        "stock_name": "아모레퍼시픽",
+        "price": 143400,
+        "listed_shares": 58492759,
+        "market_cap": 8387861640600,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=090430&page=1"
+        },
+        "mk": {
+          "price": 143400,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "0126Z0",
+        "stock_name": "삼성에피스홀딩스",
+        "price": 327000,
+        "listed_shares": 24883049,
+        "market_cap": 8136757023000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=0126Z0&page=1"
+        },
+        "mk": {
+          "price": 327000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "047040",
+        "stock_name": "대우건설",
+        "price": 18910,
+        "listed_shares": 410907638,
+        "market_cap": 7770263434580,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=047040&page=1"
+        },
+        "mk": {
+          "price": 18910,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 7,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/047040"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "016360",
+        "stock_name": "삼성증권",
+        "price": 85300,
+        "listed_shares": 89300000,
+        "market_cap": 7617290000000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=016360&page=1"
+        },
+        "mk": {
+          "price": 85300,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "007660",
+        "stock_name": "이수페타시스",
+        "price": 103700,
+        "listed_shares": 73409219,
+        "market_cap": 7612536010300,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=007660&page=1"
+        },
+        "mk": {
+          "price": 103700,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "161390",
+        "stock_name": "한국타이어앤테크놀로지",
+        "price": 60600,
+        "listed_shares": 123875069,
+        "market_cap": 7506829181400,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=161390&page=1"
+        },
+        "mk": {
+          "price": 60600,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "021240",
+        "stock_name": "코웨이",
+        "price": 101100,
+        "listed_shares": 70767426,
+        "market_cap": 7154586768600,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=021240&page=1"
+        },
+        "mk": {
+          "price": 101100,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "352820",
+        "stock_name": "하이브",
+        "price": 165900,
+        "listed_shares": 43106836,
+        "market_cap": 7151424092400,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=352820&page=1"
+        },
+        "mk": {
+          "price": 165900,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "000880",
+        "stock_name": "한화",
+        "price": 132500,
+        "listed_shares": 53328897,
+        "market_cap": 7066078852500,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=000880&page=1"
+        },
+        "mk": {
+          "price": 132500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "039490",
+        "stock_name": "키움증권",
+        "price": 262500,
+        "listed_shares": 26228316,
+        "market_cap": 6884932950000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=039490&page=1"
+        },
+        "mk": {
+          "price": 262500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 7,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/039490"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "064400",
+        "stock_name": "LG씨엔에스",
+        "price": 70600,
+        "listed_shares": 96885948,
+        "market_cap": 6840147928800,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=064400&page=1"
+        },
+        "mk": {
+          "price": 70600,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "267270",
+        "stock_name": "HD건설기계",
+        "price": 139800,
+        "listed_shares": 47497386,
+        "market_cap": 6640134562800,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=267270&page=1"
+        },
+        "mk": {
+          "price": 139800,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "062040",
+        "stock_name": "산일전기",
+        "price": 211500,
+        "listed_shares": 30642850,
+        "market_cap": 6480962775000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=062040&page=1"
+        },
+        "mk": {
+          "price": 211500,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 18,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/062040"
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "128940",
+        "stock_name": "한미약품",
+        "price": 503000,
+        "listed_shares": 12810991,
+        "market_cap": 6443928473000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=128940&page=1"
+        },
+        "mk": {
+          "price": 503000,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "009830",
+        "stock_name": "한화솔루션",
+        "price": 28400,
+        "listed_shares": 224892536,
+        "market_cap": 6386948022400,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=009830&page=1"
+        },
+        "mk": {
+          "price": 28400,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "001440",
+        "stock_name": "대한전선",
+        "price": 31450,
+        "listed_shares": 195992596,
+        "market_cap": 6163967144200,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=001440&page=1"
+        },
+        "mk": {
+          "price": 31450,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "326030",
+        "stock_name": "SK바이오팜",
+        "price": 77700,
+        "listed_shares": 78313250,
+        "market_cap": 6084939525000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=326030&page=1"
+        },
+        "mk": {
+          "price": 77700,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "005387",
+        "stock_name": "현대차2우B",
+        "price": 171100,
+        "listed_shares": 34963930,
+        "market_cap": 5982328423000,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=005387&page=1"
+        },
+        "mk": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "240810",
+        "stock_name": "원익IPS",
+        "price": 121500,
+        "listed_shares": 49083901,
+        "market_cap": 5963693971500,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=240810&page=1"
+        },
+        "mk": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "032640",
+        "stock_name": "LG유플러스",
+        "price": 14050,
+        "listed_shares": 424427732,
+        "market_cap": 5963209634600,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=032640&page=1"
+        },
+        "mk": {
+          "price": 14050,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": null,
+          "date": null,
+          "date_verified": false
+        }
+      }
+    },
+    {
+      "ours": {
+        "stock_code": "175330",
+        "stock_name": "JB금융지주",
+        "price": 30850,
+        "listed_shares": 186521824,
+        "market_cap": 5754198270400,
+        "snapshot_date": "2026-09-18",
+        "source": "KRX_OPEN_API"
+      },
+      "external": {
+        "naver": {
+          "price": null,
+          "date": null,
+          "date_verified": false,
+          "error": "410 Client Error: 410 for url: https://finance.naver.com/item/sise_day.naver?code=175330&page=1"
+        },
+        "mk": {
+          "price": 30850,
+          "date": "2026-09-18",
+          "date_verified": true
+        },
+        "hankyung": {
+          "price": 1340,
+          "date": "2026-09-18",
+          "date_verified": false,
+          "url": "https://markets.hankyung.com/stock/175330"
+        }
+      }
+    }
+  ]
+}
