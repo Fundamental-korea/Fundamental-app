@@ -14,21 +14,14 @@ from kor_market_pipeline import install_market_snapshot_integration
 
 
 REPAIR_CODES = (
-    "001720",  # 신영증권
-    "395400",  # SK리츠
-    "448730",  # 삼성FN리츠
-    "001570",  # 금양
-    "001080",  # 만호제강
-    "950170",  # JTC
-    "021820",  # 세원정공
-    "334970",  # 프레스티지바이오로직스
-    "217950",  # 파마리서치바이오 (KONEX snapshot path)
-    "018500",  # 동원모빌리티
-    "190650",  # 코리아에셋투자증권
-    "050860",  # 아세아텍
-    "097870",  # 효성오앤비
+    "950210",  # 프레스티지바이오파마 — largest remaining KRX market-cap / positive EPS+BPS
+    "900290",  # GRT — large remaining market cap / positive EPS+BPS
+    "417310",  # 코람코더원리츠 — REIT / meaningful remaining market cap
+    "099750",  # 이지케어텍 — positive EPS+BPS / meaningful remaining market cap
+    "092440",  # 기신정기 — positive EPS+BPS
+    "189690",  # 포시에스 — positive EPS+BPS
+    "020180",  # 대신정보통신 — positive EPS+BPS
 )
-
 
 def main() -> int:
     print("🔧 선택 종목 개별 복구 시작")
