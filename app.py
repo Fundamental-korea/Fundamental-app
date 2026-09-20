@@ -2540,8 +2540,11 @@ else:
 
                         # 값 포맷팅 조정 (성장률이나 비율 지표는 뒤에 % 또는 %p 추가)
                         if value is not None:
-                            if metric_key in ["revenue_growth", "eps_growth", "opm", "roic", "roa", "debt_rate", "quick_ratio", "sga_ratio"]:
+                            if metric_key in ["revenue_growth", "eps_growth", "opm", "roic", "roa", "debt_rate", "sga_ratio"]:
                                 value_display = f"{value}%"
+                            elif metric_key == "quick_ratio":
+                                # DB에는 채점 일관성을 위해 배율(예: 0.7599)로 저장하고 화면에는 %로 표시.
+                                value_display = f"{value * 100:.2f}%"
                             elif metric_key == "downturn_defense":
                                 value_display = f"{value}%p"
                             else:
