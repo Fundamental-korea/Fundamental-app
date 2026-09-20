@@ -842,6 +842,8 @@ def _parse_report_financials(df, df_full=None):
     )
     eps_growth = sanitize_growth(eps_growth_raw)
 
+    parent_net_income = get_parent_net_income(df, detail_df)
+
     # DART/XBRL 계정명은 회사마다 표기가 달라질 수 있으므로 공통 EPS 파서를 사용한다.
     # 특히 '보통주기본주당이익'처럼 실제 공시 계정이 있어도 기존 일반 키워드 매칭에서
     # 누락될 수 있었던 문제를 방지한다.
@@ -872,6 +874,7 @@ def _parse_report_financials(df, df_full=None):
         "revenue_growth_raw": revenue_growth_raw,
         "eps_growth_raw": eps_growth_raw,
         "reported_eps": reported_eps,
+        "parent_net_income": parent_net_income,
         "report_period_end": report_period_end,
     }
 
@@ -1386,6 +1389,96 @@ def fetch_recent_quarters_metrics(stock_code, latest_report=None, n_more=3, use_
 
     quarters.reverse()  # 오래된 것 -> 최신 순
     return quarters
+
+
+def calculate_ttm_net_income(reports, latest_report=None):
+    """
+    최근 정기보고서들로 TTM 순이익을 계산한다.
+    중간보고서는 누적값이므로 분기 순액으로 차분하고 전년도 4분기를 보완한다.
+    지배주주 귀속 순이익이 파싱되어 있으면 그것을 우선 사용한다.
+    """
+    if not reports:
+        return None
+
+    rows = {}
+    for item in reports:
+        year = item.get("_report_year")
+        code = item.get("_report_code")
+        value = item.get("parent_net_income")
+        if value is None:
+            value = item.get("net_income")
+        if year is None or code is None or value is None:
+            continue
+        try:
+            rows[(int(year), str(code))] = float(value)
+        except (TypeError, ValueError):
+            continue
+
+    if not rows:
+        return None
+
+    latest = latest_report or max(
+        reports,
+        key=lambda x: (int(x.get("_report_year", 0)), str(x.get("_report_code", "")))
+    )
+    fy = int(latest.get("_report_year"))
+    code = str(latest.get("_report_code"))
+
+    def v(year, report_code):
+        return rows.get((int(year), str(report_code)))
+
+    if code == "11011":
+        annual = v(fy, "11011")
+        h1 = v(fy, "11012")
+        q1 = v(fy, "11013")
+        q3 = v(fy, "11014")
+        if None in (annual, h1, q1, q3):
+            return None
+        q2 = h1 - q1
+        q3_net = q3 - h1
+        q4 = annual - q3
+        return round(q1 + q2 + q3_net + q4, 2)
+
+    if code == "11014":
+        q3_cum = v(fy, "11014")
+        h1 = v(fy, "11012")
+        q1 = v(fy, "11013")
+        prev_annual = v(fy - 1, "11011")
+        prev_q3 = v(fy - 1, "11014")
+        if None in (q3_cum, h1, q1, prev_annual, prev_q3):
+            return None
+        q2 = h1 - q1
+        q3_net = q3_cum - h1
+        q4 = prev_annual - prev_q3
+        return round(q1 + q2 + q3_net + q4, 2)
+
+    if code == "11012":
+        h1 = v(fy, "11012")
+        q1 = v(fy, "11013")
+        prev_annual = v(fy - 1, "11011")
+        prev_q3 = v(fy - 1, "11014")
+        prev_h1 = v(fy - 1, "11012")
+        if None in (h1, q1, prev_annual, prev_q3, prev_h1):
+            return None
+        q2 = h1 - q1
+        q3_net = prev_q3 - prev_h1
+        q4 = prev_annual - prev_q3
+        return round(q1 + q2 + q3_net + q4, 2)
+
+    if code == "11013":
+        q1_current = v(fy, "11013")
+        prev_annual = v(fy - 1, "11011")
+        prev_q3 = v(fy - 1, "11014")
+        prev_h1 = v(fy - 1, "11012")
+        prev_q1 = v(fy - 1, "11013")
+        if None in (q1_current, prev_annual, prev_q3, prev_h1, prev_q1):
+            return None
+        q2 = prev_h1 - prev_q1
+        q3_net = prev_q3 - prev_h1
+        q4 = prev_annual - prev_q3
+        return round(q1_current + q2 + q3_net + q4, 2)
+
+    return None
 
 
 def fetch_year_data(stock_code, year, use_ofs_for_manufacturing=True):
