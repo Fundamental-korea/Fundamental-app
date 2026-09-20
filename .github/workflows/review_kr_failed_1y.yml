@@ -2,12 +2,6 @@ name: Korean Failed 1Y Review
 
 on:
   workflow_dispatch:
-  push:
-    branches:
-      - refactor/kor-market-snapshot
-    paths:
-      - review_kor_failed_1y.py
-      - .github/workflows/review_kr_failed_1y.yml
 
 permissions:
   contents: read
