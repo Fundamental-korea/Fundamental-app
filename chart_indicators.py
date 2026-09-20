@@ -301,8 +301,11 @@ def compute_cmf(
     close = pd.to_numeric(close, errors="coerce")
     volume = pd.to_numeric(volume, errors="coerce").fillna(0.0)
 
-    range_ = (high - low).replace(0, pd.NA)
-    money_flow_multiplier = ((close - low) - (high - close)) / range_
+    range_ = high - low
+    # pd.NA로 replace하면 pandas가 Series를 object dtype으로 승격시킬 수 있어
+    # 이후 rolling().sum()에서 "No numeric types to aggregate"가 발생할 수 있습니다.
+    # NaN은 float dtype을 유지하므로 CMF의 rolling 계산을 안전하게 처리합니다.
+    money_flow_multiplier = (((close - low) - (high - close)) / range_.where(range_ != 0, float("nan")))
     money_flow_volume = money_flow_multiplier * volume
     volume_sum = volume.rolling(window=window, min_periods=window).sum()
     mfv_sum = money_flow_volume.rolling(window=window, min_periods=window).sum()
