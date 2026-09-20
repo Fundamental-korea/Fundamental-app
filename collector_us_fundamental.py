@@ -495,22 +495,107 @@ def load_company(session, ticker, cik):
     return fetch_json(session, SEC_FACTS_URL.format(cik=cik10)), fetch_json(session, SEC_SUBMISSIONS_URL.format(cik=cik10))
 
 
-def period_metrics(index, latest_year, period):
+def period_metrics_pair(index, latest_year, period):
+    """Build Korean-compatible US period structure: avg + worst + yearly breakdown."""
     all_years = sorted({y for rows in index.values() for y in rows.keys()})
     if latest_year not in all_years:
-        return None, {}, None
+        return None
+
     base_year = latest_year - period
     if base_year not in all_years:
+        return None
+
+    window_years = [y for y in range(base_year, latest_year + 1) if y in all_years]
+    if len(window_years) < 2:
+        return None
+
+    oldest, newest = window_years[0], window_years[-1]
+    actual_span = newest - oldest
+    yearly = {y: annual_metrics(index, y) for y in window_years}
+
+    latest_metrics = dict(yearly[newest])
+    revenue_growth = growth_cagr(
+        yearly[newest].get("revenue"),
+        yearly[oldest].get("revenue"),
+        actual_span,
+    )
+    eps_growth = growth_cagr(
+        yearly[newest].get("eps"),
+        yearly[oldest].get("eps"),
+        actual_span,
+    )
+
+    avg_metrics = {
+        "revenue_growth": revenue_growth,
+        "eps_growth": eps_growth,
+        "downturn_defense": None,
+    }
+    worst_metrics = {
+        "revenue_growth": revenue_growth,
+        "eps_growth": eps_growth,
+        "downturn_defense": None,
+    }
+
+    ratio_keys = (
+        "opm", "roic", "debt_rate", "quick_ratio",
+        "interest_coverage", "ocf_ratio", "sga_ratio",
+        "roa",
+    )
+    recent_years = window_years[1:] if len(window_years) > 1 else window_years
+
+    for metric in ratio_keys:
+        series = [
+            yearly[y].get(metric)
+            for y in recent_years
+            if yearly[y].get(metric) is not None
+        ]
+        avg_metrics[metric] = (
+            round(sum(series) / len(series), 4) if series else None
+        )
+        worst_metrics[metric] = worst_value(metric, series)
+
+    yearly_breakdown = {}
+    for metric in ratio_keys:
+        yearly_breakdown[metric] = {
+            str(y): yearly[y].get(metric)
+            for y in recent_years
+            if yearly[y].get(metric) is not None
+        }
+
+    rev_growth_by_year, eps_growth_by_year = {}, {}
+    for y in recent_years:
+        prev_y = y - 1
+        if prev_y not in yearly or y not in yearly:
+            continue
+        rev_y = yearly[y].get("revenue")
+        rev_prev = yearly[prev_y].get("revenue")
+        eps_y = yearly[y].get("eps")
+        eps_prev = yearly[prev_y].get("eps")
+        if rev_prev not in (None, 0) and rev_y is not None:
+            value = (rev_y - rev_prev) / abs(rev_prev) * 100.0
+            rev_growth_by_year[str(y)] = sanitize_growth(value)
+        if eps_prev not in (None, 0) and eps_y is not None:
+            value = (eps_y - eps_prev) / abs(eps_prev) * 100.0
+            eps_growth_by_year[str(y)] = sanitize_growth(value)
+
+    yearly_breakdown["revenue_growth"] = rev_growth_by_year
+    yearly_breakdown["eps_growth"] = eps_growth_by_year
+
+    return {
+        "years_used": window_years,
+        "avg_metrics": avg_metrics,
+        "worst_metrics": worst_metrics,
+        "yearly_breakdown": yearly_breakdown,
+    }
+
+
+def period_metrics(index, latest_year, period):
+    """Backward-compatible worst-metrics accessor used by diagnostic collectors."""
+    pair = period_metrics_pair(index, latest_year, period)
+    if pair is None:
         return None, {}, None
-    candidate_years = [y for y in all_years if base_year <= y <= latest_year]
-    yearly = {y: annual_metrics(index, y) for y in candidate_years}
-    latest, base = yearly[latest_year], yearly[base_year]
-    metrics = dict(latest)
-    metrics["revenue_growth"] = growth_cagr(latest.get("revenue"), base.get("revenue"), period)
-    metrics["eps_growth"] = growth_cagr(latest.get("eps"), base.get("eps"), period)
-    for key in ("opm", "roic", "debt_rate", "quick_ratio", "interest_coverage", "ocf_ratio", "sga_ratio", "roa"):
-        metrics[key] = worst_value(key, [yearly[y].get(key) for y in candidate_years])
-    return latest_year, metrics, base_year
+    return latest_year, pair["worst_metrics"], latest_year - period
+
 
 
 def build_result(ticker, cik, company_name, facts, submissions, universe_row=None, market_prices=None):
@@ -518,25 +603,125 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
     index = build_fact_index(facts)
     all_years = sorted({y for rows in index.values() for y in rows.keys()})
     snapshot = build_latest_snapshot(facts)
+
     if not all_years:
-        return {"ticker": ticker, "cik": str(cik), "company_name": company_name, "sector": classify_company(submissions), "base_year": None, "period_scores": {}, "total_score": None, "grade": None, "data_unavailable": True, "data_reliability": "none", "missing_metric_count": 10, "snapshot": snapshot, "snapshot_fiscal_end": snapshot.get("fiscal_end") if snapshot else None, "snapshot_period": snapshot.get("fiscal_period") if snapshot else None, "snapshot_form": snapshot.get("form") if snapshot else None, "snapshot_filed": snapshot.get("filed") if snapshot else None, "snapshot_basis": snapshot.get("basis") if snapshot else None, "snapshot_updated_at": datetime.now(timezone.utc).isoformat(), "updated_at": datetime.now(timezone.utc).isoformat()}
-    flow_years = sorted(set(index.get("revenue", {}).keys()) | set(index.get("operating_income", {}).keys()) | set(index.get("net_income", {}).keys()))
+        return {
+            "ticker": ticker,
+            "cik": str(cik),
+            "company_name": company_name,
+            "sector": universe_row.get("sector_common") or classify_company(submissions),
+            "base_year": None,
+            "period_scores": {},
+            "total_score": None,
+            "grade": None,
+            "data_unavailable": True,
+            "data_reliability": "none",
+            "missing_metric_count": 10,
+            "snapshot": snapshot,
+            "snapshot_fiscal_end": snapshot.get("fiscal_end") if snapshot else None,
+            "snapshot_period": snapshot.get("fiscal_period") if snapshot else None,
+            "snapshot_form": snapshot.get("form") if snapshot else None,
+            "snapshot_filed": snapshot.get("filed") if snapshot else None,
+            "snapshot_basis": snapshot.get("basis") if snapshot else None,
+            "snapshot_updated_at": datetime.now(timezone.utc).isoformat(),
+            "updated_at": datetime.now(timezone.utc).isoformat(),
+        }
+
+    flow_years = sorted(
+        set(index.get("revenue", {}).keys())
+        | set(index.get("operating_income", {}).keys())
+        | set(index.get("net_income", {}).keys())
+    )
     latest_year = max(flow_years) if flow_years else max(all_years)
     profile = universe_row.get("scoring_profile") or "standard"
-    downturn_value, downturn_detail = calculate_downturn_defense(ticker, market=(market_prices or {}).get("market"), stock=(market_prices or {}).get("stock"))
-    period_scores, latest_score, latest_grade, latest_missing = {}, None, None, 0
+
+    downturn_value, downturn_detail = calculate_downturn_defense(
+        ticker,
+        market=(market_prices or {}).get("market"),
+        stock=(market_prices or {}).get("stock"),
+    )
+
+    period_scores = {}
+    latest_score = latest_grade = None
+    latest_missing = 0
+
     for period in PERIODS:
-        used_year, metrics, base_year = period_metrics(index, latest_year, period)
-        if not metrics:
+        pdata = period_metrics_pair(index, latest_year, period)
+        if pdata is None:
             continue
-        metrics["downturn_defense"] = downturn_value
-        scored = calculate_us_score(metrics, profile=profile)
-        period_scores[str(period)] = {"base_year": base_year, "metrics": metrics, "scores": scored}
+
+        avg_metrics = dict(pdata["avg_metrics"])
+        worst_metrics = dict(pdata["worst_metrics"])
+        avg_metrics["downturn_defense"] = downturn_value
+        worst_metrics["downturn_defense"] = downturn_value
+
+        avg_score = calculate_us_score(avg_metrics, profile=profile)
+        worst_score = calculate_us_score(worst_metrics, profile=profile)
+
+        for scored, metrics in ((avg_score, avg_metrics), (worst_score, worst_metrics)):
+            for growth_key in ("revenue_growth", "eps_growth"):
+                value = metrics.get(growth_key)
+                if value is not None and abs(value) >= 100:
+                    if growth_key in scored.get("metric_scores", {}):
+                        scored["metric_scores"][growth_key]["is_extreme"] = True
+
+        period_scores[f"{period}y"] = {
+            "years_used": pdata["years_used"],
+            "yearly_breakdown": pdata["yearly_breakdown"],
+            "avg": {
+                "total_score": avg_score["total_score"],
+                "grade": avg_score["grade"],
+                "metric_scores": avg_score["metric_scores"],
+                "sub_scores": avg_score.get("sub_scores", {}),
+                "financial_adjusted": False,
+                "missing_metric_count": avg_score["missing_metric_count"],
+                "scoring_version": avg_score["scoring_version"],
+            },
+            "worst": {
+                "total_score": worst_score["total_score"],
+                "grade": worst_score["grade"],
+                "metric_scores": worst_score["metric_scores"],
+                "sub_scores": worst_score.get("sub_scores", {}),
+                "financial_adjusted": False,
+                "missing_metric_count": worst_score["missing_metric_count"],
+                "scoring_version": worst_score["scoring_version"],
+            },
+        }
+
         if period == 1:
-            latest_score, latest_grade = scored["total_score"], scored["grade"]
-            latest_missing = scored["missing_metric_count"]
-    reliability = "high" if len(period_scores) >= 3 else ("medium" if period_scores else "low")
-    return {"ticker": ticker, "cik": str(cik), "company_name": company_name, "sector": universe_row.get("sector_common") or classify_company(submissions), "base_year": latest_year, "period_scores": period_scores, "total_score": int(round(latest_score)) if latest_score is not None else None, "grade": latest_grade, "data_unavailable": not bool(period_scores), "data_reliability": reliability, "missing_metric_count": latest_missing, "updated_at": datetime.now(timezone.utc).isoformat(), "downturn_defense": downturn_value, "downturn_detail": downturn_detail, "snapshot": snapshot, "snapshot_fiscal_end": snapshot.get("fiscal_end") if snapshot else None, "snapshot_period": snapshot.get("fiscal_period") if snapshot else None, "snapshot_form": snapshot.get("form") if snapshot else None, "snapshot_filed": snapshot.get("filed") if snapshot else None, "snapshot_basis": snapshot.get("basis") if snapshot else None, "snapshot_updated_at": datetime.now(timezone.utc).isoformat()}
+            latest_score = avg_score["total_score"]
+            latest_grade = avg_score["grade"]
+            latest_missing = avg_score["missing_metric_count"]
+
+    reliability = (
+        "high" if len(period_scores) >= 3
+        else ("medium" if period_scores else "low")
+    )
+
+    return {
+        "ticker": ticker,
+        "cik": str(cik),
+        "company_name": company_name,
+        "sector": universe_row.get("sector_common") or classify_company(submissions),
+        "base_year": latest_year,
+        "period_scores": period_scores,
+        "total_score": int(round(latest_score)) if latest_score is not None else None,
+        "grade": latest_grade,
+        "data_unavailable": not bool(period_scores),
+        "data_reliability": reliability,
+        "missing_metric_count": latest_missing,
+        "updated_at": datetime.now(timezone.utc).isoformat(),
+        "downturn_defense": downturn_value,
+        "downturn_detail": downturn_detail,
+        "snapshot": snapshot,
+        "snapshot_fiscal_end": snapshot.get("fiscal_end") if snapshot else None,
+        "snapshot_period": snapshot.get("fiscal_period") if snapshot else None,
+        "snapshot_form": snapshot.get("form") if snapshot else None,
+        "snapshot_filed": snapshot.get("filed") if snapshot else None,
+        "snapshot_basis": snapshot.get("basis") if snapshot else None,
+        "snapshot_updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
 
 
 def get_universe(sb, tickers=None, limit=None, all_rows=False):
