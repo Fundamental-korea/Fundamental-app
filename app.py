@@ -683,17 +683,58 @@ def render_quote_box():
 
 @st.cache_data(ttl=3600)
 def get_combined_stock_db():
-    us_stocks = [
-        {"ticker": "AAPL", "name": "Apple Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
-        {"ticker": "NVDA", "name": "NVIDIA Corporation", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
-        {"ticker": "TSLA", "name": "Tesla Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
-        {"ticker": "MSFT", "name": "Microsoft Corp.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
-        {"ticker": "AMZN", "name": "Amazon.com Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
-        {"ticker": "GOOGL", "name": "Alphabet Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
-        {"ticker": "META", "name": "Meta Platforms Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
-        {"ticker": "PLTR", "name": "Palantir Technologies", "exch": "Equities - NYSE", "flag": "🇺🇸"},
-        {"ticker": "P", "name": "Pure Storage Inc", "exch": "Equities - NYSE", "flag": "🇺🇸"},
-    ]
+    us_stocks = []
+    try:
+        # SEC 분류 DB의 전체 eligible US 종목을 검색창에 사용한다.
+        # PostgREST 1000행 제한을 피하기 위해 페이지네이션한다.
+        all_us_rows = []
+        page_size = 1000
+        start = 0
+        while True:
+            res = (
+                supabase.table("US_Companies")
+                .select(
+                    "ticker, company_name, exchange, is_fundamental_eligible"
+                )
+                .eq("is_fundamental_eligible", True)
+                .range(start, start + page_size - 1)
+                .execute()
+            )
+            rows = res.data
+            if not rows:
+                break
+            all_us_rows.extend(rows)
+            if len(rows) < page_size:
+                break
+            start += page_size
+
+        for row in all_us_rows:
+            exchange = row.get("exchange") or "US"
+            flag = "🇺🇸"
+            us_stocks.append(
+                {
+                    "ticker": str(row.get("ticker") or ""),
+                    "name": str(row.get("company_name") or row.get("ticker") or ""),
+                    "exch": f"Equities - {exchange}",
+                    "flag": flag,
+                }
+            )
+
+        us_stocks = [row for row in us_stocks if row["ticker"]]
+        if not us_stocks:
+            raise ValueError("US_Companies에서 검색 가능한 종목이 없습니다.")
+    except Exception:
+        us_stocks = [
+            {"ticker": "AAPL", "name": "Apple Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+            {"ticker": "NVDA", "name": "NVIDIA Corporation", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+            {"ticker": "TSLA", "name": "Tesla Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+            {"ticker": "MSFT", "name": "Microsoft Corp.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+            {"ticker": "AMZN", "name": "Amazon.com Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+            {"ticker": "GOOGL", "name": "Alphabet Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+            {"ticker": "META", "name": "Meta Platforms Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+            {"ticker": "PLTR", "name": "Palantir Technologies", "exch": "Equities - NYSE", "flag": "🇺🇸"},
+            {"ticker": "P", "name": "Pure Storage Inc", "exch": "Equities - NYSE", "flag": "🇺🇸"},
+        ]
 
     kr_stocks = []
     try:
