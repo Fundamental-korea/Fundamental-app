@@ -12,7 +12,8 @@ import pandas as pd
 
 HORIZONS = (5, 20, 60)
 MIN_MATCHES = 12
-TARGET_MATCHES = 100
+LOOKBACK_YEARS = 10
+MIN_SIMILARITY = 65.0
 MIN_GAP_BARS = 5
 
 _TOLERANCES = {
@@ -138,24 +139,73 @@ def _similarity(current: pd.Series, candidate: pd.Series, key: str) -> float | N
     return round(100.0 * sum(parts) / len(parts), 2)
 
 
-def _select_matches(features: pd.DataFrame, key: str) -> List[Tuple[int, float]]:
+def _lookback_start_index(features: pd.DataFrame, years: int = LOOKBACK_YEARS) -> int:
+    """Return the first row included in the rolling calendar-year lookback."""
+    if features.empty:
+        return 0
+
+    index = pd.to_datetime(features.index, errors="coerce")
+    if getattr(index, "isna", lambda: pd.Series([], dtype=bool))().all():
+        return max(0, len(features) - years * 252)
+
+    current_date = index[-1]
+    if pd.isna(current_date):
+        return max(0, len(features) - years * 252)
+
+    cutoff = current_date - pd.DateOffset(years=years)
+    valid_positions = [i for i, value in enumerate(index) if pd.notna(value) and value >= cutoff]
+    return valid_positions[0] if valid_positions else max(0, len(features) - years * 252)
+
+
+def _select_matches(
+    features: pd.DataFrame,
+    key: str,
+    lookback_years: int = LOOKBACK_YEARS,
+    min_similarity: float = MIN_SIMILARITY,
+) -> List[Tuple[int, float]]:
+    """Select all sufficiently similar, outcome-observable historical cases.
+
+    There is deliberately no fixed 100-case cap. A date is eligible only when
+    all configured forward horizons can still be observed, and a match must
+    clear the similarity threshold. This makes sample size an actual property
+    of the historical data rather than a UI-imposed constant.
+    """
     if len(features) < 120:
         return []
+
     last_candidate = len(features) - 1 - max(HORIZONS)
     current = features.iloc[-1]
+    first_candidate = _lookback_start_index(features, lookback_years)
+
     scored = []
-    for idx in range(last_candidate + 1):
+    for idx in range(first_candidate, last_candidate + 1):
         sim = _similarity(current, features.iloc[idx], key)
-        if sim is not None:
+        if sim is not None and sim >= min_similarity:
             scored.append((idx, sim))
+
     scored.sort(key=lambda x: x[1], reverse=True)
+
     selected = []
     for idx, sim in scored:
         if all(abs(idx - old_idx) >= MIN_GAP_BARS for old_idx, _ in selected):
             selected.append((idx, sim))
-        if len(selected) >= TARGET_MATCHES:
-            break
     return selected
+
+
+def _wilson_interval(successes: int, n: int, z: float = 1.96) -> Tuple[float, float]:
+    """95% Wilson interval for a binomial proportion, returned as percentages."""
+    if n <= 0:
+        return (0.0, 0.0)
+    p = successes / n
+    denom = 1.0 + (z * z) / n
+    center = (p + (z * z) / (2.0 * n)) / denom
+    spread = (
+        z
+        * math.sqrt((p * (1.0 - p) / n) + (z * z) / (4.0 * n * n))
+        / denom
+    )
+    return (round(max(0.0, (center - spread) * 100.0), 1),
+            round(min(100.0, (center + spread) * 100.0), 1))
 
 
 def _outcome_stats(close: pd.Series, matches: Iterable[Tuple[int, float]], horizon: int):
@@ -172,9 +222,15 @@ def _outcome_stats(close: pd.Series, matches: Iterable[Tuple[int, float]], horiz
     if not returns:
         return None
     s = pd.Series(returns, dtype="float64")
+    up_count = int((s > 0).sum())
+    n = int(len(s))
+    ci_low, ci_high = _wilson_interval(up_count, n)
+
     return {
-        "samples": int(len(s)),
+        "samples": n,
         "up_probability": round(float((s > 0).mean() * 100), 1),
+        "up_probability_ci_low": ci_low,
+        "up_probability_ci_high": ci_high,
         "down_probability": round(float((s < 0).mean() * 100), 1),
         "mean_return": round(float(s.mean() * 100), 2),
         "median_return": round(float(s.median() * 100), 2),
@@ -189,20 +245,36 @@ def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Se
         return {"status": "no_data", "matches": 0, "horizons": {}}
     features = _features(hist_df, indicators, indicator_key)
     matches = _select_matches(features, indicator_key)
-    if len(matches) < MIN_MATCHES:
-        return {"status": "insufficient_matches", "matches": len(matches), "horizons": {}, "min_required": MIN_MATCHES}
+    match_count = len(matches)
+    if match_count < MIN_MATCHES:
+        return {
+            "status": "insufficient_matches",
+            "matches": match_count,
+            "horizons": {},
+            "min_required": MIN_MATCHES,
+            "lookback_years": LOOKBACK_YEARS,
+            "min_similarity": MIN_SIMILARITY,
+        }
     close = pd.to_numeric(hist_df["Close"], errors="coerce").reset_index(drop=True)
     matches = [(i, s) for i, s in matches if _finite(close.iloc[i])]
     horizons = {str(h): _outcome_stats(close, matches, h) for h in HORIZONS}
     horizons = {k: v for k, v in horizons.items() if v is not None}
     if not horizons:
-        return {"status": "no_outcomes", "matches": len(matches), "horizons": {}}
+        return {
+            "status": "no_outcomes",
+            "matches": match_count,
+            "horizons": {},
+            "lookback_years": LOOKBACK_YEARS,
+            "min_similarity": MIN_SIMILARITY,
+        }
     sims = [v["avg_similarity"] for v in horizons.values() if v.get("avg_similarity") is not None]
     return {
         "status": "ok",
-        "matches": len(matches),
+        "matches": match_count,
         "avg_similarity": round(sum(sims) / len(sims), 1) if sims else None,
         "horizons": horizons,
+        "lookback_years": LOOKBACK_YEARS,
+        "min_similarity": MIN_SIMILARITY,
     }
 
 
