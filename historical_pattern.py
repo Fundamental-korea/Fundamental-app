@@ -333,6 +333,11 @@ def classify_current_condition(
     bb_upper = _latest_series_value(indicators, "bb_upper")
     bb_lower = _latest_series_value(indicators, "bb_lower")
     bb_mid = _latest_series_value(indicators, "bb_mid")
+    adx = _latest_series_value(indicators, "adx14")
+    plus_di = _latest_series_value(indicators, "plus_di14")
+    minus_di = _latest_series_value(indicators, "minus_di14")
+    mfi = _latest_series_value(indicators, "mfi14")
+    rolling_vwap = _latest_series_value(indicators, "rolling_vwap20")
 
     signals = []
     overbought_count = 0
@@ -405,12 +410,6 @@ def classify_current_condition(
     macd_hist = indicators.get("macd_hist")
     if macd_hist is not None and len(macd_hist) > 5:
         hist_change5 = _safe_float(macd_hist.iloc[-1] - macd_hist.iloc[-6])
-
-    adx = _latest_series_value(indicators, "adx14")
-    plus_di = _latest_series_value(indicators, "plus_di14")
-    minus_di = _latest_series_value(indicators, "minus_di14")
-    mfi = _latest_series_value(indicators, "mfi14")
-    rolling_vwap = _latest_series_value(indicators, "rolling_vwap20")
 
     weakness_signals = 0
     weakness_reasons = []
