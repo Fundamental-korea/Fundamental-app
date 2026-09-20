@@ -2284,7 +2284,14 @@ def render_unified_search_box(stock_db, target_view=None):
 
             function selectStock(ticker) {{
                 const targetUrl = window.parent.location.origin + window.parent.location.pathname + '?code=' + encodeURIComponent(ticker) + '{view_query_suffix}';
-                window.open(targetUrl, '_blank');
+
+                // Streamlit components.html iframe 안의 window.open은 브라우저/배포 환경에 따라
+                // 팝업으로 차단되어 Enter를 눌러도 아무 반응이 없는 경우가 있음.
+                // 먼저 새 탭을 시도하고, 차단되면 같은 탭으로 확실하게 이동한다.
+                const popup = window.open(targetUrl, '_blank', 'noopener,noreferrer');
+                if (!popup || popup.closed || typeof popup.closed === 'undefined') {{
+                    window.parent.location.href = targetUrl;
+                }}
             }}
 
             function triggerSearch() {{
@@ -2946,13 +2953,27 @@ elif selected_code and view_mode_param == "analysis":
                         )
 
                     if not pattern:
-                        st.caption("과거 일봉 데이터를 충분히 불러오지 못해 통계를 계산할 수 있어요.")
-                    elif pattern.get("status") != "ok":
-                        matched = pattern.get("matches", 0)
+                        st.caption("과거 일봉 데이터를 불러오지 못해 유사상황 통계를 계산할 수 없습니다.")
+                    elif pattern.get("status") == "insufficient_data":
                         st.caption(
-                            f"현재와 유사한 과거 사례가 {matched}건으로 부족해 "
-                            f"통계를 표시하지 않아요. (최소 {pattern.get('min_required', 12)}건 필요)"
+                            pattern.get(
+                                "message",
+                                f"과거 일봉 데이터가 부족합니다 ({pattern.get('data_bars', 0)}봉 / "
+                                f"최소 {pattern.get('required_bars', 120)}봉).",
+                            )
                         )
+                    elif pattern.get("status") == "insufficient_matches":
+                        st.caption(
+                            pattern.get(
+                                "message",
+                                f"과거 데이터는 충분하지만 현재 조건과 유사한 사례가 "
+                                f"{pattern.get('matches', 0)}회로 최소 {pattern.get('min_required', 12)}회에 미달합니다.",
+                            )
+                        )
+                    elif pattern.get("status") == "no_outcomes":
+                        st.caption("유사한 과거 사례는 찾았지만 5/20/60 거래일 후 실제 결과를 확인할 수 있는 사례가 없습니다.")
+                    elif pattern.get("status") != "ok":
+                        st.caption(pattern.get("message", "과거 유사상황 통계를 계산할 수 없습니다."))
                     else:
                         lookback_years = pattern.get("lookback_years", 10)
                         min_similarity = pattern.get("min_similarity", 65.0)
