@@ -1,8 +1,8 @@
-# ADX_V1_DEPLOY_MARKER = 2026-09-20
+# TECHNICAL_INDICATORS_V2 = 2026-09-20
 # chart_indicators.py
 # 초보자를 위한 기술적 지표 계산 + 자동 해설 생성 모듈.
 # 외부 의존성 없음 - yfinance가 이미 주는 OHLCV(pandas)만으로 전부 계산.
-# 1차 버전 지표 5종: 이동평균선(MA) / 볼린저밴드 / RSI / MACD / 거래량
+# 기술적 지표: MA / Bollinger / RSI / MACD / Volume / ADX-DMI / ATR / OBV / MFI / Rolling VWAP
 
 import pandas as pd
 
@@ -99,6 +99,98 @@ def compute_adx(
     return adx, plus_di, minus_di
 
 
+
+def compute_atr(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    window: int = 14,
+) -> pd.Series:
+    """Average True Range. Wilder-style smoothing으로 변동성의 절대 크기를 계산."""
+    high = pd.to_numeric(high, errors="coerce")
+    low = pd.to_numeric(low, errors="coerce")
+    close = pd.to_numeric(close, errors="coerce")
+    true_range = pd.concat(
+        [
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low - close.shift(1)).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+    return true_range.ewm(
+        alpha=1 / window,
+        min_periods=window,
+        adjust=False,
+    ).mean()
+
+
+def compute_obv(close: pd.Series, volume: pd.Series) -> pd.Series:
+    """On-Balance Volume. 가격 방향에 따라 거래량을 누적."""
+    close = pd.to_numeric(close, errors="coerce")
+    volume = pd.to_numeric(volume, errors="coerce").fillna(0.0)
+    direction = close.diff()
+    signed_volume = volume.where(direction > 0, -volume.where(direction < 0, 0.0))
+    signed_volume.iloc[0] = 0.0
+    return signed_volume.fillna(0.0).cumsum()
+
+
+def compute_mfi(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    window: int = 14,
+) -> pd.Series:
+    """Money Flow Index. 전형가격과 거래량을 함께 사용하는 0~100 모멘텀 지표."""
+    high = pd.to_numeric(high, errors="coerce")
+    low = pd.to_numeric(low, errors="coerce")
+    close = pd.to_numeric(close, errors="coerce")
+    volume = pd.to_numeric(volume, errors="coerce").fillna(0.0)
+
+    typical_price = (high + low + close) / 3.0
+    raw_money_flow = typical_price * volume
+    direction = typical_price.diff()
+
+    positive_flow = raw_money_flow.where(direction > 0, 0.0)
+    negative_flow = raw_money_flow.where(direction < 0, 0.0)
+
+    positive_sum = positive_flow.rolling(window=window, min_periods=window).sum()
+    negative_sum = negative_flow.rolling(window=window, min_periods=window).sum()
+
+    ratio = positive_sum / negative_sum.replace(0, pd.NA)
+    mfi = 100 - (100 / (1 + ratio))
+
+    no_negative_flow = negative_sum.eq(0) & positive_sum.gt(0)
+    no_positive_flow = positive_sum.eq(0) & negative_sum.gt(0)
+    no_flow = positive_sum.eq(0) & negative_sum.eq(0)
+
+    mfi = mfi.mask(no_negative_flow, 100.0)
+    mfi = mfi.mask(no_positive_flow, 0.0)
+    mfi = mfi.mask(no_flow, 50.0)
+    return mfi
+
+
+def compute_rolling_vwap(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    volume: pd.Series,
+    window: int = 20,
+) -> pd.Series:
+    """Rolling VWAP. 일/주/월봉에서도 동일하게 비교할 수 있도록 최근 N개 봉 기준."""
+    high = pd.to_numeric(high, errors="coerce")
+    low = pd.to_numeric(low, errors="coerce")
+    close = pd.to_numeric(close, errors="coerce")
+    volume = pd.to_numeric(volume, errors="coerce").fillna(0.0)
+
+    typical_price = (high + low + close) / 3.0
+    pv = typical_price * volume
+    pv_sum = pv.rolling(window=window, min_periods=window).sum()
+    vol_sum = volume.rolling(window=window, min_periods=window).sum()
+    return pv_sum / vol_sum.replace(0, pd.NA)
+
+
 def compute_stochastic(high: pd.Series, low: pd.Series, close: pd.Series,
                         k_window: int = 14, d_window: int = 3, smooth_k: int = 3):
     """스토캐스틱 슬로우(Slow Stochastic) - 국내 HTS 기본값(14,3,3)과 동일."""
@@ -137,6 +229,9 @@ DEFAULT_PARAMS = {
     "macd_fast": 12, "macd_slow": 26, "macd_signal": 9,
     "vol_ma_window": 20,
     "adx_window": 14,
+    "atr_window": 14,
+    "mfi_window": 14,
+    "vwap_window": 20,
     "stoch_k": 14, "stoch_d": 3, "stoch_smooth": 3,
     "ichimoku_tenkan": 9, "ichimoku_kijun": 26, "ichimoku_senkou_b": 52,
 }
@@ -160,6 +255,10 @@ def compute_all_indicators(hist_df: pd.DataFrame, params: dict = None) -> dict:
     macd_line, macd_signal, macd_hist = compute_macd(close, p["macd_fast"], p["macd_slow"], p["macd_signal"])
     vol_ma20 = compute_volume_ma(volume, p["vol_ma_window"])
     adx14, plus_di14, minus_di14 = compute_adx(high, low, close, p["adx_window"])
+    atr14 = compute_atr(high, low, close, p["atr_window"])
+    obv = compute_obv(close, volume)
+    mfi14 = compute_mfi(high, low, close, volume, p["mfi_window"])
+    rolling_vwap20 = compute_rolling_vwap(high, low, close, volume, p["vwap_window"])
     stoch_k, stoch_d = compute_stochastic(high, low, close, p["stoch_k"], p["stoch_d"], p["stoch_smooth"])
     tenkan, kijun, senkou_a, senkou_b, chikou = compute_ichimoku(
         high, low, close, p["ichimoku_tenkan"], p["ichimoku_kijun"], p["ichimoku_senkou_b"]
@@ -172,6 +271,7 @@ def compute_all_indicators(hist_df: pd.DataFrame, params: dict = None) -> dict:
         "macd_line": macd_line, "macd_signal": macd_signal, "macd_hist": macd_hist,
         "vol_ma20": vol_ma20,
         "adx14": adx14, "plus_di14": plus_di14, "minus_di14": minus_di14,
+        "atr14": atr14, "obv": obv, "mfi14": mfi14, "rolling_vwap20": rolling_vwap20,
         "stoch_k": stoch_k, "stoch_d": stoch_d,
         "tenkan": tenkan, "kijun": kijun, "senkou_a": senkou_a, "senkou_b": senkou_b, "chikou": chikou,
         "params": p,  # UI 라벨링용(예: f"SMA{p['sma_short']}") - 커스텀 기간 반영해서 표시하려고 같이 반환
@@ -316,6 +416,93 @@ def generate_adx_commentary(
     return f"현재 ADX는 {adx_value:.1f}로 {strength}예요. {direction} ADX는 방향 자체보다 추세의 힘을 보는 지표라 RSI나 MACD 같은 모멘텀 지표와 함께 확인하는 게 좋아요."
 
 
+
+def generate_atr_commentary(atr14: pd.Series, close: pd.Series) -> str:
+    if len(atr14) == 0 or len(close) == 0 or pd.isna(atr14.iloc[-1]) or pd.isna(close.iloc[-1]) or close.iloc[-1] == 0:
+        return "데이터가 아직 충분히 쌓이지 않아 ATR을 계산할 수 없어요."
+
+    atr = float(atr14.iloc[-1])
+    price = float(close.iloc[-1])
+    atr_pct = atr / price * 100.0
+
+    if atr_pct >= 8:
+        level = "매우 큰"
+    elif atr_pct >= 5:
+        level = "큰"
+    elif atr_pct >= 2:
+        level = "보통 수준의"
+    else:
+        level = "작은"
+
+    return (
+        f"현재 ATR(14)은 {_fmt(atr, 2)}로 현재가의 약 {atr_pct:.1f}% 수준이에요. "
+        f"최근 하루 가격 변동폭을 감안하면 {level} 변동성이 나타나는 구간이에요. "
+        "ATR은 상승·하락 방향보다 움직임의 크기를 보는 지표라 방향성 지표와 함께 확인하는 게 좋아요."
+    )
+
+
+def generate_obv_commentary(obv: pd.Series) -> str:
+    if len(obv) < 6 or pd.isna(obv.iloc[-1]) or pd.isna(obv.iloc[-6]):
+        return "데이터가 아직 충분히 쌓이지 않아 OBV 흐름을 계산할 수 없어요."
+
+    current = float(obv.iloc[-1])
+    prev5 = float(obv.iloc[-6])
+    change = current - prev5
+
+    if change > 0:
+        direction = "최근 5기간 동안 상승"
+        note = "가격 상승과 함께 움직이면 상승 흐름을 뒷받침하는 거래량 흐름으로 해석할 수 있어요."
+    elif change < 0:
+        direction = "최근 5기간 동안 하락"
+        note = "가격이 오르는데 OBV가 약해진다면 거래량 측면의 다이버전스를 확인해볼 만해요."
+    else:
+        direction = "최근 5기간 동안 거의 보합"
+        note = "가격 방향과 함께 보면 거래량이 추세를 얼마나 뒷받침하는지 확인할 수 있어요."
+
+    return f"현재 OBV는 {current:,.0f}이고 {direction}이에요. {note}"
+
+
+def generate_mfi_commentary(mfi14: pd.Series) -> str:
+    if len(mfi14) == 0 or pd.isna(mfi14.iloc[-1]):
+        return "데이터가 아직 충분히 쌓이지 않아 MFI를 계산할 수 없어요."
+
+    value = float(mfi14.iloc[-1])
+    if value >= 80:
+        zone = "80 이상 과매수 구간"
+    elif value <= 20:
+        zone = "20 이하 과매도 구간"
+    else:
+        zone = "20~80 사이 중립 구간"
+
+    return (
+        f"현재 MFI(14)는 {value:.1f}으로 {zone}이에요. "
+        "RSI와 비슷하지만 거래량까지 반영해서 가격 움직임에 거래량이 얼마나 동반되는지 함께 살펴볼 수 있어요."
+    )
+
+
+def generate_vwap_commentary(close: pd.Series, rolling_vwap20: pd.Series) -> str:
+    if len(close) == 0 or len(rolling_vwap20) == 0 or pd.isna(close.iloc[-1]) or pd.isna(rolling_vwap20.iloc[-1]) or rolling_vwap20.iloc[-1] == 0:
+        return "데이터가 아직 충분히 쌓이지 않아 Rolling VWAP을 계산할 수 없어요."
+
+    price = float(close.iloc[-1])
+    vwap = float(rolling_vwap20.iloc[-1])
+    gap = (price / vwap - 1.0) * 100.0
+
+    if gap >= 3:
+        position = "거래량가중 평균가보다 꽤 높은"
+    elif gap >= 0:
+        position = "거래량가중 평균가보다 높은"
+    elif gap <= -3:
+        position = "거래량가중 평균가보다 꽤 낮은"
+    else:
+        position = "거래량가중 평균가보다 낮은"
+
+    return (
+        f"현재가는 Rolling VWAP(20) {_fmt(vwap, 2)} 대비 {gap:+.1f}%로, "
+        f"{position} 위치에 있어요. 일봉에서는 최근 20개 봉의 거래량을 반영한 평균가격으로 해석하면 됩니다."
+    )
+
+
 def generate_stochastic_commentary(stoch_k: pd.Series, stoch_d: pd.Series) -> str:
     if pd.isna(stoch_k.iloc[-1]) or pd.isna(stoch_d.iloc[-1]):
         return "데이터가 아직 충분히 쌓이지 않아 스토캐스틱을 계산할 수 없어요."
@@ -358,6 +545,30 @@ def generate_ichimoku_commentary(close: pd.Series, tenkan: pd.Series, kijun: pd.
 # --------------------------------------------------------------------------
 
 INDICATOR_LESSONS = {
+    "atr": {
+        "concept": "ATR은 최근 가격이 하루(한 봉) 기준으로 얼마나 크게 움직였는지를 보여주는 변동성 지표예요. 방향은 알려주지 않고 움직임의 크기를 보여줘요.",
+        "calculation": "고가-저가, 전일 종가와 고가의 차이, 전일 종가와 저가의 차이 중 가장 큰 값을 True Range로 구한 뒤 Wilder 방식으로 평활화합니다.",
+        "how_to_use": "ATR이 높아지면 최근 가격 움직임이 커졌다는 뜻이고, 낮아지면 조용한 구간에 가까워요. ATR을 현재가로 나눈 ATR%를 같이 보면 가격 수준이 다른 종목끼리 변동성을 비교하기 쉬워요.",
+        "common_mistakes": "ATR이 높다고 상승한다는 뜻은 아니에요. 급등과 급락 모두 ATR을 높일 수 있으므로 방향은 MA, ADX, MACD 같은 다른 지표로 따로 확인해야 해요.",
+    },
+    "obv": {
+        "concept": "OBV는 가격이 오른 날의 거래량은 더하고 내린 날의 거래량은 빼서 누적한 값이에요. 거래량이 가격 움직임을 얼마나 뒷받침하는지 살펴보는 데 쓰여요.",
+        "calculation": "종가가 전 봉보다 오르면 해당 봉 거래량을 OBV에 더하고, 내리면 빼고, 같으면 그대로 유지합니다.",
+        "how_to_use": "가격과 OBV가 함께 상승하면 거래량이 상승 흐름을 뒷받침하는지 확인할 수 있고, 가격과 OBV의 방향이 엇갈리면 다이버전스 후보로 볼 수 있어요.",
+        "common_mistakes": "OBV 숫자 자체의 절대 크기는 종목별 거래량 규모에 따라 크게 달라요. 절대값끼리 비교하기보다 한 종목 안에서의 방향과 변화폭을 보는 게 중요해요.",
+    },
+    "mfi": {
+        "concept": "MFI는 가격뿐 아니라 거래량까지 함께 반영해 자금 흐름의 강약을 0~100으로 표시하는 지표예요.",
+        "calculation": "전형가격(고가+저가+종가의 평균)에 거래량을 곱한 Money Flow를 구하고, 일정 기간의 양(+)·음(-) 자금 흐름 비율로 0~100 값을 계산합니다.",
+        "how_to_use": "80 이상은 과매수, 20 이하는 과매도 구간으로 많이 참고해요. RSI와 함께 보면 가격 모멘텀과 거래량 동반 여부를 구분해서 볼 수 있어요.",
+        "common_mistakes": "80을 넘었다고 바로 하락하거나 20 아래라고 바로 반등하는 것은 아니에요. 강한 추세에서는 과매수·과매도 구간이 오래 지속될 수 있어요.",
+    },
+    "vwap": {
+        "concept": "VWAP은 거래량을 많이 동반한 가격에 더 큰 비중을 주어 평균가격을 계산하는 방식이에요. 여기서는 일봉·주봉 등 모든 차트 주기에서 사용할 수 있도록 최근 20개 봉 Rolling VWAP을 표시합니다.",
+        "calculation": "각 봉의 전형가격(고가+저가+종가의 평균)에 거래량을 곱한 값을 최근 20개 봉에서 합산한 뒤, 같은 기간 거래량 합계로 나눕니다.",
+        "how_to_use": "현재가가 Rolling VWAP 위에 있으면 최근 거래량이 반영된 평균가격보다 높은 위치, 아래면 낮은 위치라는 식으로 상대적인 가격 위치를 확인할 수 있어요.",
+        "common_mistakes": "장중 정식 VWAP은 보통 거래일마다 시작점이 초기화되므로 Rolling VWAP과 동일하지 않아요. 이 앱의 값은 일봉 이상의 모든 주기를 공통으로 분석하기 위한 Rolling 버전이라는 점을 기억하세요.",
+    },
     "ma": {
         "concept": "일정 기간 동안의 종가를 평균 내서 이어놓은 선이에요. 하루하루의 등락(노이즈)을 지우고, 가격이 전체적으로 어느 방향으로 가고 있는지를 보여주는 게 목적이에요.",
         "calculation": "예를 들어 20일선이면, 오늘을 포함한 최근 20일간의 종가를 모두 더해서 20으로 나눈 값이에요. 하루가 지나면 가장 오래된 날짜는 빠지고 오늘 날짜가 새로 들어가면서 매일 다시 계산돼요.",
