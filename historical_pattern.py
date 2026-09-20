@@ -25,6 +25,10 @@ _TOLERANCES = {
     "ichimoku": {"cloud_position": 1.0, "tenkan_kijun": 0.04, "cloud_thickness": 0.06, "return20": 0.12},
     "volume": {"volume_ratio": 0.50, "volume_ratio_change5": 0.75, "return5": 0.08, "return20": 0.12},
     "adx": {"adx": 10.0, "plus_di": 10.0, "minus_di": 10.0, "adx_change5": 8.0, "return20": 0.12},
+    "atr": {"atr_pct": 0.025, "atr_change5": 0.40, "return20": 0.12},
+    "obv": {"obv_change5_norm": 0.80, "obv_change20_norm": 1.20, "return20": 0.12},
+    "mfi": {"mfi": 10.0, "mfi_change5": 12.0, "return20": 0.12},
+    "vwap": {"vwap_gap": 0.05, "vwap_change5": 0.08, "return20": 0.12},
 }
 
 
@@ -120,6 +124,34 @@ def _features(hist_df: pd.DataFrame, ind: Dict[str, pd.Series], key: str) -> pd.
         out["plus_di"] = plus_di
         out["minus_di"] = minus_di
         out["adx_change5"] = adx - adx.shift(5)
+        out["return20"] = _ret(close, 20)
+
+    elif key == "atr":
+        atr = pd.to_numeric(ind["atr14"], errors="coerce")
+        nz = close.replace(0, pd.NA)
+        out["atr_pct"] = atr / nz
+        out["atr_change5"] = _ret(atr, 5)
+        out["return20"] = _ret(close, 20)
+
+    elif key == "obv":
+        obv = pd.to_numeric(ind["obv"], errors="coerce")
+        volume_sum_5 = volume.rolling(5, min_periods=5).sum().replace(0, pd.NA)
+        volume_sum_20 = volume.rolling(20, min_periods=20).sum().replace(0, pd.NA)
+        out["obv_change5_norm"] = (obv - obv.shift(5)) / volume_sum_5
+        out["obv_change20_norm"] = (obv - obv.shift(20)) / volume_sum_20
+        out["return20"] = _ret(close, 20)
+
+    elif key == "mfi":
+        mfi = pd.to_numeric(ind["mfi14"], errors="coerce")
+        out["mfi"] = mfi
+        out["mfi_change5"] = mfi - mfi.shift(5)
+        out["return20"] = _ret(close, 20)
+
+    elif key == "vwap":
+        vwap = pd.to_numeric(ind["rolling_vwap20"], errors="coerce")
+        nz = close.replace(0, pd.NA)
+        out["vwap_gap"] = (close - vwap) / nz
+        out["vwap_change5"] = _ret(vwap, 5)
         out["return20"] = _ret(close, 20)
 
     elif key == "volume":
@@ -322,6 +354,14 @@ def classify_current_condition(
             oversold_count += 1
             signals.append("스토캐스틱 과매도")
 
+    if mfi is not None:
+        if mfi >= 80.0:
+            overbought_count += 1
+            signals.append("MFI 과매수")
+        elif mfi <= 20.0:
+            oversold_count += 1
+            signals.append("MFI 과매도")
+
     if (
         close is not None
         and bb_upper is not None
@@ -369,6 +409,8 @@ def classify_current_condition(
     adx = _latest_series_value(indicators, "adx14")
     plus_di = _latest_series_value(indicators, "plus_di14")
     minus_di = _latest_series_value(indicators, "minus_di14")
+    mfi = _latest_series_value(indicators, "mfi14")
+    rolling_vwap = _latest_series_value(indicators, "rolling_vwap20")
 
     weakness_signals = 0
     weakness_reasons = []
@@ -447,6 +489,8 @@ def classify_current_condition(
         "adx": adx,
         "plus_di": plus_di,
         "minus_di": minus_di,
+        "mfi": mfi,
+        "rolling_vwap": rolling_vwap,
         "weakness_reasons": weakness_reasons,
         "rsi": rsi,
         "stoch_k": stoch_k,
@@ -505,7 +549,7 @@ def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Se
 
 
 def analyze_all_indicator_patterns(hist_df: pd.DataFrame, indicators: Dict[str, pd.Series]) -> Dict[str, Dict]:
-    keys = ("ma", "bollinger", "rsi", "stochastic", "ichimoku", "macd", "adx", "volume")
+    keys = ("ma", "bollinger", "rsi", "stochastic", "ichimoku", "macd", "adx", "atr", "obv", "mfi", "vwap", "volume")
     results = {key: analyze_indicator_pattern(hist_df, indicators, key) for key in keys}
     results["_market_condition"] = classify_current_condition(hist_df, indicators)
     return results
