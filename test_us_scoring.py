@@ -78,6 +78,20 @@ class USScoringStructureTest(unittest.TestCase):
         self.assertEqual(us_scoring.calculate_metric_score_us("sga_ratio", 8, "standard"), 10)
         self.assertEqual(us_scoring.calculate_metric_score_us("sga_ratio", 80, "standard"), 1)
 
+    def test_defense_is_standard_bands_with_reweighted_metrics(self):
+        self.assertIs(
+            us_scoring.PROFILE_BANDS["defense"]["opm"],
+            us_scoring.STANDARD_BANDS["opm"],
+        )
+        self.assertEqual(
+            us_scoring.PROFILE_METRICS["defense"]["downturn_defense"],
+            18,
+        )
+        self.assertEqual(
+            us_scoring.calculate_metric_score_us("opm", 20, "defense"),
+            us_scoring.calculate_metric_score_us("opm", 20, "standard"),
+        )
+
     def test_profiles_are_deterministic(self):
         samples = {
             "financial": {
@@ -106,11 +120,13 @@ class USScoringStructureTest(unittest.TestCase):
             "defense": {
                 "revenue_growth": 7,
                 "eps_growth": 10,
-                "opm": 15,
-                "roic": 10,
+                "opm": 20,
+                "roic": 12,
                 "debt_rate": 100,
+                "quick_ratio": 1.2,
                 "interest_coverage": 7,
                 "ocf_ratio": 1.1,
+                "sga_ratio": 12,
                 "downturn_defense": 5,
             },
             "utility": {
