@@ -29,6 +29,11 @@ _TOLERANCES = {
     "obv": {"obv_change5_norm": 0.80, "obv_change20_norm": 1.20, "return20": 0.12},
     "mfi": {"mfi": 10.0, "mfi_change5": 12.0, "return20": 0.12},
     "vwap": {"vwap_gap": 0.05, "vwap_change5": 0.08, "return20": 0.12},
+    "williams_r": {"williams_r": 12.0, "williams_r_change5": 15.0, "return20": 0.12},
+    "cci": {"cci": 80.0, "cci_change5": 100.0, "return20": 0.12},
+    "roc": {"roc": 8.0, "roc_change5": 8.0, "return20": 0.12},
+    "psar": {"psar_gap": 0.06, "psar_gap_change5": 0.08, "return20": 0.12},
+    "cmf": {"cmf": 0.20, "cmf_change5": 0.20, "return20": 0.12},
 }
 
 
@@ -152,6 +157,37 @@ def _features(hist_df: pd.DataFrame, ind: Dict[str, pd.Series], key: str) -> pd.
         nz = close.replace(0, pd.NA)
         out["vwap_gap"] = (close - vwap) / nz
         out["vwap_change5"] = _ret(vwap, 5)
+        out["return20"] = _ret(close, 20)
+
+    elif key == "williams_r":
+        williams_r = pd.to_numeric(ind["williams_r"], errors="coerce")
+        out["williams_r"] = williams_r
+        out["williams_r_change5"] = williams_r - williams_r.shift(5)
+        out["return20"] = _ret(close, 20)
+
+    elif key == "cci":
+        cci = pd.to_numeric(ind["cci"], errors="coerce")
+        out["cci"] = cci
+        out["cci_change5"] = cci - cci.shift(5)
+        out["return20"] = _ret(close, 20)
+
+    elif key == "roc":
+        roc = pd.to_numeric(ind["roc"], errors="coerce")
+        out["roc"] = roc
+        out["roc_change5"] = roc - roc.shift(5)
+        out["return20"] = _ret(close, 20)
+
+    elif key == "psar":
+        psar = pd.to_numeric(ind["psar"], errors="coerce")
+        nz = close.replace(0, pd.NA)
+        out["psar_gap"] = (close - psar) / nz
+        out["psar_gap_change5"] = out["psar_gap"] - out["psar_gap"].shift(5)
+        out["return20"] = _ret(close, 20)
+
+    elif key == "cmf":
+        cmf = pd.to_numeric(ind["cmf"], errors="coerce")
+        out["cmf"] = cmf
+        out["cmf_change5"] = cmf - cmf.shift(5)
         out["return20"] = _ret(close, 20)
 
     elif key == "volume":
@@ -548,7 +584,7 @@ def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Se
 
 
 def analyze_all_indicator_patterns(hist_df: pd.DataFrame, indicators: Dict[str, pd.Series]) -> Dict[str, Dict]:
-    keys = ("ma", "bollinger", "rsi", "stochastic", "ichimoku", "macd", "adx", "atr", "obv", "mfi", "vwap", "volume")
+    keys = ("ma", "bollinger", "rsi", "stochastic", "ichimoku", "macd", "adx", "atr", "obv", "mfi", "vwap", "williams_r", "cci", "roc", "psar", "cmf", "volume")
     results = {key: analyze_indicator_pattern(hist_df, indicators, key) for key in keys}
     results["_market_condition"] = classify_current_condition(hist_df, indicators)
     return results
