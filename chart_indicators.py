@@ -46,6 +46,58 @@ def compute_volume_ma(volume: pd.Series, window: int = 20) -> pd.Series:
     return volume.rolling(window=window, min_periods=window).mean()
 
 
+def compute_adx(
+    high: pd.Series,
+    low: pd.Series,
+    close: pd.Series,
+    window: int = 14,
+):
+    """Average Directional Index (ADX) + Directional Indicators (+DI/-DI).
+
+    Uses Wilder-style exponential smoothing (alpha=1/window), which is also
+    consistent with the smoothing approach already used by this module's RSI.
+    ADX measures trend strength; +DI/-DI provide directional context.
+    """
+    high = pd.to_numeric(high, errors="coerce")
+    low = pd.to_numeric(low, errors="coerce")
+    close = pd.to_numeric(close, errors="coerce")
+
+    up_move = high.diff()
+    down_move = -low.diff()
+
+    plus_dm = pd.Series(0.0, index=high.index)
+    minus_dm = pd.Series(0.0, index=high.index)
+    plus_dm.loc[(up_move > down_move) & (up_move > 0)] = up_move.loc[
+        (up_move > down_move) & (up_move > 0)
+    ]
+    minus_dm.loc[(down_move > up_move) & (down_move > 0)] = down_move.loc[
+        (down_move > up_move) & (down_move > 0)
+    ]
+
+    true_range = pd.concat(
+        [
+            high - low,
+            (high - close.shift(1)).abs(),
+            (low - close.shift(1)).abs(),
+        ],
+        axis=1,
+    ).max(axis=1)
+
+    alpha = 1 / window
+    atr = true_range.ewm(alpha=alpha, min_periods=window, adjust=False).mean()
+    plus_dm_smoothed = plus_dm.ewm(alpha=alpha, min_periods=window, adjust=False).mean()
+    minus_dm_smoothed = minus_dm.ewm(alpha=alpha, min_periods=window, adjust=False).mean()
+
+    plus_di = 100 * plus_dm_smoothed / atr.replace(0, pd.NA)
+    minus_di = 100 * minus_dm_smoothed / atr.replace(0, pd.NA)
+
+    di_sum = (plus_di + minus_di).replace(0, pd.NA)
+    dx = 100 * (plus_di - minus_di).abs() / di_sum
+    adx = dx.ewm(alpha=alpha, min_periods=window, adjust=False).mean()
+
+    return adx, plus_di, minus_di
+
+
 def compute_stochastic(high: pd.Series, low: pd.Series, close: pd.Series,
                         k_window: int = 14, d_window: int = 3, smooth_k: int = 3):
     """스토캐스틱 슬로우(Slow Stochastic) - 국내 HTS 기본값(14,3,3)과 동일."""
@@ -83,6 +135,7 @@ DEFAULT_PARAMS = {
     "rsi_window": 14,
     "macd_fast": 12, "macd_slow": 26, "macd_signal": 9,
     "vol_ma_window": 20,
+    "adx_window": 14,
     "stoch_k": 14, "stoch_d": 3, "stoch_smooth": 3,
     "ichimoku_tenkan": 9, "ichimoku_kijun": 26, "ichimoku_senkou_b": 52,
 }
@@ -105,6 +158,7 @@ def compute_all_indicators(hist_df: pd.DataFrame, params: dict = None) -> dict:
     rsi14 = compute_rsi(close, p["rsi_window"])
     macd_line, macd_signal, macd_hist = compute_macd(close, p["macd_fast"], p["macd_slow"], p["macd_signal"])
     vol_ma20 = compute_volume_ma(volume, p["vol_ma_window"])
+    adx14, plus_di14, minus_di14 = compute_adx(high, low, close, p["adx_window"])
     stoch_k, stoch_d = compute_stochastic(high, low, close, p["stoch_k"], p["stoch_d"], p["stoch_smooth"])
     tenkan, kijun, senkou_a, senkou_b, chikou = compute_ichimoku(
         high, low, close, p["ichimoku_tenkan"], p["ichimoku_kijun"], p["ichimoku_senkou_b"]
@@ -116,6 +170,7 @@ def compute_all_indicators(hist_df: pd.DataFrame, params: dict = None) -> dict:
         "rsi14": rsi14,
         "macd_line": macd_line, "macd_signal": macd_signal, "macd_hist": macd_hist,
         "vol_ma20": vol_ma20,
+        "adx14": adx14, "plus_di14": plus_di14, "minus_di14": minus_di14,
         "stoch_k": stoch_k, "stoch_d": stoch_d,
         "tenkan": tenkan, "kijun": kijun, "senkou_a": senkou_a, "senkou_b": senkou_b, "chikou": chikou,
         "params": p,  # UI 라벨링용(예: f"SMA{p['sma_short']}") - 커스텀 기간 반영해서 표시하려고 같이 반환
@@ -226,6 +281,40 @@ def generate_volume_commentary(volume: pd.Series, vol_ma20: pd.Series) -> str:
         return f"오늘 거래량은 최근 20일 평균과 비슷한 수준({ratio:.1f}배)이에요. 특별히 튀는 수급 신호는 없는 상태예요."
 
 
+def generate_adx_commentary(
+    adx: pd.Series,
+    plus_di: pd.Series,
+    minus_di: pd.Series,
+) -> str:
+    if any(
+        len(series) == 0 or pd.isna(series.iloc[-1])
+        for series in (adx, plus_di, minus_di)
+    ):
+        return "데이터가 아직 충분히 쌓이지 않아 ADX를 계산할 수 없어요."
+
+    adx_value = float(adx.iloc[-1])
+    plus_value = float(plus_di.iloc[-1])
+    minus_value = float(minus_di.iloc[-1])
+
+    if adx_value >= 40:
+        strength = "매우 강한 추세"
+    elif adx_value >= 25:
+        strength = "뚜렷한 추세"
+    elif adx_value >= 20:
+        strength = "추세가 형성되는 구간"
+    else:
+        strength = "약한 추세 또는 횡보에 가까운 구간"
+
+    if plus_value > minus_value:
+        direction = f"+DI {plus_value:.1f}가 -DI {minus_value:.1f}보다 높아 상승 방향성이 우세해요."
+    elif minus_value > plus_value:
+        direction = f"-DI {minus_value:.1f}가 +DI {plus_value:.1f}보다 높아 하락 방향성이 우세해요."
+    else:
+        direction = f"+DI와 -DI가 {plus_value:.1f}로 비슷해 방향성이 팽팽해요."
+
+    return f"현재 ADX는 {adx_value:.1f}로 {strength}예요. {direction} ADX는 방향 자체보다 추세의 힘을 보는 지표라 RSI나 MACD 같은 모멘텀 지표와 함께 확인하는 게 좋아요."
+
+
 def generate_stochastic_commentary(stoch_k: pd.Series, stoch_d: pd.Series) -> str:
     if pd.isna(stoch_k.iloc[-1]) or pd.isna(stoch_d.iloc[-1]):
         return "데이터가 아직 충분히 쌓이지 않아 스토캐스틱을 계산할 수 없어요."
@@ -285,6 +374,12 @@ INDICATOR_LESSONS = {
         "calculation": "최근 14일 동안 오른 날들의 평균 상승폭과 내린 날들의 평균 하락폭을 각각 구해서 그 비율로 계산해요. 상승폭이 하락폭보다 압도적으로 크면 100에 가까워지고, 반대면 0에 가까워져요.",
         "how_to_use": "70 이상이면 과매수(단기 조정 가능성), 30 이하면 과매도(단기 반등 가능성)로 흔히 해석해요. 가격은 신고가를 갱신하는데 RSI는 이전 고점보다 낮아지는 '다이버전스'를 추세 전환의 힌트로 보기도 해요.",
         "common_mistakes": "강한 추세장에서는 RSI가 70을 넘긴 채로 며칠씩 유지되기도 해요(과매수 지속). '70 넘었으니 무조건 판다'는 식으로 기계적으로 대응하면 상승장 초반에 너무 일찍 나오게 되는 경우가 많아요.",
+    },
+    "adx": {
+        "concept": "ADX(평균방향성지수)는 가격이 어느 방향으로 움직이는지보다, 현재 추세가 얼마나 강한지를 0~100 사이 숫자로 보여주는 지표예요. +DI와 -DI를 같이 보면 상승·하락 중 어느 쪽의 방향성이 우세한지도 확인할 수 있어요.",
+        "calculation": "고가·저가의 움직임에서 +DM과 -DM을 구하고, True Range로 변동성을 보정한 +DI와 -DI를 만든 뒤 두 값의 차이를 비율로 계산합니다. 이 방향성 지표(DX)를 다시 14기간 기준으로 평활한 값이 ADX예요. 보통 14기간을 사용합니다.",
+        "how_to_use": "ADX가 낮으면 추세가 약하거나 횡보에 가까운 구간으로, 높을수록 한 방향의 추세가 강한 구간으로 해석하는 경우가 많아요. 흔히 20~25 부근을 추세가 형성되는 기준으로 참고하고, +DI가 -DI보다 높으면 상승 방향성, 반대면 하락 방향성이 우세하다고 봐요. ADX 자체는 방향을 알려주는 지표가 아니라 '추세의 힘'을 보는 보조지표예요.",
+        "common_mistakes": "ADX가 높다고 무조건 상승하는 건 아니에요. 강한 하락 추세에서도 ADX가 높아질 수 있어요. 그래서 +DI/-DI를 같이 보지 않고 ADX 숫자만으로 방향을 판단하면 안 되고, 이미 진행된 강한 추세를 새 신호처럼 받아들이는 것도 주의해야 해요.",
     },
     "stochastic": {
         "concept": "일정 기간의 최고가~최저가 범위 안에서, 오늘 종가가 어디쯤 위치하는지를 %로 보여주는 지표예요. RSI와 비슷하지만 훨씬 더 민감하게 움직여요.",
