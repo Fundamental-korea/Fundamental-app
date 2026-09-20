@@ -404,6 +404,10 @@ def classify_current_condition(
         context = "과매수 + 모멘텀 둔화"
     elif state.startswith("oversold") and momentum == "weakening":
         context = "과매도 + 모멘텀 둔화"
+    elif state.startswith("overbought") and adx_trend_context == "강한 상승추세":
+        context = "과매수 + 강한 상승추세"
+    elif state.startswith("oversold") and adx_trend_context == "강한 하락추세":
+        context = "과매도 + 강한 하락추세"
     elif state.startswith("overbought") and trend == "uptrend":
         context = "과매수 + 상승추세"
     elif state.startswith("oversold") and trend == "downtrend":
@@ -412,6 +416,8 @@ def classify_current_condition(
         context = "과매수"
     elif state.startswith("oversold"):
         context = "과매도"
+    elif adx_trend_context is not None:
+        context = adx_trend_context
     elif trend == "uptrend":
         context = "상승추세"
     elif trend == "downtrend":
