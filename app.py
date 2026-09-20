@@ -2137,7 +2137,11 @@ elif selected_code and view_mode_param == "analysis":
     # ⚠️ 네이버증권처럼 로고/명언/광고 없이 차트+지표에만 집중하는 미니멀 레이아웃 -
     # 다른 페이지(메인/리포트)와 달리 이 페이지만 별도로 이렇게 구성함 (요청사항)
     # ==========================================
-    st.link_button("📊 리포트로 돌아가기", f"?code={selected_code}&theme={THEME_MODE}")
+    analysis_top_left, analysis_top_right = st.columns([8.5, 1.5])
+    with analysis_top_right:
+        render_theme_toggle("theme_toggle_analysis")
+    with analysis_top_left:
+        st.link_button("📊 리포트로 돌아가기", f"?code={selected_code}&theme={THEME_MODE}")
 
     with st.container():
         analysis_name = query_params.get("name", selected_code)
