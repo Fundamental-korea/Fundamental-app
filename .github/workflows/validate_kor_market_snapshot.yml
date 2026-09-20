@@ -1,5 +1,9 @@
 name: Validate Korea Market Snapshot
 
+concurrency:
+  group: kor-market-snapshot-validation
+  cancel-in-progress: true
+
 on:
   push:
     paths:
@@ -13,7 +17,7 @@ permissions:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 15
     steps:
       - name: 소스코드 체크아웃
         uses: actions/checkout@v4
