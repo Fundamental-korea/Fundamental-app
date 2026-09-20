@@ -2089,7 +2089,7 @@ def render_unified_search_box(stock_db, target_view=None):
             }}
 
             function escapeRegExp(value) {{
-                return String(value).replace(/[.*+?^\[object Object]()|[\]\\]/g, '\\                return String(value).replace(/[.*+?^[object Object]()|[\]\\]/g, '\\$&');');
+                return String(value).replace(/[.*+?^${{}}()|[\\]\\\\]/g, '\\\\$&');
             }}
 
             function highlightMatch(text, query) {{
@@ -2099,7 +2099,6 @@ def render_unified_search_box(stock_db, target_view=None):
                 const reg = new RegExp('(' + safe + ')', 'gi');
                 return text.replace(reg, '<span class="highlight">$1</span>');
             }}
-
             function renderList(query) {{
                 const q = query.trim();
 
