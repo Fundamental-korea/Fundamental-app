@@ -24,6 +24,10 @@ from chart_indicators import (
     generate_stochastic_commentary,
     generate_ichimoku_commentary,
     generate_adx_commentary,
+    generate_atr_commentary,
+    generate_obv_commentary,
+    generate_mfi_commentary,
+    generate_vwap_commentary,
     INDICATOR_LESSONS,
 )
 import requests
@@ -1398,7 +1402,7 @@ def get_chart_history(code, period="1y"):
         return pd.DataFrame()
 
 
-HISTORICAL_PATTERN_CACHE_VERSION = "2026-09-20-adx-v1"
+HISTORICAL_PATTERN_CACHE_VERSION = "2026-09-20-tech-v2"
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -1467,22 +1471,22 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     window.parent.location.href로 부모 페이지를 이동시키는 게 Streamlit의 iframe 샌드박스
     정책상 막혀서(클릭해도 아무 반응 없던 원인) 호출부에서 진짜 Streamlit 버튼으로 처리함."""
 
-    vm = {"ma": False, "bb": False, "ichimoku": False, "vol_ma": False, "rsi": False, "stoch": False, "adx": False, "macd": False}
+    vm = {
+        "ma": False, "bb": False, "ichimoku": False, "vol_ma": False,
+        "rsi": False, "stoch": False, "adx": False,
+        "atr": False, "obv": False, "mfi": False, "vwap": False,
+        "macd": False,
+    }
     vm.update(visible_map or {})
 
     def vis(key):
         return True if vm[key] else "legendonly"
 
-    # RSI/스토캐스틱/MACD는 전용 행이 필요한 지표라, 체크 안 하면 행 자체를 안 만듦
+    # 전용 행이 필요한 지표만 row_order에 추가하고, VWAP은 가격 패널 위에 오버레이.
     row_order = ["price", "volume"]
-    if vm["rsi"]:
-        row_order.append("rsi")
-    if vm["stoch"]:
-        row_order.append("stoch")
-    if vm["adx"]:
-        row_order.append("adx")
-    if vm["macd"]:
-        row_order.append("macd")
+    for row_key in ("rsi", "stoch", "adx", "atr", "obv", "mfi", "macd"):
+        if vm[row_key]:
+            row_order.append(row_key)
 
     n_extra = len(row_order) - 2
     gap = 0.025
@@ -1492,9 +1496,10 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         price_h = 1.0 - vol_h - total_gap
         row_heights = {"price": price_h, "volume": vol_h}
     else:
-        vol_h = 0.14
-        extra_h = 0.16
-        price_h = 1.0 - vol_h - extra_h * n_extra - total_gap
+        vol_h = 0.12
+        desired_extra_h = 0.14
+        price_h = max(0.30, 1.0 - vol_h - desired_extra_h * n_extra - total_gap)
+        extra_h = (1.0 - vol_h - price_h - total_gap) / n_extra
         row_heights = {"price": price_h, "volume": vol_h}
         for r in row_order[2:]:
             row_heights[r] = extra_h
@@ -1506,7 +1511,10 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         domains[r] = [round(bottom, 4), round(top, 4)]
         top = bottom - gap
 
-    axis_name = {"price": "y", "volume": "y2", "rsi": "y3", "stoch": "y4", "adx": "y5", "macd": "y6"}
+    axis_name = {
+        r: ("y" if i == 1 else f"y{i}")
+        for i, r in enumerate(row_order, start=1)
+    }
     if height is None:
         height = 700 + 220 * n_extra
 
@@ -1568,6 +1576,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         "rsi14": s("rsi14"),
         "stoch_k": s("stoch_k"), "stoch_d": s("stoch_d"),
         "adx14": s("adx14"), "plus_di14": s("plus_di14"), "minus_di14": s("minus_di14"),
+        "atr14": s("atr14"), "obv": s("obv"), "mfi14": s("mfi14"), "rolling_vwap20": s("rolling_vwap20"),
         "macd_line": s("macd_line"), "macd_signal": s("macd_signal"), "macd_hist": s("macd_hist"),
     }
     data_json = json.dumps(payload)
@@ -1586,9 +1595,10 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                 visTrace("구름(선행스팬B)", D.senkou_b, "rgba(220,38,38,0.5)", 0.8, {{ yaxis: "y", visible: {json.dumps(vis("ichimoku"))}, fill: "tonexty", fillcolor: "rgba(148,163,184,0.15)" }}),
                 {{ type: "bar", x: D.dates, y: D.volume, name: "거래량", yaxis: "y2", marker: {{ color: D.vol_colors, opacity: 0.9, line: {{ width: 0 }} }} }},
                 visTrace("거래량 MA20", D.vol_ma20, "#D97706", 1.1, {{ yaxis: "y2", visible: {json.dumps(vis("vol_ma"))} }}),
+                visTrace("Rolling VWAP20", D.rolling_vwap20, "#0EA5E9", 1.3, {{ yaxis: "y", visible: {json.dumps(vis("vwap"))}, line: {{ dash: "dash" }} }}),
     """
 
-    # 행(row) 기반 지표 - 체크된 것만 트레이스 자체를 생성 (안 그러면 빈 축만 남는 문제가 다시 생김)
+    # 행(row) 기반 지표 - 체크된 것만 트레이스 자체를 생성 (빈 축이 남지 않도록 동일한 row_order를 사용)
     row_traces_js = ""
     if vm["rsi"]:
         row_traces_js += f"""
@@ -1605,6 +1615,18 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                 visTrace("+DI", D.plus_di14, "#16A34A", 1.0, {{ yaxis: "{axis_name['adx']}" }}),
                 visTrace("-DI", D.minus_di14, "#DC2626", 1.0, {{ yaxis: "{axis_name['adx']}" }}),
         """
+    if vm["atr"]:
+        row_traces_js += f"""
+                visTrace("ATR(14)", D.atr14, "#F97316", 1.3, {{ yaxis: "{axis_name['atr']}" }}),
+        """
+    if vm["obv"]:
+        row_traces_js += f"""
+                visTrace("OBV", D.obv, "#0EA5E9", 1.3, {{ yaxis: "{axis_name['obv']}" }}),
+        """
+    if vm["mfi"]:
+        row_traces_js += f"""
+                visTrace("MFI(14)", D.mfi14, "#A855F7", 1.3, {{ yaxis: "{axis_name['mfi']}" }}),
+        """
     if vm["macd"]:
         row_traces_js += f"""
                 {{ type: "bar", x: D.dates, y: D.macd_hist, name: "MACD 히스토그램", yaxis: "{axis_name['macd']}",
@@ -1613,30 +1635,51 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                 visTrace("시그널선", D.macd_signal, "#2563EB", 1.2, {{ yaxis: "{axis_name['macd']}" }}),
         """
 
-    # 행 기반 지표의 y축 정의 + 기준선(70/30, 80/20) - 체크된 것만
+    # 행 기반 지표의 y축 정의 + 기준선(80/20 또는 ADX 25) - 체크된 것만
+    fixed_ranges = {"rsi": "[0, 100]", "stoch": "[0, 100]", "adx": "[0, 100]", "mfi": "[0, 100]"}
+    axis_titles = {
+        "rsi": "RSI", "stoch": "Stoch", "adx": "ADX / DI",
+        "atr": "ATR", "obv": "OBV", "mfi": "MFI", "macd": "MACD",
+    }
     extra_yaxes_js = ""
     extra_shapes_js = ""
-    if vm["rsi"]:
-        extra_yaxes_js += f"""yaxis3: {{ domain: {json.dumps(domains['rsi'])}, anchor: "x", side: "right", title: "RSI", range: [0, 100] }},"""
-        extra_shapes_js += f"""
-                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 70, y1: 70, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
-                    {{ type: "line", xref: "paper", yref: "y3", x0: 0, x1: 1, y0: 30, y1: 30, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
+    for row_key in row_order[2:]:
+        ax = axis_name[row_key]
+        axis_id = "yaxis" if ax == "y" else f"yaxis{ax[1:]}"
+        range_clause = f", range: {fixed_ranges[row_key]}" if row_key in fixed_ranges else ""
+        extra_yaxes_js += (
+            f"""{axis_id}: {{ domain: {json.dumps(domains[row_key])}, anchor: "x", """
+            f"""side: "right", title: "{axis_titles[row_key]}"{range_clause} }},"""
+        )
+        if row_key == "rsi":
+            extra_shapes_js += f"""
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 70, y1: 70, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 30, y1: 30, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
         """
-    if vm["stoch"]:
-        extra_yaxes_js += f"""yaxis4: {{ domain: {json.dumps(domains['stoch'])}, anchor: "x", side: "right", title: "Stoch", range: [0, 100] }},"""
-        extra_shapes_js += f"""
-                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
-                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
+        elif row_key == "stoch":
+            extra_shapes_js += f"""
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
         """
-    if vm["adx"]:
-        extra_yaxes_js += f"""yaxis5: {{ domain: {json.dumps(domains['adx'])}, anchor: "x", side: "right", title: "ADX / DI", range: [0, 100] }},"""
-        extra_shapes_js += f"""
-                    {{ type: "line", xref: "paper", yref: "y5", x0: 0, x1: 1, y0: 25, y1: 25, line: {{ color: "{THEME['accent']}", width: 1, dash: "dash" }} }},
+        elif row_key == "adx":
+            extra_shapes_js += f"""
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 25, y1: 25, line: {{ color: "{THEME['accent']}", width: 1, dash: "dash" }} }},
         """
-    if vm["macd"]:
-        extra_yaxes_js += f"""yaxis6: {{ domain: {json.dumps(domains['macd'])}, anchor: "x", side: "right", title: "MACD" }},"""
+        elif row_key == "mfi":
+            extra_shapes_js += f"""
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
+        """
 
-    has_macd_js = json.dumps(vm["macd"])
+    dynamic_axis_groups = {}
+    for row_key, keys in (
+        ("atr", ["atr14"]),
+        ("obv", ["obv"]),
+        ("macd", ["macd_line", "macd_signal", "macd_hist"]),
+    ):
+        if vm.get(row_key):
+            dynamic_axis_groups[axis_name[row_key]] = keys
+    dynamic_axis_groups_js = json.dumps(dynamic_axis_groups)
 
     def fmt_price(v):
         return f"{v:,.0f}" if is_korean_market else f"{v:,.2f}"
@@ -1668,7 +1711,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         <script>
         try {{
             const D = {data_json};
-            const HAS_MACD = {has_macd_js};
+            const DYNAMIC_EXTRA_AXES = {dynamic_axis_groups_js};
 
             function visTrace(name, y, color, width, extra) {{
                 extra = extra || {{}};
@@ -1775,12 +1818,22 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                 if (isFinite(priceLo) && isFinite(priceHi)) update["yaxis.range"] = [priceLo - pad, priceHi + pad];
                 if (isFinite(volHi)) update["yaxis2.range"] = [0, volHi * 1.15];
 
-                if (HAS_MACD) {{
-                    const macdAll = D.macd_line.concat(D.macd_signal).concat(D.macd_hist);
-                    const idxs2 = idxs.concat(idxs.map(i => i + D.dates.length)).concat(idxs.map(i => i + 2 * D.dates.length));
-                    const [macdLo, macdHi] = minMax(macdAll, idxs2);
-                    const macdPad = (isFinite(macdHi - macdLo) ? (macdHi - macdLo) * 0.15 : 1) || 1;
-                    if (isFinite(macdLo) && isFinite(macdHi)) update["yaxis6.range"] = [macdLo - macdPad, macdHi + macdPad];
+                for (const [axisId, seriesKeys] of Object.entries(DYNAMIC_EXTRA_AXES)) {{
+                    let mn = Infinity;
+                    let mx = -Infinity;
+                    for (const key of seriesKeys) {{
+                        const arr = D[key] || [];
+                        for (const i of idxs) {{
+                            const v = arr[i];
+                            if (v === null || v === undefined || isNaN(v)) continue;
+                            if (v < mn) mn = v;
+                            if (v > mx) mx = v;
+                        }}
+                    }}
+                    if (isFinite(mn) && isFinite(mx)) {{
+                        const axisPad = (mx - mn) * 0.15 || Math.abs(mx) * 0.05 || 1;
+                        update[axisId + ".range"] = [mn - axisPad, mx + axisPad];
+                    }}
                 }}
 
                 return Plotly.relayout(graphDiv, update);
@@ -2581,8 +2634,8 @@ elif view_mode_param == "analysis_search":
     with search_main:
         st.markdown("### 📊 차트 분석 (Chart Analysis)")
         st.info(
-            "종목을 검색하면 캔들스틱 차트에 이동평균선·볼린저밴드·RSI·스토캐스틱·일목균형표·MACD·거래량 "
-            "지표를 얹어서, 지금 이 종목 기준 쉬운 설명과 함께 보여드려요."
+            "종목을 검색하면 캔들스틱 차트에 이동평균선·볼린저밴드·RSI·스토캐스틱·일목균형표·MACD·ADX/DMI·"
+            "ATR·OBV·MFI·Rolling VWAP·거래량 지표를 얹어서, 지금 이 종목 기준 쉬운 설명과 함께 보여드려요."
         )
         analysis_search_stocks_db = get_combined_stock_db()
         render_unified_search_box(stock_db=analysis_search_stocks_db, target_view="analysis")
@@ -2642,11 +2695,17 @@ elif selected_code and view_mode_param == "analysis":
                 show_rsi = st.checkbox("RSI (누르면 전용 칸이 새로 생겨요)", value=False, key="an_show_rsi")
                 show_stoch = st.checkbox("스토캐스틱 (전용 칸)", value=False, key="an_show_stoch")
                 show_adx = st.checkbox("ADX / DMI (전용 칸)", value=False, key="an_show_adx")
+                show_atr = st.checkbox("ATR (전용 칸)", value=False, key="an_show_atr")
+                show_obv = st.checkbox("OBV (전용 칸)", value=False, key="an_show_obv")
                 show_macd = st.checkbox("MACD (전용 칸)", value=False, key="an_show_macd")
+                show_mfi = st.checkbox("MFI (전용 칸)", value=False, key="an_show_mfi")
+                show_vwap = st.checkbox("Rolling VWAP (가격 위 오버레이)", value=False, key="an_show_vwap")
 
         visible_map = {
             "ma": show_ma, "bb": show_bb, "ichimoku": show_ichimoku, "vol_ma": show_vol_ma,
-            "rsi": show_rsi, "stoch": show_stoch, "adx": show_adx, "macd": show_macd,
+            "rsi": show_rsi, "stoch": show_stoch, "adx": show_adx,
+            "atr": show_atr, "obv": show_obv, "mfi": show_mfi, "vwap": show_vwap,
+            "macd": show_macd,
         }
 
         # 숫자 바꿀 때마다 매번 다시 계산하지 않도록 st.form으로 묶어서 "적용하기" 눌러야 반영되게 함
@@ -2663,16 +2722,20 @@ elif selected_code and view_mode_param == "analysis":
                     bb_std = st.number_input("볼린저 표준편차 배수", 1.0, 4.0, 2.0, step=0.5, key="an_bb_std")
                     rsi_window = st.number_input("RSI 기간(일)", 5, 30, 14, key="an_rsi_window")
                     adx_window = st.number_input("ADX 기간(일)", 5, 30, 14, key="an_adx_window")
+                    atr_window = st.number_input("ATR 기간(일)", 5, 30, 14, key="an_atr_window")
                 with set_col3:
                     macd_fast = st.number_input("MACD 단기", 5, 30, 12, key="an_macd_fast")
                     macd_slow = st.number_input("MACD 장기", 15, 60, 26, key="an_macd_slow")
                     macd_signal = st.number_input("MACD 시그널", 3, 20, 9, key="an_macd_signal")
+                    mfi_window = st.number_input("MFI 기간(일)", 5, 30, 14, key="an_mfi_window")
+                    vwap_window = st.number_input("Rolling VWAP 기간(봉)", 5, 60, 20, key="an_vwap_window")
                 st.form_submit_button("✅ 적용하기")
 
         custom_params = {
             "sma_tiny": sma_tiny, "sma_short": sma_short, "sma_mid": sma_mid, "sma_long": sma_long,
             "bb_window": bb_window, "bb_std": bb_std,
             "rsi_window": rsi_window, "adx_window": adx_window,
+            "atr_window": atr_window, "mfi_window": mfi_window, "vwap_window": vwap_window,
             "macd_fast": macd_fast, "macd_slow": macd_slow, "macd_signal": macd_signal,
         }
 
@@ -2694,8 +2757,8 @@ elif selected_code and view_mode_param == "analysis":
             p = indicators["params"]
 
             st.caption(
-                "💡 마우스 휠로 확대/축소, 드래그로 좌우 이동할 수 있어요 - 이동/확대할 때마다 y축(가격·거래량·MACD)이 "
-                "보이는 구간에 맞춰 자동으로 다시 그려져요 (더블클릭하면 전체 구간으로 리셋). "
+                "💡 마우스 휠로 확대/축소, 드래그로 좌우 이동할 수 있어요 - 이동/확대할 때마다 y축(가격·거래량 및 "
+                "동적 스케일 지표)가 보이는 구간에 맞춰 자동으로 다시 그려져요 (더블클릭하면 전체 구간으로 리셋). "
                 "위쪽 버튼으로 분봉/일봉/주봉/월봉/분기봉/년봉을 바꿀 수 있고, 지표는 '표시할 지표 선택'에서 켜보세요."
             )
             render_naver_style_chart(
@@ -2718,6 +2781,14 @@ elif selected_code and view_mode_param == "analysis":
                  generate_stochastic_commentary(indicators["stoch_k"], indicators["stoch_d"])),
                 ("📈 ADX / DMI (추세 강도)", "adx",
                  generate_adx_commentary(indicators["adx14"], indicators["plus_di14"], indicators["minus_di14"])),
+                ("📏 ATR (변동성)", "atr",
+                 generate_atr_commentary(indicators["atr14"], close)),
+                ("📦 OBV (거래량 흐름)", "obv",
+                 generate_obv_commentary(indicators["obv"])),
+                ("💰 MFI (자금 흐름)", "mfi",
+                 generate_mfi_commentary(indicators["mfi14"])),
+                ("⚖️ Rolling VWAP (거래량가중 평균가)", "vwap",
+                 generate_vwap_commentary(close, indicators["rolling_vwap20"])),
                 ("☁️ 일목균형표", "ichimoku",
                  generate_ichimoku_commentary(close, indicators["tenkan"], indicators["kijun"],
                                                indicators["senkou_a"], indicators["senkou_b"])),
@@ -2954,7 +3025,7 @@ elif not selected_code:
                 unsafe_allow_html=True,
             )
             st.info(
-                "📊 **Chart Analysis**: 이동평균선·볼린저밴드·RSI·MACD·스토캐스틱·ADX/DMI·일목균형표·거래량까지, "
+                "📊 **Chart Analysis**: 이동평균선·볼린저밴드·RSI·MACD·스토캐스틱·ADX/DMI·ATR·OBV·MFI·Rolling VWAP·일목균형표·거래량까지, "
                 "지금 이 종목 기준 자동 해설과 함께 전문 차트를 볼 수 있는 전용 화면이 새 창으로 열려요."
             )
             st.markdown(
