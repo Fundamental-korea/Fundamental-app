@@ -183,13 +183,14 @@ def _select_matches(
         if sim is not None and sim >= min_similarity:
             scored.append((idx, sim))
 
+    candidate_count = len(scored)
     scored.sort(key=lambda x: x[1], reverse=True)
 
     selected = []
     for idx, sim in scored:
         if all(abs(idx - old_idx) >= MIN_GAP_BARS for old_idx, _ in selected):
             selected.append((idx, sim))
-    return selected
+    return selected, candidate_count
 
 
 def _wilson_interval(successes: int, n: int, z: float = 1.96) -> Tuple[float, float]:
@@ -427,12 +428,13 @@ def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Se
     if hist_df is None or hist_df.empty or "Close" not in hist_df.columns:
         return {"status": "no_data", "matches": 0, "horizons": {}}
     features = _features(hist_df, indicators, indicator_key)
-    matches = _select_matches(features, indicator_key)
+    matches, candidate_count = _select_matches(features, indicator_key)
     match_count = len(matches)
     if match_count < MIN_MATCHES:
         return {
             "status": "insufficient_matches",
             "matches": match_count,
+            "candidate_matches": candidate_count,
             "horizons": {},
             "min_required": MIN_MATCHES,
             "lookback_years": LOOKBACK_YEARS,
@@ -446,6 +448,7 @@ def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Se
         return {
             "status": "no_outcomes",
             "matches": match_count,
+            "candidate_matches": candidate_count,
             "horizons": {},
             "lookback_years": LOOKBACK_YEARS,
             "min_similarity": MIN_SIMILARITY,
@@ -454,6 +457,7 @@ def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Se
     return {
         "status": "ok",
         "matches": match_count,
+        "candidate_matches": candidate_count,
         "avg_similarity": round(sum(sims) / len(sims), 1) if sims else None,
         "horizons": horizons,
         "lookback_years": LOOKBACK_YEARS,
