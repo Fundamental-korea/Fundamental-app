@@ -13,7 +13,7 @@ from search_aliases import aliases_for
 
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
-from historical_pattern import analyze_all_indicator_patterns
+from historical_pattern import analyze_all_indicator_patterns, classify_current_condition
 from chart_indicators import (
     compute_all_indicators,
     generate_ma_commentary,
@@ -2661,6 +2661,11 @@ elif selected_code and view_mode_param == "analysis":
             selected_code,
             tuple(sorted(custom_params.items())),
         )
+        market_condition = (
+            pattern_results.get("_market_condition", {})
+            if pattern_results
+            else {}
+        )
 
         if not hist_df.empty and len(hist_df) >= 20:
             indicators = compute_all_indicators(hist_df, params=custom_params)
@@ -2719,8 +2724,46 @@ elif selected_code and view_mode_param == "analysis":
                     # ------------------------------------------------------
                     pattern = pattern_results.get(lesson_key) if pattern_results else None
                     st.markdown("**📈 과거 유사 상황 통계**")
+
+                    # 현재 기술적 상태에 따라 '먼저 보여줄' 역사적 결과 방향을 바꾼다.
+                    # 과매수 → 하락 사례 비율 우선, 과매도 → 상승 사례 비율 우선.
+                    # 이는 표시 순서만 바꾸며 역사적 표본/계산 방식 자체는 변경하지 않는다.
+                    state = market_condition.get("state", "neutral")
+                    context = market_condition.get("context", "중립/혼조")
+                    primary_direction = market_condition.get("primary_direction", "up")
+
+                    if state.startswith("overbought"):
+                        signal_text = ", ".join(market_condition.get("signals", [])[:4])
+                        reason_text = (
+                            f"현재 기술적 상태는 <b>{context}</b>로 분류됩니다. "
+                            f"과매수 신호 {market_condition.get('overbought_count', 0)}개"
+                            f"{f' ({signal_text})' if signal_text else ''}. "
+                            "따라서 아래에서는 과거 <b>하락 사례 비율</b>을 먼저 보여줍니다."
+                        )
+                        st.markdown(
+                            f"<div class='indicator-card-desc'>{reason_text}</div>",
+                            unsafe_allow_html=True,
+                        )
+                    elif state.startswith("oversold"):
+                        signal_text = ", ".join(market_condition.get("signals", [])[:4])
+                        reason_text = (
+                            f"현재 기술적 상태는 <b>{context}</b>로 분류됩니다. "
+                            f"과매도 신호 {market_condition.get('oversold_count', 0)}개"
+                            f"{f' ({signal_text})' if signal_text else ''}. "
+                            "따라서 아래에서는 과거 <b>상승 사례 비율</b>을 먼저 보여줍니다."
+                        )
+                        st.markdown(
+                            f"<div class='indicator-card-desc'>{reason_text}</div>",
+                            unsafe_allow_html=True,
+                        )
+                    elif context in ("상승추세", "하락추세"):
+                        st.caption(
+                            f"현재 기술적 문맥: {context}. "
+                            "과매수/과매도 전환 조건에는 해당하지 않아 기본 상승 사례 비율을 먼저 보여줍니다."
+                        )
+
                     if not pattern:
-                        st.caption("과거 일봉 데이터를 충분히 불러오지 못해 통계를 계산할 수 없어요.")
+                        st.caption("과거 일봉 데이터를 충분히 불러오지 못해 통계를 계산할 수 있어요.")
                     elif pattern.get("status") != "ok":
                         matched = pattern.get("matches", 0)
                         st.caption(
@@ -2743,24 +2786,57 @@ elif selected_code and view_mode_param == "analysis":
                                 if not stats:
                                     st.caption("실제 결과 사례 없음")
                                 else:
-                                    st.metric(
-                                        "과거 상승 사례 비율",
-                                        f"{stats['up_probability']:.1f}%",
-                                        help="예측 확률이 아니라, 조건이 유사했던 과거 날짜들 중 해당 기간 후 실제 종가가 상승한 비율입니다.",
-                                    )
+                                    if primary_direction == "down":
+                                        primary_label = "과거 하락 사례 비율"
+                                        primary_value = stats.get("down_probability")
+                                        primary_ci_low = stats.get("down_probability_ci_low")
+                                        primary_ci_high = stats.get("down_probability_ci_high")
+                                        primary_help = (
+                                            "예측 확률이 아니라, 현재 과매수/유사 조건과 비슷했던 과거 날짜들 중 "
+                                            "해당 기간 후 실제 종가가 하락한 비율입니다."
+                                        )
+                                        secondary_label = "과거 상승 사례 비율"
+                                        secondary_value = stats.get("up_probability")
+                                    else:
+                                        primary_label = "과거 상승 사례 비율"
+                                        primary_value = stats.get("up_probability")
+                                        primary_ci_low = stats.get("up_probability_ci_low")
+                                        primary_ci_high = stats.get("up_probability_ci_high")
+                                        primary_help = (
+                                            "예측 확률이 아니라, 조건이 유사했던 과거 날짜들 중 "
+                                            "해당 기간 후 실제 종가가 상승한 비율입니다."
+                                        )
+                                        secondary_label = "과거 하락 사례 비율"
+                                        secondary_value = stats.get("down_probability")
+
+                                    stat_cols = st.columns(2)
+                                    with stat_cols[0]:
+                                        if primary_value is not None:
+                                            st.metric(
+                                                primary_label,
+                                                f"{primary_value:.1f}%",
+                                                help=primary_help,
+                                            )
+                                    with stat_cols[1]:
+                                        if secondary_value is not None:
+                                            st.metric(
+                                                secondary_label,
+                                                f"{secondary_value:.1f}%",
+                                                help=(
+                                                    "상승/하락은 실제 종가 방향 기준입니다. "
+                                                    "보합 사례가 있으면 두 수치의 합이 100%가 되지 않을 수 있습니다."
+                                                ),
+                                            )
+
                                     st.caption(
                                         f"중앙값 {stats['median_return']:+.1f}% · "
                                         f"평균 {stats['mean_return']:+.1f}% · "
                                         f"실제 사례 {stats['samples']}건"
                                     )
-                                    if (
-                                        stats.get("up_probability_ci_low") is not None
-                                        and stats.get("up_probability_ci_high") is not None
-                                    ):
+                                    if primary_ci_low is not None and primary_ci_high is not None:
                                         st.caption(
-                                            f"상승비율 95% 구간: "
-                                            f"{stats['up_probability_ci_low']:.1f}% ~ "
-                                            f"{stats['up_probability_ci_high']:.1f}%"
+                                            f"{'하락' if primary_direction == 'down' else '상승'}비율 95% 구간: "
+                                            f"{primary_ci_low:.1f}% ~ {primary_ci_high:.1f}%"
                                         )
                         if pattern.get("avg_similarity") is not None:
                             st.caption(
@@ -2769,7 +2845,7 @@ elif selected_code and view_mode_param == "analysis":
                             )
                         st.caption(
                             "※ 과거 유사 조건의 실제 결과를 집계한 참고 통계입니다. "
-                            "미래 가격·수익률을 보장하는 예측값이 아닙니다. "
+                            "현재 상태의 과매수/과매도 판정은 표시 방향을 정하기 위한 분류일 뿐 미래 가격을 예측하지 않습니다. "
                             "표본 수가 작거나 95% 구간이 넓으면 숫자의 불확실성이 큽니다."
                         )
         elif not hist_df.empty:
