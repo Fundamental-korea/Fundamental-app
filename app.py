@@ -898,8 +898,8 @@ def render_us_fundamental_report(code, data):
                 "SEC 수집기가 데이터를 완료하면 이 화면에 자동 반영됩니다."
             )
         else:
-            latest = period_scores.get("1") or next(iter(period_scores.values()))
-            latest_scores = latest.get("scores") or {}
+            latest = period_scores.get("1y") or next(iter(period_scores.values()))
+            latest_scores = latest.get("avg") or latest.get("worst") or {}
             total_score = latest_scores.get("total_score")
             grade = latest_scores.get("grade", "N/A")
             coverage_pct = latest_scores.get("coverage_pct")
@@ -946,8 +946,8 @@ def render_us_fundamental_report(code, data):
                     else:
                         st.metric(label, str(value))
 
-            period_keys = [p for p in ("1", "3", "5", "10") if p in period_scores]
-            period_labels = {"1": "📅 1년", "3": "📆 3년", "5": "🗓️ 5년", "10": "📈 10년"}
+            period_keys = [p for p in ("1y", "3y", "5y", "10y") if p in period_scores]
+            period_labels = {"1y": "📅 1년", "3y": "📆 3년", "5y": "🗓️ 5년", "10y": "📈 10년"}
             tabs = st.tabs([period_labels[p] for p in period_keys])
 
             metric_meta = {
@@ -972,10 +972,17 @@ def render_us_fundamental_report(code, data):
             for pkey, tab in zip(period_keys, tabs):
                 with tab:
                     pdata = period_scores[pkey]
-                    scored = pdata.get("scores") or {}
+                    score_view = st.radio(
+                        "채점 기준",
+                        options=["avg", "worst"],
+                        format_func=lambda v: "📊 평균 기준 (꾸준함)" if v == "avg" else "🛡️ 최악 기준 (위기 대응력)",
+                        horizontal=True,
+                        key=f"us_view_mode_{pkey}",
+                    )
+                    scored = pdata.get(score_view) or {}
                     st.caption(
-                        f"기준 회계연도: {pdata.get('base_year') or '-'} · "
-                        f"성장률은 CAGR, 비율 지표는 기간 내 최악값"
+                        f"사용 기간: {pdata.get('years_used') or '-'} · "
+                        f"성장률은 CAGR, 비율 지표는 기간 내 {'평균값' if score_view == 'avg' else '최악값'}"
                     )
 
                     sub_scores = scored.get("sub_scores") or {}
