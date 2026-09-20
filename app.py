@@ -9,6 +9,8 @@ from supabase import create_client
 import yfinance as yf
 import base64
 
+from search_aliases import aliases_for
+
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
 from historical_pattern import analyze_all_indicator_patterns
@@ -1024,10 +1026,13 @@ def get_combined_stock_db():
         for row in all_us_rows:
             exchange = row.get("exchange") or "US"
             flag = "🇺🇸"
+            ticker = str(row.get("ticker") or "")
+            company_name = str(row.get("company_name") or ticker or "")
             us_stocks.append(
                 {
-                    "ticker": str(row.get("ticker") or ""),
-                    "name": str(row.get("company_name") or row.get("ticker") or ""),
+                    "ticker": ticker,
+                    "name": company_name,
+                    "aliases": aliases_for(ticker, company_name),
                     "exch": f"Equities - {exchange}",
                     "flag": flag,
                 }
@@ -1047,6 +1052,10 @@ def get_combined_stock_db():
             {"ticker": "META", "name": "Meta Platforms Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
             {"ticker": "PLTR", "name": "Palantir Technologies", "exch": "Equities - NYSE", "flag": "🇺🇸"},
             {"ticker": "P", "name": "Pure Storage Inc", "exch": "Equities - NYSE", "flag": "🇺🇸"},
+        ]
+        us_stocks = [
+            {**row, "aliases": aliases_for(row["ticker"], row["name"])}
+            for row in us_stocks
         ]
 
     kr_stocks = []
@@ -1078,10 +1087,13 @@ def get_combined_stock_db():
             raise ValueError("Supabase Fundamental 테이블에서 종목을 하나도 가져오지 못함")
 
         for row in all_rows:
+            ticker = str(row["stock_code"])
+            company_name = str(row["stock_name"])
             kr_stocks.append(
                 {
-                    "ticker": str(row["stock_code"]),
-                    "name": str(row["stock_name"]),
+                    "ticker": ticker,
+                    "name": company_name,
+                    "aliases": aliases_for(ticker, company_name),
                     "exch": "Equities - KRX",
                     "flag": "🇰🇷",
                 }
@@ -1093,6 +1105,10 @@ def get_combined_stock_db():
             {"ticker": "005380", "name": "현대차", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
             {"ticker": "035420", "name": "NAVER", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
             {"ticker": "035720", "name": "카카오", "exch": "Equities - KOSPI", "flag": "🇰🇷"},
+        ]
+        kr_stocks = [
+            {**row, "aliases": aliases_for(row["ticker"], row["name"])}
+            for row in kr_stocks
         ]
 
     return us_stocks + kr_stocks
@@ -1970,7 +1986,7 @@ def render_unified_search_box(stock_db, target_view=None):
                 type="text" 
                 id="unified_search_input" 
                 class="input-box" 
-                placeholder="🔍 미국/한국 주식 종목명 또는 티커 입력 (예: NVDA, AAPL, 삼성전자, 005930)"
+                placeholder="🔍 미국/한국 주식명 또는 티커 입력 (예: COST, 코스트코, AAPL, 애플, NAVER, 네이버, 005930)"
                 autocomplete="off"
             />
             <span class="search-icon" onclick="triggerSearch()">🔍</span>
@@ -2012,9 +2028,81 @@ def render_unified_search_box(stock_db, target_view=None):
             const listEl = document.getElementById('unified_search_list');
             const footerQueryEl = document.getElementById('unified_search_footer_query');
 
+            function normalizeSearchText(value) {{
+                return String(value ?? '')
+                    .normalize('NFKC')
+                    .toLowerCase()
+                    .replace(/\s+/g, '')
+                    .replace(/[._\-\/'’(),&]+/g, '');
+            }}
+
+            function subsequenceScore(query, text) {{
+                if (!query || !text) return 0;
+                let qi = 0;
+                for (let i = 0; i < text.length && qi < query.length; i++) {{
+                    if (text[i] === query[qi]) qi++;
+                }}
+                return qi === query.length ? (query.length / text.length) : 0;
+            }}
+
+            function scoreField(field, query) {{
+                const text = normalizeSearchText(field);
+                if (!text) return 0;
+                if (text === query) return 1000;
+                if (text.startsWith(query)) return 820;
+                if (text.includes(query)) return 660;
+                const subseq = subsequenceScore(query, text);
+                if (query.length >= 3 && subseq >= 0.7) return 420 + subseq * 100;
+                return 0;
+            }}
+
+            function scoreStock(item, query) {{
+                const ticker = normalizeSearchText(item.ticker);
+                const name = normalizeSearchText(item.name);
+                const aliases = Array.isArray(item.aliases) ? item.aliases : [];
+
+                let best = 0;
+                if (ticker === query) best = 1200;
+                if (name === query) best = Math.max(best, 1150);
+
+                for (const alias of aliases) {{
+                    best = Math.max(best, scoreField(alias, query) + 20);
+                }}
+
+                best = Math.max(best, scoreField(item.name, query));
+                best = Math.max(best, scoreField(item.ticker, query) + 10);
+                return best;
+            }}
+
+            function searchStocks(query) {{
+                const q = normalizeSearchText(query);
+                if (!q) return [];
+                return STOCKS
+                    .map(item => ({{ item: item, score: scoreStock(item, q) }}))
+                    .filter(x => x.score > 0)
+                    .sort((a, b) => {{
+                        if (b.score !== a.score) return b.score - a.score;
+                        const an = normalizeSearchText(a.item.name);
+                        const bn = normalizeSearchText(b.item.name);
+                        return an.localeCompare(bn, 'ko');
+                    }});
+            }}
+
+            function escapeRegExp(value) {{
+                return String(value).replace(/[.*+?^[object Object]()|[\]\\]/g, '\\$&');
+            }}
+
+            function highlightMatch(text, query) {{
+                if (!query) return text;
+                const safe = escapeRegExp(query);
+                if (!safe) return text;
+                const reg = new RegExp('(' + safe + ')', 'gi');
+                return text.replace(reg, '<span class="highlight">$1</span>');
+            }}
+
             function renderList(query) {{
-                const q = query.trim().toLowerCase();
-                
+                const q = query.trim();
+
                 if (!q) {{
                     modalEl.style.display = 'none';
                     return;
@@ -2023,38 +2111,29 @@ def render_unified_search_box(stock_db, target_view=None):
                 modalEl.style.display = 'flex';
                 footerQueryEl.innerText = q;
 
-                const filtered = STOCKS.filter(s => 
-                    s.ticker.toLowerCase().includes(q) || 
-                    s.name.toLowerCase().includes(q)
-                );
-
-                if (filtered.length === 0) {{
-                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:{THEME['text_muted']};">일치하는 종목이 없습니다.</div>';
+                const ranked = searchStocks(q);
+                if (ranked.length === 0) {{
+                    listEl.innerHTML = '<div style="padding:15px; font-size:13px; color:__MUTED_COLOR__;">일치하는 종목이 없습니다.</div>';
                     return;
                 }}
 
                 let html = '';
-                filtered.slice(0, 30).forEach((item, idx) => {{
+                ranked.slice(0, 30).forEach((match, idx) => {{
+                    const item = match.item;
                     const highlightTicker = highlightMatch(item.ticker, q);
                     const highlightName = highlightMatch(item.name, q);
-                    html += `
-                        <div class="stock-row ${{idx === 0 ? 'active' : ''}}" onclick="selectStock('${{item.ticker}}')">
-                            <div class="stock-info">
-                                <span class="flag">${{item.flag}}</span>
-                                <span class="ticker">${{highlightTicker}}</span>
-                                <span class="name">${{highlightName}}</span>
-                            </div>
-                            <span class="exch">${{item.exch}}</span>
-                        </div>
-                    `;
+                    html +=
+                        '<div class="stock-row ' + (idx === 0 ? 'active' : '') + '" onclick="selectStock(' +
+                        JSON.stringify(item.ticker) + ')">' +
+                            '<div class="stock-info">' +
+                                '<span class="flag">' + item.flag + '</span>' +
+                                '<span class="ticker">' + highlightTicker + '</span>' +
+                                '<span class="name">' + highlightName + '</span>' +
+                            '</div>' +
+                            '<span class="exch">' + item.exch + '</span>' +
+                        '</div>';
                 }});
                 listEl.innerHTML = html;
-            }}
-
-            function highlightMatch(text, query) {{
-                if (!query) return text;
-                const reg = new RegExp(`(${{query}})`, 'gi');
-                return text.replace(reg, '<span class="highlight">$1</span>');
             }}
 
             function selectStock(ticker) {{
@@ -2066,11 +2145,8 @@ def render_unified_search_box(stock_db, target_view=None):
                 const q = inputEl.value.trim();
                 if (!q) return;
 
-                const filtered = STOCKS.filter(s => 
-                    s.ticker.toLowerCase().includes(q.toLowerCase()) || 
-                    s.name.toLowerCase().includes(q.toLowerCase())
-                );
-                const targetCode = filtered.length > 0 ? filtered[0].ticker : q;
+                const ranked = searchStocks(q);
+                const targetCode = ranked.length > 0 ? ranked[0].item.ticker : q;
                 selectStock(targetCode);
             }}
 
