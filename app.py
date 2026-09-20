@@ -630,21 +630,21 @@ st.markdown(
 )
 
 # Dark-mode overrides are injected as real HTML/CSS only when dark mode is active.
-# Use percent-style interpolation here instead of an f-string: CSS itself contains
-# many braces, so f-strings would treat CSS blocks as Python expressions.
+# The CSS is built with explicit placeholder replacement so CSS braces and percent
+# values cannot interfere with Python string parsing/formatting.
 if THEME_MODE == "dark":
     dark_css = """
         <style>
         html, body, [data-testid="stAppViewContainer"], .stApp,
         [data-testid="stHeader"], [data-testid="stToolbar"],
         [data-testid="stMain"], [data-testid="stSidebar"] {
-            background-color: %(page)s !important;
-            color: %(text)s !important;
+            background-color: __THEME_PAGE__ !important;
+            color: __THEME_TEXT__ !important;
         }
 
         p, span, div, label, h1, h2, h3, h4, h5, h6,
         a, b, strong, small, summary {
-            color: %(text)s !important;
+            color: __THEME_TEXT__ !important;
         }
 
         [data-testid="stMetric"],
@@ -668,67 +668,67 @@ if THEME_MODE == "dark":
         [data-baseweb="select"],
         [role="radio"],
         [role="switch"] {
-            color: %(text)s !important;
+            color: __THEME_TEXT__ !important;
         }
 
         input, textarea {
-            background-color: %(surface)s !important;
-            color: %(text)s !important;
-            border-color: %(border)s !important;
-            caret-color: %(accent)s !important;
+            background-color: __THEME_SURFACE__ !important;
+            color: __THEME_TEXT__ !important;
+            border-color: __THEME_BORDER__ !important;
+            caret-color: __THEME_ACCENT__ !important;
         }
 
         [data-baseweb="select"] > div {
-            background-color: %(surface)s !important;
-            color: %(text)s !important;
-            border-color: %(border)s !important;
+            background-color: __THEME_SURFACE__ !important;
+            color: __THEME_TEXT__ !important;
+            border-color: __THEME_BORDER__ !important;
         }
 
         [data-testid="stButton"] button,
         [data-testid="stLinkButton"] a,
         [data-testid="stDownloadButton"] button {
-            background-color: %(surface)s !important;
-            color: %(text)s !important;
-            border-color: %(border)s !important;
+            background-color: __THEME_SURFACE__ !important;
+            color: __THEME_TEXT__ !important;
+            border-color: __THEME_BORDER__ !important;
         }
 
         [data-testid="stButton"] button *,
         [data-testid="stLinkButton"] a *,
         [data-testid="stDownloadButton"] button * {
-            color: %(text)s !important;
+            color: __THEME_TEXT__ !important;
         }
 
         [data-testid="stButton"] button:hover,
         [data-testid="stLinkButton"] a:hover,
         [data-testid="stDownloadButton"] button:hover {
-            background-color: %(surface_warm)s !important;
-            color: %(accent_strong)s !important;
-            border-color: %(accent)s !important;
+            background-color: __THEME_SURFACE_WARM__ !important;
+            color: __THEME_ACCENT_STRONG__ !important;
+            border-color: __THEME_ACCENT__ !important;
         }
 
         [data-testid="stButton"] button:hover *,
         [data-testid="stLinkButton"] a:hover * {
-            color: %(accent_strong)s !important;
+            color: __THEME_ACCENT_STRONG__ !important;
         }
 
         [data-testid="stButton"] button[kind="primary"],
         [data-testid="stButton"] button[kind="primary"] *,
         [data-testid="stButton"] button[data-testid="baseButton-primary"],
         [data-testid="stButton"] button[data-testid="baseButton-primary"] * {
-            background-color: %(accent_strong)s !important;
+            background-color: __THEME_ACCENT_STRONG__ !important;
             color: #FFFFFF !important;
-            border-color: %(accent)s !important;
+            border-color: __THEME_ACCENT__ !important;
         }
 
         [data-testid="stToggle"] label,
         [data-testid="stToggle"] label *,
         [role="switch"] {
-            color: %(text)s !important;
+            color: __THEME_TEXT__ !important;
         }
 
         [role="switch"][aria-checked="true"] {
-            background-color: %(accent)s !important;
-            border-color: %(accent)s !important;
+            background-color: __THEME_ACCENT__ !important;
+            border-color: __THEME_ACCENT__ !important;
         }
 
         [data-testid="stExpander"] summary,
@@ -736,17 +736,17 @@ if THEME_MODE == "dark":
         [data-testid="stExpander"] details,
         [data-testid="stTabs"] *,
         [data-testid="stDataFrame"] * {
-            color: %(text)s !important;
+            color: __THEME_TEXT__ !important;
         }
 
         [data-testid="stExpander"] details,
         [data-testid="stExpander"] summary {
-            background-color: %(surface)s !important;
-            border-color: %(border)s !important;
+            background-color: __THEME_SURFACE__ !important;
+            border-color: __THEME_BORDER__ !important;
         }
 
         [data-testid="stTabs"] [aria-selected="true"] {
-            border-bottom-color: %(accent)s !important;
+            border-bottom-color: __THEME_ACCENT__ !important;
         }
 
         .logo-box,
@@ -757,15 +757,15 @@ if THEME_MODE == "dark":
         .finstat-item,
         .overview-cell,
         .indicator-card {
-            background-color: %(surface)s !important;
-            color: %(text)s !important;
-            border-color: %(border)s !important;
+            background-color: __THEME_SURFACE__ !important;
+            color: __THEME_TEXT__ !important;
+            border-color: __THEME_BORDER__ !important;
         }
 
         .quote-box-v2,
         .grade-hero-box {
-            background-color: %(surface_warm)s !important;
-            border-color: %(accent)s !important;
+            background-color: __THEME_SURFACE_WARM__ !important;
+            border-color: __THEME_ACCENT__ !important;
         }
 
         .quote-box-v2 *,
@@ -775,7 +775,7 @@ if THEME_MODE == "dark":
         .finstat-item *,
         .overview-cell *,
         .indicator-card * {
-            color: %(text)s !important;
+            color: __THEME_TEXT__ !important;
         }
 
         .overview-label,
@@ -783,74 +783,74 @@ if THEME_MODE == "dark":
         .sketch-item-desc,
         .indicator-card-def,
         .overview-subvalue {
-            color: %(text_muted)s !important;
+            color: __THEME_TEXT_MUTED__ !important;
         }
 
         .quote-divider {
-            border-top-color: %(accent)s !important;
+            border-top-color: __THEME_ACCENT__ !important;
         }
 
         .status-pill,
         .mini-stat-badge {
-            border-color: %(border)s !important;
-            background-color: %(surface_muted)s !important;
-            color: %(text)s !important;
+            border-color: __THEME_BORDER__ !important;
+            background-color: __THEME_SURFACE_MUTED__ !important;
+            color: __THEME_TEXT__ !important;
         }
 
         .value-up,
         .reliability-good,
         .vol-high {
-            color: %(positive)s !important;
+            color: __THEME_POSITIVE__ !important;
         }
 
         .value-down {
-            color: %(negative)s !important;
+            color: __THEME_NEGATIVE__ !important;
         }
 
         .vol-low,
         .neutral,
         .reliability-mid,
         .reliability-low {
-            color: %(text_muted)s !important;
+            color: __THEME_TEXT_MUTED__ !important;
         }
 
         .impairment-warn,
         .tier-c {
-            color: %(warning_text)s !important;
-            background-color: %(warning_bg)s !important;
-            border-color: %(accent)s !important;
+            color: __THEME_WARNING_TEXT__ !important;
+            background-color: __THEME_WARNING_BG__ !important;
+            border-color: __THEME_ACCENT__ !important;
         }
 
         .ad-box-tall {
-            background-color: %(surface_muted)s !important;
-            color: %(text_muted)s !important;
-            border-color: %(border)s !important;
+            background-color: __THEME_SURFACE_MUTED__ !important;
+            color: __THEME_TEXT_MUTED__ !important;
+            border-color: __THEME_BORDER__ !important;
         }
 
         [style*="#1A1A1A"],
         [style*="#111827"],
         [style*="#0F172A"],
         [style*="#4B5563"] {
-            color: %(text)s !important;
+            color: __THEME_TEXT__ !important;
         }
 
         [style*="#92400E"],
         [style*="#9A3412"] {
-            color: %(warning_text)s !important;
+            color: __THEME_WARNING_TEXT__ !important;
         }
 
         [style*="#DC2626"],
         [style*="#D93025"] {
-            color: %(positive)s !important;
+            color: __THEME_POSITIVE__ !important;
         }
 
         [style*="#2563EB"] {
-            color: %(negative)s !important;
+            color: __THEME_NEGATIVE__ !important;
         }
 
         [style*="#16A34A"],
         [style*="#047857"] {
-            color: %(success)s !important;
+            color: __THEME_SUCCESS__ !important;
         }
 
         [style*="#64748B"],
@@ -859,11 +859,11 @@ if THEME_MODE == "dark":
         [style*="#334155"],
         [style*="#94A3B8"],
         [style*="#888888"] {
-            color: %(text_muted)s !important;
+            color: __THEME_TEXT_MUTED__ !important;
         }
 
         [style*="#D97706"] {
-            color: %(accent_strong)s !important;
+            color: __THEME_ACCENT_STRONG__ !important;
         }
 
         [style*="#FFFFFF"],
@@ -872,10 +872,28 @@ if THEME_MODE == "dark":
         [style*="#FAFAFA"],
         [style*="#F8FAFC"],
         [style*="#F1F5F9"] {
-            background-color: %(surface)s !important;
+            background-color: __THEME_SURFACE__ !important;
         }
         </style>
-    """ % THEME
+    """
+    theme_replacements = {
+        "__THEME_PAGE__": THEME["page"],
+        "__THEME_SURFACE__": THEME["surface"],
+        "__THEME_SURFACE_WARM__": THEME["surface_warm"],
+        "__THEME_SURFACE_MUTED__": THEME["surface_muted"],
+        "__THEME_TEXT__": THEME["text"],
+        "__THEME_TEXT_MUTED__": THEME["text_muted"],
+        "__THEME_BORDER__": THEME["border"],
+        "__THEME_ACCENT__": THEME["accent"],
+        "__THEME_ACCENT_STRONG__": THEME["accent_strong"],
+        "__THEME_POSITIVE__": THEME["positive"],
+        "__THEME_NEGATIVE__": THEME["negative"],
+        "__THEME_SUCCESS__": THEME["success"],
+        "__THEME_WARNING_BG__": THEME["warning_bg"],
+        "__THEME_WARNING_TEXT__": THEME["warning_text"],
+    }
+    for placeholder, value in theme_replacements.items():
+        dark_css = dark_css.replace(placeholder, value)
 
     st.markdown(dark_css, unsafe_allow_html=True)
 
