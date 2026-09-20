@@ -87,52 +87,115 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
                            universe_row=None, market_prices=None, resolver=None):
     index = build_fact_index(facts)
     snapshot = build_latest_snapshot(facts)
+
     if resolver is not None:
-        flow_years = sorted(set(index.get("revenue", {}).keys()) | set(index.get("operating_income", {}).keys()) | set(index.get("net_income", {}).keys()))
+        flow_years = sorted(
+            set(index.get("revenue", {}).keys())
+            | set(index.get("operating_income", {}).keys())
+            | set(index.get("net_income", {}).keys())
+        )
         if flow_years:
             augment_index_with_v238(index, resolver, cik, max(flow_years))
 
-    from collector_us_fundamental import period_metrics
-    from downturn_us import calculate_downturn_defense
-    from us_scoring import calculate_us_score
+    # Reuse the canonical US period/scoring builder so Standard-sector fallback
+    # writes the same 1y/3y/5y/10y -> avg/worst structure as the normal collector.
+    from collector_us_fundamental import (
+        period_metrics_pair,
+        calculate_us_score,
+        calculate_downturn_defense,
+    )
 
     universe_row = universe_row or {}
     all_years = sorted({y for rows in index.values() for y in rows.keys()})
     if not all_years:
-        result = _build_result(ticker, cik, company_name, facts, submissions, universe_row, market_prices)
+        result = _build_result(
+            ticker, cik, company_name, facts, submissions,
+            universe_row, market_prices,
+        )
         result.update(_snapshot_fields(snapshot))
         return result
 
-    flow_years = sorted(set(index.get("revenue", {}).keys()) | set(index.get("operating_income", {}).keys()) | set(index.get("net_income", {}).keys()))
+    flow_years = sorted(
+        set(index.get("revenue", {}).keys())
+        | set(index.get("operating_income", {}).keys())
+        | set(index.get("net_income", {}).keys())
+    )
     latest_year = max(flow_years) if flow_years else max(all_years)
     profile = universe_row.get("scoring_profile") or "standard"
-    downturn_value, downturn_detail = calculate_downturn_defense(ticker, market=(market_prices or {}).get("market"), stock=(market_prices or {}).get("stock"))
 
-    period_scores, latest_score, latest_grade, latest_missing = {}, None, None, 0
+    downturn_value, downturn_detail = calculate_downturn_defense(
+        ticker,
+        market=(market_prices or {}).get("market"),
+        stock=(market_prices or {}).get("stock"),
+    )
+
+    period_scores = {}
+    latest_score = latest_grade = None
+    latest_missing = 0
+
     for period in PERIODS:
-        _, metrics, base_year = period_metrics(index, latest_year, period)
-        if not metrics:
+        pdata = period_metrics_pair(index, latest_year, period)
+        if pdata is None:
             continue
-        metrics["downturn_defense"] = downturn_value
-        scored = calculate_us_score(metrics, profile=profile)
-        period_scores[str(period)] = {"base_year": base_year, "metrics": metrics, "scores": scored}
-        if period == 1:
-            latest_score, latest_grade = scored["total_score"], scored["grade"]
-            latest_missing = scored["missing_metric_count"]
 
-    reliability = "high" if len(period_scores) >= 3 else ("medium" if period_scores else "low")
+        avg_metrics = dict(pdata["avg_metrics"])
+        worst_metrics = dict(pdata["worst_metrics"])
+        avg_metrics["downturn_defense"] = downturn_value
+        worst_metrics["downturn_defense"] = downturn_value
+
+        avg_score = calculate_us_score(avg_metrics, profile=profile)
+        worst_score = calculate_us_score(worst_metrics, profile=profile)
+
+        period_scores[f"{period}y"] = {
+            "years_used": pdata["years_used"],
+            "yearly_breakdown": pdata["yearly_breakdown"],
+            "avg": {
+                "total_score": avg_score["total_score"],
+                "grade": avg_score["grade"],
+                "metric_scores": avg_score["metric_scores"],
+                "sub_scores": avg_score.get("sub_scores", {}),
+                "financial_adjusted": False,
+                "missing_metric_count": avg_score["missing_metric_count"],
+                "scoring_version": avg_score["scoring_version"],
+            },
+            "worst": {
+                "total_score": worst_score["total_score"],
+                "grade": worst_score["grade"],
+                "metric_scores": worst_score["metric_scores"],
+                "sub_scores": worst_score.get("sub_scores", {}),
+                "financial_adjusted": False,
+                "missing_metric_count": worst_score["missing_metric_count"],
+                "scoring_version": worst_score["scoring_version"],
+            },
+        }
+
+        if period == 1:
+            latest_score = avg_score["total_score"]
+            latest_grade = avg_score["grade"]
+            latest_missing = avg_score["missing_metric_count"]
+
     result = {
-        "ticker": ticker, "cik": str(cik), "company_name": company_name,
+        "ticker": ticker,
+        "cik": str(cik),
+        "company_name": company_name,
         "sector": universe_row.get("sector_common") or submissions.get("sicDescription"),
-        "base_year": latest_year, "period_scores": period_scores,
+        "base_year": latest_year,
+        "period_scores": period_scores,
         "total_score": int(round(latest_score)) if latest_score is not None else None,
-        "grade": latest_grade, "data_unavailable": not bool(period_scores),
-        "data_reliability": reliability, "missing_metric_count": latest_missing,
+        "grade": latest_grade,
+        "data_unavailable": not bool(period_scores),
+        "data_reliability": (
+            "high" if len(period_scores) >= 3
+            else ("medium" if period_scores else "low")
+        ),
+        "missing_metric_count": latest_missing,
         "updated_at": datetime.now(timezone.utc).isoformat(),
-        "downturn_defense": downturn_value, "downturn_detail": downturn_detail,
+        "downturn_defense": downturn_value,
+        "downturn_detail": downturn_detail,
     }
     result.update(_snapshot_fields(snapshot))
     return result
+
 
 
 def get_standard_universe(sb, tickers=None, limit=None, all_rows=False):
