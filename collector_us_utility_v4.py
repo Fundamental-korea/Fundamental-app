@@ -66,8 +66,12 @@ def _suspicious(facts,latest):
 
 def build_result(ticker,cik,company_name,facts,submissions,market,stock,session):
     years={y for y in core_years(facts) if 2018<=y<=2026}
+    fallback_meta={"used":False}
+    if not years:
+        facts,fallback_meta=augment_with_latest_filing(session,cik,submissions,facts)
+        years={y for y in core_years(facts) if 2018<=y<=2026}
     if not years:return None
-    latest=max(years);fallback_meta={"used":False}
+    latest=max(years)
     if _suspicious(facts,latest):facts,fallback_meta=augment_with_latest_filing(session,cik,submissions,facts)
     years={y for y in core_years(facts) if 2018<=y<=2026};latest=max(years) if years else latest
     downturn_value,downturn_detail=calculate_downturn_defense(ticker,market=market,stock=stock)
