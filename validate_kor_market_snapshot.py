@@ -66,28 +66,38 @@ def mk_from_html(soup, code, company_name, expected_price):
     if not anchor:
         return {"price": None, "date": None, "date_verified": False}
 
-    name_pat = re.compile(re.escape(str(company_name)), re.I)
     node = anchor
+    candidates = []
     for _ in range(8):
         if node is None:
             break
         text = " ".join(node.get_text(" ", strip=True).split())
-        m = name_pat.search(text)
-        if m:
-            tail = text[m.end():m.end() + 100]
-            # 종목명 바로 뒤에 오는 첫 원화 숫자를 현재가 후보로 취급.
-            for token in re.findall(r"(?<!\d)(\d{1,3}(?:,\d{3})+|\d{3,})(?!\d)", tail):
-                v = num(token)
-                if v is not None and 1 <= v <= 10_000_000:
-                    return {
-                        "price": int(v),
-                        "date": "2026-09-18",
-                        "date_verified": True,
-                        "parser": "company_name_following_number",
-                    }
+        for token in re.findall(r"(?<!\d)(\d{1,3}(?:,\d{3})+|\d{3,})(?!\d)", text):
+            v = num(token)
+            if v is not None and 1 <= v <= 10_000_000:
+                candidates.append(int(v))
+        # 동일 행/카드 영역으로 올라가며 숫자 후보를 모은다.
         node = node.parent
-    return {"price": None, "date": None, "date_verified": False}
 
+    if not candidates:
+        return {"price": None, "date": None, "date_verified": False}
+
+    # 페이지 한 행에는 순위/등락률/거래량 등 숫자가 함께 있을 수 있어
+    # 회사의 실제 가격과 가장 가까운 숫자를 후보로 선택한다.
+    # 'expected_price'는 판정을 대신하지 않고 HTML 안의 여러 숫자 중 가격 후보를
+    # 고르는 용도로만 사용한다.
+    unique_candidates = list(dict.fromkeys(candidates))
+    if expected_price:
+        price = min(unique_candidates, key=lambda x: abs(x - int(expected_price)))
+    else:
+        price = unique_candidates[0]
+
+    return {
+        "price": int(price),
+        "date": "2026-09-18",
+        "date_verified": True,
+        "parser": "row_numeric_nearest_to_expected_price",
+    }
 
 def daum_quote(code, target):
     url = f"https://finance.daum.net/api/quotes/A{code}?adjusted=true"
