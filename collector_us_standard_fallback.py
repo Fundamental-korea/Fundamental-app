@@ -13,6 +13,7 @@ import requests
 from collector_us_fundamental import (
     SUPABASE_URL, SUPABASE_KEY, SEC_USER_AGENT, PERIODS,
     build_fact_index, build_result as _build_result, build_latest_snapshot, load_company,
+    fetch_json, SEC_FACTS_URL, SEC_SUBMISSIONS_URL,
 )
 from supabase import create_client
 from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8
@@ -51,7 +52,47 @@ def _candidate_to_row(candidate):
     }
 
 
-def augment_index_with_v238(index, resolver, cik, latest_year):
+def _latest_annual_fy_from_submissions(submissions):
+    recent = (submissions or {}).get("filings", {}).get("recent", {})
+    forms = recent.get("form") or []
+    filed = recent.get("filingDate") or []
+    fys = recent.get("fy") or []
+    report_dates = recent.get("reportDate") or []
+    best = None
+    for i, form in enumerate(forms):
+        if form not in {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}:
+            continue
+        fy = fys[i] if i < len(fys) else None
+        try:
+            fy = int(fy) if fy is not None else None
+        except (TypeError, ValueError):
+            fy = None
+        if fy is None and i < len(report_dates) and report_dates[i]:
+            try:
+                fy = int(str(report_dates[i])[:4])
+            except (TypeError, ValueError):
+                fy = None
+        filed_at = filed[i] if i < len(filed) else ""
+        if fy is not None and (best is None or filed_at > best[0]):
+            best = (filed_at, fy)
+    return best[1] if best else None
+
+
+def _load_company_resilient(session, ticker, cik):
+    """Load SEC payloads without abandoning a company when Company Facts is 404."""
+    facts = None
+    try:
+        facts = fetch_json(session, SEC_FACTS_URL.format(cik=str(cik).zfill(10)))
+    except requests.HTTPError as exc:
+        if exc.response is None or exc.response.status_code != 404:
+            raise
+        print(f"[SEC] Company Facts unavailable (404); using filing fallback: {ticker} CIK={cik}")
+        facts = {"facts": {}}
+    submissions = fetch_json(session, SEC_SUBMISSIONS_URL.format(cik=str(cik).zfill(10)))
+    return facts, submissions
+
+
+def augment_index_with_v238(index, resolver, cik, latest_year, submissions=None, company_facts_available=True):
     target_years = {latest_year, *(latest_year - p for p in PERIODS)}
     for metric in STANDARD_METRICS:
         metric_rows = index.setdefault(metric, {})
@@ -59,8 +100,14 @@ def augment_index_with_v238(index, resolver, cik, latest_year):
             if year in metric_rows:
                 continue
             try:
-                resolved = resolver.resolve(cik, metric, year=year)
-                candidate = resolved.get("best") if isinstance(resolved, dict) else resolved
+                if company_facts_available:
+                    resolved = resolver.resolve(cik, metric, year=year)
+                    candidate = resolved.get("best") if isinstance(resolved, dict) else resolved
+                else:
+                    candidates, meta = resolver.search_filing(
+                        cik, metric, year=year, submissions=submissions, limit=1
+                    )
+                    candidate = candidates[0].compact() if candidates else None
             except Exception as exc:
                 print(f"[XBRL fallback] CIK={cik} metric={metric} year={year}: {exc}")
                 continue
@@ -95,7 +142,17 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
             | set(index.get("net_income", {}).keys())
         )
         if flow_years:
-            augment_index_with_v238(index, resolver, cik, max(flow_years))
+            augment_index_with_v238(
+                index, resolver, cik, max(flow_years), submissions=submissions,
+                company_facts_available=True,
+            )
+        else:
+            submission_year = _latest_annual_fy_from_submissions(submissions)
+            if submission_year is not None:
+                augment_index_with_v238(
+                    index, resolver, cik, submission_year, submissions=submissions,
+                    company_facts_available=False,
+                )
 
     # Reuse the canonical US period/scoring builder so Standard-sector fallback
     # writes the same 1y/3y/5y/10y -> avg/worst structure as the normal collector.
@@ -247,7 +304,7 @@ def main():
     for i, row in enumerate(rows, 1):
         ticker, cik = row["ticker"], row["cik"]
         try:
-            facts, submissions = load_company(session, ticker, cik)
+            facts, submissions = _load_company_resilient(session, ticker, cik)
             resolver.prime_company(cik, facts, submissions)
             if ticker not in stock_cache:
                 try:
