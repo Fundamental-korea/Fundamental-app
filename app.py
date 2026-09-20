@@ -13,7 +13,7 @@ from search_aliases import aliases_for
 
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
-from historical_pattern import analyze_all_indicator_patterns, classify_current_condition
+from historical_pattern import analyze_all_indicator_patterns
 from chart_indicators import (
     compute_all_indicators,
     generate_ma_commentary,
