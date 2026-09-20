@@ -1,0 +1,47 @@
+name: Korean Market Snapshot Refresh
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - refactor/kor-market-snapshot
+    paths:
+      - refresh_kr_market_snapshot.py
+      - kor_market_pipeline.py
+      - .github/workflows/run_kr_market_snapshot_refresh.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kr-market-snapshot-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Refresh Korean KRX market snapshot
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: '3.10'
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Refresh KRX market snapshot
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          KRX_API_KEY: ${{ secrets.KRX_API_KEY }}
+        run: python refresh_kr_market_snapshot.py
