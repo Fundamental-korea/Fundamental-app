@@ -30,7 +30,7 @@ from scoring import METRIC_KEYS, METRIC_DIRECTION
 # --------------------------------------------------------------------------
 # 설정
 # --------------------------------------------------------------------------
-DRY_RUN = True  # True: DB에 쓰지 않고 통계/샘플만 출력. False: 실제 반영.
+DRY_RUN = False  # 실제 DB 반영 모드. 필요 시 True로 바꿔 dry-run 검증 가능.
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
@@ -211,9 +211,6 @@ def main():
         print(f"⚠️ 응답이 비어있던(실제 반영 안 됐을 가능성) 종목 {len(zero_row_codes)}개, 예시: {zero_row_codes[:10]}")
         print("   -> 이게 0이 아니면 Supabase 테이블의 RLS 정책(UPDATE/UPSERT 권한)을 확인하세요.")
 
-
-if __name__ == "__main__":
-    main()
 
 if __name__ == "__main__":
     main()
