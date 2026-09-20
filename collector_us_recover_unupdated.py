@@ -45,15 +45,25 @@ def fetch_stale(sb, since):
             break
         offset += PAGE_SIZE
 
-    fresh = (
-        sb.table("US_Fundamental")
-        .select("ticker,updated_at")
-        .gte("updated_at", since)
-        .execute()
-        .data
-        or []
-    )
-    refreshed = {row["ticker"] for row in fresh}
+    refreshed = set()
+    offset = 0
+    while True:
+        page = (
+            sb.table("US_Fundamental")
+            .select("ticker,updated_at")
+            .gte("updated_at", since)
+            .order("ticker")
+            .range(offset, offset + PAGE_SIZE - 1)
+            .execute()
+            .data
+            or []
+        )
+        if not page:
+            break
+        refreshed.update(row["ticker"] for row in page)
+        if len(page) < PAGE_SIZE:
+            break
+        offset += PAGE_SIZE
     return [row for row in rows if row["ticker"] not in refreshed]
 
 
