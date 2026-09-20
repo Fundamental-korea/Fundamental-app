@@ -684,7 +684,8 @@ def _parse_year_financials(df, df_full=None):
         "roic": round(nopat / invested_capital * 100, 2) if invested_capital > 0 else None,
         "roa": round(net_income / total_assets * 100, 2) if total_assets > 0 else None,  # 금융섹터 대체지표
         "debt_rate": debt_rate,
-        "quick_ratio": round((current_assets - inventory) / current_liab * 100, 2) if current_liab > 0 else None,
+        # Quick Ratio는 scoring.py와 동일하게 "배율"로 저장 (예: 0.7599 = 75.99%)
+        "quick_ratio": round((current_assets - inventory) / current_liab, 4) if current_liab > 0 else None,
         # interest_exp 추출 실패와 진짜 무차입을 debt_rate로 교차검증 (버그2 수정)
         "interest_coverage": resolve_interest_coverage(op_profit, interest_exp, debt_rate),
         "ocf_ratio": round(operating_cf / net_income, 2) if net_income > 0 else None,
