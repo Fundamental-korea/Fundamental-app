@@ -78,7 +78,7 @@ class HistoricalPatternTests(unittest.TestCase):
         for key, feature_names in expected.items():
             features = _features(hist_ohlcv, indicators, key)
             self.assertTrue(feature_names.issubset(set(features.columns)))
-            self.assertGreater(features[feature_names].notna().sum().sum(), 0)
+            self.assertGreater(features[list(feature_names)].notna().sum().sum(), 0)
 
     def test_horizons_are_fixed_trading_day_offsets(self):
         self.assertEqual(HORIZONS, (5, 20, 60))
