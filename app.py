@@ -2082,6 +2082,238 @@ def render_unified_search_box(stock_db, target_view=None):
 # ==========================================
 # 4. 메인 포털 UI & 스케치 기반 상세 분석 리포트
 # ==========================================
+# /* FUNDAMENTAL_DARK_FINAL_V3 */
+if THEME_MODE == "dark":
+    final_dark_css = """
+<style>
+/* Fundamental Dark Final Layer
+   Placed immediately before page rendering with deliberately high specificity.
+   This is the last parent-document CSS layer, so later Streamlit/custom HTML
+   component styles cannot leave legacy light text behind. */
+
+body .stApp,
+body .stApp [data-testid="stAppViewContainer"],
+body .stApp [data-testid="stMain"],
+body .stApp [data-testid="stHeader"] {
+    background-color: __PAGE__ !important;
+    color: __TEXT__ !important;
+    color-scheme: dark !important;
+}
+
+/* Native Streamlit text */
+body .stApp [data-testid="stMarkdownContainer"] p,
+body .stApp [data-testid="stMarkdownContainer"] span,
+body .stApp [data-testid="stMarkdownContainer"] div,
+body .stApp [data-testid="stMarkdownContainer"] label,
+body .stApp [data-testid="stMarkdownContainer"] h1,
+body .stApp [data-testid="stMarkdownContainer"] h2,
+body .stApp [data-testid="stMarkdownContainer"] h3,
+body .stApp [data-testid="stMarkdownContainer"] h4,
+body .stApp [data-testid="stMarkdownContainer"] h5,
+body .stApp [data-testid="stMarkdownContainer"] h6,
+body .stApp [data-testid="stMarkdownContainer"] a,
+body .stApp [data-testid="stMarkdownContainer"] b,
+body .stApp [data-testid="stMarkdownContainer"] strong,
+body .stApp [data-testid="stCaptionContainer"],
+body .stApp [data-testid="stCaptionContainer"] * {
+    color: __TEXT__ !important;
+}
+
+/* Cards with hand-written HTML */
+body .stApp [data-testid="stMarkdownContainer"] .sketch-card,
+body .stApp [data-testid="stMarkdownContainer"] .sketch-card *,
+body .stApp [data-testid="stMarkdownContainer"] .finstat-item,
+body .stApp [data-testid="stMarkdownContainer"] .finstat-item *,
+body .stApp [data-testid="stMarkdownContainer"] .overview-cell,
+body .stApp [data-testid="stMarkdownContainer"] .overview-cell *,
+body .stApp [data-testid="stMarkdownContainer"] .grade-hero-box,
+body .stApp [data-testid="stMarkdownContainer"] .grade-hero-box *,
+body .stApp [data-testid="stMarkdownContainer"] .indicator-card,
+body .stApp [data-testid="stMarkdownContainer"] .indicator-card * {
+    background-color: __SURFACE__ !important;
+    color: __TEXT__ !important;
+    border-color: __BORDER__ !important;
+}
+
+body .stApp [data-testid="stMarkdownContainer"] .quote-box-v2,
+body .stApp [data-testid="stMarkdownContainer"] .quote-box-v2 * {
+    color: __TEXT__ !important;
+    border-color: __ACCENT__ !important;
+}
+body .stApp [data-testid="stMarkdownContainer"] .quote-box-v2 {
+    background-color: __SURFACE_WARM__ !important;
+}
+body .stApp [data-testid="stMarkdownContainer"] .quote-divider {
+    border-top-color: __ACCENT__ !important;
+}
+
+/* Explicit elements shown in the screenshot */
+body .stApp [data-testid="stMarkdownContainer"] .sketch-card b,
+body .stApp [data-testid="stMarkdownContainer"] .sketch-card a.stock-link,
+body .stApp [data-testid="stMarkdownContainer"] .search-count-badge {
+    color: __TEXT__ !important;
+}
+body .stApp [data-testid="stMarkdownContainer"] .sketch-card a.stock-link {
+    color: __ACCENT_STRONG__ !important;
+}
+body .stApp [data-testid="stMarkdownContainer"] .search-count-badge {
+    background-color: __SURFACE_MUTED__ !important;
+    border: 1px solid __BORDER__ !important;
+}
+body .stApp [data-testid="stMarkdownContainer"] .card-item-row {
+    border-bottom-color: __BORDER__ !important;
+}
+
+/* Streamlit buttons / interval tabs */
+body .stApp [data-testid="stButton"] button,
+body .stApp [data-testid="stButton"] button *,
+body .stApp [data-testid="stLinkButton"] a,
+body .stApp [data-testid="stLinkButton"] a * {
+    background-color: __SURFACE__ !important;
+    color: __TEXT__ !important;
+    border-color: __BORDER__ !important;
+}
+body .stApp [data-testid="stButton"] button:hover,
+body .stApp [data-testid="stButton"] button:hover *,
+body .stApp [data-testid="stLinkButton"] a:hover,
+body .stApp [data-testid="stLinkButton"] a:hover * {
+    background-color: __SURFACE_WARM__ !important;
+    color: __ACCENT_STRONG__ !important;
+    border-color: __ACCENT__ !important;
+}
+body .stApp [data-testid="stButton"] button[data-testid="baseButton-primary"],
+body .stApp [data-testid="stButton"] button[data-testid="baseButton-primary"] * {
+    background-color: __ACCENT_STRONG__ !important;
+    color: #FFFFFF !important;
+    border-color: __ACCENT__ !important;
+}
+
+/* Checkboxes, radios, toggle, number inputs and selectboxes */
+body .stApp [data-testid="stCheckbox"] *,
+body .stApp [data-testid="stRadio"] *,
+body .stApp [data-testid="stToggle"] *,
+body .stApp [data-testid="stNumberInput"] *,
+body .stApp [data-testid="stSelectbox"] *,
+body .stApp [data-testid="stWidgetLabel"] * {
+    color: __TEXT__ !important;
+}
+body .stApp input,
+body .stApp textarea,
+body .stApp [data-baseweb="select"] > div {
+    background-color: __SURFACE__ !important;
+    color: __TEXT__ !important;
+    border-color: __BORDER__ !important;
+}
+body .stApp [role="switch"][aria-checked="true"] {
+    background-color: __ACCENT__ !important;
+    border-color: __ACCENT__ !important;
+}
+
+/* Expanders and their Markdown contents */
+body .stApp [data-testid="stExpander"] details,
+body .stApp [data-testid="stExpander"] summary {
+    background-color: __SURFACE__ !important;
+    color: __TEXT__ !important;
+    border-color: __BORDER__ !important;
+}
+body .stApp [data-testid="stExpander"] summary *,
+body .stApp [data-testid="stExpander"] [data-testid="stMarkdownContainer"] * {
+    color: __TEXT__ !important;
+}
+body .stApp [data-testid="stExpander"] [data-testid="stCaptionContainer"] * {
+    color: __TEXT_MUTED__ !important;
+}
+
+/* Main tabs and tab labels */
+body .stApp [data-testid="stTabs"] [data-baseweb="tab"],
+body .stApp [data-testid="stTabs"] [data-baseweb="tab"] *,
+body .stApp [data-testid="stTabs"] [role="tab"],
+body .stApp [data-testid="stTabs"] [role="tab"] * {
+    color: __TEXT__ !important;
+}
+body .stApp [data-testid="stTabs"] [aria-selected="true"],
+body .stApp [data-testid="stTabs"] [aria-selected="true"] * {
+    color: __ACCENT_STRONG__ !important;
+}
+body .stApp [data-testid="stTabs"] [aria-selected="true"] {
+    border-bottom-color: __ACCENT__ !important;
+}
+
+/* Alert / info / warning boxes */
+body .stApp [data-testid="stAlert"],
+body .stApp [data-testid="stAlert"] * {
+    color: __TEXT__ !important;
+}
+body .stApp [data-testid="stAlert"] {
+    background-color: __SURFACE_MUTED__ !important;
+    border-color: __BORDER__ !important;
+}
+
+/* Legacy inline colors */
+body .stApp [style*="#1A1A1A"],
+body .stApp [style*="#111827"],
+body .stApp [style*="#0F172A"],
+body .stApp [style*="#4B5563"] {
+    color: __TEXT__ !important;
+}
+body .stApp [style*="#64748B"],
+body .stApp [style*="#6B7280"],
+body .stApp [style*="#475569"],
+body .stApp [style*="#334155"],
+body .stApp [style*="#94A3B8"],
+body .stApp [style*="#888888"] {
+    color: __TEXT_MUTED__ !important;
+}
+body .stApp [style*="#D97706"] {
+    color: __ACCENT_STRONG__ !important;
+}
+body .stApp [style*="#92400E"],
+body .stApp [style*="#9A3412"] {
+    color: __WARNING_TEXT__ !important;
+}
+body .stApp [style*="#DC2626"],
+body .stApp [style*="#D93025"] {
+    color: __POSITIVE__ !important;
+}
+body .stApp [style*="#2563EB"] {
+    color: __NEGATIVE__ !important;
+}
+body .stApp [style*="#16A34A"],
+body .stApp [style*="#047857"] {
+    color: __SUCCESS__ !important;
+}
+body .stApp [style*="#FFFFFF"],
+body .stApp [style*="#ffffff"],
+body .stApp [style*="#FFFDF9"],
+body .stApp [style*="#FAFAFA"],
+body .stApp [style*="#F8FAFC"],
+body .stApp [style*="#F1F5F9"] {
+    background-color: __SURFACE__ !important;
+}
+</style>
+"""
+    replacements = {
+        "__PAGE__": THEME["page"],
+        "__SURFACE__": THEME["surface"],
+        "__SURFACE_WARM__": THEME["surface_warm"],
+        "__SURFACE_MUTED__": THEME["surface_muted"],
+        "__TEXT__": THEME["text"],
+        "__TEXT_MUTED__": THEME["text_muted"],
+        "__BORDER__": THEME["border"],
+        "__ACCENT__": THEME["accent"],
+        "__ACCENT_STRONG__": THEME["accent_strong"],
+        "__POSITIVE__": THEME["positive"],
+        "__NEGATIVE__": THEME["negative"],
+        "__SUCCESS__": THEME["success"],
+        "__WARNING_BG__": THEME["warning_bg"],
+        "__WARNING_TEXT__": THEME["warning_text"],
+    }
+    for placeholder, value in replacements.items():
+        final_dark_css = final_dark_css.replace(placeholder, value)
+
+    st.markdown(final_dark_css, unsafe_allow_html=True)
+
+
 query_params = st.query_params
 selected_code = query_params.get("code", None)
 view_mode_param = query_params.get("view", None)
@@ -2453,10 +2685,10 @@ elif not selected_code:
                 "지금 이 종목 기준 자동 해설과 함께 전문 차트를 볼 수 있는 전용 화면이 새 창으로 열려요."
             )
             st.markdown(
-                """
+                f"""
                 <a href="?view=analysis_search&theme={THEME_MODE}" target="_blank" style="
                     display:block; text-align:center; text-decoration:none;
-                    background-color:#FFFFFF; color:#1A1A1A; border:1.5px solid #D1D5DB;
+                    background-color:{THEME["surface"]}; color:{THEME["text"]}; border:1.5px solid {THEME["border"]};
                     border-radius:10px; font-size:16px; font-weight:800; padding:12px 0;
                     box-shadow:0 2px 5px rgba(0,0,0,0.04);">
                     🔍 차트 분석 검색창 새 창으로 열기
@@ -2472,28 +2704,28 @@ elif not selected_code:
 
         with col_6:
             st.markdown(
-                """
+                f"""
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A; font-size: 15px;'>🔥 Most Searched Stocks</b>
+                    <b style='color: {THEME["text"]}; font-size: 15px;'>🔥 Most Searched Stocks</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=005930' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
+                            <a href='/?code=005930&theme={THEME_MODE}' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
                             <span class='search-count-badge'>18,420회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=NVDA' target='_blank' class='stock-link'>2. NVIDIA (NVDA)</a>
+                            <a href='/?code=NVDA&theme={THEME_MODE}' target='_blank' class='stock-link'>2. NVIDIA (NVDA)</a>
                             <span class='search-count-badge'>15,810회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=000660' target='_blank' class='stock-link'>3. SK하이닉스 (000660)</a>
+                            <a href='/?code=000660&theme={THEME_MODE}' target='_blank' class='stock-link'>3. SK하이닉스 (000660)</a>
                             <span class='search-count-badge'>12,340회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=AAPL' target='_blank' class='stock-link'>4. Apple (AAPL)</a>
+                            <a href='/?code=AAPL&theme={THEME_MODE}' target='_blank' class='stock-link'>4. Apple (AAPL)</a>
                             <span class='search-count-badge'>9,580회</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=TSLA' target='_blank' class='stock-link'>5. Tesla (TSLA)</a>
+                            <a href='/?code=TSLA&theme={THEME_MODE}' target='_blank' class='stock-link'>5. Tesla (TSLA)</a>
                             <span class='search-count-badge'>8,210회</span>
                         </div>
                     </div>
@@ -2504,29 +2736,29 @@ elif not selected_code:
 
         with col_7:
             st.markdown(
-                """
+                f"""
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A; font-size: 15px;'>🇺🇸 Trending Searches (US)</b>
+                    <b style='color: {THEME["text"]}; font-size: 15px;'>🇺🇸 Trending Searches (US)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=NVDA' target='_blank' class='stock-link'>1. NVIDIA (NVDA)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
+                            <a href='/?code=NVDA&theme={THEME_MODE}' target='_blank' class='stock-link'>1. NVIDIA (NVDA)</a>
+                            <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=AAPL' target='_blank' class='stock-link'>2. Apple (AAPL)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 2</span>
+                            <a href='/?code=AAPL&theme={THEME_MODE}' target='_blank' class='stock-link'>2. Apple (AAPL)</a>
+                            <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ 2</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=TSLA' target='_blank' class='stock-link'>3. Tesla (TSLA)</a>
-                            <span style='font-size: 11px; color: #DC2626; font-weight: 700;'>▼ 1</span>
+                            <a href='/?code=TSLA&theme={THEME_MODE}' target='_blank' class='stock-link'>3. Tesla (TSLA)</a>
+                            <span style='font-size: 11px; color: {THEME["positive"]}; font-weight: 700;'>▼ 1</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=PLTR' target='_blank' class='stock-link'>4. Palantir (PLTR)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ NEW</span>
+                            <a href='/?code=PLTR&theme={THEME_MODE}' target='_blank' class='stock-link'>4. Palantir (PLTR)</a>
+                            <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ NEW</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=MSFT' target='_blank' class='stock-link'>5. Microsoft (MSFT)</a>
-                            <span style='font-size: 11px; color: #64748B; font-weight: 700;'>-</span>
+                            <a href='/?code=MSFT&theme={THEME_MODE}' target='_blank' class='stock-link'>5. Microsoft (MSFT)</a>
+                            <span style='font-size: 11px; color: {THEME["text_muted"]}; font-weight: 700;'>-</span>
                         </div>
                     </div>
                 </div>
@@ -2536,29 +2768,29 @@ elif not selected_code:
 
         with col_8:
             st.markdown(
-                """
+                f"""
                 <div class='sketch-card'>
-                    <b style='color: #1A1A1A; font-size: 15px;'>🇰🇷 Trending Searches (KOR)</b>
+                    <b style='color: {THEME["text"]}; font-size: 15px;'>🇰🇷 Trending Searches (KOR)</b>
                     <div style='margin-top: 12px;'>
                         <div class='card-item-row'>
-                            <a href='/?code=005930' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ HOT</span>
+                            <a href='/?code=005930&theme={THEME_MODE}' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
+                            <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ HOT</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=000660' target='_blank' class='stock-link'>2. SK하이닉스 (000660)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 1</span>
+                            <a href='/?code=000660&theme={THEME_MODE}' target='_blank' class='stock-link'>2. SK하이닉스 (000660)</a>
+                            <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ 1</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=005380' target='_blank' class='stock-link'>3. 현대차 (005380)</a>
-                            <span style='font-size: 11px; color: #64748B; font-weight: 700;'>-</span>
+                            <a href='/?code=005380&theme={THEME_MODE}' target='_blank' class='stock-link'>3. 현대차 (005380)</a>
+                            <span style='font-size: 11px; color: {THEME["text_muted"]}; font-weight: 700;'>-</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=035420' target='_blank' class='stock-link'>4. NAVER (035420)</a>
-                            <span style='font-size: 11px; color: #16A34A; font-weight: 700;'>▲ 3</span>
+                            <a href='/?code=035420&theme={THEME_MODE}' target='_blank' class='stock-link'>4. NAVER (035420)</a>
+                            <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ 3</span>
                         </div>
                         <div class='card-item-row'>
-                            <a href='/?code=035720' target='_blank' class='stock-link'>5. 카카오 (035720)</a>
-                            <span style='font-size: 11px; color: #DC2626; font-weight: 700;'>▼ 2</span>
+                            <a href='/?code=035720&theme={THEME_MODE}' target='_blank' class='stock-link'>5. 카카오 (035720)</a>
+                            <span style='font-size: 11px; color: {THEME["positive"]}; font-weight: 700;'>▼ 2</span>
                         </div>
                     </div>
                 </div>
