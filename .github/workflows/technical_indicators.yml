@@ -1,0 +1,38 @@
+name: Technical Indicator Quality Check
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "app.py"
+      - "chart_indicators.py"
+      - "historical_pattern.py"
+      - "test_chart_indicators.py"
+      - "test_historical_pattern.py"
+      - ".github/workflows/technical_indicators.yml"
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pandas numpy
+
+      - name: Compile
+        run: |
+          python -m py_compile app.py chart_indicators.py historical_pattern.py
+
+      - name: Technical indicator tests
+        run: |
+          python -m unittest -v test_chart_indicators.py test_historical_pattern.py
