@@ -28,6 +28,11 @@ from chart_indicators import (
     generate_obv_commentary,
     generate_mfi_commentary,
     generate_vwap_commentary,
+    generate_williams_r_commentary,
+    generate_cci_commentary,
+    generate_roc_commentary,
+    generate_psar_commentary,
+    generate_cmf_commentary,
     INDICATOR_LESSONS,
 )
 import requests
@@ -753,6 +758,26 @@ if THEME_MODE == "dark":
             border-color: __THEME_BORDER__ !important;
         }
 
+        /* Advanced indicator settings: prevent Streamlit expander/form clipping or nested scrolling. */
+        [data-testid="stExpander"] details,
+        [data-testid="stExpander"] [data-testid="stExpanderDetails"],
+        [data-testid="stExpander"] [data-testid="stExpanderDetails"] > div,
+        [data-testid="stExpander"] [data-testid="stForm"],
+        [data-testid="stExpander"] [data-testid="stForm"] > div {
+            max-height: none !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+        }
+        [data-testid="stExpander"] [data-testid="stForm"] [data-testid="column"] {
+            min-width: 0 !important;
+            overflow: visible !important;
+        }
+        [data-testid="stExpander"] [data-testid="stNumberInput"] {
+            width: 100% !important;
+            min-width: 0 !important;
+        }
+
         [data-testid="stTabs"] [aria-selected="true"] {
             border-bottom-color: __THEME_ACCENT__ !important;
         }
@@ -1463,7 +1488,8 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     화면에 보이는 구간의 고가/저가/거래량/MACD 범위로 y축을 다시 계산해서 그려줌.
 
     visible_map: {"ma": bool, "bb": bool, "ichimoku": bool, "vol_ma": bool,
-                  "rsi": bool, "stoch": bool, "adx": bool, "macd": bool} - 기본 전부 False(꺼짐).
+                  "rsi": bool, "stoch": bool, "adx": bool, "atr": bool, "obv": bool, "mfi": bool, "vwap": bool,
+                  "williams_r": bool, "cci": bool, "roc": bool, "psar": bool, "cmf": bool, "macd": bool} - 기본 전부 False(꺼짐).
     가격/거래량 위에 얹히는 오버레이 지표(ma/bb/ichimoku/vol_ma)는 트레이스만 숨기고 칸은 유지하지만,
     RSI/스토캐스틱/MACD는 전용 서브플롯 행이 필요한 지표라 - 체크 안 하면 트레이스뿐 아니라
     그 행(축·그리드·기준선) 자체를 아예 안 만들어서, 빈 표가 남아있는 문제를 없앰.
@@ -1475,6 +1501,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         "ma": False, "bb": False, "ichimoku": False, "vol_ma": False,
         "rsi": False, "stoch": False, "adx": False,
         "atr": False, "obv": False, "mfi": False, "vwap": False,
+        "williams_r": False, "cci": False, "roc": False, "psar": False, "cmf": False,
         "macd": False,
     }
     vm.update(visible_map or {})
@@ -1484,7 +1511,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
 
     # 전용 행이 필요한 지표만 row_order에 추가하고, VWAP은 가격 패널 위에 오버레이.
     row_order = ["price", "volume"]
-    for row_key in ("rsi", "stoch", "adx", "atr", "obv", "mfi", "macd"):
+    for row_key in ("rsi", "stoch", "adx", "atr", "obv", "mfi", "williams_r", "cci", "roc", "cmf", "macd"):
         if vm[row_key]:
             row_order.append(row_key)
 
@@ -1577,6 +1604,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         "stoch_k": s("stoch_k"), "stoch_d": s("stoch_d"),
         "adx14": s("adx14"), "plus_di14": s("plus_di14"), "minus_di14": s("minus_di14"),
         "atr14": s("atr14"), "obv": s("obv"), "mfi14": s("mfi14"), "rolling_vwap20": s("rolling_vwap20"),
+        "williams_r": s("williams_r"), "cci": s("cci"), "roc": s("roc"), "psar": s("psar"), "cmf": s("cmf"),
         "macd_line": s("macd_line"), "macd_signal": s("macd_signal"), "macd_hist": s("macd_hist"),
     }
     data_json = json.dumps(payload)
@@ -1596,6 +1624,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                 {{ type: "bar", x: D.dates, y: D.volume, name: "거래량", yaxis: "y2", marker: {{ color: D.vol_colors, opacity: 0.9, line: {{ width: 0 }} }} }},
                 visTrace("거래량 MA20", D.vol_ma20, "#D97706", 1.1, {{ yaxis: "y2", visible: {json.dumps(vis("vol_ma"))} }}),
                 visTrace("Rolling VWAP20", D.rolling_vwap20, "#0EA5E9", 1.3, {{ yaxis: "y", visible: {json.dumps(vis("vwap"))}, line: {{ dash: "dash" }} }}),
+                visTrace("Parabolic SAR", D.psar, "#EF4444", 1.1, {{ yaxis: "y", visible: {json.dumps(vis("psar"))}, mode: "markers", marker: {{ size: 5 }} }}),
     """
 
     # 행(row) 기반 지표 - 체크된 것만 트레이스 자체를 생성 (빈 축이 남지 않도록 동일한 row_order를 사용)
@@ -1627,6 +1656,22 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         row_traces_js += f"""
                 visTrace("MFI(14)", D.mfi14, "#A855F7", 1.3, {{ yaxis: "{axis_name['mfi']}" }}),
         """
+    if vm["williams_r"]:
+        row_traces_js += f"""
+                visTrace("Williams %R(14)", D.williams_r, "#14B8A6", 1.3, {{ yaxis: "{axis_name['williams_r']}" }}),
+        """
+    if vm["cci"]:
+        row_traces_js += f"""
+                visTrace("CCI(20)", D.cci, "#8B5CF6", 1.3, {{ yaxis: "{axis_name['cci']}" }}),
+        """
+    if vm["roc"]:
+        row_traces_js += f"""
+                visTrace("ROC(12)", D.roc, "#06B6D4", 1.3, {{ yaxis: "{axis_name['roc']}" }}),
+        """
+    if vm["cmf"]:
+        row_traces_js += f"""
+                visTrace("CMF(20)", D.cmf, "#22C55E", 1.3, {{ yaxis: "{axis_name['cmf']}" }}),
+        """
     if vm["macd"]:
         row_traces_js += f"""
                 {{ type: "bar", x: D.dates, y: D.macd_hist, name: "MACD 히스토그램", yaxis: "{axis_name['macd']}",
@@ -1636,10 +1681,11 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
         """
 
     # 행 기반 지표의 y축 정의 + 기준선(80/20 또는 ADX 25) - 체크된 것만
-    fixed_ranges = {"rsi": "[0, 100]", "stoch": "[0, 100]", "adx": "[0, 100]", "mfi": "[0, 100]"}
+    fixed_ranges = {"rsi": "[0, 100]", "stoch": "[0, 100]", "adx": "[0, 100]", "mfi": "[0, 100]", "williams_r": "[-100, 0]", "cmf": "[-1, 1]"}
     axis_titles = {
         "rsi": "RSI", "stoch": "Stoch", "adx": "ADX / DI",
-        "atr": "ATR", "obv": "OBV", "mfi": "MFI", "macd": "MACD",
+        "atr": "ATR", "obv": "OBV", "mfi": "MFI", "williams_r": "Williams %R",
+        "cci": "CCI", "roc": "ROC %", "cmf": "CMF", "macd": "MACD",
     }
     extra_yaxes_js = ""
     extra_shapes_js = ""
@@ -1670,11 +1716,27 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
                     {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
                     {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
         """
+        elif row_key == "williams_r":
+            extra_shapes_js += f"""
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: -20, y1: -20, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: -80, y1: -80, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
+        """
+        elif row_key == "cci":
+            extra_shapes_js += f"""
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 100, y1: 100, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: -100, y1: -100, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
+        """
+        elif row_key == "cmf":
+            extra_shapes_js += f"""
+                    {{ type: "line", xref: "paper", yref: "{ax}", x0: 0, x1: 1, y0: 0, y1: 0, line: {{ color: "{THEME['accent']}", width: 1, dash: "dash" }} }},
+        """
 
     dynamic_axis_groups = {}
     for row_key, keys in (
         ("atr", ["atr14"]),
         ("obv", ["obv"]),
+        ("cci", ["cci"]),
+        ("roc", ["roc"]),
         ("macd", ["macd_line", "macd_signal", "macd_hist"]),
     ):
         if vm.get(row_key):
@@ -2692,19 +2754,25 @@ elif selected_code and view_mode_param == "analysis":
                 show_ichimoku = st.checkbox("일목균형표", value=False, key="an_show_ichimoku")
                 show_vol_ma = st.checkbox("거래량 이동평균", value=False, key="an_show_vol_ma")
             with vis_col2:
-                show_rsi = st.checkbox("RSI (누르면 전용 칸이 새로 생겨요)", value=False, key="an_show_rsi")
-                show_stoch = st.checkbox("스토캐스틱 (전용 칸)", value=False, key="an_show_stoch")
-                show_adx = st.checkbox("ADX / DMI (전용 칸)", value=False, key="an_show_adx")
-                show_atr = st.checkbox("ATR (전용 칸)", value=False, key="an_show_atr")
-                show_obv = st.checkbox("OBV (전용 칸)", value=False, key="an_show_obv")
-                show_macd = st.checkbox("MACD (전용 칸)", value=False, key="an_show_macd")
-                show_mfi = st.checkbox("MFI (전용 칸)", value=False, key="an_show_mfi")
+                show_rsi = st.checkbox("RSI (전용 패널)", value=False, key="an_show_rsi")
+                show_stoch = st.checkbox("스토캐스틱 (전용 패널)", value=False, key="an_show_stoch")
+                show_adx = st.checkbox("ADX / DMI (전용 패널)", value=False, key="an_show_adx")
+                show_atr = st.checkbox("ATR (전용 패널)", value=False, key="an_show_atr")
+                show_obv = st.checkbox("OBV (전용 패널)", value=False, key="an_show_obv")
+                show_macd = st.checkbox("MACD (전용 패널)", value=False, key="an_show_macd")
+                show_mfi = st.checkbox("MFI (전용 패널)", value=False, key="an_show_mfi")
                 show_vwap = st.checkbox("Rolling VWAP (가격 위 오버레이)", value=False, key="an_show_vwap")
+                show_williams_r = st.checkbox("Williams %R (전용 패널)", value=False, key="an_show_williams_r")
+                show_cci = st.checkbox("CCI (전용 패널)", value=False, key="an_show_cci")
+                show_roc = st.checkbox("ROC (전용 패널)", value=False, key="an_show_roc")
+                show_psar = st.checkbox("Parabolic SAR (가격 패널)", value=False, key="an_show_psar")
+                show_cmf = st.checkbox("CMF (전용 패널)", value=False, key="an_show_cmf")
 
         visible_map = {
             "ma": show_ma, "bb": show_bb, "ichimoku": show_ichimoku, "vol_ma": show_vol_ma,
             "rsi": show_rsi, "stoch": show_stoch, "adx": show_adx,
             "atr": show_atr, "obv": show_obv, "mfi": show_mfi, "vwap": show_vwap,
+            "williams_r": show_williams_r, "cci": show_cci, "roc": show_roc, "psar": show_psar, "cmf": show_cmf,
             "macd": show_macd,
         }
 
@@ -2723,12 +2791,18 @@ elif selected_code and view_mode_param == "analysis":
                     rsi_window = st.number_input("RSI 기간(일)", 5, 30, 14, key="an_rsi_window")
                     adx_window = st.number_input("ADX 기간(일)", 5, 30, 14, key="an_adx_window")
                     atr_window = st.number_input("ATR 기간(일)", 5, 30, 14, key="an_atr_window")
+                    williams_r_window = st.number_input("Williams %R 기간(일)", 5, 30, 14, key="an_williams_r_window")
+                    cci_window = st.number_input("CCI 기간(일)", 5, 60, 20, key="an_cci_window")
                 with set_col3:
                     macd_fast = st.number_input("MACD 단기", 5, 30, 12, key="an_macd_fast")
                     macd_slow = st.number_input("MACD 장기", 15, 60, 26, key="an_macd_slow")
                     macd_signal = st.number_input("MACD 시그널", 3, 20, 9, key="an_macd_signal")
                     mfi_window = st.number_input("MFI 기간(일)", 5, 30, 14, key="an_mfi_window")
                     vwap_window = st.number_input("Rolling VWAP 기간(봉)", 5, 60, 20, key="an_vwap_window")
+                    roc_window = st.number_input("ROC 기간(일)", 5, 60, 12, key="an_roc_window")
+                    psar_step = st.number_input("Parabolic SAR 가속계수", 0.01, 0.10, 0.02, step=0.01, format="%.2f", key="an_psar_step")
+                    psar_max_step = st.number_input("Parabolic SAR 최대 가속계수", 0.05, 0.50, 0.20, step=0.05, format="%.2f", key="an_psar_max_step")
+                    cmf_window = st.number_input("CMF 기간(일)", 5, 60, 20, key="an_cmf_window")
                 st.form_submit_button("✅ 적용하기")
 
         custom_params = {
@@ -2736,6 +2810,8 @@ elif selected_code and view_mode_param == "analysis":
             "bb_window": bb_window, "bb_std": bb_std,
             "rsi_window": rsi_window, "adx_window": adx_window,
             "atr_window": atr_window, "mfi_window": mfi_window, "vwap_window": vwap_window,
+            "williams_r_window": williams_r_window, "cci_window": cci_window, "roc_window": roc_window,
+            "psar_step": psar_step, "psar_max_step": psar_max_step, "cmf_window": cmf_window,
             "macd_fast": macd_fast, "macd_slow": macd_slow, "macd_signal": macd_signal,
         }
 
@@ -2796,6 +2872,16 @@ elif selected_code and view_mode_param == "analysis":
                  generate_macd_commentary(indicators["macd_line"], indicators["macd_signal"], indicators["macd_hist"])),
                 ("📊 거래량", "volume",
                  generate_volume_commentary(hist_df["Volume"], indicators["vol_ma20"])),
+                ("📉 Williams %R", "williams_r",
+                 generate_williams_r_commentary(indicators["williams_r"])),
+                ("📏 CCI", "cci",
+                 generate_cci_commentary(indicators["cci"])),
+                ("🚀 ROC", "roc",
+                 generate_roc_commentary(indicators["roc"])),
+                ("📍 Parabolic SAR", "psar",
+                 generate_psar_commentary(close, indicators["psar"])),
+                ("💰 CMF", "cmf",
+                 generate_cmf_commentary(indicators["cmf"])),
             ]
 
             for title, lesson_key, commentary in indicator_explainers:
