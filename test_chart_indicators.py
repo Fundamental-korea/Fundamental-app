@@ -3,7 +3,19 @@ import unittest
 import numpy as np
 import pandas as pd
 
-from chart_indicators import compute_adx, compute_all_indicators, generate_adx_commentary
+from chart_indicators import (
+    compute_adx,
+    compute_atr,
+    compute_obv,
+    compute_mfi,
+    compute_rolling_vwap,
+    compute_all_indicators,
+    generate_adx_commentary,
+    generate_atr_commentary,
+    generate_obv_commentary,
+    generate_mfi_commentary,
+    generate_vwap_commentary,
+)
 
 
 class ADXIndicatorTests(unittest.TestCase):
@@ -33,6 +45,41 @@ class ADXIndicatorTests(unittest.TestCase):
             valid = series.dropna()
             self.assertTrue((valid >= 0).all())
             self.assertTrue((valid <= 100).all())
+
+    def test_new_indicators_are_calculated_and_bounded(self):
+        df = self._sample_ohlcv()
+        atr = compute_atr(df["High"], df["Low"], df["Close"], window=14)
+        obv = compute_obv(df["Close"], df["Volume"])
+        mfi = compute_mfi(df["High"], df["Low"], df["Close"], df["Volume"], window=14)
+        vwap = compute_rolling_vwap(
+            df["High"], df["Low"], df["Close"], df["Volume"], window=20
+        )
+
+        self.assertEqual(len(atr), len(df))
+        self.assertEqual(len(obv), len(df))
+        self.assertEqual(len(mfi), len(df))
+        self.assertEqual(len(vwap), len(df))
+
+        self.assertTrue((atr.dropna() >= 0).all())
+        self.assertTrue((mfi.dropna() >= 0).all())
+        self.assertTrue((mfi.dropna() <= 100).all())
+        self.assertTrue((vwap.dropna() > 0).all())
+
+        # 상승 샘플에서는 OBV가 누적되어 마지막 값이 양수여야 함.
+        self.assertGreater(float(obv.iloc[-1]), 0.0)
+
+    def test_new_indicator_commentaries_use_current_values(self):
+        idx = pd.bdate_range("2025-01-01", periods=40)
+        atr = pd.Series(5.0, index=idx)
+        close = pd.Series(100.0, index=idx)
+        obv = pd.Series(np.arange(40) * 1_000_000.0, index=idx)
+        mfi = pd.Series(85.0, index=idx)
+        vwap = pd.Series(98.0, index=idx)
+
+        self.assertIn("5.00", generate_atr_commentary(atr, close))
+        self.assertIn("OBV", generate_obv_commentary(obv))
+        self.assertIn("85.0", generate_mfi_commentary(mfi))
+        self.assertIn("98.00", generate_vwap_commentary(close, vwap))
 
     def test_compute_all_indicators_exposes_adx(self):
         df = self._sample_ohlcv()
