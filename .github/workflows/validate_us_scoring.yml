@@ -1,0 +1,27 @@
+name: Validate US Scoring System
+
+on:
+  push:
+    paths:
+      - "us_scoring.py"
+      - "test_us_scoring.py"
+      - ".github/workflows/validate_us_scoring.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Run US scoring regression tests
+        run: python -m unittest -v test_us_scoring.py
