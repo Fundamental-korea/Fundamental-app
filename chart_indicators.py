@@ -1,3 +1,4 @@
+# ADX_V1_DEPLOY_MARKER = 2026-09-20
 # chart_indicators.py
 # 초보자를 위한 기술적 지표 계산 + 자동 해설 생성 모듈.
 # 외부 의존성 없음 - yfinance가 이미 주는 OHLCV(pandas)만으로 전부 계산.
