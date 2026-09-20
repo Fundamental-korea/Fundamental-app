@@ -14,7 +14,7 @@ from supabase import create_client
 
 from collector_us_fundamental import SUPABASE_URL, SUPABASE_KEY, SEC_USER_AGENT, SEC_FACTS_URL, SEC_SUBMISSIONS_URL, fetch_json
 from downturn_us import BENCHMARK, _close_series, calculate_downturn_defense
-from us_scoring_v2 import calculate_us_utility_score_v2
+from us_scoring import calculate_us_score
 from us_utility_extraction_v4 import REVENUE_TAGS, OPERATING_INCOME_TAGS, NET_INCOME_TAGS, ASSETS_TAGS, pick_flow, pick_instant, pick_equity, pick_eps, pick_interest, pick_debt, pick_ocf, pick_capex, pick_dividend, core_years
 from us_utility_filing_fallback import augment_with_latest_filing
 
@@ -74,11 +74,37 @@ def build_result(ticker,cik,company_name,facts,submissions,market,stock,session)
     period_scores={}
     for period in PERIODS:
         metrics,base=period_metrics(ticker,facts,latest,period)
-        if metrics is None:continue
-        metrics["downturn_defense"]=downturn_value
-        period_scores[str(period)]={"base_year":base,"metrics":metrics,"scores":calculate_us_utility_score_v2(metrics)}
-    latest_row=period_scores.get("1");score=latest_row["scores"]["total_score"] if latest_row else None
-    return {"ticker":ticker,"cik":str(cik),"company_name":company_name,"sector":"utilities","base_year":latest,"period_scores":period_scores,"total_score":int(round(score)) if score is not None else None,"grade":latest_row["scores"]["grade"] if latest_row else None,"data_unavailable":not bool(period_scores),"data_reliability":"high" if len(period_scores)>=3 else ("medium" if period_scores else "low"),"missing_metric_count":latest_row["scores"]["missing_metric_count"] if latest_row else None,"updated_at":datetime.now(timezone.utc).isoformat(),"downturn_defense":downturn_value,"downturn_detail":downturn_detail}
+        if metrics is None:
+            continue
+
+        metrics["downturn_defense"] = downturn_value
+        scored = calculate_us_score(metrics, profile="utility")
+
+        period_scores[f"{period}y"] = {
+            "years_used": list(range(base, latest + 1)) if base is not None else [],
+            "yearly_breakdown": {},
+            "avg": {
+                "total_score": scored["total_score"],
+                "grade": scored["grade"],
+                "metric_scores": scored["metric_scores"],
+                "sub_scores": scored.get("sub_scores", {}),
+                "financial_adjusted": False,
+                "missing_metric_count": scored["missing_metric_count"],
+                "scoring_version": scored["scoring_version"],
+            },
+            "worst": {
+                "total_score": scored["total_score"],
+                "grade": scored["grade"],
+                "metric_scores": scored["metric_scores"],
+                "sub_scores": scored.get("sub_scores", {}),
+                "financial_adjusted": False,
+                "missing_metric_count": scored["missing_metric_count"],
+                "scoring_version": scored["scoring_version"],
+            },
+            "metrics": metrics,
+        }
+    latest_row=period_scores.get("1y");score=latest_row["avg"]["total_score"] if latest_row else None
+    return {"ticker":ticker,"cik":str(cik),"company_name":company_name,"sector":"utilities","base_year":latest,"period_scores":period_scores,"total_score":int(round(score)) if score is not None else None,"grade":latest_row["avg"]["grade"] if latest_row else None,"data_unavailable":not bool(period_scores),"data_reliability":"high" if len(period_scores)>=3 else ("medium" if period_scores else "low"),"missing_metric_count":latest_row["avg"]["missing_metric_count"] if latest_row else None,"updated_at":datetime.now(timezone.utc).isoformat(),"downturn_defense":downturn_value,"downturn_detail":downturn_detail}
 
 def main():
     p=argparse.ArgumentParser();p.add_argument("--ticker");p.add_argument("--tickers");p.add_argument("--all",action="store_true",dest="all_rows");a=p.parse_args()
