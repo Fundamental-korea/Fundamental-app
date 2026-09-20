@@ -14,27 +14,29 @@ from search_aliases import aliases_for
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
 from historical_pattern import analyze_all_indicator_patterns
-from chart_indicators import (
-    compute_all_indicators,
-    generate_ma_commentary,
-    generate_bollinger_commentary,
-    generate_rsi_commentary,
-    generate_macd_commentary,
-    generate_volume_commentary,
-    generate_stochastic_commentary,
-    generate_ichimoku_commentary,
-    generate_adx_commentary,
-    generate_atr_commentary,
-    generate_obv_commentary,
-    generate_mfi_commentary,
-    generate_vwap_commentary,
-    generate_williams_r_commentary,
-    generate_cci_commentary,
-    generate_roc_commentary,
-    generate_psar_commentary,
-    generate_cmf_commentary,
-    INDICATOR_LESSONS,
-)
+import importlib
+import chart_indicators as _chart_indicators
+_chart_indicators = importlib.reload(_chart_indicators)
+
+compute_all_indicators = _chart_indicators.compute_all_indicators
+generate_ma_commentary = _chart_indicators.generate_ma_commentary
+generate_bollinger_commentary = _chart_indicators.generate_bollinger_commentary
+generate_rsi_commentary = _chart_indicators.generate_rsi_commentary
+generate_macd_commentary = _chart_indicators.generate_macd_commentary
+generate_volume_commentary = _chart_indicators.generate_volume_commentary
+generate_stochastic_commentary = _chart_indicators.generate_stochastic_commentary
+generate_ichimoku_commentary = _chart_indicators.generate_ichimoku_commentary
+generate_adx_commentary = _chart_indicators.generate_adx_commentary
+generate_atr_commentary = _chart_indicators.generate_atr_commentary
+generate_obv_commentary = _chart_indicators.generate_obv_commentary
+generate_mfi_commentary = _chart_indicators.generate_mfi_commentary
+generate_vwap_commentary = _chart_indicators.generate_vwap_commentary
+generate_williams_r_commentary = getattr(_chart_indicators, "generate_williams_r_commentary", lambda s: "")
+generate_cci_commentary = getattr(_chart_indicators, "generate_cci_commentary", lambda s: "")
+generate_roc_commentary = getattr(_chart_indicators, "generate_roc_commentary", lambda s: "")
+generate_psar_commentary = getattr(_chart_indicators, "generate_psar_commentary", lambda close, psar: "")
+generate_cmf_commentary = getattr(_chart_indicators, "generate_cmf_commentary", lambda s: "")
+INDICATOR_LESSONS = _chart_indicators.INDICATOR_LESSONS
 import requests
 import streamlit as st
 
