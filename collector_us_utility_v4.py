@@ -29,7 +29,23 @@ def ticker_cik(session,ticker):
     raise RuntimeError(f"CIK not found: {ticker}")
 
 def load_facts(session,ticker,cik):
-    return fetch_json(session,SEC_FACTS_URL.format(cik=str(cik).zfill(10))),fetch_json(session,SEC_SUBMISSIONS_URL.format(cik=str(cik).zfill(10)))
+    facts_url = SEC_FACTS_URL.format(cik=str(cik).zfill(10))
+    submissions_url = SEC_SUBMISSIONS_URL.format(cik=str(cik).zfill(10))
+    try:
+        facts = fetch_json(session, facts_url)
+    except requests.HTTPError as exc:
+        if exc.response is None or exc.response.status_code != 404:
+            raise
+        print(f"[SEC] Company Facts unavailable (404); using utility filing fallback: {ticker} CIK={cik}")
+        facts = {"facts": {}}
+    try:
+        submissions = fetch_json(session, submissions_url)
+    except requests.HTTPError as exc:
+        if exc.response is None or exc.response.status_code != 404:
+            raise
+        print(f"[SEC] Submissions unavailable (404): {ticker} CIK={cik}")
+        submissions = {}
+    return facts, submissions
 
 def value(facts,picker,year,tags=None):
     row=picker(facts,tags,year) if tags is not None else picker(facts,year)
