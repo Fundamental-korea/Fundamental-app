@@ -162,7 +162,8 @@ def _select_matches(
     key: str,
     lookback_years: int = LOOKBACK_YEARS,
     min_similarity: float = MIN_SIMILARITY,
-) -> List[Tuple[int, float]]:
+    with_candidate_count: bool = False,
+):
     """Select all sufficiently similar, outcome-observable historical cases.
 
     There is deliberately no fixed 100-case cap. A date is eligible only when
@@ -190,7 +191,9 @@ def _select_matches(
     for idx, sim in scored:
         if all(abs(idx - old_idx) >= MIN_GAP_BARS for old_idx, _ in selected):
             selected.append((idx, sim))
-    return selected, candidate_count
+    if with_candidate_count:
+        return selected, candidate_count
+    return selected
 
 
 def _wilson_interval(successes: int, n: int, z: float = 1.96) -> Tuple[float, float]:
@@ -428,7 +431,11 @@ def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Se
     if hist_df is None or hist_df.empty or "Close" not in hist_df.columns:
         return {"status": "no_data", "matches": 0, "horizons": {}}
     features = _features(hist_df, indicators, indicator_key)
-    matches, candidate_count = _select_matches(features, indicator_key)
+    matches, candidate_count = _select_matches(
+        features,
+        indicator_key,
+        with_candidate_count=True,
+    )
     match_count = len(matches)
     if match_count < MIN_MATCHES:
         return {
