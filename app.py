@@ -2561,13 +2561,10 @@ else:
                         score = entry.get("score")
                         excluded = entry.get("excluded_from_total", False)
 
-                        # 값 포맷팅 조정. Quick Ratio는 DB에 배율(예: 2.2977)로 저장하고
-                        # 화면에서는 익숙한 백분율(229.77%)로 표시한다.
+                        # 값 포맷팅 조정 (성장률이나 비율 지표는 뒤에 % 또는 %p 추가)
                         if value is not None:
-                            if metric_key in ["revenue_growth", "eps_growth", "opm", "roic", "roa", "debt_rate", "sga_ratio"]:
+                            if metric_key in ["revenue_growth", "eps_growth", "opm", "roic", "roa", "debt_rate", "quick_ratio", "sga_ratio"]:
                                 value_display = f"{value}%"
-                            elif metric_key == "quick_ratio":
-                                value_display = f"{value * 100:.2f}%"
                             elif metric_key == "downturn_defense":
                                 value_display = f"{value}%p"
                             else:
@@ -2695,11 +2692,7 @@ else:
                                 st.markdown(period_chart_title)
                                 unit_label = METRIC_UNITS.get(metric_key, "%")
                                 x_labels = [h[0] for h in history]
-                                history_values = [
-                                    h[1] * 100 if metric_key == "quick_ratio" else h[1]
-                                    for h in history
-                                ]
-                                trend_df = pd.DataFrame({"기간": x_labels, "실측값": history_values})
+                                trend_df = pd.DataFrame({"기간": x_labels, "실측값": [h[1] for h in history]})
                                 chart_type = st.radio(
                                     "차트 유형",
                                     ["선", "막대"],
