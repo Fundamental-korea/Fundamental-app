@@ -94,8 +94,6 @@ def render_theme_toggle(key="theme_toggle"):
         st.rerun()
 
 
-st.markdown(f'<div id="fundamental-theme-state" data-theme="{THEME_MODE}"></div>', unsafe_allow_html=True)
-
 st.markdown(
     """
     <style>
@@ -626,170 +624,141 @@ st.markdown(
         line-height: 1.55;
     }
     </style>
-    <style>
-    /* Fundamental theme layer */
-    body:has(#fundamental-theme-state[data-theme="dark"]) {
-        --theme-page: #0F1115;
-        --theme-surface: #171A1F;
-        --theme-surface-warm: #1C1A17;
-        --theme-surface-muted: #20242A;
-        --theme-text: #F3F4F6;
-        --theme-text-muted: #A8B0BC;
-        --theme-border: #374151;
-        --theme-accent: #F4A261;
-        --theme-accent-strong: #FDBA74;
-        --theme-positive: #F87171;
-        --theme-negative: #60A5FA;
-        --theme-warning-bg: #2A2117;
-        --theme-warning-text: #FDBA74;
-        --theme-danger-bg: #2A181B;
-        --theme-danger-border: #7F1D1D;
-        --theme-success-bg: #10231B;
-        --theme-success-border: #166534;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]),
-    body:has(#fundamental-theme-state[data-theme="dark"]) #fundamental-theme-state {
-        background-color: var(--theme-page) !important;
-        color: var(--theme-text) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) [data-testid="stAppViewContainer"],
-    body:has(#fundamental-theme-state[data-theme="dark"]) .stApp,
-    body:has(#fundamental-theme-state[data-theme="dark"]) [data-testid="stHeader"] {
-        background-color: var(--theme-page) !important;
-        color: var(--theme-text) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) p,
-    body:has(#fundamental-theme-state[data-theme="dark"]) span,
-    body:has(#fundamental-theme-state[data-theme="dark"]) div,
-    body:has(#fundamental-theme-state[data-theme="dark"]) label,
-    body:has(#fundamental-theme-state[data-theme="dark"]) h1,
-    body:has(#fundamental-theme-state[data-theme="dark"]) h2,
-    body:has(#fundamental-theme-state[data-theme="dark"]) h3,
-    body:has(#fundamental-theme-state[data-theme="dark"]) h4,
-    body:has(#fundamental-theme-state[data-theme="dark"]) h5,
-    body:has(#fundamental-theme-state[data-theme="dark"]) h6 {
-        color: var(--theme-text) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .logo-box,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-box-v2,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .sketch-card,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .sketch-item-box,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .grade-hero-box,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .finstat-item,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .overview-cell,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .indicator-card {
-        background-color: var(--theme-surface) !important;
-        color: var(--theme-text) !important;
-        border-color: var(--theme-border) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-box-v2,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .grade-hero-box {
-        background-color: var(--theme-surface-warm) !important;
-        border-color: var(--theme-accent) !important;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .overview-label,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .finstat-label,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .sketch-item-desc,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .indicator-card-def {
-        color: var(--theme-text-muted) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .overview-value,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .finstat-value,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .sketch-item-title,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .indicator-card-title,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .indicator-card-desc {
-        color: var(--theme-text) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-en,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-ko,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-author {
-        color: var(--theme-text) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .quote-divider {
-        border-top-color: var(--theme-accent) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .status-pill,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .mini-stat-badge {
-        border-color: var(--theme-border) !important;
-        background-color: var(--theme-surface-muted) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .value-up,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .reliability-good,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .vol-high {
-        color: var(--theme-positive) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .value-down {
-        color: var(--theme-negative) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .vol-low,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .neutral,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .reliability-mid,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .reliability-low {
-        color: var(--theme-text-muted) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .impairment-warn,
-    body:has(#fundamental-theme-state[data-theme="dark"]) .tier-c {
-        color: var(--theme-warning-text) !important;
-        background-color: var(--theme-warning-bg) !important;
-        border-color: var(--theme-accent) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stButton"] > button,
-    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stLinkButton"] > a,
-    body:has(#fundamental-theme-state[data-theme="dark"]) input,
-    body:has(#fundamental-theme-state[data-theme="dark"]) textarea,
-    body:has(#fundamental-theme-state[data-theme="dark"]) [data-baseweb="select"] > div {
-        background-color: var(--theme-surface) !important;
-        color: var(--theme-text) !important;
-        border-color: var(--theme-border) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stButton"] > button:hover,
-    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stLinkButton"] > a:hover {
-        background-color: var(--theme-surface-warm) !important;
-        color: var(--theme-accent-strong) !important;
-        border-color: var(--theme-accent) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stExpander"] summary,
-    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stDataFrame"],
-    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stDataFrame"] *,
-    body:has(#fundamental-theme-state[data-theme="dark"]) [data-testid="stTabs"] {
-        background-color: var(--theme-surface-muted) !important;
-        color: var(--theme-text) !important;
-        border-color: var(--theme-border) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) div[data-testid="stTabs"] [aria-selected="true"] {
-        border-bottom-color: var(--theme-accent) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) .ad-box-tall {
-        background-color: var(--theme-surface-muted) !important;
-        border-color: var(--theme-border) !important;
-        color: var(--theme-text-muted) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#1A1A1A"],
-    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#111827"],
-    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#0F172A"] {
-        color: var(--theme-text) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#92400E"] {
-        color: var(--theme-warning-text) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#DC2626"] {
-        color: var(--theme-positive) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#2563EB"] {
-        color: var(--theme-negative) !important;
-    }
-    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#FFFFFF"],
-    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#FFFDF9"],
-    body:has(#fundamental-theme-state[data-theme="dark"]) [style*="#FAFAFA"] {
-        background-color: var(--theme-surface) !important;
-    }
-    #fundamental-theme-state { display: none !important; width: 0; height: 0; overflow: hidden; }
-    </style>
 
 """,
     unsafe_allow_html=True,
 )
+
+# Dark-mode overrides are injected as real HTML/CSS only when dark mode is active.
+# This deliberately avoids :has() and relies on concrete values generated by Python,
+# because the parent Streamlit DOM is not an iframe and must be styled directly.
+if THEME_MODE == "dark":
+    st.markdown(
+        f"""
+        <style>
+        html, body, [data-testid="stAppViewContainer"], .stApp,
+        [data-testid="stHeader"], [data-testid="stToolbar"] {{
+            background-color: {THEME["page"]} !important;
+            color: {THEME["text"]} !important;
+        }}
+
+        p, span, div, label, h1, h2, h3, h4, h5, h6 {{
+            color: {THEME["text"]} !important;
+        }}
+
+        .quote-box-v2, .grade-hero-box {{
+            background: {THEME["surface_warm"]} !important;
+            border-color: {THEME["accent"]} !important;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.28) !important;
+        }}
+
+        .logo-box, .sketch-card, .sketch-item-box, .finstat-item,
+        .overview-cell, .indicator-card {{
+            background-color: {THEME["surface"]} !important;
+            color: {THEME["text"]} !important;
+            border-color: {THEME["border"]} !important;
+        }}
+
+        .quote-en, .quote-ko, .quote-author,
+        .grade-hero-score, .grade-hero-badge,
+        .sketch-item-title, .sketch-item-score,
+        .finstat-value, .overview-value,
+        .indicator-card-title, .indicator-card-desc,
+        .stock-link {{
+            color: {THEME["text"]} !important;
+        }}
+
+        .overview-label, .finstat-label, .sketch-item-desc,
+        .indicator-card-def, .overview-subvalue {{
+            color: {THEME["text_muted"]} !important;
+        }}
+
+        .quote-divider {{
+            border-top-color: {THEME["accent"]} !important;
+        }}
+
+        .status-pill, .mini-stat-badge {{
+            background-color: {THEME["surface_muted"]} !important;
+            border-color: {THEME["border"]} !important;
+            color: {THEME["text"]} !important;
+        }}
+
+        .value-up, .reliability-good, .vol-high {{
+            color: {THEME["positive"]} !important;
+        }}
+        .value-down {{
+            color: {THEME["negative"]} !important;
+        }}
+        .vol-low, .neutral, .reliability-mid, .reliability-low {{
+            color: {THEME["text_muted"]} !important;
+        }}
+
+        .impairment-warn, .tier-c {{
+            background-color: {THEME["warning_bg"]} !important;
+            color: {THEME["warning_text"]} !important;
+            border-color: {THEME["accent"]} !important;
+        }}
+
+        div[data-testid="stButton"] > button,
+        div[data-testid="stLinkButton"] > a,
+        div[data-testid="stDownloadButton"] > button {{
+            background-color: {THEME["surface"]} !important;
+            color: {THEME["text"]} !important;
+            border-color: {THEME["border"]} !important;
+        }}
+        div[data-testid="stButton"] > button:hover,
+        div[data-testid="stLinkButton"] > a:hover,
+        div[data-testid="stDownloadButton"] > button:hover {{
+            background-color: {THEME["surface_warm"]} !important;
+            color: {THEME["accent_strong"]} !important;
+            border-color: {THEME["accent"]} !important;
+        }}
+
+        input, textarea, [data-baseweb="select"] > div,
+        [data-testid="stExpander"] details,
+        [data-testid="stExpander"] summary {{
+            background-color: {THEME["surface"]} !important;
+            color: {THEME["text"]} !important;
+            border-color: {THEME["border"]} !important;
+        }}
+
+        [data-testid="stDataFrame"], [data-testid="stDataFrame"] *,
+        [data-testid="stTabs"] {{
+            background-color: {THEME["surface_muted"]} !important;
+            color: {THEME["text"]} !important;
+            border-color: {THEME["border"]} !important;
+        }}
+
+        [data-testid="stTabs"] [aria-selected="true"] {{
+            border-bottom-color: {THEME["accent"]} !important;
+        }}
+
+        .ad-box-tall {{
+            background-color: {THEME["surface_muted"]} !important;
+            color: {THEME["text_muted"]} !important;
+            border-color: {THEME["border"]} !important;
+        }}
+
+        /* Common inline-style remnants from the original light theme. */
+        [style*="#1A1A1A"], [style*="#111827"], [style*="#0F172A"] {{
+            color: {THEME["text"]} !important;
+        }}
+        [style*="#92400E"] {{
+            color: {THEME["warning_text"]} !important;
+        }}
+        [style*="#DC2626"] {{
+            color: {THEME["positive"]} !important;
+        }}
+        [style*="#2563EB"] {{
+            color: {THEME["negative"]} !important;
+        }}
+        [style*="#FFFFFF"], [style*="#FFFDF9"], [style*="#FAFAFA"] {{
+            background-color: {THEME["surface"]} !important;
+        }}
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 # ==========================================
@@ -1472,8 +1441,8 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     if vm["stoch"]:
         extra_yaxes_js += f"""yaxis4: {{ domain: {json.dumps(domains['stoch'])}, anchor: "x", side: "right", title: "Stoch", range: [0, 100] }},"""
         extra_shapes_js += f"""
-                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "#DC2626", width: 1, dash: "dash" }} }},
-                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "#16A34A", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 80, y1: 80, line: {{ color: "{THEME['positive']}", width: 1, dash: "dash" }} }},
+                    {{ type: "line", xref: "paper", yref: "y4", x0: 0, x1: 1, y0: 20, y1: 20, line: {{ color: "{THEME['success']}", width: 1, dash: "dash" }} }},
         """
     if vm["macd"]:
         extra_yaxes_js += f"""yaxis5: {{ domain: {json.dumps(domains['macd'])}, anchor: "x", side: "right", title: "MACD" }},"""
