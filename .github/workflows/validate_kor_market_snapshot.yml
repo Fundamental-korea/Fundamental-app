@@ -31,7 +31,7 @@ jobs:
       - name: 상위 100개 교차검증
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SECRET_KEY || secrets.SUPABASE_KEY }}
           TARGET_DATE: "2026-09-18"
         run: python validate_kor_market_snapshot.py
 
