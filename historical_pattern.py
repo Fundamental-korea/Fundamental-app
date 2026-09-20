@@ -351,114 +351,180 @@ def classify_current_condition(
     hist_df: pd.DataFrame,
     indicators: Dict[str, pd.Series],
 ) -> Dict:
-    """Classify the latest daily technical state for probability presentation.
+    """Classify the latest daily technical state using the full indicator set.
 
-    The classifier decides which historical outcome direction is shown first.
-    It does not change the historical-match calculation and does not predict
-    future prices.
+    This is a presentation/context classifier, not a forecast.  Overbought/
+    oversold is intentionally limited to oscillators and price-extreme signals;
+    trend, momentum and money-flow indicators contribute separate context.
     """
     if hist_df is None or hist_df.empty or "Close" not in hist_df.columns:
-        return {"state": "unknown", "primary_direction": "up", "signals": []}
+        return {
+            "state": "unknown",
+            "label": "데이터 없음",
+            "context": "데이터 없음",
+            "primary_direction": "up",
+            "signals": [],
+            "trend_signals": [],
+            "momentum_signals": [],
+            "flow_signals": [],
+        }
 
     close = _safe_float(pd.to_numeric(hist_df["Close"], errors="coerce").iloc[-1])
-    sma20 = _latest_series_value(indicators, "sma20")
-    sma60 = _latest_series_value(indicators, "sma60")
-    rsi = _latest_series_value(indicators, "rsi14")
-    stoch_k = _latest_series_value(indicators, "stoch_k")
-    stoch_d = _latest_series_value(indicators, "stoch_d")
-    bb_upper = _latest_series_value(indicators, "bb_upper")
-    bb_lower = _latest_series_value(indicators, "bb_lower")
-    bb_mid = _latest_series_value(indicators, "bb_mid")
-    adx = _latest_series_value(indicators, "adx14")
-    plus_di = _latest_series_value(indicators, "plus_di14")
-    minus_di = _latest_series_value(indicators, "minus_di14")
-    mfi = _latest_series_value(indicators, "mfi14")
-    rolling_vwap = _latest_series_value(indicators, "rolling_vwap20")
 
-    signals = []
-    overbought_count = 0
-    oversold_count = 0
+    def latest(key):
+        return _latest_series_value(indicators, key)
 
-    if rsi is not None:
-        if rsi >= OVERBOUGHT_RSI:
+    sma20, sma60, sma120 = latest("sma20"), latest("sma60"), latest("sma120")
+    rsi, stoch_k, stoch_d = latest("rsi14"), latest("stoch_k"), latest("stoch_d")
+    bb_upper, bb_lower = latest("bb_upper"), latest("bb_lower")
+    adx, plus_di, minus_di = latest("adx14"), latest("plus_di14"), latest("minus_di14")
+    mfi, rolling_vwap = latest("mfi14"), latest("rolling_vwap20")
+    williams_r, cci, roc = latest("williams_r"), latest("cci"), latest("roc")
+    psar, cmf = latest("psar"), latest("cmf")
+
+    signals, trend_signals, momentum_signals, flow_signals = [], [], [], []
+    overbought_count = oversold_count = 0
+
+    def oscillator(value, high, low, high_label, low_label):
+        nonlocal overbought_count, oversold_count
+        if value is None:
+            return
+        if value >= high:
             overbought_count += 1
-            signals.append("RSI 과매수")
-        elif rsi <= OVERSOLD_RSI:
+            signals.append(high_label)
+        elif value <= low:
             oversold_count += 1
-            signals.append("RSI 과매도")
+            signals.append(low_label)
 
-    if stoch_k is not None:
-        if stoch_k >= OVERBOUGHT_STOCH:
-            overbought_count += 1
-            signals.append("스토캐스틱 과매수")
-        elif stoch_k <= OVERSOLD_STOCH:
-            oversold_count += 1
-            signals.append("스토캐스틱 과매도")
+    oscillator(rsi, 70.0, 30.0, "RSI 과매수", "RSI 과매도")
+    oscillator(stoch_k, 80.0, 20.0, "스토캐스틱 과매수", "스토캐스틱 과매도")
+    oscillator(mfi, 80.0, 20.0, "MFI 과매수", "MFI 과매도")
+    oscillator(williams_r, -20.0, -80.0, "Williams %R 과매수", "Williams %R 과매도")
+    oscillator(cci, 100.0, -100.0, "CCI 과매수", "CCI 과매도")
 
-    if mfi is not None:
-        if mfi >= 80.0:
-            overbought_count += 1
-            signals.append("MFI 과매수")
-        elif mfi <= 20.0:
-            oversold_count += 1
-            signals.append("MFI 과매도")
-
-    if (
-        close is not None
-        and bb_upper is not None
-        and bb_lower is not None
-        and bb_upper != bb_lower
-    ):
-        percent_b = (close - bb_lower) / (bb_upper - bb_lower)
-        if percent_b >= OVERBOUGHT_BB_PERCENT_B:
+    bb_percent_b = None
+    if close is not None and bb_upper is not None and bb_lower is not None and bb_upper != bb_lower:
+        bb_percent_b = (close - bb_lower) / (bb_upper - bb_lower)
+        if bb_percent_b >= 1.0:
             overbought_count += 1
             signals.append("볼린저 상단 돌파")
-        elif percent_b <= OVERSOLD_BB_PERCENT_B:
+        elif bb_percent_b <= 0.0:
             oversold_count += 1
             signals.append("볼린저 하단 이탈")
 
     ma_gap = None
     if close is not None and sma20 not in (None, 0):
         ma_gap = close / sma20 - 1.0
-        if ma_gap >= OVERBOUGHT_MA_GAP:
+        if ma_gap >= 0.08:
             overbought_count += 1
             signals.append(f"20일선 대비 +{ma_gap * 100:.1f}%")
-        elif ma_gap <= OVERSOLD_MA_GAP:
+        elif ma_gap <= -0.08:
             oversold_count += 1
             signals.append(f"20일선 대비 {ma_gap * 100:.1f}%")
 
+    # Trend context: MA structure + ADX/DMI + Ichimoku + PSAR.
     if close is not None and sma20 is not None and sma60 is not None:
         if close > sma20 > sma60:
             trend = "uptrend"
+            trend_signals.append("가격 > 20일선 > 60일선")
         elif close < sma20 < sma60:
             trend = "downtrend"
+            trend_signals.append("가격 < 20일선 < 60일선")
         else:
             trend = "mixed"
     else:
         trend = "unknown"
 
-    rsi_change5 = None
+    if adx is not None and plus_di is not None and minus_di is not None and adx >= 25:
+        if plus_di > minus_di:
+            trend_signals.append("ADX 강한 상승 +DI 우위")
+        elif minus_di > plus_di:
+            trend_signals.append("ADX 강한 하락 -DI 우위")
+
+    cloud_a, cloud_b = latest("senkou_a"), latest("senkou_b")
+    if close is not None and cloud_a is not None and cloud_b is not None:
+        cloud_top, cloud_bottom = max(cloud_a, cloud_b), min(cloud_a, cloud_b)
+        if close > cloud_top:
+            trend_signals.append("일목균형표 구름 위")
+        elif close < cloud_bottom:
+            trend_signals.append("일목균형표 구름 아래")
+
+    if close is not None and psar is not None:
+        if close > psar:
+            trend_signals.append("PSAR 상승 방향")
+        elif close < psar:
+            trend_signals.append("PSAR 하락 방향")
+
+    if close is not None and rolling_vwap is not None:
+        if close > rolling_vwap:
+            trend_signals.append("VWAP 위")
+        elif close < rolling_vwap:
+            trend_signals.append("VWAP 아래")
+
+    # Momentum context: RSI/Stochastic direction, MACD, ROC.
+    momentum_bearish = momentum_bullish = 0
     rsi_series = indicators.get("rsi14")
     if rsi_series is not None and len(rsi_series) > 5:
-        rsi_change5 = _safe_float(rsi_series.iloc[-1] - rsi_series.iloc[-6])
+        change = _safe_float(rsi_series.iloc[-1] - rsi_series.iloc[-6])
+        if change is not None:
+            if change >= 3:
+                momentum_bullish += 1
+                momentum_signals.append("RSI 5일 상승")
+            elif change <= -3:
+                momentum_bearish += 1
+                momentum_signals.append("RSI 5일 둔화")
 
-    hist_change5 = None
+    if stoch_k is not None and stoch_d is not None:
+        if stoch_k > stoch_d:
+            momentum_bullish += 1
+            momentum_signals.append("스토캐스틱 K>D")
+        elif stoch_k < stoch_d:
+            momentum_bearish += 1
+            momentum_signals.append("스토캐스틱 K<D")
+
     macd_hist = indicators.get("macd_hist")
     if macd_hist is not None and len(macd_hist) > 5:
-        hist_change5 = _safe_float(macd_hist.iloc[-1] - macd_hist.iloc[-6])
+        hist_now = _safe_float(macd_hist.iloc[-1])
+        hist_change = _safe_float(macd_hist.iloc[-1] - macd_hist.iloc[-6])
+        if hist_now is not None:
+            if hist_now > 0:
+                momentum_bullish += 1
+                momentum_signals.append("MACD 히스토그램 양수")
+            else:
+                momentum_bearish += 1
+                momentum_signals.append("MACD 히스토그램 음수")
+        if hist_change is not None:
+            if hist_change > 0:
+                momentum_bullish += 1
+            elif hist_change < 0:
+                momentum_bearish += 1
 
-    weakness_signals = 0
-    weakness_reasons = []
-    if rsi_change5 is not None and rsi_change5 <= -3.0:
-        weakness_signals += 1
-        weakness_reasons.append("RSI 5일 둔화")
-    if stoch_k is not None and stoch_d is not None and stoch_k < stoch_d:
-        weakness_signals += 1
-        weakness_reasons.append("스토캐스틱 하향")
-    if hist_change5 is not None and hist_change5 < 0:
-        weakness_signals += 1
-        weakness_reasons.append("MACD 히스토그램 둔화")
-    momentum = "weakening" if weakness_signals >= 2 else "not_weakening"
+    if roc is not None:
+        if roc > 0:
+            momentum_bullish += 1
+            momentum_signals.append(f"ROC +{roc:.1f}%")
+        elif roc < 0:
+            momentum_bearish += 1
+            momentum_signals.append(f"ROC {roc:.1f}%")
+
+    momentum = "strengthening" if momentum_bullish >= momentum_bearish + 2 else (
+        "weakening" if momentum_bearish >= momentum_bullish + 2 else "mixed"
+    )
+
+    # Money-flow context: CMF and OBV.
+    obv = indicators.get("obv")
+    if cmf is not None:
+        if cmf > 0.05:
+            flow_signals.append(f"CMF 자금 유입 ({cmf:+.2f})")
+        elif cmf < -0.05:
+            flow_signals.append(f"CMF 자금 유출 ({cmf:+.2f})")
+    if obv is not None and len(obv) > 5:
+        obv_change = _safe_float(obv.iloc[-1] - obv.iloc[-6])
+        if obv_change is not None:
+            if obv_change > 0:
+                flow_signals.append("OBV 5일 증가")
+            elif obv_change < 0:
+                flow_signals.append("OBV 5일 감소")
 
     if overbought_count >= 2 and oversold_count == 0:
         state = "overbought_strong" if overbought_count >= 3 else "overbought"
@@ -470,35 +536,26 @@ def classify_current_condition(
         state = "neutral"
         primary_direction = "up"
 
-    adx_trend_context = None
-    if adx is not None and plus_di is not None and minus_di is not None and adx >= 25:
-        if plus_di > minus_di:
-            adx_trend_context = "강한 상승추세"
-        elif minus_di > plus_di:
-            adx_trend_context = "강한 하락추세"
-
     if state.startswith("overbought") and momentum == "weakening":
         context = "과매수 + 모멘텀 둔화"
     elif state.startswith("oversold") and momentum == "weakening":
         context = "과매도 + 모멘텀 둔화"
-    elif state.startswith("overbought") and adx_trend_context == "강한 상승추세":
-        context = "과매수 + 강한 상승추세"
-    elif state.startswith("oversold") and adx_trend_context == "강한 하락추세":
-        context = "과매도 + 강한 하락추세"
     elif state.startswith("overbought") and trend == "uptrend":
         context = "과매수 + 상승추세"
     elif state.startswith("oversold") and trend == "downtrend":
         context = "과매도 + 하락추세"
-    elif state.startswith("overbought"):
-        context = "과매수"
-    elif state.startswith("oversold"):
-        context = "과매도"
-    elif adx_trend_context is not None:
-        context = adx_trend_context
+    elif trend == "uptrend" and momentum == "strengthening":
+        context = "상승추세 + 모멘텀 강화"
+    elif trend == "downtrend" and momentum == "weakening":
+        context = "하락추세 + 모멘텀 둔화"
     elif trend == "uptrend":
         context = "상승추세"
     elif trend == "downtrend":
         context = "하락추세"
+    elif momentum == "strengthening":
+        context = "상승 모멘텀"
+    elif momentum == "weakening":
+        context = "하락 모멘텀"
     else:
         context = "중립/혼조"
 
@@ -518,30 +575,48 @@ def classify_current_condition(
         "overbought_count": overbought_count,
         "oversold_count": oversold_count,
         "trend": trend,
+        "trend_signals": trend_signals,
         "momentum": momentum,
-        "adx_trend_context": adx_trend_context,
+        "momentum_signals": momentum_signals,
+        "flow_signals": flow_signals,
         "signals": signals,
         "adx": adx,
         "plus_di": plus_di,
         "minus_di": minus_di,
         "mfi": mfi,
         "rolling_vwap": rolling_vwap,
-        "weakness_reasons": weakness_reasons,
+        "williams_r": williams_r,
+        "cci": cci,
+        "roc": roc,
+        "psar": psar,
+        "cmf": cmf,
         "rsi": rsi,
         "stoch_k": stoch_k,
-        "bb_percent_b": (
-            round((close - bb_lower) / (bb_upper - bb_lower), 3)
-            if close is not None and bb_upper is not None and bb_lower is not None and bb_upper != bb_lower
-            else None
-        ),
+        "bb_percent_b": round(bb_percent_b, 3) if bb_percent_b is not None else None,
         "ma_gap": ma_gap,
     }
-
 
 def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Series], indicator_key: str) -> Dict:
     if hist_df is None or hist_df.empty or "Close" not in hist_df.columns:
         return {"status": "no_data", "matches": 0, "horizons": {}}
     features = _features(hist_df, indicators, indicator_key)
+    data_bars = len(features)
+    minimum_bars = 120
+    outcome_required_bars = max(HORIZONS)
+    if data_bars < minimum_bars:
+        return {
+            "status": "insufficient_data",
+            "matches": 0,
+            "candidate_matches": 0,
+            "horizons": {},
+            "min_required": MIN_MATCHES,
+            "lookback_years": LOOKBACK_YEARS,
+            "min_similarity": MIN_SIMILARITY,
+            "data_bars": data_bars,
+            "required_bars": minimum_bars,
+            "message": f"과거 일봉 데이터가 부족합니다 ({data_bars}봉 / 최소 {minimum_bars}봉).",
+        }
+
     matches, candidate_count = _select_matches(
         features,
         indicator_key,
@@ -557,6 +632,12 @@ def analyze_indicator_pattern(hist_df: pd.DataFrame, indicators: Dict[str, pd.Se
             "min_required": MIN_MATCHES,
             "lookback_years": LOOKBACK_YEARS,
             "min_similarity": MIN_SIMILARITY,
+            "data_bars": data_bars,
+            "required_bars": minimum_bars,
+            "message": (
+                f"과거 데이터는 충분하지만 현재 조건과 유사한 사례가 "
+                f"{match_count}회로 최소 {MIN_MATCHES}회에 미달합니다."
+            ),
         }
     close = pd.to_numeric(hist_df["Close"], errors="coerce").reset_index(drop=True)
     matches = [(i, s) for i, s in matches if _finite(close.iloc[i])]
