@@ -114,7 +114,7 @@ class RecoveryRegressionTests(unittest.TestCase):
         </xbrli:xbrl>"""
         parsed = _parse_instance(xml)
         row = parsed["Revenues"][0][1]
-        self.assertEqual(row["year"], 2025)
+        self.assertEqual(int(row["end"][:4]), 2025)
         self.assertEqual(row["fy"], 2025)
 
     def test_utility_build_result_invokes_filing_fallback_without_core_years(self):
