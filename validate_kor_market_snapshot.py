@@ -41,30 +41,15 @@ def db_get(params):
     return r.json()
 
 def load_sample():
-    if TARGET_DATE:
-        target = TARGET_DATE
-    else:
-        latest = db_get({
-            "select": "market_snapshot_date",
-            "market_snapshot_date": "not.is.null",
-            "order": "market_snapshot_date.desc",
-            "limit": "1",
-        })
-        if not latest:
-            raise RuntimeError("market_snapshot_date가 없습니다.")
-        target = latest[0]["market_snapshot_date"]
-
-    rows = db_get({
-        "select": "stock_code,stock_name,stock_price,listed_shares,market_cap,market_snapshot_date,market_data_source",
-        "market_snapshot_date": f"eq.{target}",
-        "market_cap": "not.is.null",
-        "order": "market_cap.desc",
-        "limit": str(TOP_N),
-    })
+    input_path = Path(os.environ.get("VALIDATION_INPUT", "validation_results/kor_top100_2026-09-18.json"))
+    if not input_path.exists():
+        raise RuntimeError(f"검증 표본 파일이 없습니다: {input_path}")
+    payload = json.loads(input_path.read_text(encoding="utf-8"))
+    target = payload["target_date"]
+    rows = payload["rows"]
     if len(rows) < TOP_N:
         raise RuntimeError(f"상위 {TOP_N}개 표본 확보 실패: {len(rows)}개")
     return target, rows
-
 def num(text):
     m = re.search(r"-?\d[\d,]*(?:\.\d+)?", text or "")
     if not m:
