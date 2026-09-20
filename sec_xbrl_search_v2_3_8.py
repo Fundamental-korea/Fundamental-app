@@ -45,6 +45,20 @@ def _local_concept(concept: str | None) -> str:
 class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
     """V2.3.5 plus validated Standard-sector semantic fallbacks."""
 
+    def _inline_filing_rows(self, cik, submissions):
+        cache = getattr(self, "_inline_rows_cache", None)
+        if cache is None:
+            cache = {}
+            self._inline_rows_cache = cache
+        accession, _doc, _filed = self.latest_annual_filing(submissions)
+        key = (str(int(cik)), accession)
+        if accession and key in cache:
+            return cache[key]
+        result = super()._inline_filing_rows(cik, submissions)
+        if accession:
+            cache[key] = result
+        return result
+
     @staticmethod
     def _is_exact_concept(metric: str, concept: str | None) -> bool:
         return _local_concept(concept) in EXACT_CONCEPTS_V238.get(metric, set())
