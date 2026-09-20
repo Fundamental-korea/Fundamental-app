@@ -2728,9 +2728,11 @@ elif selected_code and view_mode_param == "analysis":
                             f"통계를 표시하지 않아요. (최소 {pattern.get('min_required', 12)}건 필요)"
                         )
                     else:
+                        lookback_years = pattern.get("lookback_years", 10)
+                        min_similarity = pattern.get("min_similarity", 65.0)
                         st.caption(
-                            f"현재 상태와 비슷했던 과거 일봉 사례 {pattern['matches']}건을 찾았습니다. "
-                            "아래 값은 그 사례 이후 실제 주가가 움직인 비율입니다."
+                            f"최근 {lookback_years}년 안에서 유사도 {min_similarity:.0f}/100 이상인 "
+                            f"과거 조건을 찾았습니다. 각 기간별 숫자는 실제 주가 결과가 존재하는 사례만 집계합니다."
                         )
                         horizon_cols = st.columns(3)
                         horizon_labels = {"5": "5거래일 후", "20": "20거래일 후", "60": "60거래일 후"}
@@ -2739,26 +2741,36 @@ elif selected_code and view_mode_param == "analysis":
                             with col:
                                 st.markdown(f"**{horizon_labels[horizon]}**")
                                 if not stats:
-                                    st.caption("표본 부족")
+                                    st.caption("실제 결과 사례 없음")
                                 else:
                                     st.metric(
                                         "과거 상승 사례 비율",
                                         f"{stats['up_probability']:.1f}%",
-                                        help="미래 예측 확률이 아니라, 선택된 과거 유사 사례 중 해당 기간 후 종가가 상승했던 비율입니다.",
+                                        help="예측 확률이 아니라, 조건이 유사했던 과거 날짜들 중 해당 기간 후 실제 종가가 상승한 비율입니다.",
                                     )
                                     st.caption(
                                         f"중앙값 {stats['median_return']:+.1f}% · "
                                         f"평균 {stats['mean_return']:+.1f}% · "
-                                        f"사례 {stats['samples']}건"
+                                        f"실제 사례 {stats['samples']}건"
                                     )
+                                    if (
+                                        stats.get("up_probability_ci_low") is not None
+                                        and stats.get("up_probability_ci_high") is not None
+                                    ):
+                                        st.caption(
+                                            f"상승비율 95% 구간: "
+                                            f"{stats['up_probability_ci_low']:.1f}% ~ "
+                                            f"{stats['up_probability_ci_high']:.1f}%"
+                                        )
                         if pattern.get("avg_similarity") is not None:
                             st.caption(
                                 f"유사도 평균: {pattern['avg_similarity']:.1f}/100 · "
-                                "표본 기간 전체의 과거 실제 결과를 집계한 참고 통계입니다."
+                                f"최근 {lookback_years}년 내 실제 사례 기준"
                             )
                         st.caption(
-                            "※ 과거 유사 조건에서 실제로 나타났던 결과를 집계한 것이며, "
-                            "미래 가격이나 수익률을 보장하는 예측값은 아닙니다."
+                            "※ 과거 유사 조건의 실제 결과를 집계한 참고 통계입니다. "
+                            "미래 가격·수익률을 보장하는 예측값이 아닙니다. "
+                            "표본 수가 작거나 95% 구간이 넓으면 숫자의 불확실성이 큽니다."
                         )
         elif not hist_df.empty:
             st.info(f"차트 데이터가 20개 캔들({interval_choice} 기준) 미만이라 지표를 계산하기엔 아직 부족해요. 기본 가격 흐름만 보여드릴게요.")
