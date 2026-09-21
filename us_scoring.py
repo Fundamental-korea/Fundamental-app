@@ -406,6 +406,23 @@ def score_confidence_level(coverage_pct: float) -> str:
     return "insufficient"
 
 
+def data_reliability_from_periods(period_scores: dict) -> str:
+    """Summarize current score-data completeness across periods."""
+    if not isinstance(period_scores, dict) or not period_scores:
+        return "none"
+    latest = period_scores.get("1y") or next(iter(period_scores.values()))
+    avg = latest.get("avg") if isinstance(latest, dict) else {}
+    coverage = float((avg or {}).get("coverage_pct", 0) or 0)
+    periods = len(period_scores)
+    if periods >= 3 and coverage >= 90:
+        return "high"
+    if periods >= 2 and coverage >= 75:
+        return "medium"
+    if coverage >= 60:
+        return "low"
+    return "none"
+
+
 def evaluate_us_grade(total_score: float):
     if total_score >= US_GRADE_CUTOFFS["S"]:
         return "S", "방어력 최상 (잠정)"
