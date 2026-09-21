@@ -3312,9 +3312,9 @@ def render_home_earnings_preview(limit=8):
             f"""
             <div style="padding:10px 0;border-bottom:1px solid {THEME['border']};">
               <a href="{source_url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:{THEME['text']};font-weight:800;">{_escape_html(row.get('stock_name',''))}</a>
-              <span style="margin-left:8px;color:{THEME['muted']};">{_escape_html(row.get('event_date',''))}</span>
-              <span style="margin-left:8px;color:{THEME['muted']};font-size:12px;">{label}</span>
-              <span style="float:right;color:{THEME['muted']};font-size:11px;">DART ↗</span>
+              <span style="margin-left:8px;color:{THEME['text_muted']};">{_escape_html(row.get('event_date',''))}</span>
+              <span style="margin-left:8px;color:{THEME['text_muted']};font-size:12px;">{label}</span>
+              <span style="float:right;color:{THEME['text_muted']};font-size:11px;">DART ↗</span>
             </div>
             """,
             unsafe_allow_html=True,
