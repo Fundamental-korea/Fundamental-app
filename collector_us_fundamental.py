@@ -39,12 +39,12 @@ SNAPSHOT_FORMS = {"10-Q", "10-Q/A", "10-K", "10-K/A", "20-F", "20-F/A", "40-F", 
 
 FACT_ALIASES = {
     "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax", "Revenues", "SalesRevenueNet", "SalesRevenueGoodsNet"],
-    "operating_income": ["OperatingIncomeLoss"],
+    "operating_income": ["OperatingIncomeLoss", "OperatingIncome", "OperatingProfitLoss", "IncomeFromOperations"],
     "net_income": ["NetIncomeLoss", "ProfitLoss"],
     "net_income_parent": ["NetIncomeLossAttributableToOwnersOfParent", "NetIncomeLossAttributableToParent", "ProfitLossAttributableToOwnersOfParent", "ProfitLossAttributableToParent"],
     "net_income_nci": ["NetIncomeLossAttributableToNoncontrollingInterest", "ProfitLossAttributableToNoncontrollingInterest"],
     "assets": ["Assets"],
-    "equity": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
+    "equity": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "Equity", "PartnersCapital", "MembersEquity", "EquityAttributableToOwnersOfParent"],
     "equity_nci": ["MinorityInterest", "NoncontrollingInterestInConsolidatedEntity", "NoncontrollingInterestInConsolidatedEntityIncludingPortionAttributableToRedeemableNoncontrollingInterest"],
     "liabilities": ["Liabilities"],
     "debt_current": [
@@ -85,9 +85,9 @@ FACT_ALIASES = {
     "inventory": ["InventoryNet", "InventoryGross"],
     "cash": ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
     "receivables": ["AccountsReceivableNetCurrent", "AccountsReceivableNet", "AccountsAndNotesReceivableNetCurrent", "AccountsReceivableGrossCurrent"],
-    "interest_expense": ["InterestExpenseNonOperating", "InterestExpenseDebt", "InterestExpenseNonOperatingNet", "InterestExpenseNonOperatingAndOther"],
+    "interest_expense": ["InterestExpenseNonOperating", "InterestExpenseDebt", "InterestExpenseNonOperatingNet", "InterestExpenseNonOperatingAndOther", "InterestAndDebtExpense", "InterestExpense"],
     "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
-    "sga": ["SellingGeneralAndAdministrativeExpense", "SellingGeneralAndAdministrativeExpenseIncludingDepreciationAmortization"],
+    "sga": ["SellingGeneralAndAdministrativeExpense", "SellingGeneralAndAdministrativeExpenseIncludingDepreciationAmortization", "GeneralAndAdministrativeExpense", "SellingExpense"],
     "eps": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
 }
 
