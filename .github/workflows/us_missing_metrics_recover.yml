@@ -1,0 +1,64 @@
+name: US Missing Metrics Recovery 1-3
+
+on:
+  workflow_run:
+    workflows: ["US Standard Fundamental Data Auto-Update"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Optional company limit (0 = all)"
+        required: false
+        default: "0"
+        type: string
+
+concurrency:
+  group: us-missing-metrics-recovery
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          pip install --disable-pip-version-check requests supabase
+
+      - name: Recover missing metrics 1-3
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          LIMIT="${{ inputs.limit || '0' }}"
+          if [ "$LIMIT" = "0" ]; then
+            python collector_us_missing_recover.py
+          else
+            python collector_us_missing_recover.py --limit "$LIMIT"
+          fi
+
+      - name: Verify
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from supabase import create_client
+          sb=create_client(os.environ["SUPABASE_URL"],os.environ["SUPABASE_SECRET_KEY"])
+          for n in [0,1,2,3]:
+              q=sb.table("US_Fundamental").select("ticker",count="exact",head=True).eq("data_unavailable",False).eq("missing_metric_count",n).execute()
+              print(f"missing={n}: {q.count}")
+          PY
