@@ -1,1 +1,2 @@
-9
+Account-name recovery trigger: 2026-09-21T23:08:11.020Z
+Using SEC XBRL V2.3.8 + filing account-name/statement identity fallbacks.
