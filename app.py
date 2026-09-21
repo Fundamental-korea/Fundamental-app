@@ -1177,7 +1177,7 @@ def get_stock_data(code):
                 company_res = (
                     supabase.table("US_Companies")
                     .select(
-                        "ticker,company_name,sector_common,sector_common_ko,"
+                        "ticker,cik,company_name,sector_common,sector_common_ko,"
                         "company_type,scoring_profile"
                     )
                     .eq("ticker", ticker_code)
@@ -1270,7 +1270,29 @@ def render_us_fundamental_report(code, data):
             coverage_pct = latest_scores.get("coverage_pct")
             missing_count = latest_scores.get("missing_metric_count")
             cap = latest_scores.get("score_cap")
+            confidence_level = latest_scores.get("confidence_level")
             reliability = us_data.get("data_reliability")
+
+            if coverage_pct is None:
+                metric_scores_for_coverage = latest_scores.get("metric_scores") or {}
+                total_weight = sum(
+                    float(entry.get("weight", 0) or 0)
+                    for entry in metric_scores_for_coverage.values()
+                )
+                available_weight = sum(
+                    float(entry.get("weight", 0) or 0)
+                    for entry in metric_scores_for_coverage.values()
+                    if entry.get("value") is not None
+                )
+                if total_weight:
+                    coverage_pct = round(available_weight / total_weight * 100.0, 1)
+                if confidence_level is None and coverage_pct is not None:
+                    confidence_level = (
+                        "high" if coverage_pct >= 90
+                        else "medium" if coverage_pct >= 75
+                        else "low" if coverage_pct >= 60
+                        else "insufficient"
+                    )
 
             badge_text = (
                 f"**🏷️ 모델:** {profile_label} · "
@@ -1278,7 +1300,13 @@ def render_us_fundamental_report(code, data):
                 f"**📚 업종:** {sector}"
             )
             if coverage_pct is not None:
-                badge_text += f" · **📐 커버리지:** {coverage_pct:.1f}%"
+                badge_text += f" · **📐 데이터 완성도:** {coverage_pct:.1f}%"
+            if confidence_level:
+                confidence_label = {
+                    "high": "높음", "medium": "보통",
+                    "low": "낮음", "insufficient": "부족",
+                }.get(confidence_level, confidence_level)
+                badge_text += f" · **📋 점수 완성도:** {confidence_label}"
             if missing_count is not None:
                 badge_text += f" · **🧩 결측:** {missing_count}개"
             if reliability:
@@ -1286,6 +1314,19 @@ def render_us_fundamental_report(code, data):
 
             st.markdown(f"### {total_score if total_score is not None else 'N/A'} / 100  ·  {grade}")
             st.markdown(badge_text)
+
+            if confidence_level in {"low", "insufficient"}:
+                st.warning(
+                    "⚠️ 이 점수는 일부 핵심 지표가 결측되어 있습니다. "
+                    "결측을 0점으로 넣지 않고 가용 지표만 재정규화했으며, 커버리지 상한을 적용했습니다."
+                )
+
+            review_sector = company.get("sector_common")
+            if profile == "standard" and review_sector in {"financials", "real_estate", "other"}:
+                st.info(
+                    "ℹ️ 자동 분류상 Standard 프로필이지만 업종 대분류가 "
+                    f"'{review_sector}'입니다. SIC 기반 분류의 경계 사례이므로 업종/프로필 검토 대상으로 표시합니다."
+                )
 
             if cap is not None and cap < 100:
                 st.caption(f"ℹ️ 데이터 커버리지 때문에 해당 기간 점수 상한이 {cap:.0f}점으로 적용됐습니다.")
@@ -3294,28 +3335,98 @@ else:
     with main_content:
         st.markdown(f"## 📊 [{data.get('stock_name', selected_code)}] 펀더멘탈 방어력 분석")
 
-        st.markdown("#### 📈 시세 스냅샷 (MVP)")
+        st.markdown("#### 📈 시세 스냅샷")
         st.caption(
-            "📌 실시간 차트는 별도 서비스로 분리해 준비 중입니다. 지금은 최신 시세와 투자지표 스냅샷만 보여드려요."
+            "📌 아래 가격은 체결 틱이 아니라 **최신으로 확인 가능한 일봉** 기준입니다. 가격 기준일·출처와 재무 기준일은 서로 분리해서 표시합니다."
         )
 
-        @st.cache_data(ttl=3600, show_spinner=False)  # 일봉 데이터라 15분보다 1시간 캐시가 더 합리적
+        @st.cache_data(ttl=300, show_spinner=False)
         def _get_recent_ohlcv_for_overview(code):
-            """전일/시가/고가/저가/거래량/52주 범위 계산용 OHLCV. 국내는 fdr.DataReader
-            (fdr.StockListing('KRX')와 달리 KRX 로그인월 이슈와 무관 - collector.py의
-            downturn_defense 계산에도 계속 쓰이고 있는 경로라 이 함수도 동일하게 사용),
-            해외는 yfinance 사용."""
+            """시세 스냅샷용 일봉 OHLCV.
+            
+            미국은 yfinance 원가격(auto_adjust=False)을 사용하고, 국내는
+            FinanceDataReader를 사용한다. 반환값의 Date 컬럼이 가격 기준일이다.
+            이는 '실시간 틱'이 아니라 최신으로 확인 가능한 일봉이라는 점을 명확히 한다.
+            """
             is_kr = str(code).isdigit()
             try:
                 if is_kr:
                     df = fdr.DataReader(code)
+                    source = "FinanceDataReader"
                 else:
-                    df = yf.Ticker(code).history(period="1y")
+                    df = yf.Ticker(code).history(
+                        period="1y",
+                        interval="1d",
+                        auto_adjust=False,
+                    )
+                    source = "yfinance"
                 if df is None or df.empty:
                     return pd.DataFrame()
-                return df.tail(400).reset_index()
+                df = df.tail(400).reset_index()
+                if "Date" not in df.columns and "Datetime" in df.columns:
+                    df = df.rename(columns={"Datetime": "Date"})
+                df.attrs["market_data_source"] = source
+                df.attrs["bar_type"] = "1d"
+                return df
             except Exception:
                 return pd.DataFrame()
+
+        @st.cache_data(ttl=6 * 3600, show_spinner=False)
+        def _get_us_sec_share_snapshot(cik):
+            """SEC DEI의 최신 보통주 발행주식수 관측치를 반환한다."""
+            if not cik:
+                return {}
+            try:
+                cik10 = str(cik).strip().zfill(10)
+                url = "https://data.sec.gov/api/xbrl/companyfacts/CIK" + cik10 + ".json"
+                response = requests.get(
+                    url,
+                    headers={"User-Agent": "Fundamental Korea research contact@example.com"},
+                    timeout=20,
+                )
+                response.raise_for_status()
+                facts = response.json().get("facts", {}).get("dei", {})
+                fact = facts.get("EntityCommonStockSharesOutstanding") or {}
+                rows = []
+                for unit, values in (fact.get("units") or {}).items():
+                    if unit.lower() not in {"shares", "share"}:
+                        continue
+                    for row in values or []:
+                        value = row.get("val")
+                        end = row.get("end")
+                        filed = row.get("filed")
+                        if value is None or not end:
+                            continue
+                        try:
+                            value = float(value)
+                        except (TypeError, ValueError):
+                            continue
+                        rows.append({
+                            "value": value,
+                            "asof": str(end),
+                            "filed": str(filed or ""),
+                            "form": row.get("form") or "",
+                        })
+                if not rows:
+                    return {}
+                rows.sort(key=lambda x: (x["asof"], x["filed"], x["form"]))
+                return rows[-1]
+            except Exception:
+                return {}
+
+        def _format_usd_compact(value):
+            if value is None:
+                return "N/A"
+            value = float(value)
+            sign = "-" if value < 0 else ""
+            value = abs(value)
+            if value >= 1_000_000_000_000:
+                return f"{sign}${value/1_000_000_000_000:.2f}T"
+            if value >= 1_000_000_000:
+                return f"{sign}${value/1_000_000_000:.2f}B"
+            if value >= 1_000_000:
+                return f"{sign}${value/1_000_000:.2f}M"
+            return f"{sign}${value:,.0f}"
 
         def _tone(value, ref):
             if value is None or ref is None:
@@ -3349,11 +3460,23 @@ else:
 
         overview = {}  # label -> (value_str, tone)
         live_price = None
+        price_asof = None
+        price_source = None
+        price_bar_type = None
 
         if not ohlcv_overview_df.empty and len(ohlcv_overview_df) >= 2:
             last_row = ohlcv_overview_df.iloc[-1]
             prev_row = ohlcv_overview_df.iloc[-2]
             recent_52w = ohlcv_overview_df.tail(252)
+            if "Date" in ohlcv_overview_df.columns:
+                parsed_price_date = pd.to_datetime(last_row["Date"], errors="coerce")
+                if not pd.isna(parsed_price_date):
+                    price_asof = parsed_price_date.date()
+            price_source = ohlcv_overview_df.attrs.get(
+                "market_data_source",
+                "FinanceDataReader" if is_kr_stock else "yfinance",
+            )
+            price_bar_type = ohlcv_overview_df.attrs.get("bar_type", "1d")
             prev_close = float(prev_row["Close"])
             live_price = float(last_row["Close"])
             today_volume = float(last_row["Volume"])
@@ -3408,14 +3531,34 @@ else:
         if live_price is None:
             live_price = overview_supabase_data.get("stock_price")
 
+        # 시가총액: 국내는 Fundamental에 저장된 직접값을 우선 사용하고,
+        # 미국은 SEC DEI의 보통주 발행주식수 × 최신 가격으로 계산한다.
+        if is_kr_stock:
+            kr_market_cap = overview_supabase_data.get("market_cap")
+            if kr_market_cap is not None:
+                overview["시가총액"] = (_format_krw_compact(kr_market_cap), "neutral")
+        else:
+            sec_shares = _get_us_sec_share_snapshot((data.get("us_company_data") or {}).get("cik"))
+            if sec_shares.get("value") and live_price:
+                market_cap_usd = float(sec_shares["value"]) * float(live_price)
+                overview["시가총액"] = (_format_usd_compact(market_cap_usd), "neutral")
+                shares_basis = sec_shares.get("asof")
+                if shares_basis:
+                    overview["시가총액 기준"] = (
+                        f"SEC 주식수 {float(sec_shares['value']):,.0f}주 · {shares_basis}",
+                        "neutral",
+                    )
+            elif (data.get("info") or {}).get("sharesOutstanding") and live_price:
+                shares = float((data.get("info") or {}).get("sharesOutstanding"))
+                overview["시가총액(보조추정)"] = (
+                    _format_usd_compact(shares * float(live_price)),
+                    "neutral",
+                )
+
         if ov_eps is not None:
             overview["EPS"] = (f"{ov_eps:,.0f}{won}", "neutral")
             if live_price and ov_eps != 0:
                 overview["PER"] = (f"{live_price / ov_eps:.2f}", "neutral")
-                if ov_net_income:
-                    shares_est = ov_net_income / ov_eps
-                    if shares_est > 0:
-                        overview["시가총액(추정)"] = (_format_krw_compact(shares_est * live_price), "neutral")
         elif ov_per_stored is not None and ov_per_stored > 0 and live_price:
             # 폴백: 아직 재수집 전이라 eps 원시값이 없는 종목만 예전처럼 역산 + '(추정)' 라벨
             eps_est = live_price / ov_per_stored
@@ -3456,14 +3599,24 @@ else:
 
             data_basis_label = overview_supabase_data.get("data_basis_label")
             if data_basis_label:
-                st.caption(f"📅 EPS/BPS/PER/PBR/매출/순이익 등 재무 수치 기준: **{data_basis_label}** (최신 공시가 나오면 자동 갱신됩니다)")
+                st.caption(f"📅 재무 수치 기준: **{data_basis_label}** (최신 공시가 나오면 자동 갱신됩니다)")
+
+            price_meta = []
+            if price_asof:
+                price_meta.append(f"가격 기준일 {price_asof}")
+            if price_source:
+                price_meta.append(f"출처 {price_source}")
+            if price_bar_type:
+                price_meta.append(f"봉 {price_bar_type}")
+            if price_meta:
+                st.caption("📈 시장 데이터: " + " · ".join(price_meta))
         else:
             st.info("시세 스냅샷 데이터를 불러올 수 없습니다.")
 
         st.caption(
-            "ℹ️ '(추정)' 표시 항목은 최신 시세와 최근 확정 재무제표를 이용한 근사치입니다. "
-            "외인소진율·추정PER/추정EPS(컨센서스)는 아직 연동된 데이터 소스가 없어 추후 지원 예정입니다. "
-            "정식 서비스 오픈 시 각 수치를 DART 재무제표 원문과 직접 연결할 계획입니다."
+            "ℹ️ 가격·거래량은 최신 일봉, PER/PBR/배당은 화면에 표시된 가격과 최근 확정 재무 데이터를 조합해 계산합니다. "
+            "미국 시가총액은 가능한 경우 SEC 보통주 발행주식수와 최신 가격으로 계산하며, 주식수 기준일과 가격 기준일이 다를 수 있습니다. "
+            "컨센서스 PER/EPS와 외인소진율은 별도 소스를 연결하기 전까지 표시하지 않습니다."
         )
 
         st.markdown("<br>", unsafe_allow_html=True)
