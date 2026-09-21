@@ -132,7 +132,12 @@ def main():
                 }
             )
 
+    from collections import Counter
+
+    reason_counts = Counter(item["reason"] for item in changes)
     print(f"[CLASSIFICATION] safe changes proposed={len(changes)}")
+    for reason, count in reason_counts.items():
+        print(f"  [reason-count] {reason}: {count}")
     for item in changes[:30]:
         print(f"  {item['ticker']}: {item['reason']} -> {item['updates']}")
     if len(changes) > 30:
@@ -148,6 +153,14 @@ def main():
             sb.table("US_Companies").update(item["updates"]).eq(
                 "ticker", item["ticker"]
             ).execute()
+
+            # US_Fundamental carries a duplicated sector field for fast app reads.
+            # Keep it synchronized whenever the classification sector changes.
+            if "sector_common" in item["updates"]:
+                sb.table("US_Fundamental").update(
+                    {"sector": item["updates"]["sector_common"]}
+                ).eq("ticker", item["ticker"]).execute()
+
         print(f"[CLASSIFICATION] applied {min(i + UPDATE_BATCH, len(changes))}/{len(changes)}")
 
     print("[CLASSIFICATION] refinement completed.")
