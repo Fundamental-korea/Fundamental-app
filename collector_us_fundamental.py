@@ -174,12 +174,16 @@ def annual_records(fact):
             continue
         for r in rows:
             fy, form, end = r.get("fy"), r.get("form"), r.get("end")
-            if not fy or not end or form not in FLOW_FORMS:
+            if not end or form not in FLOW_FORMS:
                 continue
             try:
                 period_end_year = datetime.fromisoformat(end).date().year
             except ValueError:
                 continue
+            try:
+                fiscal_year = int(fy) if fy is not None else period_end_year
+            except (TypeError, ValueError):
+                fiscal_year = period_end_year
             start = r.get("start")
             if start:
                 try:
@@ -191,7 +195,7 @@ def annual_records(fact):
             value = clean_number(r.get("val"))
             if value is None:
                 continue
-            records.append({"fy": int(fy), "year": period_end_year, "end": end, "filed": r.get("filed") or "", "val": value, "form": form, "frame": r.get("frame"), "unit": unit})
+            records.append({"fy": fiscal_year, "year": period_end_year, "end": end, "filed": r.get("filed") or "", "val": value, "form": form, "frame": r.get("frame"), "unit": unit})
     by_year = {}
     for record in records:
         previous = by_year.get(record["year"])
