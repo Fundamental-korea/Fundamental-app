@@ -56,7 +56,7 @@ FACT_ALIASES = {
         "ShortTermBorrowings",
         "FinanceLeaseLiabilityCurrent",
         "ConvertibleDebtCurrent",
-        "DebtCurrent", "NotesPayableCurrent", "CommercialPaper",
+        "DebtCurrent", "NotesPayableCurrent", "NotesAndLoansPayableCurrent", "ShortTermBankLoansAndNotesPayable", "CommercialPaper",
         "LineOfCreditCurrent", "RevolvingCreditFacilityCurrent",
     ],
     "debt_noncurrent": [
@@ -68,7 +68,7 @@ FACT_ALIASES = {
         "Borrowings",
         "FinanceLeaseLiabilityNoncurrent",
         "ConvertibleDebtNoncurrent",
-        "DebtNoncurrent", "NotesPayableNoncurrent",
+        "DebtNoncurrent", "NotesPayableNoncurrent", "LongTermNotesPayable",
         "LineOfCreditNoncurrent", "RevolvingCreditFacilityNoncurrent",
     ],
     "debt_total": [
