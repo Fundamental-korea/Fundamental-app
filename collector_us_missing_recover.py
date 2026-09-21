@@ -17,10 +17,11 @@ UA=os.environ.get("SEC_USER_AGENT","Fundamental-app contact@example.com")
 LAST=0.0
 
 EXTRA={
- "interest_expense":["InterestAndDebtExpense","FinanceCosts","InterestExpenseNonOperatingNet","InterestExpenseDebt"],
- "sga":["GeneralAndAdministrativeExpense","SellingExpense"],
- "equity":["PartnersCapital","MembersEquity","Equity","EquityAttributableToOwnersOfParent"],
+ "interest_expense":["InterestAndDebtExpense","FinanceCosts","InterestExpenseNonOperatingNet","InterestExpenseDebt","InterestExpenseNonOperating","InterestExpense"],
+ "sga":["GeneralAndAdministrativeExpense","SellingExpense","SellingGeneralAndAdministrativeExpense"],
+ "equity":["PartnersCapital","MembersEquity","Equity","EquityAttributableToOwnersOfParent","StockholdersEquity","StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest"],
  "debt_total":["TotalDebt","Debt","LongTermNotesPayable"],
+ "operating_income":["OperatingIncome","OperatingProfitLoss","IncomeFromOperations"],
 }
 SHARES=["WeightedAverageNumberOfDilutedSharesOutstanding","WeightedAverageNumberOfSharesOutstandingBasic","WeightedAverageNumberOfSharesOutstanding"]
 
