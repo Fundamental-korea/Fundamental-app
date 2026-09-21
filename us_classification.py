@@ -215,6 +215,29 @@ def _contains_any(text: str, keywords: list[str]) -> bool:
     return any(keyword in text for keyword in keywords)
 
 
+DIGITAL_ASSET_KEYWORDS = [
+    "bitcoin",
+    "blockchain",
+    "crypto",
+    "cryptocurrency",
+    "defi",
+    "digital asset",
+    "solana",
+    "ethereum",
+    "token",
+    "treasury",
+]
+
+
+def _is_obvious_digital_asset_business(company_name: str, sic_desc: Optional[str]) -> bool:
+    """Flag obvious digital-asset/crypto businesses sitting under generic SIC 6199."""
+    name = _normalize_text(company_name)
+    desc = _normalize_text(sic_desc)
+    return _contains_any(name, DIGITAL_ASSET_KEYWORDS) or _contains_any(
+        desc, DIGITAL_ASSET_KEYWORDS
+    )
+
+
 # ============================================================
 # 7. COMMON SECTOR — SIC
 # ============================================================
@@ -644,6 +667,11 @@ def classify_company_type(
     if sic_num == 6798:
         return "reit"
 
+    # Other SIC 65xx/67xx real-estate companies remain on the Standard
+    # scoring model, but expose their business type explicitly.
+    if sic_num is not None and 6500 <= sic_num <= 6799:
+        return "real_estate_company"
+
     if _contains_any(
         desc,
         [
@@ -989,6 +1017,19 @@ def classify_company(
         sic_desc=sic_desc,
     )
 
+    sic_num = _sic_int(sic)
+
+    # SIC 6199 is a catch-all bucket that currently contains many
+    # digital-asset / crypto / treasury businesses. Do not promote them
+    # into the Financial profile solely because of the SIC; keep them in
+    # Standard scoring but move the common sector to Other unless a manual
+    # override already handled the ticker above.
+    obvious_digital_asset = (
+        sic_num == 6199
+        and company_type in {"standard", "holding"}
+        and _is_obvious_digital_asset_business(company_name, sic_desc)
+    )
+
     # --------------------------------------------------------
     # 3. Common sector
     # --------------------------------------------------------
@@ -997,6 +1038,9 @@ def classify_company(
         sic=sic,
         sic_desc=sic_desc,
     )
+
+    if obvious_digital_asset:
+        sector_common = "other"
 
     # --------------------------------------------------------
     # 4. Financial special handling
@@ -1008,7 +1052,7 @@ def classify_company(
         "asset_manager",
         "broker_dealer",
         "bdc",
-    }:
+    } and not obvious_digital_asset:
         sector_common = "financials"
 
     elif company_type in {
