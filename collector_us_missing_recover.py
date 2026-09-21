@@ -116,7 +116,7 @@ def recover_row(sb,s,row):
         new[key]=packed
     if not changed:return False,"no-recovery"
     avg=(new.get("1y") or {}).get("avg") or {}
-    result={"ticker":row["ticker"],"period_scores":new,"base_year":latest,"total_score":int(round(avg["total_score"])) if avg.get("total_score") is not None else None,"grade":avg.get("grade"),"missing_metric_count":avg.get("missing_metric_count",0),"data_unavailable":False,"data_reliability":data_reliability_from_periods(new),"updated_at":datetime.now(timezone.utc).isoformat()}
+    result={"ticker":row["ticker"],"cik":row["_cik"],"period_scores":new,"base_year":latest,"total_score":int(round(avg["total_score"])) if avg.get("total_score") is not None else None,"grade":avg.get("grade"),"missing_metric_count":avg.get("missing_metric_count",0),"data_unavailable":False,"data_reliability":data_reliability_from_periods(new),"updated_at":datetime.now(timezone.utc).isoformat()}
     sb.table("US_Fundamental").upsert(result,on_conflict="ticker").execute()
     return True,"recovered"
 
