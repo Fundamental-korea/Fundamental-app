@@ -66,6 +66,14 @@ def main():
     score_null_count = score_null.count or 0
     print(f"usable rows missing total_score: {score_null_count}")
 
+    valuation_missing = 0
+    valuation_price_missing = 0
+    valuation_shares_missing = 0
+    valuation_period_shares_missing = 0
+    market_cap_math_errors = 0
+    per_math_errors = 0
+    pbr_math_errors = 0
+
     score_mismatch = 0
     missing_mismatch = 0
     score_out_of_range = 0
@@ -78,7 +86,10 @@ def main():
     while True:
         rows = (
             sb.table("US_Fundamental")
-            .select("ticker,total_score,missing_metric_count,period_scores")
+            .select(
+                "ticker,total_score,missing_metric_count,period_scores,"
+                "snapshot"
+            )
             .eq("data_unavailable", False)
             .order("ticker")
             .range(offset, offset + PAGE_SIZE - 1)
@@ -132,6 +143,53 @@ def main():
                 except (TypeError, ValueError):
                     coverage_out_of_range += 1
 
+            snapshot = row.get("snapshot") or {}
+            valuation = snapshot.get("valuation")
+            if not isinstance(valuation, dict):
+                valuation_missing += 1
+                continue
+
+            price = valuation.get("price")
+            current_shares = valuation.get("current_shares_outstanding")
+            period_shares = valuation.get("period_end_shares_outstanding")
+            eps = valuation.get("eps")
+            bps = valuation.get("bps")
+            market_cap = valuation.get("market_cap")
+            per = valuation.get("per")
+            pbr = valuation.get("pbr")
+
+            if price is None:
+                valuation_price_missing += 1
+            if current_shares is None or current_shares <= 0:
+                valuation_shares_missing += 1
+            if period_shares is None or period_shares <= 0:
+                valuation_period_shares_missing += 1
+
+            # Check derived math only when the required inputs are valid.
+            if (
+                price is not None and current_shares is not None
+                and price > 0 and current_shares > 0
+            ):
+                expected_mc = float(price) * float(current_shares)
+                if market_cap is None or abs(float(market_cap) - expected_mc) > max(1.0, abs(expected_mc) * 1e-6):
+                    market_cap_math_errors += 1
+
+            if (
+                price is not None and eps is not None
+                and price > 0 and eps > 0
+            ):
+                expected_per = float(price) / float(eps)
+                if per is None or abs(float(per) - expected_per) > max(0.01, abs(expected_per) * 1e-4):
+                    per_math_errors += 1
+
+            if (
+                price is not None and bps is not None
+                and price > 0 and bps > 0
+            ):
+                expected_pbr = float(price) / float(bps)
+                if pbr is None or abs(float(pbr) - expected_pbr) > max(0.01, abs(expected_pbr) * 1e-4):
+                    pbr_math_errors += 1
+
         print(
             f"[INTEGRITY] scanned={scanned} "
             f"score_mismatch={score_mismatch} "
@@ -147,6 +205,13 @@ def main():
     print(f"score_out_of_range: {score_out_of_range}")
     print(f"coverage_null: {coverage_null}")
     print(f"coverage_out_of_range: {coverage_out_of_range}")
+    print(f"valuation_missing: {valuation_missing}")
+    print(f"valuation_price_missing: {valuation_price_missing}")
+    print(f"valuation_shares_missing: {valuation_shares_missing}")
+    print(f"valuation_period_shares_missing: {valuation_period_shares_missing}")
+    print(f"market_cap_math_errors: {market_cap_math_errors}")
+    print(f"per_math_errors: {per_math_errors}")
+    print(f"pbr_math_errors: {pbr_math_errors}")
 
     failures = {
         "missing_cik": missing_cik_count,
@@ -158,25 +223,31 @@ def main():
         "score_out_of_range": score_out_of_range,
         "coverage_null": coverage_null,
         "coverage_out_of_range": coverage_out_of_range,
+        "market_cap_math_errors": market_cap_math_errors,
+        "per_math_errors": per_math_errors,
+        "pbr_math_errors": pbr_math_errors,
     }
     failed = {key: value for key, value in failures.items() if value}
 
+    # Missing market data is reported but is not treated as a mathematical
+    # integrity error; SEC/price providers can legitimately be unavailable for
+    # a small number of instruments.
     if failed:
         raise RuntimeError(f"US pipeline integrity validation failed: {failed}")
 
     sample = ["AAPL", "MSFT", "NVDA", "JPM", "O", "RTX", "GSBD", "ARCC"]
-    rows = (
+    sample_rows = (
         sb.table("US_Fundamental")
         .select(
             "ticker,total_score,grade,missing_metric_count,"
-            "data_reliability,snapshot_fiscal_end,snapshot_form,period_scores"
+            "data_reliability,snapshot_fiscal_end,snapshot_form,period_scores,snapshot"
         )
         .in_("ticker", sample)
         .execute()
         .data
         or []
     )
-    by_ticker = {row["ticker"]: row for row in rows}
+    by_ticker = {row["ticker"]: row for row in sample_rows}
 
     for ticker in sample:
         row = by_ticker.get(ticker)
@@ -189,6 +260,7 @@ def main():
             .get("avg") or {}
         )
         metrics = avg.get("metric_scores") or {}
+        valuation = ((row.get("snapshot") or {}).get("valuation") or {})
 
         print(
             f"sample {ticker}: "
@@ -198,6 +270,13 @@ def main():
             f"reliability={row.get('data_reliability')} "
             f"roic={(metrics.get('roic') or {}).get('value')} "
             f"interest_coverage={(metrics.get('interest_coverage') or {}).get('value')} "
+            f"price={valuation.get('price')} "
+            f"EPS={valuation.get('eps')} "
+            f"BPS={valuation.get('bps')} "
+            f"PER={valuation.get('per')} "
+            f"PBR={valuation.get('pbr')} "
+            f"shares={valuation.get('current_shares_outstanding')} "
+            f"period_shares={valuation.get('period_end_shares_outstanding')} "
             f"snapshot={row.get('snapshot_fiscal_end')} "
             f"form={row.get('snapshot_form')}"
         )
