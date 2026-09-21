@@ -70,7 +70,7 @@ class USSnapshotAndMetricTests(unittest.TestCase):
         self.assertIn("debt_total", INSTANT_METRICS)
         self.assertIn("LongTermDebtCurrent", EXACT_CONCEPTS["debt_current"])
         self.assertIn("LongTermDebtNoncurrent", EXACT_CONCEPTS["debt_noncurrent"])
-        self.assertIn("LongTermNotesPayable", EXACT_CONCEPTS["debt_noncurrent"])
+        self.assertIn("LongTermNotesPayable", EXACT_CONCEPTS["debt_total"])
         self.assertIn("NotesAndLoansPayableCurrent", EXACT_CONCEPTS["debt_current"])
         self.assertIn("LongTermDebt", EXACT_CONCEPTS["debt_total"])
 
