@@ -34,6 +34,15 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
+      - name: Read pilot limit
+        id: limit
+        run: |
+          limit=""
+          if [ -f US_ROIC_TRIGGER.txt ]; then
+            limit="$(tr -d '[:space:]' < US_ROIC_TRIGGER.txt)"
+          fi
+          echo "limit=$limit" >> "$GITHUB_OUTPUT"
+
       - name: Run ROIC recovery
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -41,8 +50,12 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
-          if [ -n "${{ inputs.limit }}" ]; then
-            python collector_us_roic_recover.py --limit "${{ inputs.limit }}"
+          limit="${{ inputs.limit }}"
+          if [ -z "$limit" ]; then
+            limit="${{ steps.limit.outputs.limit }}"
+          fi
+          if [ -n "$limit" ]; then
+            python collector_us_roic_recover.py --limit "$limit"
           else
             python collector_us_roic_recover.py
           fi
