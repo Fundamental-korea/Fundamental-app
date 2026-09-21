@@ -124,8 +124,18 @@ def main():
     ap=argparse.ArgumentParser();ap.add_argument("--limit",type=int,default=0);args=ap.parse_args()
     if not KEY:raise RuntimeError("SUPABASE_SECRET_KEY or SUPABASE_KEY is required")
     extend_aliases();sb=create_client(URL,KEY)
-    q=sb.table("US_Fundamental").select("ticker,cik,scoring_profile,period_scores").gte("missing_metric_count",1).lte("missing_metric_count",3).eq("data_unavailable",False)
+    # scoring_profile lives on US_Companies, not US_Fundamental.
+    q=sb.table("US_Fundamental").select("ticker,cik,period_scores").gte("missing_metric_count",1).lte("missing_metric_count",3).eq("data_unavailable",False)
     rows=q.limit(args.limit).execute().data if args.limit else q.execute().data
+    tickers=[r["ticker"] for r in rows if r.get("ticker")]
+    profile_map={}
+    for start in range(0,len(tickers),500):
+        batch=tickers[start:start+500]
+        data=sb.table("US_Companies").select("ticker,scoring_profile").in_("ticker",batch).execute().data or []
+        for item in data:
+            profile_map[item["ticker"]]=item.get("scoring_profile") or "standard"
+    for row in rows:
+        row["_scoring_profile"]=profile_map.get(row.get("ticker"),"standard")
     s=requests.Session();s.headers.update({"User-Agent":UA})
     done=0
     for i,row in enumerate(rows,1):
