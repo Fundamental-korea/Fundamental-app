@@ -45,6 +45,8 @@ EXACT_CONCEPTS = {
         "LongTermDebtAndFinanceLeaseObligationsCurrent", "CurrentBorrowings",
         "CurrentPortionOfLongtermBorrowings", "ShortTermBorrowings",
         "FinanceLeaseLiabilityCurrent", "ConvertibleDebtCurrent",
+        "DebtCurrent", "NotesPayableCurrent", "CommercialPaper",
+        "LineOfCreditCurrent", "RevolvingCreditFacilityCurrent",
     },
     "debt_noncurrent": {
         "LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
@@ -56,6 +58,7 @@ EXACT_CONCEPTS = {
         "LongTermDebt", "DebtAndCapitalLeaseObligations",
         "LongTermDebtCurrentAndNoncurrent", "LongTermDebtAndFinanceLeaseObligations",
         "DebtInstrumentCarryingAmount", "DebtAndFinanceLeaseLiabilities",
+        "Debt", "NotesPayable", "LineOfCredit", "RevolvingCreditFacility",
     },
     "interest_expense": {"InterestExpense", "InterestExpenseNonoperating", "InterestAndDebtExpense"},
     "operating_cash_flow": {"NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"},
