@@ -113,7 +113,13 @@ class EarningsEvent:
 def _env(name: str) -> str:
     value = os.getenv(name, "").strip()
     if not value:
-        raise RuntimeError(f"환경변수 {name}가 설정되어 있지 않습니다.")
+        try:
+            import streamlit as st
+            value = str(st.secrets.get(name, "")).strip()
+        except Exception:
+            value = ""
+    if not value:
+        raise RuntimeError(f"환경변수 또는 Streamlit secret {name}가 설정되어 있지 않습니다.")
     return value
 
 
@@ -343,7 +349,20 @@ def search_naver_news(
                 query=query,
             )
         )
-    return filter_investor_news(items)
+    # NAVER 검색 API 약관(2026-09-07 개정)에 따라 검색결과 자체를 임의로
+    # 재정렬/변형/삭제하지 않고, 질의어로 범위를 좁힌 검색결과를 그대로 반환한다.
+    return items
+
+
+def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 8) -> list[NaverNewsItem]:
+    """Fetch company-specific NAVER news for the individual stock page."""
+    terms = [str(stock_name).strip()]
+    if stock_code and str(stock_code).strip() and not str(stock_code).isdigit():
+        terms.append(str(stock_code).strip())
+    query = " ".join(terms)
+    if not query:
+        return []
+    return search_naver_news(query, display=display, sort="date")
 
 
 def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10) -> list[NaverNewsItem]:
@@ -493,6 +512,7 @@ __all__ = [
     "fetch_dart_disclosures",
     "build_earnings_events",
     "search_naver_news",
+    "fetch_stock_news",
     "fetch_macro_news",
     "filter_investor_news",
     "persist_earnings_events",
