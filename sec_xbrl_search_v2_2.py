@@ -45,7 +45,7 @@ EXACT_CONCEPTS = {
         "LongTermDebtAndFinanceLeaseObligationsCurrent", "CurrentBorrowings",
         "CurrentPortionOfLongtermBorrowings", "ShortTermBorrowings",
         "FinanceLeaseLiabilityCurrent", "ConvertibleDebtCurrent",
-        "DebtCurrent", "NotesPayableCurrent", "CommercialPaper",
+        "DebtCurrent", "NotesPayableCurrent", "NotesAndLoansPayableCurrent", "ShortTermBankLoansAndNotesPayable", "CommercialPaper",
         "LineOfCreditCurrent", "RevolvingCreditFacilityCurrent",
     },
     "debt_noncurrent": {
