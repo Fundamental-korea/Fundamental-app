@@ -4,13 +4,16 @@ on:
   push:
     paths:
       - "US_ROIC_TRIGGER.txt"
+  workflow_run:
+    workflows: ["US Missing Metrics Recovery 1-3"]
+    types: [completed]
   workflow_dispatch:
     inputs:
       limit:
         description: "Optional maximum number of ROIC-missing Standard companies"
         required: false
         default: ""
-
+        
 permissions:
   contents: read
 
@@ -20,6 +23,9 @@ concurrency:
 
 jobs:
   recover:
+    if: >
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
