@@ -5,7 +5,7 @@ on:
     paths:
       - "US_SCORE_METADATA_TRIGGER.txt"
   workflow_run:
-    workflows: ["US Missing Metrics Recovery 4-9"]
+    workflows: ["US Score Gap Recovery"]
     types: [completed]
   workflow_dispatch:
     inputs:
@@ -24,8 +24,8 @@ concurrency:
 jobs:
   backfill:
     if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
+      ${{ github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
