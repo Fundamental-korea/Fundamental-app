@@ -27,6 +27,7 @@ STANDARD_METRICS = (
     "revenue", "eps", "operating_income", "liabilities", "current_assets",
     "current_liabilities", "cash", "receivables", "inventory",
     "interest_expense", "operating_cash_flow", "sga",
+    "equity", "debt_current", "debt_noncurrent", "debt_total",
 )
 
 
