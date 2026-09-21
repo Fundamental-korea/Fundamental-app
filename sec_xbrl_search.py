@@ -42,6 +42,9 @@ METRIC_TERMS = {
     "operating_cash_flow": ["net cash provided by used in operating activities", "cash flows from operating activities", "operating cash flow"],
     "sga": ["selling general and administrative", "general and administrative", "selling and marketing"],
     "eps": ["earnings per share", "eps"],
+    "debt_current": ["current debt", "current borrowings", "current portion of long term debt", "short-term borrowings", "finance lease liability current"],
+    "debt_noncurrent": ["long-term debt", "noncurrent debt", "noncurrent borrowings", "long-term borrowings", "finance lease liability noncurrent"],
+    "debt_total": ["total debt", "total borrowings", "debt and capital lease obligations", "debt and finance lease liabilities"],
 }
 
 
