@@ -64,6 +64,17 @@ class USSnapshotAndMetricTests(unittest.TestCase):
         self.assertIsNotNone(metrics["roic"])
         self.assertAlmostEqual(metrics["roic"], 9.75, places=2)
 
+
+    def test_roic_does_not_assume_missing_debt_component_is_zero(self):
+        facts = self._companyfacts()
+        facts["facts"]["us-gaap"]["CurrentBorrowings"] = {"units": {"USD": [{
+            "val": 200, "fy": 2025, "fp": "FY", "form": "10-K",
+            "filed": "2026-02-15", "end": "2025-12-31"
+        }]}}
+        index = build_fact_index(facts)
+        metrics = annual_metrics(index, 2025)
+        self.assertIsNone(metrics["roic"])
+
     def test_resolver_supports_debt_metrics(self):
         self.assertIn("debt_current", INSTANT_METRICS)
         self.assertIn("debt_noncurrent", INSTANT_METRICS)
