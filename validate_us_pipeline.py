@@ -53,12 +53,25 @@ def main():
         .is_("snapshot_fiscal_end", "null")
         .execute()
     )
-    print(f"usable rows missing snapshot_fiscal_end: {missing_snapshot.count or 0}")
+    missing_snapshot_count = missing_snapshot.count or 0
+    print(f"usable rows missing snapshot_fiscal_end: {missing_snapshot_count}")
+
+    score_null = (
+        sb.table("US_Fundamental")
+        .select("ticker", count="exact", head=True)
+        .eq("data_unavailable", False)
+        .is_("total_score", "null")
+        .execute()
+    )
+    score_null_count = score_null.count or 0
+    print(f"usable rows missing total_score: {score_null_count}")
 
     score_mismatch = 0
     missing_mismatch = 0
     score_out_of_range = 0
+    coverage_null = 0
     coverage_out_of_range = 0
+    canonical_1y_missing = 0
     scanned = 0
 
     offset = 0
@@ -82,10 +95,16 @@ def main():
             if total_score is not None and not 0 <= total_score <= 100:
                 score_out_of_range += 1
 
+            periods = row.get("period_scores") or {}
             avg = (
-                ((row.get("period_scores") or {}).get("1y") or {})
+                ((periods.get("1y") or {})
+                 if isinstance(periods, dict) else {})
                 .get("avg") or {}
             )
+
+            if "1y" not in periods:
+                canonical_1y_missing += 1
+
             ps_score = avg.get("total_score")
             ps_missing = avg.get("missing_metric_count")
             coverage = avg.get("coverage_pct")
@@ -104,7 +123,9 @@ def main():
                 except (TypeError, ValueError):
                     missing_mismatch += 1
 
-            if coverage is not None:
+            if coverage is None and "1y" in periods:
+                coverage_null += 1
+            elif coverage is not None:
                 try:
                     if not 0 <= float(coverage) <= 100:
                         coverage_out_of_range += 1
@@ -114,7 +135,8 @@ def main():
         print(
             f"[INTEGRITY] scanned={scanned} "
             f"score_mismatch={score_mismatch} "
-            f"missing_mismatch={missing_mismatch}",
+            f"missing_mismatch={missing_mismatch} "
+            f"canonical_1y_missing={canonical_1y_missing}",
             flush=True,
         )
 
@@ -123,17 +145,24 @@ def main():
         offset += PAGE_SIZE
 
     print(f"score_out_of_range: {score_out_of_range}")
+    print(f"coverage_null: {coverage_null}")
     print(f"coverage_out_of_range: {coverage_out_of_range}")
 
-    if missing_cik_count or score_mismatch or missing_mismatch or score_out_of_range or coverage_out_of_range:
-        raise RuntimeError(
-            "US pipeline integrity validation failed: "
-            f"missing_cik={missing_cik_count}, "
-            f"score_mismatch={score_mismatch}, "
-            f"missing_mismatch={missing_mismatch}, "
-            f"score_out_of_range={score_out_of_range}, "
-            f"coverage_out_of_range={coverage_out_of_range}"
-        )
+    failures = {
+        "missing_cik": missing_cik_count,
+        "missing_snapshot": missing_snapshot_count,
+        "score_null": score_null_count,
+        "score_mismatch": score_mismatch,
+        "missing_mismatch": missing_mismatch,
+        "canonical_1y_missing": canonical_1y_missing,
+        "score_out_of_range": score_out_of_range,
+        "coverage_null": coverage_null,
+        "coverage_out_of_range": coverage_out_of_range,
+    }
+    failed = {key: value for key, value in failures.items() if value}
+
+    if failed:
+        raise RuntimeError(f"US pipeline integrity validation failed: {failed}")
 
     sample = ["AAPL", "MSFT", "NVDA", "JPM", "O", "RTX", "GSBD", "ARCC"]
     rows = (
@@ -174,7 +203,7 @@ def main():
         )
 
     print("[VALIDATION] completed successfully.")
-    
+
 
 if __name__ == "__main__":
     main()
