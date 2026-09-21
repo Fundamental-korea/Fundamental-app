@@ -8,13 +8,14 @@ import streamlit.components.v1 as components
 from supabase import create_client
 import yfinance as yf
 import base64
+from datetime import date, timedelta
 
 from search_aliases import aliases_for
 
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
 from historical_pattern import analyze_all_indicator_patterns
-from news_earnings import filter_investor_news, fetch_macro_news
+from news_earnings import fetch_dart_disclosures, fetch_macro_news, fetch_stock_news, build_earnings_events
 import importlib
 import chart_indicators as _chart_indicators
 _chart_indicators = importlib.reload(_chart_indicators)
