@@ -173,6 +173,32 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
             )
         return None
 
+    def _derive_duration_metric(self, rows, metric, year):
+        derived = super()._derive_duration_metric(rows, metric, year)
+        if derived is not None or metric != "operating_income":
+            return derived
+
+        # Some issuers omit a GAAP OperatingIncomeLoss subtotal but disclose
+        # GrossProfit and OperatingExpenses in the same XBRL context.
+        gross = self._same_context_duration(rows, {"GrossProfit", "GrossProfitLoss"}, year)
+        opex = self._same_context_duration(rows, {"OperatingExpenses", "OperatingExpense", "OperatingExpensesAndCostOfRevenue"}, year)
+        for key, g in gross.items():
+            if key not in opex:
+                continue
+            o = opex[key]
+            return XBRLCandidate(
+                metric="operating_income", namespace="derived",
+                concept="DerivedOperatingIncomeFromGrossProfitMinusOperatingExpenses",
+                label="Operating income (derived from gross profit and operating expenses)",
+                value=float(g["value"]) - float(o["value"]),
+                unit=g.get("unit") or o.get("unit") or "",
+                end=g.get("end"), start=g.get("start"), fy=g.get("fy"),
+                form=g.get("form"), filed=g.get("filed"), instant=False,
+                dimensioned=False, source="filing-xbrl-derived", score=103.0,
+                reason="same-context duration identity: GrossProfit - OperatingExpenses",
+            )
+        return None
+
     def search_filing(self, cik, metric, year=None, include_dimensioned=False,
                       submissions=None, limit=20):
         """Run Inline-XBRL filtering with a V2.3.8 exact-concept fast path."""
