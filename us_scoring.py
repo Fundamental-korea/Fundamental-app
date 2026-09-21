@@ -25,7 +25,7 @@ from typing import Callable
 # Version / grades
 # ---------------------------------------------------------------------------
 
-US_SCORING_VERSION = "1.1"
+US_SCORING_VERSION = "1.2"
 US_PROFILES = {"standard", "financial", "reit", "bdc", "defense", "utility"}
 
 US_GRADE_CUTOFFS = {
@@ -395,6 +395,17 @@ def _coverage_cap(available_weight: float, total_weight: float) -> float:
     return 70.0
 
 
+def score_confidence_level(coverage_pct: float) -> str:
+    """Describe score data completeness without implying forecast accuracy."""
+    if coverage_pct >= 90.0:
+        return "high"
+    if coverage_pct >= 75.0:
+        return "medium"
+    if coverage_pct >= 60.0:
+        return "low"
+    return "insufficient"
+
+
 def evaluate_us_grade(total_score: float):
     if total_score >= US_GRADE_CUTOFFS["S"]:
         return "S", "방어력 최상 (잠정)"
@@ -476,6 +487,7 @@ def calculate_us_score(metrics: dict, profile: str = "standard") -> dict:
         available_weight / total_weight * 100.0,
         1,
     ) if total_weight else 0.0
+    confidence_level = score_confidence_level(coverage_pct)
 
     return {
         "scoring_version": US_SCORING_VERSION,
@@ -488,6 +500,7 @@ def calculate_us_score(metrics: dict, profile: str = "standard") -> dict:
         "available_weight": available_weight,
         "coverage_pct": coverage_pct,
         "score_cap": cap,
+        "confidence_level": confidence_level,
         "missing_metric_count": sum(
             1 for metric in weights if metrics.get(metric) is None
         ),
