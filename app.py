@@ -3468,6 +3468,7 @@ else:
         overview = {}  # label -> (value_str, tone)
         live_price = None
         price_asof = None
+        price_age_days = None
         price_source = None
         price_bar_type = None
 
@@ -3479,6 +3480,11 @@ else:
                 parsed_price_date = pd.to_datetime(last_row["Date"], errors="coerce")
                 if not pd.isna(parsed_price_date):
                     price_asof = parsed_price_date.date()
+                    try:
+                        market_tz = "Asia/Seoul" if is_kr_stock else "America/New_York"
+                        price_age_days = (pd.Timestamp.now(tz=market_tz).date() - price_asof).days
+                    except Exception:
+                        price_age_days = None
             price_source = ohlcv_overview_df.attrs.get(
                 "market_data_source",
                 "FinanceDataReader" if is_kr_stock else "yfinance",
@@ -3623,12 +3629,19 @@ else:
             price_meta = []
             if price_asof:
                 price_meta.append(f"가격 기준일 {price_asof}")
+            if price_age_days is not None:
+                price_meta.append(f"기준일로부터 {max(price_age_days, 0)}일")
             if price_source:
                 price_meta.append(f"출처 {price_source}")
             if price_bar_type:
                 price_meta.append(f"봉 {price_bar_type}")
             if price_meta:
                 st.caption("📈 시장 데이터: " + " · ".join(price_meta))
+            if price_age_days is not None and price_age_days > 3:
+                st.warning(
+                    "⚠️ 현재 표시된 시장가격이 시장 기준일보다 3일 이상 경과했습니다. "
+                    "주말·휴장일 또는 외부 시세 제공 지연일 수 있으므로 가격 기반 지표를 확인할 때 기준일을 함께 보세요."
+                )
         else:
             st.info("시세 스냅샷 데이터를 불러올 수 없습니다.")
 
