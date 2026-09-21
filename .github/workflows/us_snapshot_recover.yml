@@ -4,6 +4,9 @@ on:
   push:
     paths:
       - "US_SNAPSHOT_TRIGGER.txt"
+  workflow_run:
+    workflows: ["US Standard ROIC Recovery"]
+    types: [completed]
   workflow_dispatch:
 
 permissions:
@@ -15,6 +18,9 @@ concurrency:
 
 jobs:
   backfill:
+    if: >
+      github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 120
 
