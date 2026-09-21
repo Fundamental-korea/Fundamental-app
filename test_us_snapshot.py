@@ -70,6 +70,8 @@ class USSnapshotAndMetricTests(unittest.TestCase):
         self.assertIn("debt_total", INSTANT_METRICS)
         self.assertIn("LongTermDebtCurrent", EXACT_CONCEPTS["debt_current"])
         self.assertIn("LongTermDebtNoncurrent", EXACT_CONCEPTS["debt_noncurrent"])
+        self.assertIn("LongTermNotesPayable", EXACT_CONCEPTS["debt_noncurrent"])
+        self.assertIn("NotesAndLoansPayableCurrent", EXACT_CONCEPTS["debt_current"])
         self.assertIn("LongTermDebt", EXACT_CONCEPTS["debt_total"])
 
     def test_standard_fallback_snapshot_from_index(self):
