@@ -150,6 +150,32 @@ class USScoringStructureTest(unittest.TestCase):
             self.assertGreaterEqual(first["total_score"], 0)
             self.assertLessEqual(first["total_score"], 100)
 
+
+    def test_score_confidence_levels(self):
+        self.assertEqual(us_scoring.score_confidence_level(100.0), "high")
+        self.assertEqual(us_scoring.score_confidence_level(90.0), "high")
+        self.assertEqual(us_scoring.score_confidence_level(75.0), "medium")
+        self.assertEqual(us_scoring.score_confidence_level(60.0), "low")
+        self.assertEqual(us_scoring.score_confidence_level(59.9), "insufficient")
+
+    def test_score_returns_confidence_metadata(self):
+        metrics = {
+            "revenue_growth": 12,
+            "eps_growth": 15,
+            "opm": 20,
+            "roic": None,
+            "debt_rate": 75,
+            "quick_ratio": 1.2,
+            "interest_coverage": 8,
+            "ocf_ratio": 1.1,
+            "sga_ratio": 16,
+            "downturn_defense": 5,
+        }
+        result = us_scoring.calculate_us_score(metrics, "standard")
+        self.assertEqual(result["coverage_pct"], 85.0)
+        self.assertEqual(result["confidence_level"], "medium")
+        self.assertEqual(result["score_cap"], 92.0)
+
     def test_extreme_flags_do_not_change_score(self):
         base = {
             "revenue_growth": 5,
