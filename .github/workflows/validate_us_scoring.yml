@@ -15,6 +15,7 @@ on:
       - "test_us_recovery.py"
       - "collector_us_snapshot_recover.py"
       - "test_us_snapshot.py"
+      - "collector_us_roic_recover.py"
       - ".github/workflows/validate_us_scoring.yml"
   workflow_dispatch:
 
@@ -37,7 +38,7 @@ jobs:
         run: python -m pip install -r requirements.txt
 
       - name: Compile changed Python modules
-        run: python -m py_compile app.py collector_us_fundamental.py collector_us_standard_fallback.py collector_us_utility_v4.py collector_us_full_recollect.py collector_us_recover_unupdated.py collector_us_snapshot_recover.py us_scoring.py chart_indicators.py historical_pattern.py search_aliases.py test_us_scoring.py test_historical_pattern.py test_chart_indicators.py test_us_recovery.py test_us_snapshot.py
+        run: python -m py_compile app.py collector_us_fundamental.py collector_us_standard_fallback.py collector_us_utility_v4.py collector_us_full_recollect.py collector_us_recover_unupdated.py collector_us_snapshot_recover.py collector_us_roic_recover.py us_scoring.py chart_indicators.py historical_pattern.py search_aliases.py test_us_scoring.py test_historical_pattern.py test_chart_indicators.py test_us_recovery.py test_us_snapshot.py
 
       - name: Run regression tests
         run: python -m unittest -v test_us_scoring.py test_historical_pattern.py test_chart_indicators.py test_us_recovery.py
