@@ -2883,7 +2883,7 @@ def _render_news_cards(items, limit=6, title="📰 Live News", subtitle=""):
             <article class="live-news-card">
               <div class="live-news-meta">
                 <span class="live-news-category">NAVER 뉴스 검색 결과</span>
-                <span class="live-news-source">{_escape_html(query)}</span>
+                <span class="live-news-source">검색어 · {_escape_html(query)}</span>
               </div>
               <a class="live-news-title" href="{_escape_html(article_url or original_url or '#')}" target="_blank" rel="noopener noreferrer">{_escape_html(title_text)}</a>
               <div class="live-news-desc">{_escape_html(desc_text)}</div>
