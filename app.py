@@ -3430,27 +3430,22 @@ elif not selected_code:
         )
 
     with main_content:
-        # 상단 5개 메뉴는 기존 홈의 핵심 네비게이션으로 유지한다.
-        nav_us, nav_kr, nav_news, nav_chart, nav_earnings = st.tabs(
+        # 기존 5개 메뉴의 위치는 그대로 유지하되, 검색창 아래 콘텐츠를 실제로 전환할 수 있도록
+        # 가로형 radio를 탭처럼 스타일링한다. (native st.tabs는 선택 상태를 외부에서 읽기 어려움)
+        home_nav = st.radio(
+            "홈 메뉴",
             [
                 "US Market Overview",
                 "Korea Market Overview",
                 "Live News",
                 "Chart Analysis",
                 "Earnings Calendar",
-            ]
+            ],
+            index=2,
+            horizontal=True,
+            label_visibility="collapsed",
+            key="home_navigation",
         )
-
-        with nav_us:
-            st.caption("🇺🇸 미국 시장: 미국 주요 지수·매크로·미국 기업 관련 정보를 확인하는 공간입니다.")
-        with nav_kr:
-            st.caption("🇰🇷 한국 시장: 국내 지수·정책·공시 및 한국 기업 관련 정보를 확인하는 공간입니다.")
-        with nav_news:
-            st.caption("📰 Live News: 국가 구분보다 시장 영향도가 큰 주요 경제·금융 뉴스를 모아보는 공간입니다.")
-        with nav_chart:
-            st.caption("📊 Chart Analysis: 기존 차트 분석 기능은 그대로 유지됩니다.")
-        with nav_earnings:
-            st.caption("📅 Earnings Calendar: DART에 보고된 잠정실적·정기보고서 이벤트를 구분해 보여줍니다.")
 
         combined_stocks_db = get_combined_stock_db()
 
@@ -3458,8 +3453,26 @@ elif not selected_code:
         st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
         render_unified_search_box(stock_db=combined_stocks_db)
 
-        # 검색창 바로 아래가 메인 뉴스 영역.
-        render_home_live_news(limit=6)
+        # 메인 Live News는 검색창 바로 아래가 기본 화면이다.
+        if home_nav == "Live News":
+            render_home_live_news(limit=6)
+        elif home_nav == "US Market Overview":
+            render_home_market_overview("US")
+        elif home_nav == "Korea Market Overview":
+            render_home_market_overview("KR")
+        elif home_nav == "Chart Analysis":
+            st.markdown(
+                "<div class='live-news-section'><div class='live-news-section-title'>📊 Chart Analysis</div>"
+                "<div class='live-news-section-subtitle'>기존 차트 분석 기능은 그대로 유지됩니다. 종목을 선택하면 상세 기술적 분석 화면으로 이동합니다.</div></div>",
+                unsafe_allow_html=True,
+            )
+            if st.button("📈 Chart Analysis 열기", use_container_width=False, key="home_open_chart_analysis"):
+                st.query_params["view"] = "analysis_search"
+                st.query_params.pop("code", None)
+                st.rerun()
+        elif home_nav == "Earnings Calendar":
+            render_home_earnings_calendar(limit=12)
+
 
         # 뉴스 아래로 탐색용 3개 카드를 더 내려 배치한다.
         st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
