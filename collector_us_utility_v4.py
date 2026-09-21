@@ -12,7 +12,10 @@ from datetime import datetime, timezone
 import requests
 from supabase import create_client
 
-from collector_us_fundamental import SUPABASE_URL, SUPABASE_KEY, SEC_USER_AGENT, SEC_FACTS_URL, SEC_SUBMISSIONS_URL, fetch_json
+from collector_us_fundamental import (
+    SUPABASE_URL, SUPABASE_KEY, SEC_USER_AGENT, SEC_FACTS_URL, SEC_SUBMISSIONS_URL,
+    fetch_json, build_latest_snapshot,
+)
 from downturn_us import BENCHMARK, _close_series, calculate_downturn_defense
 from us_scoring import calculate_us_score
 from us_utility_extraction_v4 import REVENUE_TAGS, OPERATING_INCOME_TAGS, NET_INCOME_TAGS, ASSETS_TAGS, pick_flow, pick_instant, pick_equity, pick_eps, pick_interest, pick_debt, pick_ocf, pick_capex, pick_dividend, core_years
@@ -124,7 +127,26 @@ def build_result(ticker,cik,company_name,facts,submissions,market,stock,session)
             "metrics": metrics,
         }
     latest_row=period_scores.get("1y");score=latest_row["avg"]["total_score"] if latest_row else None
-    return {"ticker":ticker,"cik":str(cik),"company_name":company_name,"sector":"utilities","base_year":latest,"period_scores":period_scores,"total_score":int(round(score)) if score is not None else None,"grade":latest_row["avg"]["grade"] if latest_row else None,"data_unavailable":not bool(period_scores),"data_reliability":"high" if len(period_scores)>=3 else ("medium" if period_scores else "low"),"missing_metric_count":latest_row["avg"]["missing_metric_count"] if latest_row else None,"updated_at":datetime.now(timezone.utc).isoformat(),"downturn_defense":downturn_value,"downturn_detail":downturn_detail}
+    snapshot = build_latest_snapshot(facts)
+    result = {
+        "ticker":ticker,"cik":str(cik),"company_name":company_name,"sector":"utilities",
+        "base_year":latest,"period_scores":period_scores,
+        "total_score":int(round(score)) if score is not None else None,
+        "grade":latest_row["avg"]["grade"] if latest_row else None,
+        "data_unavailable":not bool(period_scores),
+        "data_reliability":"high" if len(period_scores)>=3 else ("medium" if period_scores else "low"),
+        "missing_metric_count":latest_row["avg"]["missing_metric_count"] if latest_row else None,
+        "updated_at":datetime.now(timezone.utc).isoformat(),
+        "downturn_defense":downturn_value,"downturn_detail":downturn_detail,
+        "snapshot": snapshot,
+        "snapshot_fiscal_end": snapshot.get("fiscal_end") if snapshot else None,
+        "snapshot_period": snapshot.get("fiscal_period") if snapshot else None,
+        "snapshot_form": snapshot.get("form") if snapshot else None,
+        "snapshot_filed": snapshot.get("filed") if snapshot else None,
+        "snapshot_basis": snapshot.get("basis") if snapshot else None,
+        "snapshot_updated_at": datetime.now(timezone.utc).isoformat(),
+    }
+    return result
 
 def main():
     p=argparse.ArgumentParser();p.add_argument("--ticker");p.add_argument("--tickers");p.add_argument("--all",action="store_true",dest="all_rows");a=p.parse_args()
