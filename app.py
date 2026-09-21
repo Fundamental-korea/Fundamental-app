@@ -8,12 +8,14 @@ import streamlit.components.v1 as components
 from supabase import create_client
 import yfinance as yf
 import base64
+from datetime import date, timedelta
 
 from search_aliases import aliases_for
 
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
 from historical_pattern import analyze_all_indicator_patterns
+from news_earnings import fetch_dart_disclosures, fetch_macro_news, fetch_stock_news, build_earnings_events
 import importlib
 import chart_indicators as _chart_indicators
 _chart_indicators = importlib.reload(_chart_indicators)
@@ -391,6 +393,181 @@ st.markdown(
         color: #D97706 !important;
         font-size: 20px !important;
         font-weight: 900 !important;
+    }
+
+    /* 홈 5개 네비게이션을 실제 클릭 가능한 탭처럼 보이게 한다. */
+    div[data-testid="stRadio"] {
+        margin-bottom: 4px;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 0 !important;
+        border-bottom: 1px solid #E5E7EB;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label {
+        padding: 9px 14px 10px !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        border-bottom: 3px solid transparent !important;
+        cursor: pointer !important;
+        font-weight: 850 !important;
+        color: #4B5563 !important;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label[data-checked="true"] {
+        color: #D97706 !important;
+        border-bottom-color: #F4A261 !important;
+        background: transparent !important;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label > div:first-child {
+        display: none !important;
+    }
+
+    .live-news-section {
+        margin-top: 20px;
+        margin-bottom: 8px;
+    }
+    .live-news-section-title {
+        font-size: 20px;
+        font-weight: 850;
+        color: #1A1A1A !important;
+        margin-bottom: 4px;
+    }
+    .live-news-section-subtitle {
+        font-size: 12px;
+        color: #6B7280 !important;
+        margin-bottom: 14px;
+    }
+    .live-news-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-bottom: 10px;
+    }
+    .live-news-card {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 10px;
+        padding: 15px 16px 14px;
+        min-height: 154px;
+        box-shadow: 0 2px 7px rgba(15, 23, 42, 0.035);
+        transition: border-color .15s ease, box-shadow .15s ease, transform .15s ease;
+        box-sizing: border-box;
+    }
+    .live-news-card:hover {
+        border-color: #D1D5DB;
+        box-shadow: 0 5px 14px rgba(15, 23, 42, 0.06);
+        transform: translateY(-1px);
+    }
+    .live-news-meta {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 8px;
+        margin-bottom: 9px;
+        color: #6B7280 !important;
+        font-size: 11px;
+        font-weight: 700;
+    }
+    .live-news-source {
+        color: #4B5563 !important;
+        font-weight: 800;
+    }
+    .live-news-category {
+        color: #6B7280 !important;
+        font-weight: 700;
+    }
+    .live-news-title {
+        color: #1A1A1A !important;
+        font-size: 15px;
+        line-height: 1.42;
+        font-weight: 800;
+        text-decoration: none !important;
+        display: -webkit-box;
+        -webkit-line-clamp: 3;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .live-news-desc {
+        color: #6B7280 !important;
+        font-size: 12px;
+        line-height: 1.45;
+        margin-top: 7px;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+    }
+    .live-news-footer {
+        color: #9CA3AF !important;
+        font-size: 10px;
+        margin-top: 10px;
+    }
+    .news-empty-state {
+        background: #FAFAFA;
+        border: 1px solid #E5E7EB;
+        border-radius: 10px;
+        padding: 18px;
+        color: #6B7280 !important;
+        font-size: 13px;
+    }
+    @media (max-width: 900px) {
+        .live-news-grid { grid-template-columns: 1fr; }
+    }
+
+    .earnings-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding: 13px 14px;
+        margin-bottom: 7px;
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 10px;
+    }
+    .earnings-name {
+        color: #1A1A1A !important;
+        font-size: 14px;
+        font-weight: 850;
+    }
+    .earnings-report {
+        color: #6B7280 !important;
+        font-size: 11px;
+        margin-top: 4px;
+    }
+    .earnings-date {
+        color: #6B7280 !important;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+    .earnings-date a {
+        color: #D97706 !important;
+        text-decoration: none !important;
+        font-weight: 800;
+    }
+    .earnings-primary,
+    .earnings-secondary {
+        display: inline-block;
+        margin-left: 7px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+    }
+    .earnings-primary {
+        background: #FFF7ED;
+        color: #9A3412 !important;
+        border: 1px solid #FED7AA;
+    }
+    .earnings-secondary {
+        background: #F3F4F6;
+        color: #4B5563 !important;
+        border: 1px solid #E5E7EB;
+    }
+    @media (max-width: 700px) {
+        .earnings-row { flex-direction: column; align-items: flex-start; }
+        .earnings-date { white-space: normal; }
     }
 
     .bottom-cards-wrapper {
@@ -1256,6 +1433,7 @@ def render_us_fundamental_report(code, data):
 
         st.markdown(f"## 🇺🇸 [{company_name}] 미국 펀더멘탈 방어력 분석")
         st.caption(f"SEC 공시 기반 · {profile_label} · {profile_desc}")
+        render_home_stock_news(company_name, code, limit=6)
 
         if not period_scores:
             st.warning(
@@ -2608,6 +2786,207 @@ body .stApp [style*="#F1F5F9"] {
     st.markdown(final_dark_css, unsafe_allow_html=True)
 
 
+# ---------------------------------------------------------------------------
+# +알파: 홈 화면 Live News / Earnings Calendar preview
+# ---------------------------------------------------------------------------
+def _format_news_time(value):
+    if not value:
+        return ""
+    try:
+        ts = pd.to_datetime(value)
+        if pd.isna(ts):
+            return ""
+        return ts.strftime("%Y.%m.%d %H:%M")
+    except Exception:
+        return str(value)[:16]
+
+
+def _escape_html(value):
+    return (
+        str(value or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#39;")
+    )
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_home_macro_news(display=8):
+    return fetch_macro_news(display=display)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_home_earnings_events(days_back=30):
+    disclosures = fetch_dart_disclosures(
+        start_date=date.today() - timedelta(days=days_back),
+        end_date=date.today(),
+        page_count=100,
+        max_pages=20,
+    )
+    return build_earnings_events(disclosures)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_home_market_indices(market):
+    specs = (
+        [("S&P 500", "^GSPC"), ("Nasdaq", "^IXIC"), ("Dow Jones", "^DJI")]
+        if market == "US"
+        else [("KOSPI", "^KS11"), ("KOSDAQ", "^KQ11")]
+    )
+    result = []
+    for label, ticker in specs:
+        try:
+            hist = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=False)
+            if hist is None or hist.empty or "Close" not in hist.columns:
+                continue
+            close = hist["Close"].dropna()
+            if close.empty:
+                continue
+            latest = float(close.iloc[-1])
+            previous = float(close.iloc[-2]) if len(close) >= 2 else latest
+            change_pct = ((latest / previous) - 1.0) * 100.0 if previous else 0.0
+            result.append({"label": label, "value": latest, "change_pct": change_pct})
+        except Exception:
+            continue
+    return result
+
+
+def _render_news_cards(items, limit=6, title="📰 Live News", subtitle=""):
+    st.markdown(
+        f"""
+        <div class="live-news-section">
+          <div class="live-news-section-title">{title}</div>
+          <div class="live-news-section-subtitle">{subtitle}</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if not items:
+        st.markdown(
+            '<div class="news-empty-state">현재 표시할 뉴스가 없습니다. API 키 설정 또는 잠시 후 다시 시도해 주세요.</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    cards = []
+    for item in list(items)[:limit]:
+        title_text = item.title if hasattr(item, "title") else item.get("title", "")
+        desc_text = item.description if hasattr(item, "description") else item.get("description", "")
+        article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
+        original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
+        pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
+        query = item.query if hasattr(item, "query") else ""
+        cards.append(
+            f"""
+            <article class="live-news-card">
+              <div class="live-news-meta">
+                <span class="live-news-category">NAVER 뉴스 검색 결과</span>
+                <span class="live-news-source">{_escape_html(query)}</span>
+              </div>
+              <a class="live-news-title" href="{_escape_html(article_url or original_url or '#')}" target="_blank" rel="noopener noreferrer">{_escape_html(title_text)}</a>
+              <div class="live-news-desc">{_escape_html(desc_text)}</div>
+              <div class="live-news-footer">{_format_news_time(pub_date)} · 원문 보기 ↗</div>
+            </article>
+            """
+        )
+    st.markdown('<div class="live-news-grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
+
+
+def render_home_live_news(limit=6):
+    """메인 Live News: 시장 영향도가 큰 거시·금융 질의를 NAVER 검색 API로 실시간 조회."""
+    try:
+        items = _get_home_macro_news(display=max(limit, 8))
+    except Exception as exc:
+        items = []
+        st.warning(f"Live News를 불러오지 못했습니다: {exc}")
+
+    _render_news_cards(
+        items,
+        limit=limit,
+        title="📰 Live News",
+        subtitle="금리·환율·미국 증시·국내 증시·정책 등 시장 전반의 주요 뉴스를 원문과 함께 보여드립니다.",
+    )
+    st.caption("NAVER Open API 뉴스 검색 결과 · 원문 출처 및 원문 링크를 함께 제공합니다.")
+
+
+def render_home_stock_news(stock_name, stock_code, limit=6):
+    """종목 상세 페이지의 종목별 뉴스."""
+    try:
+        items = fetch_stock_news(stock_name, stock_code, display=max(limit, 8))
+    except Exception:
+        items = []
+    if not items:
+        return
+    _render_news_cards(
+        items,
+        limit=limit,
+        title=f"📰 {stock_name} 관련 뉴스",
+        subtitle="해당 종목명을 기준으로 조회한 최신 뉴스 검색 결과입니다.",
+    )
+    st.caption("NAVER Open API 뉴스 검색 결과 · 검색결과 자체는 임의로 재정렬하거나 편집하지 않습니다.")
+
+
+def render_home_earnings_calendar(limit=12):
+    """한국 Earnings Calendar: 최근 DART 실적 공시를 잠정실적 우선으로 표시."""
+    st.markdown(
+        "<div class='live-news-section'><div class='live-news-section-title'>📅 Earnings Calendar</div>"
+        "<div class='live-news-section-subtitle'>최근 DART 공시에서 확인된 잠정실적과 정기보고서를 구분해 보여드립니다.</div></div>",
+        unsafe_allow_html=True,
+    )
+    try:
+        events = _get_home_earnings_events(days_back=30)
+    except Exception as exc:
+        events = []
+        st.warning(f"Earnings Calendar을 불러오지 못했습니다: {exc}")
+
+    if not events:
+        st.markdown(
+            '<div class="news-empty-state">최근 30일간 표시할 실적 공시가 없습니다.</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    for event in events[:limit]:
+        label = "잠정실적" if event.event_type == "preliminary_earnings" else "정기보고서"
+        badge_class = "earnings-primary" if event.event_type == "preliminary_earnings" else "earnings-secondary"
+        st.markdown(
+            f"""
+            <div class="earnings-row">
+              <div>
+                <div class="earnings-name">{_escape_html(event.corp_name)} <span class="{badge_class}">{label}</span></div>
+                <div class="earnings-report">{_escape_html(event.report_name)}</div>
+              </div>
+              <div class="earnings-date">{_escape_html(event.event_date)} · <a href="{_escape_html(event.source_url)}" target="_blank" rel="noopener noreferrer">DART 원문 ↗</a></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_home_market_overview(market):
+    title = "🇺🇸 US Market Overview" if market == "US" else "🇰🇷 Korea Market Overview"
+    subtitle = "주요 지수의 최신 일봉 기준 시세 흐름입니다." if market == "US" else "국내 주요 지수의 최신 일봉 기준 시세 흐름입니다."
+    st.markdown(
+        f"<div class='live-news-section'><div class='live-news-section-title'>{title}</div>"
+        f"<div class='live-news-section-subtitle'>{subtitle}</div></div>",
+        unsafe_allow_html=True,
+    )
+    rows = _get_home_market_indices(market)
+    if not rows:
+        st.info("시장 지수 데이터를 불러오지 못했습니다.")
+        return
+    cols = st.columns(len(rows))
+    for col, row in zip(cols, rows):
+        with col:
+            st.metric(row["label"], f"{row['value']:,.2f}", f"{row['change_pct']:+.2f}%")
+    st.caption("시장 데이터: yfinance · 최신 확인 가능 일봉 기준")
+
+
+
+
+
 query_params = st.query_params
 selected_code = query_params.get("code", None)
 view_mode_param = query_params.get("view", None)
@@ -3135,69 +3514,52 @@ elif not selected_code:
         )
 
     with main_content:
-        tab1, tab2, tab3, tab4 = st.tabs(
+        # 기존 5개 메뉴의 위치는 그대로 유지하되, 검색창 아래 콘텐츠를 실제로 전환할 수 있도록
+        # 가로형 radio를 탭처럼 스타일링한다. (native st.tabs는 선택 상태를 외부에서 읽기 어려움)
+        home_nav = st.radio(
+            "홈 메뉴",
             [
                 "US Market Overview",
                 "Korea Market Overview",
                 "Live News",
                 "Chart Analysis",
-            ]
+                "Earnings Calendar",
+            ],
+            index=2,
+            horizontal=True,
+            label_visibility="collapsed",
+            key="home_navigation",
         )
 
         combined_stocks_db = get_combined_stock_db()
 
-        with tab1:
-            st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
-                unsafe_allow_html=True,
-            )
-            render_unified_search_box(stock_db=combined_stocks_db)
-            st.info(
-                "🇺🇸 **US Stock Market Overview**: S&P 500, 나스닥 지수 흐름, 섹터별 펀더멘탈 현황 및 매크로 지표 정보 공간입니다."
-            )
+        # 검색창은 5개 상단 메뉴 바로 아래에 한 번만 둔다.
+        st.markdown("<div style='height:8px;'></div>", unsafe_allow_html=True)
+        render_unified_search_box(stock_db=combined_stocks_db)
 
-        with tab2:
+        # 메인 Live News는 검색창 바로 아래가 기본 화면이다.
+        if home_nav == "Live News":
+            render_home_live_news(limit=6)
+        elif home_nav == "US Market Overview":
+            render_home_market_overview("US")
+        elif home_nav == "Korea Market Overview":
+            render_home_market_overview("KR")
+        elif home_nav == "Chart Analysis":
             st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
+                "<div class='live-news-section'><div class='live-news-section-title'>📊 Chart Analysis</div>"
+                "<div class='live-news-section-subtitle'>기존 차트 분석 기능은 그대로 유지됩니다. 종목을 선택하면 상세 기술적 분석 화면으로 이동합니다.</div></div>",
                 unsafe_allow_html=True,
             )
-            render_unified_search_box(stock_db=combined_stocks_db)
-            st.info(
-                "🇰🇷 **Korea Stock Market Overview**: 코스피, 코스닥 지수 동향, 외국인/기관 수급 및 국채 금리 현황 정보 공간입니다."
-            )
+            if st.button("📈 Chart Analysis 열기", use_container_width=False, key="home_open_chart_analysis"):
+                st.query_params["view"] = "analysis_search"
+                st.query_params.pop("code", None)
+                st.rerun()
+        elif home_nav == "Earnings Calendar":
+            render_home_earnings_calendar(limit=12)
 
-        with tab3:
-            st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
-                unsafe_allow_html=True,
-            )
-            render_unified_search_box(stock_db=combined_stocks_db)
-            st.info(
-                "📰 **Live News**: 글로벌 증시 속보 및 하락장 리스크 관리 뉴스를 실시간으로 모니터링하는 공간입니다."
-            )
 
-        with tab4:
-            st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
-                unsafe_allow_html=True,
-            )
-            st.info(
-                "📊 **Chart Analysis**: 이동평균선·볼린저밴드·RSI·MACD·스토캐스틱·ADX/DMI·ATR·OBV·MFI·Rolling VWAP·일목균형표·거래량까지, "
-                "지금 이 종목 기준 자동 해설과 함께 전문 차트를 볼 수 있는 전용 화면이 새 창으로 열려요."
-            )
-            st.markdown(
-                f"""
-                <a href="?view=analysis_search&theme={THEME_MODE}" target="_blank" style="
-                    display:block; text-align:center; text-decoration:none;
-                    background-color:{THEME["surface"]}; color:{THEME["text"]}; border:1.5px solid {THEME["border"]};
-                    border-radius:10px; font-size:16px; font-weight:800; padding:12px 0;
-                    box-shadow:0 2px 5px rgba(0,0,0,0.04);">
-                    🔍 차트 분석 검색창 새 창으로 열기
-                </a>
-                """,
-                unsafe_allow_html=True,
-            )
-
+        # 뉴스 아래로 탐색용 3개 카드를 더 내려 배치한다.
+        st.markdown("<div style='height:24px;'></div>", unsafe_allow_html=True)
         st.markdown(
             "<div class='bottom-cards-wrapper'>", unsafe_allow_html=True
         )
@@ -3341,6 +3703,7 @@ else:
 
     with main_content:
         st.markdown(f"## 📊 [{data.get('stock_name', selected_code)}] 펀더멘탈 방어력 분석")
+        render_home_stock_news(data.get("stock_name", selected_code), selected_code, limit=6)
 
         st.markdown("#### 📈 시세 스냅샷")
         st.caption(
