@@ -37,6 +37,22 @@ def cap(coverage):
     return 70.0
 
 
+def reliability(period_scores):
+    if not isinstance(period_scores, dict) or not period_scores:
+        return "none"
+    latest = period_scores.get("1y") or next(iter(period_scores.values()))
+    avg = latest.get("avg") if isinstance(latest, dict) else {}
+    coverage = float((avg or {}).get("coverage_pct", 0) or 0)
+    periods = len(period_scores)
+    if periods >= 3 and coverage >= 90:
+        return "high"
+    if periods >= 2 and coverage >= 75:
+        return "medium"
+    if coverage >= 60:
+        return "low"
+    return "none"
+
+
 def fetch_rows(sb):
     rows = []
     offset = 0
@@ -123,18 +139,22 @@ def main():
 
     updates = []
     for row in rows:
-        enriched, changed = enrich(row.get("period_scores"))
+        original = row.get("period_scores")
+        enriched, changed = enrich(original)
         if changed:
-            updates.append((row["ticker"], enriched))
+            updates.append((row["ticker"], enriched, reliability(enriched)))
 
     print(f"[SCORE META] rows={len(rows)} updates={len(updates)}")
-    for ticker, _ in updates[:10]:
+    for ticker, _, _ in updates[:10]:
         print(f"  {ticker}")
 
     for i in range(0, len(updates), UPDATE_BATCH):
-        for ticker, period_scores in updates[i:i + UPDATE_BATCH]:
+        for ticker, period_scores, data_reliability in updates[i:i + UPDATE_BATCH]:
             sb.table("US_Fundamental").update(
-                {"period_scores": period_scores}
+                {
+                    "period_scores": period_scores,
+                    "data_reliability": data_reliability,
+                }
             ).eq("ticker", ticker).execute()
         print(
             f"[SCORE META] applied "
