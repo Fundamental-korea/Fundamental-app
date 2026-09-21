@@ -35,6 +35,17 @@ class USSnapshotAndMetricTests(unittest.TestCase):
         }
         return {"facts": {namespace: facts}}
 
+
+    def test_annual_instant_fact_without_fy_is_kept(self):
+        facts = {
+            "Assets": {"units": {"USD": [{
+                "val": 3000, "form": "10-K", "filed": "2026-02-15",
+                "end": "2025-12-31"
+            }]}}
+        }
+        index = build_fact_index({"facts": {"us-gaap": facts}})
+        self.assertEqual(index["assets"][2025]["val"], 3000)
+
     def test_snapshot_uses_company_facts(self):
         snapshot = build_latest_snapshot(self._companyfacts())
         self.assertIsNotNone(snapshot)
