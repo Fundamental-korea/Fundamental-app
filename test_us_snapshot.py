@@ -50,7 +50,7 @@ class USSnapshotAndMetricTests(unittest.TestCase):
         index = build_fact_index(self._companyfacts())
         metrics = annual_metrics(index, 2025)
         self.assertIsNotNone(metrics["roic"])
-        self.assertAlmostEqual(metrics["roic"], 10.4, places=1)
+        self.assertAlmostEqual(metrics["roic"], 9.75, places=2)
 
     def test_standard_fallback_snapshot_from_index(self):
         index = {
