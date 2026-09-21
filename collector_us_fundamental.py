@@ -521,11 +521,12 @@ def annual_metrics(index, year):
     debt_current = latest_annual_value(index, "debt_current", year)
     debt_noncurrent = latest_annual_value(index, "debt_noncurrent", year)
     debt_total = latest_annual_value(index, "debt_total", year)
-    debt = (
-        (debt_current or 0.0) + (debt_noncurrent or 0.0)
-        if debt_current is not None or debt_noncurrent is not None
-        else debt_total
-    )
+    if debt_current is not None and debt_noncurrent is not None:
+        debt = debt_current + debt_noncurrent
+    elif debt_total is not None:
+        debt = debt_total
+    else:
+        debt = None
     # ROIC uses invested operating capital rather than total liabilities:
     # equity + interest-bearing debt - cash. This avoids counting payables,
     # deferred revenue, and other operating liabilities as invested capital.
