@@ -118,6 +118,96 @@ def augment_index_with_v238(index, resolver, cik, latest_year, submissions=None,
     return index
 
 
+def _snapshot_from_index(index, submissions, latest_year=None):
+    """Build a metadata/value snapshot from fallback index rows when Company Facts is unavailable."""
+    recent = (submissions or {}).get("filings", {}).get("recent", {})
+    forms = recent.get("form") or []
+    filing_dates = recent.get("filingDate") or []
+    report_dates = recent.get("reportDate") or []
+    fys = recent.get("fy") or []
+    annual_forms = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
+
+    annual = []
+    for i, form in enumerate(forms):
+        if form not in annual_forms:
+            continue
+        fy = fys[i] if i < len(fys) else None
+        try:
+            fy = int(fy) if fy is not None else None
+        except (TypeError, ValueError):
+            fy = None
+        report_date = report_dates[i] if i < len(report_dates) else None
+        filed = filing_dates[i] if i < len(filing_dates) else None
+        annual.append((filed or "", fy, report_date, form))
+
+    annual.sort(reverse=True)
+    filing_date, filing_fy, filing_report_date, filing_form = annual[0] if annual else ("", None, None, None)
+    target_year = latest_year or filing_fy
+
+    candidates = []
+    for rows in (index or {}).values():
+        for row in (rows or {}).values():
+            end = row.get("end")
+            if not end:
+                continue
+            try:
+                year = int(str(end)[:4])
+            except (TypeError, ValueError):
+                continue
+            if target_year is None or year == int(target_year):
+                candidates.append(row)
+
+    end = max((r.get("end") for r in candidates if r.get("end")), default=filing_report_date)
+    if not end:
+        return None
+
+    forms_at_end = {r.get("form") for r in candidates if r.get("end") == end and r.get("form")}
+    snapshot_form = next((f for f in forms_at_end if f in {"10-Q", "10-Q/A"}), None) or filing_form
+    filed_candidates = [r.get("filed") for r in candidates if r.get("end") == end and r.get("filed")]
+    filed = max(filed_candidates) if filed_candidates else filing_date or None
+
+    snapshot = {
+        "fiscal_end": end,
+        "fiscal_year": target_year,
+        "fiscal_period": "FY" if snapshot_form in annual_forms else None,
+        "form": snapshot_form,
+        "filed": filed,
+        "basis": "fallback filing XBRL" if candidates else "latest annual filing metadata",
+        "instant": {},
+        "flows": {},
+    }
+
+    instant_metrics = {"assets", "equity", "liabilities", "current_assets", "current_liabilities", "cash", "receivables", "inventory"}
+    flow_metrics = {"revenue", "operating_income", "net_income", "interest_expense", "operating_cash_flow", "sga", "eps"}
+
+    for metric in instant_metrics | flow_metrics:
+        rows = (index or {}).get(metric) or {}
+        same_end = [row for row in rows.values() if row.get("end") == end]
+        if not same_end:
+            same_end = [row for row in rows.values() if target_year is not None and str(row.get("end", ""))[:4] == str(target_year)]
+        if not same_end:
+            continue
+        same_end.sort(key=lambda row: (row.get("end") or "", row.get("filed") or "", row.get("form") or ""), reverse=True)
+        row = same_end[0]
+        entry = {
+            "value": row.get("val"),
+            "unit": row.get("unit"),
+            "tag": row.get("tag"),
+            "namespace": row.get("namespace"),
+            "source": "sec-company-facts" if row.get("namespace") in {"us-gaap", "ifrs-full"} else "sec-filing-xbrl",
+            "filed": row.get("filed") or filed,
+        }
+        if metric in instant_metrics:
+            snapshot["instant"][metric] = entry
+        else:
+            if row.get("start"):
+                entry["start"] = row.get("start")
+            entry["end"] = row.get("end")
+            snapshot["flows"][metric] = {"reported": entry}
+
+    return snapshot
+
+
 def _snapshot_fields(snapshot):
     return {
         "snapshot": snapshot,
@@ -230,6 +320,9 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
             latest_score = avg_score["total_score"]
             latest_grade = avg_score["grade"]
             latest_missing = avg_score["missing_metric_count"]
+
+    if snapshot is None:
+        snapshot = _snapshot_from_index(index, submissions, latest_year)
 
     result = {
         "ticker": ticker,
