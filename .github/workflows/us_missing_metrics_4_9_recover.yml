@@ -1,6 +1,9 @@
 name: US Missing Metrics Recovery 4-9
 
 on:
+  push:
+    paths:
+      - "US_MISSING_4_9_TRIGGER.txt"
   workflow_run:
     workflows: ["US Standard ROIC Recovery"]
     types: [completed]
@@ -22,8 +25,9 @@ concurrency:
 jobs:
   recover:
     if: >-
-      ${{ github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success' }}
+      github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'push' ||
+      github.event.workflow_run.conclusion == 'success'
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:
