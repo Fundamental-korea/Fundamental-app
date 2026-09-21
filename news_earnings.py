@@ -369,6 +369,117 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10)
     return sorted(merged, key=lambda x: x.pub_date, reverse=True)
 
 
+
+def _get_supabase_client():
+    """Create a server-side Supabase client for ingestion.
+
+    This function is intentionally separate from the Streamlit/UI client path.
+    The key used here must never be exposed to the browser.
+    """
+    from supabase import create_client
+
+    url = os.getenv("SUPABASE_URL", "").strip()
+    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_KEY", "").strip()
+    if not url or not key:
+        raise RuntimeError(
+            "Supabase ingestion 환경변수가 필요합니다: SUPABASE_URL + "
+            "SUPABASE_SERVICE_ROLE_KEY(권장) 또는 SUPABASE_KEY"
+        )
+    return create_client(url, key)
+
+
+def persist_earnings_events(events: Iterable[EarningsEvent], *, supabase_client=None) -> int:
+    """Persist Korean reported-earnings events idempotently.
+
+    The database unique key is (market, receipt_no), so re-running the same
+    manual collection does not create duplicate events.
+    """
+    rows = []
+    for event in events:
+        if not event.receipt_no or not event.corp_name or not event.event_date:
+            continue
+        rows.append(
+            {
+                "market": "KR",
+                "stock_code": event.stock_code,
+                "stock_name": event.corp_name,
+                "event_date": event.event_date,
+                "event_type": event.event_type,
+                "report_name": event.report_name,
+                "receipt_no": event.receipt_no,
+                "source_url": event.source_url,
+                "announced_at": None,
+                "is_primary_event": event.event_type == "preliminary_earnings",
+                "metadata": {"source": "DART"},
+            }
+        )
+
+    if not rows:
+        return 0
+
+    client = supabase_client or _get_supabase_client()
+    response = (
+        client.table("earnings_events")
+        .upsert(rows, on_conflict="market,receipt_no")
+        .execute()
+    )
+    return len(response.data or rows)
+
+
+def persist_naver_news(
+    items: Iterable[NaverNewsItem],
+    *,
+    market: str = "KR",
+    stock_code: Optional[str] = None,
+    stock_name: Optional[str] = None,
+    category: str = "macro",
+    supabase_client=None,
+) -> int:
+    """Persist filtered NAVER news for either macro or a specific stock."""
+    rows = []
+    for item in items:
+        source_id = item.original_link or item.link
+        if not item.title or not source_id:
+            continue
+        try:
+            published_at = datetime.strptime(
+                item.pub_date, "%a, %d %b %Y %H:%M:%S %z"
+            ).isoformat()
+        except ValueError:
+            published_at = None
+
+        rows.append(
+            {
+                "source": "NAVER",
+                "source_id": source_id,
+                "market": market,
+                "stock_code": stock_code,
+                "stock_name": stock_name,
+                "category": category,
+                "title": item.title,
+                "description": item.description,
+                "article_url": item.link,
+                "original_url": item.original_link,
+                "published_at": published_at,
+                "is_macro": category == "macro",
+                "is_investor_relevant": True,
+                "event_type": None,
+                "filter_reason": None,
+                "metadata": {"query": item.query},
+            }
+        )
+
+    if not rows:
+        return 0
+
+    client = supabase_client or _get_supabase_client()
+    response = (
+        client.table("news_items")
+        .upsert(rows, on_conflict="source,source_id")
+        .execute()
+    )
+    return len(response.data or rows)
+
 def to_records(items: Iterable[object]) -> list[dict]:
     return [asdict(item) for item in items]
 
@@ -384,5 +495,7 @@ __all__ = [
     "search_naver_news",
     "fetch_macro_news",
     "filter_investor_news",
+    "persist_earnings_events",
+    "persist_naver_news",
     "to_records",
 ]
