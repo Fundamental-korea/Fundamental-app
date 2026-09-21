@@ -20,52 +20,52 @@ STANDARD_PROFILES = {"standard"}
 
 
 def fetch_targets(sb):
-    rows = []
+    # Query in small pages: period_scores is a large JSONB field and a 1000-row
+    # PostgREST request can exceed Supabase statement timeout.
+    universe = []
     offset = 0
     while True:
         page = (
-            sb.table("US_Fundamental")
-            .select("ticker,period_scores,data_unavailable")
-            .eq("data_unavailable", False)
+            sb.table("US_Companies")
+            .select("ticker")
+            .eq("is_fundamental_eligible", True)
+            .eq("scoring_profile", "standard")
             .order("ticker")
-            .range(offset, offset + PAGE_SIZE - 1)
+            .range(offset, offset + 199)
             .execute()
             .data
             or []
         )
         if not page:
             break
-        for row in page:
-            score = ((row.get("period_scores") or {}).get("1y") or {})
-            value = (((score.get("avg") or {}).get("metric_scores") or {}).get("roic") or {}).get("value")
-            if value is None:
-                rows.append(row["ticker"])
-        if len(page) < PAGE_SIZE:
+        universe.extend(row["ticker"] for row in page if row.get("ticker"))
+        if len(page) < 200:
             break
-        offset += PAGE_SIZE
+        offset += 200
 
-    if not rows:
-        return []
-
-    out = []
-    offset = 0
-    while offset < len(rows):
-        batch = rows[offset:offset + PAGE_SIZE]
+    targets = []
+    for i in range(0, len(universe), 100):
+        batch = universe[i:i + 100]
         page = (
-            sb.table("US_Companies")
-            .select("ticker,scoring_profile,sector_common,is_fundamental_eligible")
+            sb.table("US_Fundamental")
+            .select("ticker,period_scores,data_unavailable")
             .in_("ticker", batch)
-            .eq("is_fundamental_eligible", True)
+            .eq("data_unavailable", False)
             .execute()
             .data
             or []
         )
-        out.extend(
-            row["ticker"] for row in page
-            if (row.get("scoring_profile") or "standard") in STANDARD_PROFILES
-        )
-        offset += PAGE_SIZE
-    return sorted(set(out))
+        for row in page:
+            score = ((row.get("period_scores") or {}).get("1y") or {})
+            value = (
+                ((score.get("avg") or {}).get("metric_scores") or {})
+                .get("roic", {})
+                .get("value")
+            )
+            if value is None:
+                targets.append(row["ticker"])
+
+    return sorted(set(targets))
 
 
 def chunks(values, size):
