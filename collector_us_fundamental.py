@@ -763,6 +763,10 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
                 "financial_adjusted": False,
                 "missing_metric_count": avg_score["missing_metric_count"],
                 "scoring_version": avg_score["scoring_version"],
+                "available_weight": avg_score["available_weight"],
+                "coverage_pct": avg_score["coverage_pct"],
+                "score_cap": avg_score["score_cap"],
+                "confidence_level": avg_score["confidence_level"],
             },
             "worst": {
                 "total_score": worst_score["total_score"],
@@ -772,6 +776,10 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
                 "financial_adjusted": False,
                 "missing_metric_count": worst_score["missing_metric_count"],
                 "scoring_version": worst_score["scoring_version"],
+                "available_weight": worst_score["available_weight"],
+                "coverage_pct": worst_score["coverage_pct"],
+                "score_cap": worst_score["score_cap"],
+                "confidence_level": worst_score["confidence_level"],
             },
         }
 
