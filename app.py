@@ -1293,6 +1293,13 @@ def render_us_fundamental_report(code, data):
                         else "low" if coverage_pct >= 60
                         else "insufficient"
                     )
+            if cap is None and coverage_pct is not None:
+                cap = (
+                    100.0 if coverage_pct >= 90
+                    else 92.0 if coverage_pct >= 75
+                    else 82.0 if coverage_pct >= 60
+                    else 70.0
+                )
 
             badge_text = (
                 f"**🏷️ 모델:** {profile_label} · "
@@ -3530,6 +3537,18 @@ else:
 
         if live_price is None:
             live_price = overview_supabase_data.get("stock_price")
+            if live_price is not None:
+                price_source = price_source or "Supabase 저장 시세"
+                stored_market_date = overview_supabase_data.get("market_snapshot_date")
+                if stored_market_date:
+                    try:
+                        parsed_stored_date = pd.to_datetime(
+                            stored_market_date, errors="coerce"
+                        )
+                        if not pd.isna(parsed_stored_date):
+                            price_asof = parsed_stored_date.date()
+                    except Exception:
+                        pass
 
         # 시가총액: 국내는 Fundamental에 저장된 직접값을 우선 사용하고,
         # 미국은 SEC DEI의 보통주 발행주식수 × 최신 가격으로 계산한다.
