@@ -395,6 +395,34 @@ st.markdown(
         font-weight: 900 !important;
     }
 
+    /* 홈 5개 네비게이션을 실제 클릭 가능한 탭처럼 보이게 한다. */
+    div[data-testid="stRadio"] {
+        margin-bottom: 4px;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] {
+        display: flex !important;
+        flex-wrap: wrap !important;
+        gap: 0 !important;
+        border-bottom: 1px solid #E5E7EB;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label {
+        padding: 9px 14px 10px !important;
+        margin: 0 !important;
+        border-radius: 0 !important;
+        border-bottom: 3px solid transparent !important;
+        cursor: pointer !important;
+        font-weight: 850 !important;
+        color: #4B5563 !important;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label[data-checked="true"] {
+        color: #D97706 !important;
+        border-bottom-color: #F4A261 !important;
+        background: transparent !important;
+    }
+    div[data-testid="stRadio"] [role="radiogroup"] > label > div:first-child {
+        display: none !important;
+    }
+
     .live-news-section {
         margin-top: 20px;
         margin-bottom: 8px;
@@ -485,6 +513,61 @@ st.markdown(
     }
     @media (max-width: 900px) {
         .live-news-grid { grid-template-columns: 1fr; }
+    }
+
+    .earnings-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 16px;
+        padding: 13px 14px;
+        margin-bottom: 7px;
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 10px;
+    }
+    .earnings-name {
+        color: #1A1A1A !important;
+        font-size: 14px;
+        font-weight: 850;
+    }
+    .earnings-report {
+        color: #6B7280 !important;
+        font-size: 11px;
+        margin-top: 4px;
+    }
+    .earnings-date {
+        color: #6B7280 !important;
+        font-size: 11px;
+        white-space: nowrap;
+    }
+    .earnings-date a {
+        color: #D97706 !important;
+        text-decoration: none !important;
+        font-weight: 800;
+    }
+    .earnings-primary,
+    .earnings-secondary {
+        display: inline-block;
+        margin-left: 7px;
+        padding: 2px 7px;
+        border-radius: 999px;
+        font-size: 10px;
+        font-weight: 800;
+    }
+    .earnings-primary {
+        background: #FFF7ED;
+        color: #9A3412 !important;
+        border: 1px solid #FED7AA;
+    }
+    .earnings-secondary {
+        background: #F3F4F6;
+        color: #4B5563 !important;
+        border: 1px solid #E5E7EB;
+    }
+    @media (max-width: 700px) {
+        .earnings-row { flex-direction: column; align-items: flex-start; }
+        .earnings-date { white-space: normal; }
     }
 
     .bottom-cards-wrapper {
