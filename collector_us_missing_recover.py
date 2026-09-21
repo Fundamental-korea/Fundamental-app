@@ -129,8 +129,10 @@ def main():
     # Supabase REST commonly caps a response at 1000 rows, so paginate explicitly.
     rows=[]
     page=0
-    page_size=500
+    page_size=100
     while True:
+        # Keep REST payloads small: period_scores is a large JSONB document and
+        # 500-row pages can exceed the database statement timeout.
         q=(
             sb.table("US_Fundamental")
             .select("ticker,period_scores")
