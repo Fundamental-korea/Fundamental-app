@@ -2,7 +2,7 @@ name: Validate US Pipeline Quality
 
 on:
   workflow_run:
-    workflows: ["Sync US Score Columns"]
+    workflows: ["US Valuation Snapshot Backfill"]
     types: [completed]
   workflow_dispatch:
 
@@ -12,10 +12,10 @@ permissions:
 jobs:
   validate:
     if: >-
-      github.event_name != 'workflow_run' ||
-      github.event.workflow_run.conclusion == 'success'
+      ${{ github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
 
     steps:
       - name: Checkout
