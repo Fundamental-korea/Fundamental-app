@@ -343,10 +343,7 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
         "total_score": int(round(latest_score)) if latest_score is not None else None,
         "grade": latest_grade,
         "data_unavailable": not bool(period_scores),
-        "data_reliability": (
-            "high" if len(period_scores) >= 3
-            else ("medium" if period_scores else "low")
-        ),
+        "data_reliability": data_reliability_from_periods(period_scores),
         "missing_metric_count": latest_missing,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "downturn_defense": downturn_value,
