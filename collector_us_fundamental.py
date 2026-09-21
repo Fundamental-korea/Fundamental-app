@@ -788,10 +788,9 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
             latest_grade = avg_score["grade"]
             latest_missing = avg_score["missing_metric_count"]
 
-    reliability = (
-        "high" if len(period_scores) >= 3
-        else ("medium" if period_scores else "low")
-    )
+    from us_scoring import data_reliability_from_periods
+
+    reliability = data_reliability_from_periods(period_scores)
 
     return {
         "ticker": ticker,
