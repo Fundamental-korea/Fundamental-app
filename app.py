@@ -2701,6 +2701,129 @@ body .stApp [style*="#F1F5F9"] {
     st.markdown(final_dark_css, unsafe_allow_html=True)
 
 
+# ---------------------------------------------------------------------------
+# +알파: 홈 화면 Live News / Earnings Calendar preview
+# ---------------------------------------------------------------------------
+def _format_news_time(value):
+    if not value:
+        return ""
+    try:
+        ts = pd.to_datetime(value)
+        if pd.isna(ts):
+            return ""
+        return ts.strftime("%Y.%m.%d %H:%M")
+    except Exception:
+        return str(value)[:16]
+
+
+def _escape_html(value):
+    return (
+        str(value or "")
+        .replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
+        .replace("'", "&#39;")
+    )
+
+
+def render_home_live_news(limit=6, market=None):
+    """검색창 바로 아래에 표시하는 차분한 금융 뉴스 카드 영역."""
+    try:
+        query = (
+            supabase.table("news_items")
+            .select("title,description,article_url,original_url,published_at,source,category,market")
+            .eq("is_macro", True)
+        )
+        if market:
+            query = query.eq("market", market)
+        rows = query.order("published_at", desc=True).limit(limit).execute().data or []
+    except Exception:
+        rows = []
+
+    st.markdown(
+        """
+        <div class="live-news-section">
+          <div class="live-news-section-title">📰 Live News</div>
+          <div class="live-news-section-subtitle">시장에 영향을 줄 수 있는 주요 경제·금융 뉴스를 원문 출처와 함께 보여드립니다.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if not rows:
+        st.markdown(
+            '<div class="news-empty-state">아직 수집된 뉴스가 없습니다. 뉴스 데이터가 준비되면 최신 기사부터 이곳에 표시됩니다.</div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    cards = []
+    for row in rows:
+        title = _escape_html(row.get("title"))
+        desc = _escape_html(row.get("description"))
+        url = _escape_html(row.get("article_url") or row.get("original_url") or "#")
+        source = _escape_html(row.get("source") or "Source")
+        category = _escape_html(row.get("category") or "Markets")
+        published = _format_news_time(row.get("published_at"))
+        cards.append(
+            f"""
+            <article class="live-news-card">
+              <div class="live-news-meta">
+                <span class="live-news-category">{category}</span>
+                <span class="live-news-source">{source}</span>
+              </div>
+              <a class="live-news-title" href="{url}" target="_blank" rel="noopener noreferrer">{title}</a>
+              <div class="live-news-desc">{desc[:220]}</div>
+              <div class="live-news-footer">{published} · 원문 보기 ↗</div>
+            </article>
+            """
+        )
+
+    st.markdown('<div class="live-news-grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
+
+
+def render_home_earnings_preview(limit=8):
+    """홈의 Earnings Calendar 미리보기. 현재는 DART에 보고된 실적 이벤트 기준."""
+    try:
+        rows = (
+            supabase.table("earnings_events")
+            .select("stock_name,stock_code,event_date,event_type,report_name,source_url")
+            .order("event_date", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        rows = []
+
+    st.markdown(
+        f"<div style='margin-top:18px;margin-bottom:8px;font-size:18px;font-weight:850;color:{THEME['text']};'>📅 Earnings Calendar</div>",
+        unsafe_allow_html=True,
+    )
+    if not rows:
+        st.caption("DART 실적 이벤트가 준비되면 이 영역에 표시됩니다.")
+        return
+
+    for row in rows:
+        label = "잠정실적" if row.get("event_type") == "preliminary_earnings" else "정기보고서"
+        source_url = _escape_html(row.get("source_url") or "#")
+        st.markdown(
+            f"""
+            <div style="padding:10px 0;border-bottom:1px solid {THEME['border']};">
+              <a href="{source_url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:{THEME['text']};font-weight:800;">{_escape_html(row.get('stock_name',''))}</a>
+              <span style="margin-left:8px;color:{THEME['text_muted']};">{_escape_html(row.get('event_date',''))}</span>
+              <span style="margin-left:8px;color:{THEME['text_muted']};font-size:12px;">{label}</span>
+              <span style="float:right;color:{THEME['text_muted']};font-size:11px;">DART ↗</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+
+
+
 query_params = st.query_params
 selected_code = query_params.get("code", None)
 view_mode_param = query_params.get("view", None)
@@ -3200,127 +3323,6 @@ elif selected_code and view_mode_param == "analysis":
             st.line_chart(hist_df["Close"])
         else:
             st.info("실시간 차트 데이터를 불러올 수 없습니다.")
-
-# ---------------------------------------------------------------------------
-# +알파: 홈 화면 Live News / Earnings Calendar preview
-# ---------------------------------------------------------------------------
-def _format_news_time(value):
-    if not value:
-        return ""
-    try:
-        ts = pd.to_datetime(value)
-        if pd.isna(ts):
-            return ""
-        return ts.strftime("%Y.%m.%d %H:%M")
-    except Exception:
-        return str(value)[:16]
-
-
-def _escape_html(value):
-    return (
-        str(value or "")
-        .replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-        .replace("'", "&#39;")
-    )
-
-
-def render_home_live_news(limit=6, market=None):
-    """검색창 바로 아래에 표시하는 차분한 금융 뉴스 카드 영역."""
-    try:
-        query = (
-            supabase.table("news_items")
-            .select("title,description,article_url,original_url,published_at,source,category,market")
-            .eq("is_macro", True)
-        )
-        if market:
-            query = query.eq("market", market)
-        rows = query.order("published_at", desc=True).limit(limit).execute().data or []
-    except Exception:
-        rows = []
-
-    st.markdown(
-        """
-        <div class="live-news-section">
-          <div class="live-news-section-title">📰 Live News</div>
-          <div class="live-news-section-subtitle">시장에 영향을 줄 수 있는 주요 경제·금융 뉴스를 원문 출처와 함께 보여드립니다.</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if not rows:
-        st.markdown(
-            '<div class="news-empty-state">아직 수집된 뉴스가 없습니다. 뉴스 데이터가 준비되면 최신 기사부터 이곳에 표시됩니다.</div>',
-            unsafe_allow_html=True,
-        )
-        return
-
-    cards = []
-    for row in rows:
-        title = _escape_html(row.get("title"))
-        desc = _escape_html(row.get("description"))
-        url = _escape_html(row.get("article_url") or row.get("original_url") or "#")
-        source = _escape_html(row.get("source") or "Source")
-        category = _escape_html(row.get("category") or "Markets")
-        published = _format_news_time(row.get("published_at"))
-        cards.append(
-            f"""
-            <article class="live-news-card">
-              <div class="live-news-meta">
-                <span class="live-news-category">{category}</span>
-                <span class="live-news-source">{source}</span>
-              </div>
-              <a class="live-news-title" href="{url}" target="_blank" rel="noopener noreferrer">{title}</a>
-              <div class="live-news-desc">{desc[:220]}</div>
-              <div class="live-news-footer">{published} · 원문 보기 ↗</div>
-            </article>
-            """
-        )
-
-    st.markdown('<div class="live-news-grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
-
-
-def render_home_earnings_preview(limit=8):
-    """홈의 Earnings Calendar 미리보기. 현재는 DART에 보고된 실적 이벤트 기준."""
-    try:
-        rows = (
-            supabase.table("earnings_events")
-            .select("stock_name,stock_code,event_date,event_type,report_name,source_url")
-            .order("event_date", desc=True)
-            .limit(limit)
-            .execute()
-            .data
-            or []
-        )
-    except Exception:
-        rows = []
-
-    st.markdown(
-        f"<div style='margin-top:18px;margin-bottom:8px;font-size:18px;font-weight:850;color:{THEME['text']};'>📅 Earnings Calendar</div>",
-        unsafe_allow_html=True,
-    )
-    if not rows:
-        st.caption("DART 실적 이벤트가 준비되면 이 영역에 표시됩니다.")
-        return
-
-    for row in rows:
-        label = "잠정실적" if row.get("event_type") == "preliminary_earnings" else "정기보고서"
-        source_url = _escape_html(row.get("source_url") or "#")
-        st.markdown(
-            f"""
-            <div style="padding:10px 0;border-bottom:1px solid {THEME['border']};">
-              <a href="{source_url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:{THEME['text']};font-weight:800;">{_escape_html(row.get('stock_name',''))}</a>
-              <span style="margin-left:8px;color:{THEME['text_muted']};">{_escape_html(row.get('event_date',''))}</span>
-              <span style="margin-left:8px;color:{THEME['text_muted']};font-size:12px;">{label}</span>
-              <span style="float:right;color:{THEME['text_muted']};font-size:11px;">DART ↗</span>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-
-
 
 elif not selected_code:
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
