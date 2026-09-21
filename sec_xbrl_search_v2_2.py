@@ -21,6 +21,7 @@ from sec_xbrl_search import (
 INSTANT_METRICS = {
     "assets", "liabilities", "equity", "current_assets", "current_liabilities",
     "inventory", "cash", "receivables",
+    "debt_current", "debt_noncurrent", "debt_total",
 }
 DURATION_METRICS = {
     "revenue", "operating_income", "net_income", "interest_expense",
@@ -39,6 +40,23 @@ EXACT_CONCEPTS = {
     "inventory": {"InventoryNet"},
     "cash": {"CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"},
     "receivables": {"AccountsReceivableNetCurrent", "AccountsReceivableNet"},
+    "debt_current": {
+        "LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent",
+        "LongTermDebtAndFinanceLeaseObligationsCurrent", "CurrentBorrowings",
+        "CurrentPortionOfLongtermBorrowings", "ShortTermBorrowings",
+        "FinanceLeaseLiabilityCurrent", "ConvertibleDebtCurrent",
+    },
+    "debt_noncurrent": {
+        "LongTermDebtNoncurrent", "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
+        "LongTermDebtAndFinanceLeaseObligationsNoncurrent", "NoncurrentBorrowings",
+        "LongtermBorrowings", "Borrowings", "FinanceLeaseLiabilityNoncurrent",
+        "ConvertibleDebtNoncurrent",
+    },
+    "debt_total": {
+        "LongTermDebt", "DebtAndCapitalLeaseObligations",
+        "LongTermDebtCurrentAndNoncurrent", "LongTermDebtAndFinanceLeaseObligations",
+        "DebtInstrumentCarryingAmount", "DebtAndFinanceLeaseLiabilities",
+    },
     "interest_expense": {"InterestExpense", "InterestExpenseNonoperating", "InterestAndDebtExpense"},
     "operating_cash_flow": {"NetCashProvidedByUsedInOperatingActivities", "NetCashProvidedByUsedInOperatingActivitiesContinuingOperations"},
     "sga": {"SellingGeneralAndAdministrativeExpense"},
@@ -65,6 +83,15 @@ NEGATIVE_TERMS = {
     "inventory": {"fifo", "lifo", "finishedgoods", "workinprocess", "rawmaterials", "orestockpiles", "leachpads"},
     "receivables": {"notesandloansreceivable", "notesandloansreceivablenetcurrent", "loansreceivable", "financereceivable"},
     "sga": {"entitycentralindexkey"},
+    "debt_current": {
+        "noncurrent", "non-current", "longterm", "long term"
+    },
+    "debt_noncurrent": {
+        "current", "shortterm", "short-term"
+    },
+    "debt_total": {
+        "current", "noncurrent", "currentportion", "noncurrentportion"
+    },
 }
 
 # Label phrases are deliberately stronger than loose concept-name overlap.
@@ -80,6 +107,9 @@ LABEL_PRIORS = {
     "operating_income": ("operating income", "income from operations", "operating profit"),
     "interest_expense": ("interest expense", "interest and debt expense", "finance costs"),
     "sga": ("selling, general and administrative", "selling general and administrative"),
+    "debt_current": ("current debt", "current borrowings", "current portion of long-term debt"),
+    "debt_noncurrent": ("long-term debt", "noncurrent debt", "noncurrent borrowings"),
+    "debt_total": ("total debt", "total borrowings", "debt and capital lease obligations"),
 }
 
 MIN_MATCH_SCORE = 25.0
