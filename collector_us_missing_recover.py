@@ -16,7 +16,7 @@ import requests
 from supabase import create_client
 
 import collector_us_fundamental as base
-from sec_xbrl_search_v2_3_4 import SECXBRLSearchV2_3_4
+from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8
 from us_scoring import calculate_us_score, data_reliability_from_periods
 
 URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
@@ -391,7 +391,7 @@ def main():
 
     extend_aliases()
     sb = create_client(URL, KEY)
-    resolver = SECXBRLSearchV2_3_4(user_agent=UA)
+    resolver = SECXBRLSearchV2_3_8(user_agent=UA)
 
     # Supabase REST can cap a response at 1000 rows. Keep JSONB pages small
     # because period_scores is large and 500-row pages can hit statement timeout.
