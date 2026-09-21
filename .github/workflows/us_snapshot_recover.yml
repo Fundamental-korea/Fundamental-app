@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: us-snapshot-backfill
+  cancel-in-progress: false
+
 jobs:
   backfill:
     runs-on: ubuntu-latest
