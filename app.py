@@ -1433,6 +1433,7 @@ def render_us_fundamental_report(code, data):
 
         st.markdown(f"## 🇺🇸 [{company_name}] 미국 펀더멘탈 방어력 분석")
         st.caption(f"SEC 공시 기반 · {profile_label} · {profile_desc}")
+        render_home_stock_news(company_name, code, limit=6)
 
         if not period_scores:
             st.warning(
@@ -3702,6 +3703,7 @@ else:
 
     with main_content:
         st.markdown(f"## 📊 [{data.get('stock_name', selected_code)}] 펀더멘탈 방어력 분석")
+        render_home_stock_news(data.get("stock_name", selected_code), selected_code, limit=6)
 
         st.markdown("#### 📈 시세 스냅샷")
         st.caption(
