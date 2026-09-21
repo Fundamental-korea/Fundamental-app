@@ -2,6 +2,7 @@ import unittest
 
 from collector_us_fundamental import annual_metrics, build_fact_index, build_latest_snapshot
 from collector_us_standard_fallback import _snapshot_from_index
+from sec_xbrl_search_v2_2 import INSTANT_METRICS, EXACT_CONCEPTS
 
 
 class USSnapshotAndMetricTests(unittest.TestCase):
@@ -51,6 +52,14 @@ class USSnapshotAndMetricTests(unittest.TestCase):
         metrics = annual_metrics(index, 2025)
         self.assertIsNotNone(metrics["roic"])
         self.assertAlmostEqual(metrics["roic"], 9.75, places=2)
+
+    def test_resolver_supports_debt_metrics(self):
+        self.assertIn("debt_current", INSTANT_METRICS)
+        self.assertIn("debt_noncurrent", INSTANT_METRICS)
+        self.assertIn("debt_total", INSTANT_METRICS)
+        self.assertIn("LongTermDebtCurrent", EXACT_CONCEPTS["debt_current"])
+        self.assertIn("LongTermDebtNoncurrent", EXACT_CONCEPTS["debt_noncurrent"])
+        self.assertIn("LongTermDebt", EXACT_CONCEPTS["debt_total"])
 
     def test_standard_fallback_snapshot_from_index(self):
         index = {
