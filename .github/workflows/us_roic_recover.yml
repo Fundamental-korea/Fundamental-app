@@ -27,11 +27,11 @@ jobs:
     # finishes, automatically run the recovery again from the current main
     # branch so later debt/SEC parsing fixes are applied to the remaining gaps.
     if: >-
-      {%github.event_name{%}"} != 'workflow_run' ||
-      (
-        github.event.workflow_run.head_sha != github.sha &&
-        github.event.workflow_run.conclusion != 'cancelled'
-      )
+      ${{ github.event_name != 'workflow_run' ||
+          (
+            github.event.workflow_run.head_sha != github.sha &&
+            github.event.workflow_run.conclusion != 'cancelled'
+          ) }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
