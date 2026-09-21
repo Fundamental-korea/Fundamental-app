@@ -10,6 +10,9 @@ on:
         description: "Optional maximum number of ROIC-missing Standard companies"
         required: false
         default: ""
+  workflow_run:
+    workflows: ["US Standard ROIC Recovery"]
+    types: [completed]
 
 permissions:
   contents: read
@@ -20,6 +23,15 @@ concurrency:
 
 jobs:
   recover:
+    # The first long-running recovery may use an older commit. Once that run
+    # finishes, automatically run the recovery again from the current main
+    # branch so later debt/SEC parsing fixes are applied to the remaining gaps.
+    if: >-
+      {%github.event_name{%}"} != 'workflow_run' ||
+      (
+        github.event.workflow_run.head_sha != github.sha &&
+        github.event.workflow_run.conclusion != 'cancelled'
+      )
     runs-on: ubuntu-latest
     timeout-minutes: 360
 
