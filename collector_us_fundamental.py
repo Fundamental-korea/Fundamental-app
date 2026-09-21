@@ -188,7 +188,7 @@ def _all_fact_rows(companyfacts, metric):
     """Return normalized raw SEC observations for a logical metric."""
     facts_root = companyfacts.get("facts") or {}
     out = []
-    namespace_rank = {"us-gaap": 2, "ifrs-full": 1}
+    namespace_rank = {"us-gaap": 2, "ifrs-full": 1, "filing-xbrl": 0}
     for namespace, aliases_map in FACT_NAMESPACE_ALIASES.items():
         facts = facts_root.get(namespace) or {}
         for priority, tag in enumerate(aliases_map.get(metric, [])):
@@ -364,7 +364,7 @@ def build_latest_snapshot(companyfacts):
         if metric == "equity":
             row = _parent_attributable_instant(row, all_rows.get("equity_nci", []))
         if row:
-            entry = {"value": row["val"], "unit": row["unit"], "tag": row["tag"], "namespace": row["namespace"], "source": "sec-company-facts", "filed": row["filed"]}
+            entry = {"value": row["val"], "unit": row["unit"], "tag": row["tag"], "namespace": row["namespace"], "source": "sec-company-facts" if row["namespace"] in {"us-gaap", "ifrs-full"} else "sec-filing-xbrl", "filed": row["filed"]}
             if row.get("parent_attributable"):
                 entry["basis"] = "parent-attributable"
                 entry["nci_source_tag"] = row.get("nci_source_tag")
