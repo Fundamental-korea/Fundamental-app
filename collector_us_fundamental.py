@@ -85,7 +85,14 @@ IFRS_FACT_ALIASES = {
     "eps": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
 }
 
-FACT_NAMESPACE_ALIASES = {"us-gaap": FACT_ALIASES, "ifrs-full": IFRS_FACT_ALIASES}
+FACT_NAMESPACE_ALIASES = {
+    "us-gaap": FACT_ALIASES,
+    "ifrs-full": IFRS_FACT_ALIASES,
+    # Filing-level fallback facts are normalized into the same logical tags
+    # in-memory; keep them eligible for snapshot construction while retaining
+    # their provenance through the namespace field.
+    "filing-xbrl": FACT_ALIASES,
+}
 
 
 def clean_number(value):
@@ -149,7 +156,7 @@ def annual_records(fact):
 def build_fact_index(companyfacts):
     facts_root = companyfacts.get("facts") or {}
     candidates_by_metric = {name: [] for name in FACT_NAMESPACE_ALIASES["us-gaap"]}
-    namespace_rank = {"us-gaap": 2, "ifrs-full": 1}
+    namespace_rank = {"us-gaap": 2, "ifrs-full": 1, "filing-xbrl": 0}
     for namespace, aliases_map in FACT_NAMESPACE_ALIASES.items():
         facts = facts_root.get(namespace) or {}
         for logical_name, aliases in aliases_map.items():
@@ -371,7 +378,13 @@ def build_latest_snapshot(companyfacts):
         if q:
             entry["quarter"] = q
         if reported:
-            reported_entry = {"value": reported["val"], "unit": reported["unit"], "days": reported["days"], "start": reported["start"], "end": reported["end"], "tag": reported["tag"], "namespace": reported["namespace"], "filed": reported["filed"]}
+            reported_entry = {
+                "value": reported["val"], "unit": reported["unit"], "days": reported["days"],
+                "start": reported["start"], "end": reported["end"], "tag": reported["tag"],
+                "namespace": reported["namespace"],
+                "source": "sec-company-facts" if reported["namespace"] in {"us-gaap", "ifrs-full"} else "sec-filing-xbrl",
+                "filed": reported["filed"],
+            }
             if reported.get("parent_attributable"):
                 reported_entry["basis"] = "parent-attributable"
                 reported_entry["nci_source_tag"] = reported.get("nci_source_tag")
