@@ -29,7 +29,7 @@ import xml.etree.ElementTree as ET
 
 DART_LIST_URL = "https://opendart.fss.or.kr/api/list.json"
 DART_CORPCODE_URL = "https://opendart.fss.or.kr/api/corpCode.xml"
-NAVER_NEWS_URL = "https://openapi.naver.com/v1/search/news.json"
+NAVER_NEWS_URL = "https://naverapihub.apigw.ntruss.com/search/v1/news"
 
 # Planning-document policy: exclude short-term/speculative content.
 EXCLUDED_NEWS_TERMS = (
@@ -316,7 +316,7 @@ def search_naver_news(
     display: int = 20,
     sort: str = "date",
 ) -> list[NaverNewsItem]:
-    """Search NAVER News using the official Search API."""
+    """Search NAVER News using the official NAVER API HUB Search News API."""
     client_id = _env("NAVER_CLIENT_ID")
     client_secret = _env("NAVER_CLIENT_SECRET")
 
@@ -329,8 +329,8 @@ def search_naver_news(
             "sort": sort,
         },
         headers={
-            "X-Naver-Client-Id": client_id,
-            "X-Naver-Client-Secret": client_secret,
+            "X-NCP-APIGW-API-KEY-ID": client_id,
+            "X-NCP-APIGW-API-KEY": client_secret,
         },
         timeout=20,
     )
