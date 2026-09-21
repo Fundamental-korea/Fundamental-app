@@ -3108,6 +3108,88 @@ elif selected_code and view_mode_param == "analysis":
         else:
             st.info("실시간 차트 데이터를 불러올 수 없습니다.")
 
+# ---------------------------------------------------------------------------
+# +알파: 홈 화면 Live News / Earnings Calendar preview
+# ---------------------------------------------------------------------------
+def render_home_live_news(limit=6):
+    """검색창 바로 아래에 표시하는 매크로/시장 뉴스 미리보기."""
+    try:
+        rows = (
+            supabase.table("news_items")
+            .select("title,description,article_url,published_at,source,category")
+            .eq("is_macro", True)
+            .order("published_at", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        rows = []
+
+    st.markdown(
+        f"<div style='margin-top:18px;margin-bottom:8px;font-size:18px;font-weight:850;color:{THEME['text']};'>📰 Live News</div>",
+        unsafe_allow_html=True,
+    )
+    if not rows:
+        st.caption("시장·매크로 뉴스가 준비되면 이 영역에 최신 기사부터 표시됩니다.")
+        return
+
+    for row in rows:
+        title = row.get("title") or ""
+        url = row.get("article_url") or "#"
+        desc = row.get("description") or ""
+        published = row.get("published_at") or ""
+        st.markdown(
+            f"""
+            <div style="padding:10px 0;border-bottom:1px solid {THEME['border']};">
+              <a href="{url}" target="_blank" style="text-decoration:none;color:{THEME['text']};font-weight:750;font-size:14px;">{title}</a>
+              <div style="margin-top:4px;color:{THEME['muted']};font-size:12px;line-height:1.45;">{desc[:150]}</div>
+              <div style="margin-top:4px;color:{THEME['muted']};font-size:11px;">{published} · {row.get('source','')}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_home_earnings_preview(limit=8):
+    """탭 아래 Earnings Calendar에 연결하기 전의 가벼운 미리보기."""
+    try:
+        rows = (
+            supabase.table("earnings_events")
+            .select("stock_name,stock_code,event_date,event_type,report_name,source_url")
+            .order("event_date", desc=True)
+            .limit(limit)
+            .execute()
+            .data
+            or []
+        )
+    except Exception:
+        rows = []
+
+    st.markdown(
+        f"<div style='margin-top:18px;margin-bottom:8px;font-size:18px;font-weight:850;color:{THEME['text']};'>📅 Earnings Calendar</div>",
+        unsafe_allow_html=True,
+    )
+    if not rows:
+        st.caption("실적 이벤트 데이터가 준비되면 이 영역에 표시됩니다.")
+        return
+
+    for row in rows:
+        label = "잠정실적" if row.get("event_type") == "preliminary_earnings" else "정기보고서"
+        st.markdown(
+            f"""
+            <div style="padding:9px 0;border-bottom:1px solid {THEME['border']};">
+              <b style="color:{THEME['text']};">{row.get('stock_name','')}</b>
+              <span style="margin-left:8px;color:{THEME['muted']};">{row.get('event_date','')}</span>
+              <span style="margin-left:8px;color:{THEME['muted']};font-size:12px;">{label}</span>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+
 elif not selected_code:
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
 
@@ -3135,55 +3217,40 @@ elif not selected_code:
         )
 
     with main_content:
-        tab1, tab2, tab3, tab4 = st.tabs(
+        # 검색창은 홈의 중심 상단에 한 번만 배치한다.
+        combined_stocks_db = get_combined_stock_db()
+        st.markdown("<div style='margin-top:4px;margin-bottom:10px;'></div>", unsafe_allow_html=True)
+        render_unified_search_box(stock_db=combined_stocks_db)
+
+        # 검색창 바로 아래: 시장/매크로 뉴스가 먼저 보이는 중앙 콘텐츠.
+        render_home_live_news(limit=6)
+
+        # 뉴스 아래로 기존 3개 핵심 탭을 내려서 시각적 위계를 명확히 한다.
+        st.markdown("<div style='height:18px;'></div>", unsafe_allow_html=True)
+        tab1, tab2, tab3 = st.tabs(
             [
-                "US Market Overview",
-                "Korea Market Overview",
                 "Live News",
                 "Chart Analysis",
+                "Earnings Calendar",
             ]
         )
 
-        combined_stocks_db = get_combined_stock_db()
-
         with tab1:
             st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
+                "<div style='margin-bottom:12px;'></div>",
                 unsafe_allow_html=True,
             )
-            render_unified_search_box(stock_db=combined_stocks_db)
             st.info(
-                "🇺🇸 **US Stock Market Overview**: S&P 500, 나스닥 지수 흐름, 섹터별 펀더멘탈 현황 및 매크로 지표 정보 공간입니다."
+                "📰 **Live News**: 글로벌 증시·금리·환율·정책 등 시장에 영향을 주는 매크로 뉴스와 투자자 관점의 주요 이벤트를 확인합니다."
             )
 
         with tab2:
             st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
-                unsafe_allow_html=True,
-            )
-            render_unified_search_box(stock_db=combined_stocks_db)
-            st.info(
-                "🇰🇷 **Korea Stock Market Overview**: 코스피, 코스닥 지수 동향, 외국인/기관 수급 및 국채 금리 현황 정보 공간입니다."
-            )
-
-        with tab3:
-            st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
-                unsafe_allow_html=True,
-            )
-            render_unified_search_box(stock_db=combined_stocks_db)
-            st.info(
-                "📰 **Live News**: 글로벌 증시 속보 및 하락장 리스크 관리 뉴스를 실시간으로 모니터링하는 공간입니다."
-            )
-
-        with tab4:
-            st.markdown(
-                "<div style='margin-bottom: 15px;'></div>",
+                "<div style='margin-bottom:12px;'></div>",
                 unsafe_allow_html=True,
             )
             st.info(
-                "📊 **Chart Analysis**: 이동평균선·볼린저밴드·RSI·MACD·스토캐스틱·ADX/DMI·ATR·OBV·MFI·Rolling VWAP·일목균형표·거래량까지, "
-                "지금 이 종목 기준 자동 해설과 함께 전문 차트를 볼 수 있는 전용 화면이 새 창으로 열려요."
+                "📊 **Chart Analysis**: 이동평균선·볼린저밴드·RSI·MACD·스토캐스틱·ADX/DMI·ATR·OBV·MFI·Rolling VWAP·일목균형표·거래량을 활용한 전용 차트 분석 화면입니다."
             )
             st.markdown(
                 f"""
@@ -3197,6 +3264,13 @@ elif not selected_code:
                 """,
                 unsafe_allow_html=True,
             )
+
+        with tab3:
+            st.markdown(
+                "<div style='margin-bottom:12px;'></div>",
+                unsafe_allow_html=True,
+            )
+            render_home_earnings_preview(limit=8)
 
         st.markdown(
             "<div class='bottom-cards-wrapper'>", unsafe_allow_html=True
