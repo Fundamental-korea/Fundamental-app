@@ -3553,6 +3553,13 @@ else:
                         )
                         if not pd.isna(parsed_stored_date):
                             price_asof = parsed_stored_date.date()
+                            try:
+                                market_tz = "Asia/Seoul" if is_kr_stock else "America/New_York"
+                                price_age_days = (
+                                    pd.Timestamp.now(tz=market_tz).date() - price_asof
+                                ).days
+                            except Exception:
+                                price_age_days = None
                     except Exception:
                         pass
 
