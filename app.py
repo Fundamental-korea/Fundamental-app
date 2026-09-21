@@ -2728,98 +2728,176 @@ def _escape_html(value):
     )
 
 
-def render_home_live_news(limit=6, market=None):
-    """검색창 바로 아래에 표시하는 차분한 금융 뉴스 카드 영역."""
-    try:
-        query = (
-            supabase.table("news_items")
-            .select("title,description,article_url,original_url,published_at,source,category,market")
-            .eq("is_macro", True)
-        )
-        if market:
-            query = query.eq("market", market)
-        rows = query.order("published_at", desc=True).limit(limit).execute().data or []
-    except Exception:
-        rows = []
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_home_macro_news(display=8):
+    return fetch_macro_news(display=display)
 
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_home_earnings_events(days_back=30):
+    disclosures = fetch_dart_disclosures(
+        start_date=date.today() - timedelta(days=days_back),
+        end_date=date.today(),
+        page_count=100,
+        max_pages=20,
+    )
+    return build_earnings_events(disclosures)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_home_market_indices(market):
+    specs = (
+        [("S&P 500", "^GSPC"), ("Nasdaq", "^IXIC"), ("Dow Jones", "^DJI")]
+        if market == "US"
+        else [("KOSPI", "^KS11"), ("KOSDAQ", "^KQ11")]
+    )
+    result = []
+    for label, ticker in specs:
+        try:
+            hist = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=False)
+            if hist is None or hist.empty or "Close" not in hist.columns:
+                continue
+            close = hist["Close"].dropna()
+            if close.empty:
+                continue
+            latest = float(close.iloc[-1])
+            previous = float(close.iloc[-2]) if len(close) >= 2 else latest
+            change_pct = ((latest / previous) - 1.0) * 100.0 if previous else 0.0
+            result.append({"label": label, "value": latest, "change_pct": change_pct})
+        except Exception:
+            continue
+    return result
+
+
+def _render_news_cards(items, limit=6, title="📰 Live News", subtitle=""):
     st.markdown(
-        """
+        f"""
         <div class="live-news-section">
-          <div class="live-news-section-title">📰 Live News</div>
-          <div class="live-news-section-subtitle">시장에 영향을 줄 수 있는 주요 경제·금융 뉴스를 원문 출처와 함께 보여드립니다.</div>
+          <div class="live-news-section-title">{title}</div>
+          <div class="live-news-section-subtitle">{subtitle}</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
-    if not rows:
+    if not items:
         st.markdown(
-            '<div class="news-empty-state">아직 수집된 뉴스가 없습니다. 뉴스 데이터가 준비되면 최신 기사부터 이곳에 표시됩니다.</div>',
+            '<div class="news-empty-state">현재 표시할 뉴스가 없습니다. API 키 설정 또는 잠시 후 다시 시도해 주세요.</div>',
             unsafe_allow_html=True,
         )
         return
 
     cards = []
-    for row in rows:
-        title = _escape_html(row.get("title"))
-        desc = _escape_html(row.get("description"))
-        url = _escape_html(row.get("article_url") or row.get("original_url") or "#")
-        source = _escape_html(row.get("source") or "Source")
-        category = _escape_html(row.get("category") or "Markets")
-        published = _format_news_time(row.get("published_at"))
+    for item in list(items)[:limit]:
+        title_text = item.title if hasattr(item, "title") else item.get("title", "")
+        desc_text = item.description if hasattr(item, "description") else item.get("description", "")
+        article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
+        original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
+        pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
+        query = item.query if hasattr(item, "query") else ""
         cards.append(
             f"""
             <article class="live-news-card">
               <div class="live-news-meta">
-                <span class="live-news-category">{category}</span>
-                <span class="live-news-source">{source}</span>
+                <span class="live-news-category">NAVER 뉴스 검색 결과</span>
+                <span class="live-news-source">{_escape_html(query)}</span>
               </div>
-              <a class="live-news-title" href="{url}" target="_blank" rel="noopener noreferrer">{title}</a>
-              <div class="live-news-desc">{desc[:220]}</div>
-              <div class="live-news-footer">{published} · 원문 보기 ↗</div>
+              <a class="live-news-title" href="{_escape_html(article_url or original_url or '#')}" target="_blank" rel="noopener noreferrer">{_escape_html(title_text)}</a>
+              <div class="live-news-desc">{_escape_html(desc_text)}</div>
+              <div class="live-news-footer">{_format_news_time(pub_date)} · 원문 보기 ↗</div>
             </article>
             """
         )
-
     st.markdown('<div class="live-news-grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
 
 
-def render_home_earnings_preview(limit=8):
-    """홈의 Earnings Calendar 미리보기. 현재는 DART에 보고된 실적 이벤트 기준."""
+def render_home_live_news(limit=6):
+    """메인 Live News: 시장 영향도가 큰 거시·금융 질의를 NAVER 검색 API로 실시간 조회."""
     try:
-        rows = (
-            supabase.table("earnings_events")
-            .select("stock_name,stock_code,event_date,event_type,report_name,source_url")
-            .order("event_date", desc=True)
-            .limit(limit)
-            .execute()
-            .data
-            or []
-        )
-    except Exception:
-        rows = []
+        items = _get_home_macro_news(display=max(limit, 8))
+    except Exception as exc:
+        items = []
+        st.warning(f"Live News를 불러오지 못했습니다: {exc}")
 
+    _render_news_cards(
+        items,
+        limit=limit,
+        title="📰 Live News",
+        subtitle="금리·환율·미국 증시·국내 증시·정책 등 시장 전반의 주요 뉴스를 원문과 함께 보여드립니다.",
+    )
+    st.caption("NAVER Open API 뉴스 검색 결과 · 원문 출처 및 원문 링크를 함께 제공합니다.")
+
+
+def render_home_stock_news(stock_name, stock_code, limit=6):
+    """종목 상세 페이지의 종목별 뉴스."""
+    try:
+        items = fetch_stock_news(stock_name, stock_code, display=max(limit, 8))
+    except Exception:
+        items = []
+    if not items:
+        return
+    _render_news_cards(
+        items,
+        limit=limit,
+        title=f"📰 {stock_name} 관련 뉴스",
+        subtitle="해당 종목명을 기준으로 조회한 최신 뉴스 검색 결과입니다.",
+    )
+    st.caption("NAVER Open API 뉴스 검색 결과 · 검색결과 자체는 임의로 재정렬하거나 편집하지 않습니다.")
+
+
+def render_home_earnings_calendar(limit=12):
+    """한국 Earnings Calendar: 최근 DART 실적 공시를 잠정실적 우선으로 표시."""
     st.markdown(
-        f"<div style='margin-top:18px;margin-bottom:8px;font-size:18px;font-weight:850;color:{THEME['text']};'>📅 Earnings Calendar</div>",
+        "<div class='live-news-section'><div class='live-news-section-title'>📅 Earnings Calendar</div>"
+        "<div class='live-news-section-subtitle'>최근 DART 공시에서 확인된 잠정실적과 정기보고서를 구분해 보여드립니다.</div></div>",
         unsafe_allow_html=True,
     )
-    if not rows:
-        st.caption("DART 실적 이벤트가 준비되면 이 영역에 표시됩니다.")
+    try:
+        events = _get_home_earnings_events(days_back=30)
+    except Exception as exc:
+        events = []
+        st.warning(f"Earnings Calendar을 불러오지 못했습니다: {exc}")
+
+    if not events:
+        st.markdown(
+            '<div class="news-empty-state">최근 30일간 표시할 실적 공시가 없습니다.</div>',
+            unsafe_allow_html=True,
+        )
         return
 
-    for row in rows:
-        label = "잠정실적" if row.get("event_type") == "preliminary_earnings" else "정기보고서"
-        source_url = _escape_html(row.get("source_url") or "#")
+    for event in events[:limit]:
+        label = "잠정실적" if event.event_type == "preliminary_earnings" else "정기보고서"
+        badge_class = "earnings-primary" if event.event_type == "preliminary_earnings" else "earnings-secondary"
         st.markdown(
             f"""
-            <div style="padding:10px 0;border-bottom:1px solid {THEME['border']};">
-              <a href="{source_url}" target="_blank" rel="noopener noreferrer" style="text-decoration:none;color:{THEME['text']};font-weight:800;">{_escape_html(row.get('stock_name',''))}</a>
-              <span style="margin-left:8px;color:{THEME['text_muted']};">{_escape_html(row.get('event_date',''))}</span>
-              <span style="margin-left:8px;color:{THEME['text_muted']};font-size:12px;">{label}</span>
-              <span style="float:right;color:{THEME['text_muted']};font-size:11px;">DART ↗</span>
+            <div class="earnings-row">
+              <div>
+                <div class="earnings-name">{_escape_html(event.corp_name)} <span class="{badge_class}">{label}</span></div>
+                <div class="earnings-report">{_escape_html(event.report_name)}</div>
+              </div>
+              <div class="earnings-date">{_escape_html(event.event_date)} · <a href="{_escape_html(event.source_url)}" target="_blank" rel="noopener noreferrer">DART 원문 ↗</a></div>
             </div>
             """,
             unsafe_allow_html=True,
         )
+
+
+def render_home_market_overview(market):
+    title = "🇺🇸 US Market Overview" if market == "US" else "🇰🇷 Korea Market Overview"
+    subtitle = "주요 지수의 최신 일봉 기준 시세 흐름입니다." if market == "US" else "국내 주요 지수의 최신 일봉 기준 시세 흐름입니다."
+    st.markdown(
+        f"<div class='live-news-section'><div class='live-news-section-title'>{title}</div>"
+        f"<div class='live-news-section-subtitle'>{subtitle}</div></div>",
+        unsafe_allow_html=True,
+    )
+    rows = _get_home_market_indices(market)
+    if not rows:
+        st.info("시장 지수 데이터를 불러오지 못했습니다.")
+        return
+    cols = st.columns(len(rows))
+    for col, row in zip(cols, rows):
+        with col:
+            st.metric(row["label"], f"{row['value']:,.2f}", f"{row['change_pct']:+.2f}%")
+    st.caption("시장 데이터: yfinance · 최신 확인 가능 일봉 기준")
 
 
 
