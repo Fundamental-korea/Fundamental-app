@@ -20,6 +20,7 @@ import io
 import os
 import re
 import zipfile
+import time
 from typing import Iterable, Optional
 
 import pandas as pd
@@ -229,9 +230,20 @@ def fetch_dart_disclosures(
 
     for page in range(1, max_pages + 1):
         params["page_no"] = page
-        response = requests.get(DART_LIST_URL, params=params, timeout=30)
-        response.raise_for_status()
-        payload = response.json()
+        last_error = None
+        for attempt in range(3):
+            try:
+                response = requests.get(DART_LIST_URL, params=params, timeout=10)
+                response.raise_for_status()
+                payload = response.json()
+                last_error = None
+                break
+            except requests.RequestException as exc:
+                last_error = exc
+                if attempt < 2:
+                    time.sleep(1 + attempt)
+        else:
+            raise RuntimeError(f"DART API 연결 실패(3회 시도): {last_error}") from last_error
 
         if payload.get("status") == "013":
             break
@@ -385,8 +397,7 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10)
                 seen.add(key)
                 merged.append(item)
 
-    return sorted(merged, key=lambda x: x.pub_date, reverse=True)
-
+    # 각 질의의 NAVER 검색결과 순서를 그대로 유지한다. 검색결과 간 재정렬은 하지 않는다.\n    return merged\n
 
 
 def _get_supabase_client():
