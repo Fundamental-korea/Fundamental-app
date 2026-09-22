@@ -511,6 +511,9 @@ st.markdown(
         white-space: pre-wrap;
         margin: 0 0 18px;
     }
+    .news-reader-body + .news-reader-body {
+        margin-top: -6px;
+    }
     .news-reader-note {
         font-size: 11px;
         line-height: 1.6;
@@ -3510,10 +3513,10 @@ def _escape_html(value):
     )
 
 
-@st.cache_data(ttl=21600, show_spinner=False)
-def _get_home_macro_news(display=10, cache_version="marketaux-free-v3"):
-    # Marketaux Free는 하루 100 requests / 요청당 최대 3 articles이므로
-    # 메인 피드는 6시간 캐시해 방문자 새로고침마다 API를 재호출하지 않는다.
+@st.cache_data(ttl=7200, show_spinner=False)
+def _get_home_macro_news(display=10, cache_version="marketaux-free-v5"):
+    # Marketaux Free는 하루 100 requests / 요청당 최대 3 articles.
+    # 메인 피드는 2시간 캐시해 최신성을 높이면서 방문자 새로고침마다 API를 재호출하지 않는다.
     return fetch_macro_news(display=display)
 
 
@@ -3648,6 +3651,8 @@ def _build_news_reader_url(
     source: str,
     category: str,
     back_url: str = "",
+    snippet: str = "",
+    keywords: str = "",
 ) -> str:
     payload = {
         "news_view": "reader",
@@ -3659,6 +3664,8 @@ def _build_news_reader_url(
         "news_image": image_url,
         "news_source": source,
         "news_category": category or "시장 뉴스",
+        "news_snippet": snippet,
+        "news_keywords": keywords,
         "news_back": back_url,
         "theme": THEME_MODE,
     }
@@ -3676,6 +3683,8 @@ def render_news_reader():
     news_time = str(qp.get("news_time", "")).strip()
     source = str(qp.get("news_source", "")).strip() or _news_source_label(original_url or article_url)
     category = str(qp.get("news_category", "")).strip() or "시장 뉴스"
+    snippet = str(qp.get("news_snippet", "")).strip()
+    keywords = str(qp.get("news_keywords", "")).strip()
     image_url = str(qp.get("news_image", "")).strip()
     back_url = str(qp.get("news_back", "")).strip() or f"?theme={THEME_MODE}"
 
@@ -3726,9 +3735,11 @@ def render_news_reader():
               <div class="news-reader-body" style="color:{THEME['text']};">
                 {_escape_html(description)}
               </div>
+              {f'<div class="news-reader-body" style="color:{THEME["text_secondary"]};">{_escape_html(snippet)}</div>' if snippet else ''}
+              {f'<div class="news-reader-note" style="color:{THEME["text_muted"]};">핵심 키워드 · {_escape_html(keywords)}</div>' if keywords else ''}
               <div class="news-reader-note" style="color:{THEME['text_muted']};">
-                { _escape_html(source) }의 기사 정보를 우리 사이트 형식으로 정리해 보여드립니다. 기사 전문은 그대로 복제하지 않고
-                제목·요약·대표 이미지를 중심으로 제공합니다.
+                {_escape_html(source)} 기사에서 제공된 제목·요약·짧은 본문 문맥을 우리 사이트 형식으로 정리했습니다.
+                기사 전문을 그대로 복제하지는 않습니다.
               </div>
             </div>
             """
@@ -3825,6 +3836,8 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
         query = item.query if hasattr(item, "query") else ""
         source_hint = item.source if hasattr(item, "source") else item.get("source", "")
+        snippet_text = getattr(item, "snippet", "")
+        keywords_text = getattr(item, "keywords", "")
         provided_image_url = getattr(item, "image_url", "")
         image_url = provided_image_url or (image_urls[idx] if idx < len(image_urls) else "")
 
@@ -3842,6 +3855,8 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             source=source_label,
             category=query,
             back_url=back_url,
+            snippet=snippet_text,
+            keywords=keywords_text,
         )
         image_is_ai = image_url.startswith("https://image.pollinations.ai/")
         ai_badge_html = '<span class="live-news-ai-badge">AI 이미지</span>' if image_is_ai else ""
