@@ -3534,7 +3534,7 @@ def _render_earnings_detail(selected_date, events, market_filter="전체"):
         compare = ""
         if actual or eps_est:
             if actual and eps_est:
-                surprise_text = f" · 서프라이즈 <strong>{surprise:+}%</strong>" if surprise else ""
+                surprise_text = f" · 서프라이즈 <strong>{surprise}%</strong>" if surprise else ""
                 compare = (
                     f"<div class='earnings-detail-compare'>"
                     f"실제 EPS <strong>{actual}</strong> · 컨센서스 <strong>{eps_est}</strong>{surprise_text}"
@@ -3595,7 +3595,7 @@ def render_home_earnings_calendar(limit=12):
                 if actual and estimate:
                     compare = (
                         f"<div class='earnings-compare'>실제 EPS <strong>{actual}</strong> · "
-                        f"컨센서스 <strong>{estimate}</strong> · 서프라이즈 <strong>{surprise:+}%</strong></div>"
+                        f"컨센서스 <strong>{estimate}</strong> · 서프라이즈 <strong>{surprise}%</strong></div>"
                     )
             st.markdown(
                 f"""
