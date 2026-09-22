@@ -516,6 +516,19 @@ st.markdown(
         line-height: 1.6;
         margin-bottom: 18px;
     }
+    .news-reader-source-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 5px;
+        font-size: 12px;
+        font-weight: 800;
+        text-decoration: none !important;
+        border-bottom: 1px solid currentColor;
+        padding-bottom: 2px;
+    }
+    .news-reader-source-link:hover {
+        opacity: .78;
+    }
     .live-news-card {
         background: #FFFFFF;
         border: 1px solid #E5E7EB;
@@ -3713,15 +3726,20 @@ def render_news_reader():
                 {_escape_html(description)}
               </div>
               <div class="news-reader-note" style="color:{THEME['text_muted']};">
-                이 페이지는 뉴스 검색 결과의 제목·요약·대표 이미지를 우리 사이트 화면에 맞게 보여주는 내부 리더입니다.
-                기사 전문은 원문 제공자의 권리를 존중하기 위해 복제하지 않으며, 아래 버튼에서 원문을 확인할 수 있습니다.
+                { _escape_html(source) }의 기사 정보를 우리 사이트 형식으로 정리해 보여드립니다. 기사 전문은 그대로 복제하지 않고
+                제목·요약·대표 이미지를 중심으로 제공합니다.
               </div>
             </div>
             """
         )
         source_url = original_url or article_url
         if source_url:
-            st.link_button("원문 보기 ↗", source_url, use_container_width=True)
+            st.html(
+                f'<div style="text-align:right; margin-top:8px;">'
+                f'<a class="news-reader-source-link" href="{_escape_html(source_url)}" target="_blank" rel="noopener noreferrer" '
+                f'style="color:{THEME["accent_strong"]};">{_escape_html(source)} ↗</a>'
+                f'</div>'
+            )
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
