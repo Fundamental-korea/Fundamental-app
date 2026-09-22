@@ -48,7 +48,7 @@ def fallback_wics_sector(stock_name, sector):
     text = f"{stock_name or ''} {sector or ''}"
 
     # 특수 종목명은 업종 문자열보다 우선한다.
-    if stock_name in ("파라택시스코리아",):
+    if stock_name in ("파라택시스코리아", "동양생명"):
         return "금융"
     if stock_name in ("알에프세미",):
         return "IT"
@@ -58,7 +58,7 @@ def fallback_wics_sector(stock_name, sector):
         return "금융"
 
     # 건강관리
-    if any(k in text for k in ("의약", "제약", "바이오", "의료", "의학", "진단", "연구개발", "과학기술 서비스")):
+    if any(k in text for k in ("의약", "제약", "바이오", "의료", "의학", "진단", "연구개발", "과학기술 서비스", "과학 및 기술 서비스")):
         return "건강관리"
 
     # 통신/미디어
@@ -80,7 +80,7 @@ def fallback_wics_sector(stock_name, sector):
         return "소재"
 
     # 필수소비재
-    if any(k in text for k in ("식품", "음료", "담배", "사료", "생활용품", "가정용품", "어로", "수산")):
+    if any(k in text for k in ("식품", "음료", "담배", "사료", "생활용품", "가정용품", "어로", "수산", "곡물가공품")):
         return "필수소비재"
 
     # 경기소비재
