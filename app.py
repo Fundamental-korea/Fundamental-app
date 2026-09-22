@@ -519,6 +519,51 @@ st.markdown(
         line-height: 1.6;
         margin-bottom: 18px;
     }
+    .news-reader-summary {
+        margin: 20px 0;
+        padding: 18px 20px;
+        border: 1px solid #E5E7EB;
+        border-radius: 14px;
+        background: #FAFAFA;
+    }
+    .news-reader-summary-title {
+        font-size: 14px;
+        font-weight: 900;
+        margin-bottom: 10px;
+    }
+    .news-reader-summary-body {
+        font-size: 15px;
+        line-height: 1.8;
+        margin: 0;
+        white-space: pre-wrap;
+    }
+    .news-reader-facts {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+        margin: 18px 0;
+    }
+    .news-reader-fact {
+        padding: 12px 14px;
+        border: 1px solid #E5E7EB;
+        border-radius: 12px;
+        background: #FFFFFF;
+    }
+    .news-reader-fact-label {
+        font-size: 10px;
+        font-weight: 800;
+        margin-bottom: 5px;
+    }
+    .news-reader-fact-value {
+        font-size: 13px;
+        line-height: 1.55;
+        font-weight: 700;
+    }
+    @media (max-width: 800px) {
+        .news-reader-facts {
+            grid-template-columns: 1fr;
+        }
+    }
     .news-reader-source-link {
         display: inline-flex;
         align-items: center;
@@ -3653,6 +3698,7 @@ def _build_news_reader_url(
     back_url: str = "",
     snippet: str = "",
     keywords: str = "",
+    entities: str = "",
 ) -> str:
     payload = {
         "news_view": "reader",
@@ -3666,6 +3712,7 @@ def _build_news_reader_url(
         "news_category": category or "시장 뉴스",
         "news_snippet": snippet,
         "news_keywords": keywords,
+        "news_entities": entities,
         "news_back": back_url,
         "theme": THEME_MODE,
     }
@@ -3685,6 +3732,7 @@ def render_news_reader():
     category = str(qp.get("news_category", "")).strip() or "시장 뉴스"
     snippet = str(qp.get("news_snippet", "")).strip()
     keywords = str(qp.get("news_keywords", "")).strip()
+    entities = str(qp.get("news_entities", "")).strip()
     image_url = str(qp.get("news_image", "")).strip()
     back_url = str(qp.get("news_back", "")).strip() or f"?theme={THEME_MODE}"
 
@@ -3732,14 +3780,26 @@ def render_news_reader():
                 {_escape_html(news_time)}{ai_badge}
               </div>
               {image_html}
-              <div class="news-reader-body" style="color:{THEME['text']};">
-                {_escape_html(description)}
+              <div class="news-reader-summary" style="background:{THEME['surface_muted']}; border-color:{THEME['border']};">
+                <div class="news-reader-summary-title" style="color:{THEME['text']};">기사 핵심 내용</div>
+                <p class="news-reader-summary-body" style="color:{THEME['text']};">{_escape_html(description or snippet or "기사 요약 정보가 없습니다.")}</p>
               </div>
-              {f'<div class="news-reader-body" style="color:{THEME["text_secondary"]};">{_escape_html(snippet)}</div>' if snippet else ''}
+              {f'<div class="news-reader-body" style="color:{THEME["text_secondary"]};">{_escape_html(snippet)}</div>' if snippet and snippet != description else ''}
+              <div class="news-reader-facts">
+                <div class="news-reader-fact" style="background:{THEME['surface']}; border-color:{THEME['border']};">
+                  <div class="news-reader-fact-label" style="color:{THEME['text_muted']};">출처</div>
+                  <div class="news-reader-fact-value" style="color:{THEME['text']};">{_escape_html(source)}</div>
+                </div>
+                <div class="news-reader-fact" style="background:{THEME['surface']}; border-color:{THEME['border']};">
+                  <div class="news-reader-fact-label" style="color:{THEME['text_muted']};">주제</div>
+                  <div class="news-reader-fact-value" style="color:{THEME['text']};">{_escape_html(category or "시장 뉴스")}</div>
+                </div>
+              </div>
+              {f'<div class="news-reader-note" style="color:{THEME["text_muted"]};">관련 기업·자산 · {_escape_html(entities)}</div>' if entities else ''}
               {f'<div class="news-reader-note" style="color:{THEME["text_muted"]};">핵심 키워드 · {_escape_html(keywords)}</div>' if keywords else ''}
               <div class="news-reader-note" style="color:{THEME['text_muted']};">
-                {_escape_html(source)} 기사에서 제공된 제목·요약·짧은 본문 문맥을 우리 사이트 형식으로 정리했습니다.
-                기사 전문을 그대로 복제하지는 않습니다.
+                Marketaux와 출처 페이지에서 제공되는 제목·요약·문맥 정보를 우리 사이트 형식으로 정리했습니다.
+                기사 전문은 그대로 복제하지 않습니다.
               </div>
             </div>
             """
@@ -3838,6 +3898,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         source_hint = item.source if hasattr(item, "source") else item.get("source", "")
         snippet_text = getattr(item, "snippet", "")
         keywords_text = getattr(item, "keywords", "")
+        entities_text = getattr(item, "entities", "")
         provided_image_url = getattr(item, "image_url", "")
         image_url = provided_image_url or (image_urls[idx] if idx < len(image_urls) else "")
 
@@ -3857,6 +3918,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             back_url=back_url,
             snippet=snippet_text,
             keywords=keywords_text,
+            entities=entities_text,
         )
         image_is_ai = image_url.startswith("https://image.pollinations.ai/")
         ai_badge_html = '<span class="live-news-ai-badge">AI 이미지</span>' if image_is_ai else ""
