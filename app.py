@@ -3846,7 +3846,6 @@ def render_news_reader():
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
     with article_main:
-        ai_badge = " · AI 생성 이미지" if image_url.startswith("https://image.pollinations.ai/") else ""
         image_html = (
             f'<img class="news-reader-image" src="{_escape_html(image_url)}" alt="{_escape_html(title)}" '
             f'loading="eager" onerror="this.style.display=\'none\';">'
@@ -3862,7 +3861,7 @@ def render_news_reader():
                 {_escape_html(title)}
               </h1>
               <div class="news-reader-meta" style="color:{THEME['text_muted']};">
-                {_escape_html(news_time)}{ai_badge}
+                {_escape_html(news_time)}
               </div>
               {image_html}
               <div class="news-reader-ai-article" style="color:{THEME['text']};">
