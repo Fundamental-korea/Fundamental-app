@@ -1,6 +1,9 @@
 name: Korea WICS Missing Classification Repair
 
 on:
+  workflow_run:
+    workflows: ["Daily Fundamental Data Auto-Update"]
+    types: [completed]
   workflow_dispatch:
   push:
     paths:
@@ -12,6 +15,9 @@ permissions:
 
 jobs:
   repair:
+    if: >-
+      ${{ github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
