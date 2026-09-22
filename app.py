@@ -3637,12 +3637,19 @@ def render_home_earnings_calendar(limit=12):
                         f"<div class='earnings-compare'>실제 EPS <strong>{actual}</strong> · "
                         f"컨센서스 <strong>{estimate}</strong> · 서프라이즈 <strong>{surprise}%</strong></div>"
                     )
+            source_link = ""
+            if event.source_url:
+                source_link = (
+                    f"<a href='{_escape_html(event.source_url)}' target='_blank' "
+                    f"rel='noopener noreferrer' style='color:#D97706;text-decoration:none;font-weight:800;margin-left:8px;'>공시 보기 ↗</a>"
+                )
+
             st.markdown(
                 f"""
                 <div class="earnings-row">
                   <div>
                     <div class="earnings-name">{_escape_html(event.corp_name)} <span class="earnings-primary">{label}</span></div>
-                    <div class="earnings-report">{_escape_html(event.report_name)}</div>
+                    <div class="earnings-report">{_escape_html(event.report_name)}{source_link}</div>
                     {compare}
                   </div>
                   <div class="earnings-date">{_escape_html(event.event_date)}</div>
