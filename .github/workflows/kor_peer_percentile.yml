@@ -1,0 +1,95 @@
+name: Korea Peer Percentile Refresh
+
+on:
+  workflow_run:
+    workflows: ["Daily Fundamental Data Auto-Update"]
+    types: [completed]
+  workflow_dispatch:
+  push:
+    paths:
+      - "KOR_PEER_PERCENTILE_TRIGGER.txt"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: kor-peer-percentile-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    if: >-
+      ${{ github.event_name != 'workflow_run' ||
+      github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Recalculate Korea peer percentiles
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python rescore_metric_percentiles.py
+
+      - name: Verify peer percentile coverage
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from supabase import create_client
+
+          key = os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_KEY")
+          sb = create_client(os.environ["SUPABASE_URL"], key)
+
+          rows = []
+          start = 0
+          while True:
+              batch = (
+                  sb.table("Fundamental")
+                  .select("stock_code,period_scores")
+                  .not_.is_("period_scores", "null")
+                  .range(start, start + 199)
+                  .execute()
+                  .data
+                  or []
+              )
+              if not batch:
+                  break
+              rows.extend(batch)
+              if len(batch) < 200:
+                  break
+              start += 200
+
+          total = len(rows)
+          metric_pct_rows = 0
+          for row in rows:
+              avg = ((row.get("period_scores") or {}).get("1y") or {}).get("avg") or {}
+              metrics = avg.get("metric_scores") or {}
+              if any(
+                  isinstance(entry, dict) and entry.get("sector_percentile") is not None
+                  for entry in metrics.values()
+              ):
+                  metric_pct_rows += 1
+
+          print(f"peer_percentile_rows={metric_pct_rows}/{total}")
+          if total and metric_pct_rows < int(total * 0.90):
+              raise SystemExit("Peer percentile coverage below 90%")
+          PY
