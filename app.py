@@ -532,6 +532,13 @@ st.markdown(
         font-size: 14px;
         font-weight: 850;
     }
+    .earnings-company-ko {
+        color: #6B7280 !important;
+        font-size: 0.82em;
+        font-weight: 650;
+        margin-left: 4px;
+        white-space: nowrap;
+    }
     .earnings-report {
         color: #6B7280 !important;
         font-size: 11px;
@@ -672,6 +679,12 @@ st.markdown(
     .earnings-calendar-empty {
         color: #D1D5DB !important;
         font-size: 12px;
+    }
+    .earnings-calendar-company-ko {
+        font-size: 0.86em;
+        font-weight: 650;
+        color: #6B7280 !important;
+        margin-left: 2px;
     }
     .earnings-calendar-event {
         display: block;
@@ -1243,10 +1256,84 @@ if THEME_MODE == "dark":
         .grade-hero-box,
         .finstat-item,
         .overview-cell,
-        .indicator-card {
+        .indicator-card,
+        .live-news-card,
+        .news-empty-state,
+        .earnings-row,
+        .earnings-calendar-shell,
+        .earnings-calendar-cell,
+        .earnings-detail-card,
+        .earnings-summary-card {
             background-color: __THEME_SURFACE__ !important;
             color: __THEME_TEXT__ !important;
             border-color: __THEME_BORDER__ !important;
+        }
+
+        .live-news-card *,
+        .news-empty-state *,
+        .earnings-row *,
+        .earnings-calendar-shell *,
+        .earnings-calendar-cell *,
+        .earnings-detail-card *,
+        .earnings-summary-card * {
+            color: __THEME_TEXT__ !important;
+        }
+
+        .live-news-meta,
+        .live-news-meta *,
+        .live-news-desc,
+        .live-news-footer,
+        .earnings-report,
+        .earnings-note,
+        .earnings-calendar-sub,
+        .earnings-calendar-week,
+        .earnings-calendar-more,
+        .earnings-detail-meta,
+        .earnings-company-ko,
+        .earnings-calendar-company-ko,
+        .earnings-compare,
+        .earnings-detail-compare {
+            color: __THEME_TEXT_MUTED__ !important;
+        }
+
+        .live-news-title,
+        .earnings-name,
+        .earnings-date,
+        .earnings-upcoming-title,
+        .earnings-calendar-month,
+        .earnings-calendar-day,
+        .earnings-detail-name,
+        .earnings-summary-value {
+            color: __THEME_TEXT__ !important;
+        }
+
+        .earnings-calendar-event,
+        .earnings-calendar-event.us {
+            background-color: __THEME_SURFACE_MUTED__ !important;
+            color: __THEME_TEXT__ !important;
+        }
+
+        .earnings-calendar-event.kr,
+        .earnings-consensus-chip,
+        .earnings-primary {
+            background-color: __THEME_WARNING_BG__ !important;
+            color: __THEME_WARNING_TEXT__ !important;
+            border-color: __THEME_ACCENT__ !important;
+        }
+
+        .earnings-secondary {
+            background-color: __THEME_SURFACE_MUTED__ !important;
+            color: __THEME_TEXT_MUTED__ !important;
+            border-color: __THEME_BORDER__ !important;
+        }
+
+        [class*="st-key-earnings_cell_"] button {
+            color: __THEME_TEXT__ !important;
+        }
+
+        [class*="st-key-earnings_cell_"] button:hover {
+            background-color: __THEME_SURFACE_WARM__ !important;
+            color: __THEME_ACCENT_STRONG__ !important;
         }
 
         .quote-box-v2,
@@ -3412,6 +3499,17 @@ def _format_eps(value):
         return ""
 
 
+def _korean_company_alias(symbol, company_name=""):
+    """검색 alias에 등록된 한국어 기업명을 실적 UI에서 보조 표기로 사용한다."""
+    key = str(symbol or "").strip().upper().replace("-", ".")
+    aliases = aliases_for(key, company_name)
+    for alias in aliases:
+        if any("\uAC00" <= ch <= "\uD7A3" for ch in str(alias)):
+            if str(alias).strip().casefold() != str(company_name or "").strip().casefold():
+                return str(alias).strip()
+    return ""
+
+
 def _earnings_calendar_events():
     """월간 캘린더에 필요한 이벤트를 한 번에 구성."""
     events = []
@@ -3509,10 +3607,16 @@ def _render_earnings_calendar_grid(month_start, events, market_filter="전체", 
                         name = item["company"]
                         if len(name) > 14:
                             name = name[:13] + "…"
+                        ko_name = _korean_company_alias(item["symbol"], item["company"]) if item["market"] == "US" else ""
                         status_mark = "예정" if item["status"] == "upcoming" else "실적"
+                        title_name = f"{item['company']} ({ko_name})" if ko_name else item["company"]
+                        ko_html = (
+                            f"<span class='earnings-calendar-company-ko'>({_escape_calendar_text(ko_name)})</span>"
+                            if ko_name else ""
+                        )
                         st.markdown(
-                            f"<div class='earnings-calendar-event {market_class}' title='{_escape_calendar_text(item['company'])} · {status_mark}'>"
-                            f"{market_tag} · {_escape_calendar_text(name)}</div>",
+                            f"<div class='earnings-calendar-event {market_class}' title='{_escape_calendar_text(title_name)} · {status_mark}'>"
+                            f"{market_tag} · {_escape_calendar_text(name)}{ko_html}</div>",
                             unsafe_allow_html=True,
                         )
                     if len(items) > 3:
@@ -3597,7 +3701,7 @@ def _render_earnings_detail(selected_date, events, market_filter="전체"):
             <div class='earnings-detail-card'>
               <div class='earnings-detail-top'>
                 <div>
-                  <div class='earnings-detail-name'>{_escape_calendar_text(row['company'])} <span style='color:#6B7280 !important;font-size:11px;font-weight:800;'>({row['symbol']})</span></div>
+                  <div class='earnings-detail-name'>{_escape_calendar_text(row['company'])}{f"<span class='earnings-company-ko'>({_escape_calendar_text(_korean_company_alias(row['symbol'], row['company']))})</span>" if row['market'] == 'US' and _korean_company_alias(row['symbol'], row['company']) else ''} <span style='color:#6B7280 !important;font-size:11px;font-weight:800;'>({row['symbol']})</span></div>
                   <div class='earnings-detail-meta'>{_escape_calendar_text(" · ".join(meta_parts))} {source_link}</div>
                 </div>
                 <span class='earnings-detail-market {market_class}'>{market_label}</span>
@@ -3674,7 +3778,7 @@ def render_home_earnings_calendar(limit=12):
                 f"""
                 <div class="earnings-row">
                   <div style="flex:1 1 auto;min-width:180px;">
-                    <div class="earnings-name">{_escape_html(row['company'])} <span class="earnings-primary">{_escape_html(row['symbol'])}</span></div>
+                    <div class="earnings-name">{_escape_html(row['company'])}{f"<span class='earnings-company-ko'>({_escape_html(_korean_company_alias(row['symbol'], row['company']))})</span>" if row['market'] == 'US' and _korean_company_alias(row['symbol'], row['company']) else ''} <span class="earnings-primary">{_escape_html(row['symbol'])}</span></div>
                     <div class="earnings-report">{market_text} 예정 실적 · {timing}</div>
                   </div>
                   <div class="earnings-date-wrap">
