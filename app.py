@@ -3825,7 +3825,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
         query = item.query if hasattr(item, "query") else ""
         source_hint = item.source if hasattr(item, "source") else item.get("source", "")
-        provided_image_url = item.image_url if hasattr(item, "image_url") else item.get("image_url", "")
+        provided_image_url = getattr(item, "image_url", "")
         image_url = provided_image_url or (image_urls[idx] if idx < len(image_urls) else "")
 
         direct_url = original_url or article_url
