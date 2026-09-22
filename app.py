@@ -3569,7 +3569,7 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v1"):
                     "source,source_id,title,description,article_url,original_url,"
                     "published_at,metadata"
                 )
-                .eq("source", "MARKETAUX")
+                .in_("source", ["MARKETAUX", "NAVER"])
                 .eq("is_macro", True)
                 .gte("published_at", start_utc)
                 .lt("published_at", next_utc)
