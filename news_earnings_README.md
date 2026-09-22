@@ -16,6 +16,8 @@ Streamlit Secrets 또는 환경변수로 다음 값을 설정한다.
 - `DART_API_KEY`
 - `NAVER_CLIENT_ID`
 - `NAVER_CLIENT_SECRET`
+- `MARKETAUX_API_TOKEN`
+- `GEMINI_API_KEY` (뉴스 AI 브리핑을 사용할 경우)
 
 기존 `SUPABASE_URL`, `SUPABASE_KEY`는 그대로 사용한다.
 
@@ -28,3 +30,15 @@ Streamlit Secrets 또는 환경변수로 다음 값을 설정한다.
 ## 자동화
 
 현재 GitHub Actions 자동 수집은 추가하지 않는다. API 연동과 화면 검증이 끝난 뒤 마지막 단계에서 자동화를 붙인다.
+
+
+## 뉴스 AI 브리핑
+
+뉴스 리더는 Marketaux가 제공하는 제목·설명·snippet·keywords·entities를 바탕으로 한국어 금융뉴스 브리핑을 생성할 수 있다.
+Streamlit Secrets에 다음 값을 추가한다.
+
+- `GEMINI_API_KEY`
+- 선택: `GEMINI_NEWS_MODEL` (기본값 `gemini-3.5-flash-lite`)
+
+AI 브리핑 본문은 Supabase에 별도 저장하지 않고 애플리케이션 캐시에 24시간 보관한다.
+따라서 뉴스 AI 기능을 추가해도 뉴스 DB의 저장 용량 증가를 최소화한다.
