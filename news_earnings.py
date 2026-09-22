@@ -409,6 +409,7 @@ def search_marketaux_news(
     domains: str = "",
     display: int = 3,
     today_only: bool = False,
+    must_have_entities: bool = True,
 ) -> list[NaverNewsItem]:
     """Fetch global financial news from Marketaux and normalize it to NaverNewsItem."""
     token = _marketaux_token()
@@ -419,13 +420,14 @@ def search_marketaux_news(
         "api_token": token,
         "language": language,
         "limit": min(max(display, 1), 3),
-        "must_have_entities": "true",
         "group_similar": "true",
         "sort": "published_at",
     }
 
     # Marketaux timestamps are UTC. Live News "today" is defined by the
     # Korea calendar day (Asia/Seoul), then converted to UTC for the API.
+    params["must_have_entities"] = "true" if must_have_entities else "false"
+
     if today_only:
         kst = ZoneInfo("Asia/Seoul")
         now_kst = datetime.now(kst)
@@ -593,11 +595,6 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
                 break
         return _rank_global_news(merged)[:target]
 
-    preferred_domains = (
-        "reuters.com,bloomberg.com,wsj.com,ft.com,cnbc.com,"
-        "marketwatch.com,barrons.com,apnews.com,finance.yahoo.com"
-    )
-
     # 주제를 넓혀 비슷한 뉴스가 반복되는 것을 줄이고, 미국 경제 중심 구성을 유지한다.
     us_queries = (
         "Federal Reserve interest rates inflation CPI PCE Treasury yields dollar",
@@ -618,9 +615,9 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
                 query=query,
                 language="en",
                 countries="us",
-                domains=preferred_domains,
                 display=3,
                 today_only=True,
+                must_have_entities=False,
             )
         )
 
@@ -633,6 +630,7 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
                 countries="kr",
                 display=3,
                 today_only=True,
+                must_have_entities=False,
             )
         )
 
