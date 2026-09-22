@@ -18,6 +18,7 @@ Streamlit Secrets 또는 환경변수로 다음 값을 설정한다.
 - `NAVER_CLIENT_SECRET`
 - `MARKETAUX_API_TOKEN`
 - `GEMINI_API_KEY` (뉴스 AI 브리핑을 사용할 경우)
+- 선택: `GEMINI_NEWS_MODEL` (기본값 `gemini-3.5-flash-lite`)
 
 기존 `SUPABASE_URL`, `SUPABASE_KEY`는 그대로 사용한다.
 
