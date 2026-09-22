@@ -17,4 +17,9 @@ jobs:
       - name: Probe
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
-        run: python probe_us_interest_xbrl.py "${{ secrets.SEC_USER_AGENT }}"
+        run: python probe_us_interest_xbrl.py "${{ secrets.SEC_USER_AGENT }}" | tee probe_output.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: us-interest-xbrl-probe
+          path: probe_output.txt
+          retention-days: 7
