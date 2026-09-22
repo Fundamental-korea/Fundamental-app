@@ -3598,21 +3598,23 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle=""):
             )
 
         cards.append(
-            f"""
-            <article class="live-news-card">
-              {media_html}
-              <div class="live-news-card-body">
-                <div class="live-news-meta">
-                  <span class="live-news-category">{_escape_html(query) if query else "시장 뉴스"}</span>
-                </div>
-                <a class="live-news-title" href="{_escape_html(article_url or original_url or '#')}" target="_blank" rel="noopener noreferrer">{_escape_html(title_text)}</a>
-                <div class="live-news-desc">{_escape_html(desc_text)}</div>
-                <div class="live-news-footer">{_format_news_time(pub_date)} · 원문 보기 ↗</div>
-              </div>
-            </article>
-            """
+            f'<article class="live-news-card">'
+            f'{media_html}'
+            f'<div class="live-news-card-body">'
+            f'<div class="live-news-meta">'
+            f'<span class="live-news-category">{_escape_html(query) if query else "시장 뉴스"}</span>'
+            f'</div>'
+            f'<a class="live-news-title" '
+            f'href="{_escape_html(article_url or original_url or "#")}" '
+            f'target="_blank" rel="noopener noreferrer">'
+            f'{_escape_html(title_text)}'
+            f'</a>'
+            f'<div class="live-news-desc">{_escape_html(desc_text)}</div>'
+            f'<div class="live-news-footer">{_format_news_time(pub_date)} · 원문 보기 ↗</div>'
+            f'</div>'
+            f'</article>'
         )
-    st.markdown('<div class="live-news-grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
+    st.html('<div class="live-news-grid">' + ''.join(cards) + '</div>')
 
 
 def render_home_live_news(limit=9):
