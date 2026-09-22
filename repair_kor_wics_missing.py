@@ -19,7 +19,7 @@ start = 0
 while True:
     batch = (
         sb.table("Fundamental")
-        .select("stock_code,stock_name,wics_sector")
+        .select("stock_code,stock_name,sector,wics_sector")
         .is_("wics_sector", "null")
         .range(start, start + 199)
         .execute()
