@@ -2,7 +2,7 @@ name: Korea Peer Percentile Refresh
 
 on:
   workflow_run:
-    workflows: ["Daily Fundamental Data Auto-Update"]
+    workflows: ["Korea WICS Missing Classification Repair"]
     types: [completed]
   workflow_dispatch:
   push:
