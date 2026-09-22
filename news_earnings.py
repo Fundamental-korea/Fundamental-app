@@ -15,7 +15,7 @@ planning document:
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 import io
 import os
 import re
@@ -28,6 +28,7 @@ import pandas as pd
 import requests
 import xml.etree.ElementTree as ET
 from urllib.parse import urlparse
+from zoneinfo import ZoneInfo
 
 
 DART_LIST_URL = "https://opendart.fss.or.kr/api/list.json"
@@ -407,6 +408,7 @@ def search_marketaux_news(
     countries: str = "",
     domains: str = "",
     display: int = 3,
+    today_only: bool = False,
 ) -> list[NaverNewsItem]:
     """Fetch global financial news from Marketaux and normalize it to NaverNewsItem."""
     token = _marketaux_token()
@@ -417,11 +419,22 @@ def search_marketaux_news(
         "api_token": token,
         "language": language,
         "limit": min(max(display, 1), 3),
-        "published_after": (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M"),
         "must_have_entities": "true",
         "group_similar": "true",
         "sort": "published_at",
     }
+
+    # Marketaux timestamps are UTC. Live News "today" is defined by the
+    # Korea calendar day (Asia/Seoul), then converted to UTC for the API.
+    if today_only:
+        kst = ZoneInfo("Asia/Seoul")
+        now_kst = datetime.now(kst)
+        start_kst = now_kst.replace(hour=0, minute=0, second=0, microsecond=0)
+        next_kst = start_kst + timedelta(days=1)
+        params["published_after"] = start_kst.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+        params["published_before"] = next_kst.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+    else:
+        params["published_after"] = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M")
     if query.strip():
         params["search"] = query.strip()
     if symbols:
@@ -567,7 +580,7 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
         merged: list[NaverNewsItem] = []
         seen: set[str] = set()
         for query in list(queries):
-            items = search_marketaux_news(query=query, language="en", display=3)
+            items = search_marketaux_news(query=query, language="en", display=3, today_only=True)
             if not items:
                 items = search_naver_news(query, display=min(target, 3), sort="date")
             for item in items:
@@ -620,6 +633,7 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
                 language="en",
                 countries="us",
                 display=3,
+                today_only=True,
             )
         )
 
@@ -631,8 +645,20 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
                 language="ko",
                 countries="kr",
                 display=3,
+                today_only=True,
             )
         )
+
+    def is_today_kst(item: NaverNewsItem) -> bool:
+        try:
+            published = pd.to_datetime(item.pub_date, utc=True)
+            return published.tz_convert("Asia/Seoul").date() == datetime.now(ZoneInfo("Asia/Seoul")).date()
+        except Exception:
+            return False
+
+    # Strict local-date guard: even fallback/provider quirks cannot leak an older date.
+    us_candidates = [item for item in us_candidates if is_today_kst(item)]
+    kr_candidates = [item for item in kr_candidates if is_today_kst(item)]
 
     def dedupe(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
         out: list[NaverNewsItem] = []
