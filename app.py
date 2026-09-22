@@ -5095,7 +5095,7 @@ elif not selected_code:
 
         # 메인 Live News는 검색창 바로 아래가 기본 화면이다.
         if home_nav == "Live News":
-            render_home_live_news(limit=9)
+            render_home_live_news(limit=10)
         elif home_nav == "US Market Overview":
             render_home_market_overview("US")
         elif home_nav == "Korea Market Overview":
