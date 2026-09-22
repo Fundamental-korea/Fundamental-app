@@ -99,6 +99,8 @@ class NaverNewsItem:
     query: str
     source: str = "NAVER"
     image_url: str = ""
+    snippet: str = ""
+    keywords: str = ""
 
 
 @dataclass(frozen=True)
@@ -455,6 +457,8 @@ def search_marketaux_news(
                 query=query or "US market news",
                 source=source,
                 image_url=image_url,
+                snippet=_clean_html(str(article.get("snippet") or "")),
+                keywords=_clean_html(str(article.get("keywords") or "")),
             )
         )
         # NaverNewsItem에는 이미지 필드가 없으므로 대표 이미지는 app.py에서 URL을 다시 확인한다.
@@ -531,18 +535,18 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
 
 
 def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10) -> list[NaverNewsItem]:
-    """Main Live News feed optimized for the Free Marketaux plan: US 8 + KR 2."""
+    """Main Live News feed optimized for Marketaux Free: US 8 + KR 2.
+
+    Normal path uses exactly 5 Marketaux requests per refresh (4 US topics + 1 KR topic).
+    The app layer caches this feed, so the public page does not spend a request per visitor.
+    """
     target = min(max(display, 1), 10)
 
     if queries is not None:
         merged: list[NaverNewsItem] = []
         seen: set[str] = set()
         for query in list(queries):
-            items = search_marketaux_news(
-                query=query,
-                language="en",
-                display=3,
-            )
+            items = search_marketaux_news(query=query, language="en", display=3)
             if not items:
                 items = search_naver_news(query, display=min(target, 3), sort="date")
             for item in items:
@@ -561,9 +565,6 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10)
         "marketwatch.com,barrons.com,apnews.com,finance.yahoo.com"
     )
 
-    # 4 US requests x 3 articles = up to 12 candidates -> choose 8.
-    # One KR request x 3 articles -> choose 2. Total: 5 Marketaux requests
-    # per refresh in the normal case, versus the previous 10-query approach.
     us_queries = (
         "Federal Reserve interest rates inflation CPI PCE Treasury yields dollar",
         "US economy jobs GDP consumer spending tariffs trade policy",
@@ -572,9 +573,8 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10)
     )
     kr_query = "한국은행 기준금리 원화 코스피 한국 경제 증시"
 
+    # Free plan: 4 US x 3 articles + 1 KR x 3 articles = at most 15 Marketaux articles/request payloads.
     us_candidates: list[NaverNewsItem] = []
-    kr_candidates: list[NaverNewsItem] = []
-
     for query in us_queries:
         items = search_marketaux_news(
             query=query,
@@ -583,14 +583,17 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10)
             domains=preferred_domains,
             display=3,
         )
-        if not items:
-            items = search_marketaux_news(
-                query=query,
-                language="en",
-                countries="us",
-                display=3,
-            )
         us_candidates.extend(items)
+
+    # If the preferred-source filter is too restrictive at a given moment, make one broad US fallback.
+    if len(us_candidates) < 8:
+        broad_us = search_marketaux_news(
+            query="United States economy Federal Reserve inflation jobs markets earnings tariffs",
+            language="en",
+            countries="us",
+            display=3,
+        )
+        us_candidates.extend(broad_us)
 
     kr_candidates = search_marketaux_news(
         query=kr_query,
@@ -611,13 +614,11 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10)
 
     us_ranked = dedupe(us_candidates)
     kr_ranked = dedupe(kr_candidates)
+    selected = us_ranked[:min(8, target)]
+    remaining = max(0, target - len(selected))
+    selected.extend(kr_ranked[:min(2, remaining)])
 
-    selected = us_ranked[: min(8, target)]
-    kr_slots = max(0, target - len(selected))
-    selected.extend(kr_ranked[: min(2, kr_slots)])
-
-    # Only fall back to NAVER when Marketaux could not fill its intended mix.
-    # This keeps Marketaux usage bounded rather than burning requests on every refresh.
+    # NAVER is only a last-resort gap filler; normal operation does not consume NAVER for a full Marketaux feed.
     if len(selected) < target:
         fallback_us = search_naver_news(
             "미국 경제 연준 금리 물가 증시 실적",
@@ -646,7 +647,6 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10)
                 selected.append(item)
 
     return selected[:target]
-
 
 
 def _get_supabase_client():
