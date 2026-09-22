@@ -3550,9 +3550,15 @@ def _escape_html(value):
     )
 
 
+@st.cache_data(ttl=7200, show_spinner=False)
+def _get_home_macro_news_direct_fallback(display=20, day_key=""):
+    """Safe two-hour fallback when the scheduled Supabase snapshot is incomplete."""
+    return fetch_macro_news(display=min(max(display, 1), 20))
+
+
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_home_macro_news(display=20, cache_version="supabase-live-news-v1"):
-    """Read the automatically refreshed today's Live News snapshot from Supabase."""
+def _get_home_macro_news(display=20, cache_version="supabase-live-news-v2"):
+    """Read today's automated Live News snapshot; recover safely if incomplete."""
     target = min(max(display, 1), 20)
     if supabase is not None:
         try:
@@ -3596,17 +3602,15 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v1"):
                         entities=str(meta.get("entities") or ""),
                     )
                 )
-            if rows:
+            if len(rows) >= min(10, target):
                 return rows
         except Exception:
             pass
 
-    # First deployment/temporary collector failure fallback: use the existing
-    # direct Marketaux collector once rather than leaving the feed blank.
-    return fetch_macro_news(display=target)
+    day_key = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
+    return _get_home_macro_news_direct_fallback(display=target, day_key=day_key)
 
 
-@st.cache_data(ttl=300, show_spinner=False)
 def _get_earnings_events_db(days_back=90, days_forward=120):
     """Earnings UI는 외부 API를 직접 호출하지 않고 수집된 DB snapshot만 읽는다."""
     if supabase is None:
@@ -3713,15 +3717,15 @@ def _generate_ai_news_article(
     keywords: str = "",
     entities: str = "",
     source: str = "",
-) -> str:
-    """Generate a Korean financial-news brief from Marketaux metadata/context."""
+) -> dict:
+    """Translate the source headline into Korean and generate a Korean financial brief."""
     api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
     if not api_key:
-        return ""
+        return {}
 
     model = str(st.secrets.get("GEMINI_NEWS_MODEL", "gemini-3.5-flash-lite")).strip()
     source_material = "\n".join([
-        f"제목: {title}",
+        f"원문 제목: {title}",
         f"출처: {source}",
         f"설명: {description}",
         f"짧은 본문 문맥: {snippet}",
@@ -3731,27 +3735,32 @@ def _generate_ai_news_article(
 
     prompt = f"""
 너는 미국·한국 금융시장 전문 뉴스 에디터다.
-아래 자료는 Marketaux가 제공한 실제 뉴스 메타데이터와 짧은 문맥이다.
+아래 자료는 실제 뉴스 공급원이 제공한 메타데이터와 짧은 문맥이다.
 
 {source_material}
 
-위 자료만 근거로, 독자가 원문을 클릭하지 않아도 사건의 핵심을 이해할 수 있는
-한국어 금융뉴스 브리핑 본문만 작성하라.
+위 자료만 근거로 한국어 금융뉴스를 작성하라.
+원문 제목이 영어라면 의미를 정확히 보존한 자연스러운 한국어 금융 제목으로 먼저 번역하고,
+그 한국어 주제를 중심으로 본문을 작성하라.
 
 작성 규칙:
 1. 원문 문장을 그대로 복사하지 말고 완전히 다른 표현으로 재구성한다.
 2. 자료에 없는 사실, 숫자, 인용, 발언, 일정, 전망을 절대로 만들어내지 않는다.
 3. 자료만으로 확인할 수 없는 내용은 추측하지 않는다.
 4. 본문은 7~9개 문단, 총 1200~1800자 정도로 작성한다.
-5. 첫 문단은 '무슨 일이 있었는가'를 바로 설명한다.
-6. 이어서 배경과 핵심 사실을 설명한다.
-7. 시장 영향은 자료에서 합리적으로 연결되는 범위에서만 설명하고,
-   확인되지 않은 인과관계는 단정하지 않는다.
-8. 마지막 문단은 투자자가 확인할 포인트를 설명하되 매수·매도 추천은 하지 않는다.
-9. 기업명·자산명·시장명·수치가 제공된 경우 가능한 한 정확하게 유지한다.
-10. 원문을 장황하게 재현하지 말고 독립적인 금융 브리핑 문체로 작성한다.
-11. 제목, '본문:' 같은 라벨, AI 안내문, 출처 표시는 출력하지 않는다.
-12. 문단 사이에는 빈 줄 하나만 넣는다.
+5. 첫 문단은 무슨 일이 있었는지를 바로 설명한다.
+6. 이어서 배경, 핵심 사실, 시장 영향, 향후 체크포인트 순서로 설명한다.
+7. 시장 영향은 자료에서 합리적으로 연결되는 범위에서만 설명한다.
+8. 투자 추천이나 매수·매도 지시는 하지 않는다.
+9. 기업명·자산명·시장명·수치가 제공된 경우 정확하게 유지한다.
+10. AI 안내문이나 출처 표시는 출력하지 않는다.
+11. 아래 형식을 정확히 지킨다.
+
+제목:
+<한국어 제목>
+
+본문:
+<본문>
 """
     try:
         response = requests.post(
@@ -3761,16 +3770,8 @@ def _generate_ai_news_article(
                 "Content-Type": "application/json",
             },
             json={
-                "contents": [
-                    {
-                        "parts": [
-                            {"text": prompt}
-                        ]
-                    }
-                ],
-                "generationConfig": {
-                    "maxOutputTokens": 2200,
-                },
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": 2200},
             },
             timeout=30,
         )
@@ -3781,14 +3782,24 @@ def _generate_ai_news_article(
             .get("content", {})
             .get("parts", [])
         )
-        text_parts = [
+        result = "\n".join(
             str(p.get("text", "")).strip()
             for p in parts
             if p.get("text")
-        ]
-        return "\n".join(text_parts).strip()
+        ).strip()
+
+        ai_title = ""
+        ai_body = result
+        if "제목:" in result:
+            after_title = result.split("제목:", 1)[1].strip()
+            if "본문:" in after_title:
+                ai_title, ai_body = after_title.split("본문:", 1)
+                ai_title = ai_title.strip()
+                ai_body = ai_body.strip()
+
+        return {"title": ai_title, "body": ai_body}
     except Exception:
-        return ""
+        return {}
 
 def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -> str:
     """대표 이미지가 없을 때 기사 내용에 맞춘 AI 편집 일러스트 URL을 만든다.
@@ -3859,7 +3870,7 @@ def render_news_reader():
     keywords = str(qp.get("news_keywords", "")).strip()
     entities = str(qp.get("news_entities", "")).strip()
     image_url = str(qp.get("news_image", "")).strip()
-    ai_article = _generate_ai_news_article(
+    ai_result = _generate_ai_news_article(
         title=title,
         description=description,
         snippet=snippet,
@@ -3867,6 +3878,9 @@ def render_news_reader():
         entities=entities,
         source=source,
     )
+    ai_title = str(ai_result.get("title") or "").strip()
+    ai_body = str(ai_result.get("body") or "").strip()
+    reader_title = ai_title or title
     back_url = str(qp.get("news_back", "")).strip() or f"?theme={THEME_MODE}"
 
     if not title:
@@ -3906,14 +3920,14 @@ def render_news_reader():
                 {_escape_html(category)} · {_escape_html(source)}
               </div>
               <h1 class="news-reader-title" style="color:{THEME['text']};">
-                {_escape_html(title)}
+                {_escape_html(reader_title)}
               </h1>
               <div class="news-reader-meta" style="color:{THEME['text_muted']};">
                 {_escape_html(news_time)}
               </div>
               {image_html}
               <div class="news-reader-ai-article" style="color:{THEME['text']};">
-                {_escape_html(ai_article or description or snippet or "기사 내용을 불러오지 못했습니다.")}
+                {_escape_html(ai_body or description or snippet or "기사 내용을 불러오지 못했습니다.")}
               </div>
             </div>
             """
@@ -4119,6 +4133,10 @@ def render_home_live_news(limit=20):
 
     page_size = 10
     total_pages = max(1, (len(items) + page_size - 1) // page_size)
+    day_key = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
+    if st.session_state.get("live_news_day_key") != day_key:
+        st.session_state["live_news_day_key"] = day_key
+        st.session_state["live_news_page"] = 0
     current_page = int(st.session_state.get("live_news_page", 0))
     current_page = max(0, min(current_page, total_pages - 1))
     st.session_state["live_news_page"] = current_page
