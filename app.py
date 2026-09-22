@@ -5339,6 +5339,13 @@ elif view_mode_param == "earnings_calendar":
             "기반으로 한 참고 일정입니다. 확정 공시가 나오면 DART 발표 실적이 별도로 표시됩니다."
         )
 
+                # 개별종목 점수/설명 영역의 최하단: 관련 최신 뉴스 3개
+                render_home_stock_news(
+                    data.get("stock_name", selected_code),
+                    selected_code,
+                    limit=3,
+                )
+
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
@@ -6436,12 +6443,6 @@ else:
                             else:
                                 st.caption("비교할 기준 기간 데이터가 부족해 급변 여부를 판단할 수 없습니다.")
 
-                # 개별종목 점수/설명 영역의 최하단: 관련 최신 뉴스 3개
-                render_home_stock_news(
-                    data.get("stock_name", selected_code),
-                    selected_code,
-                    limit=3,
-                )
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
