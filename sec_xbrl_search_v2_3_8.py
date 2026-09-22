@@ -227,7 +227,7 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
 
             if metric == "interest_expense":
                 for candidate in exact_candidates:
-                    if (_local_concept(candidate.concept) == "InterestIncomeExpenseNonoperatingNet"
+                    if (_local_concept(candidate.concept) in {"InterestIncomeExpenseNonoperatingNet", "InterestIncomeExpenseNet"}
                             and candidate.value is not None and candidate.value < 0):
                         candidate.value = abs(float(candidate.value))
                         candidate.concept = "DerivedInterestExpenseFromNetInterestExpense"
