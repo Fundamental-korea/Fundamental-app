@@ -3510,9 +3510,10 @@ def _escape_html(value):
     )
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def _get_home_macro_news(display=8, cache_version="naver-hub-v2"):
-    # cache_version으로 NAVER API HUB 전환 전 빈 캐시를 강제로 무효화한다.
+@st.cache_data(ttl=21600, show_spinner=False)
+def _get_home_macro_news(display=10, cache_version="marketaux-free-v3"):
+    # Marketaux Free는 하루 100 requests / 요청당 최대 3 articles이므로
+    # 메인 피드는 6시간 캐시해 방문자 새로고침마다 API를 재호출하지 않는다.
     return fetch_macro_news(display=display)
 
 
@@ -3824,7 +3825,8 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
         query = item.query if hasattr(item, "query") else ""
         source_hint = item.source if hasattr(item, "source") else item.get("source", "")
-        image_url = image_urls[idx] if idx < len(image_urls) else ""
+        provided_image_url = item.image_url if hasattr(item, "image_url") else item.get("image_url", "")
+        image_url = provided_image_url or (image_urls[idx] if idx < len(image_urls) else "")
 
         direct_url = original_url or article_url
         if not image_url:
@@ -3895,10 +3897,15 @@ def render_home_live_news(limit=9):
     )
 
 
+@st.cache_data(ttl=21600, show_spinner=False)
+def _get_stock_news_cached(stock_name, stock_code, limit=3):
+    return fetch_stock_news(stock_name, stock_code, display=min(max(limit, 1), 3))
+
+
 def render_home_stock_news(stock_name, stock_code, limit=3):
     """종목 상세 페이지의 종목별 뉴스."""
     try:
-        items = fetch_stock_news(stock_name, stock_code, display=max(limit, 6))
+        items = _get_stock_news_cached(stock_name, stock_code, limit)
     except Exception:
         items = []
     if not items:
