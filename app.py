@@ -10,6 +10,8 @@ import yfinance as yf
 import base64
 import calendar as pycalendar
 from datetime import date, timedelta
+from concurrent.futures import ThreadPoolExecutor
+from html import unescape
 
 from search_aliases import aliases_for
 
@@ -1984,7 +1986,7 @@ def render_us_fundamental_report(code, data):
 
         st.markdown(f"## 🇺🇸 [{company_name}] 미국 펀더멘탈 방어력 분석")
         st.caption(f"SEC 공시 기반 · {profile_label} · {profile_desc}")
-        render_home_stock_news(company_name, code, limit=6)
+        # 뉴스는 점수 로직 최하단으로 이동
 
         if not period_scores:
             st.warning(
@@ -2178,6 +2180,8 @@ def render_us_fundamental_report(code, data):
 
                             if entry.get("is_extreme"):
                                 st.caption("ℹ️ 극단값으로 표시된 수치입니다. 점수 자체에는 추가 패널티를 주지 않습니다.")
+
+    render_home_stock_news(company_name, code, limit=3)
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
@@ -3442,7 +3446,52 @@ def _get_home_market_indices(market):
     return result
 
 
-def _render_news_cards(items, limit=6, title="📰 Live News", subtitle=""):
+@st.cache_data(ttl=1800, show_spinner=False)
+def _get_news_image_url(article_url: str) -> str:
+    """기사 원문에서 대표 이미지(og:image)를 가볍게 가져온다. 실패하면 빈 문자열."""
+    url = str(article_url or "").strip()
+    if not url or not url.startswith(("http://", "https://")):
+        return ""
+    try:
+        response = requests.get(
+            url,
+            timeout=4,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNews/1.0)"},
+        )
+        response.raise_for_status()
+        html = response.text[:500_000]
+        patterns = (
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+            r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
+        )
+        for pattern in patterns:
+            match = re.search(pattern, html, flags=re.IGNORECASE)
+            if match:
+                image_url = unescape(match.group(1)).strip()
+                if image_url.startswith("//"):
+                    image_url = "https:" + image_url
+                elif image_url.startswith("/"):
+                    from urllib.parse import urljoin
+                    image_url = urljoin(url, image_url)
+                if image_url.startswith(("http://", "https://")):
+                    return image_url
+    except Exception:
+        pass
+    return ""
+
+
+def _get_news_images(urls):
+    urls = [str(u or "") for u in urls]
+    if not urls:
+        return []
+    # 첫 화면의 9개 카드만 병렬 조회해서 기사 이미지 때문에 전체 페이지가 직렬로 느려지지 않게 한다.
+    with ThreadPoolExecutor(max_workers=min(6, len(urls))) as executor:
+        return list(executor.map(_get_news_image_url, urls))
+
+
+def _render_news_cards(items, limit=9, title="📰 Live News", subtitle=""):
     st.markdown(
         f"""
         <div class="live-news-section">
@@ -3459,33 +3508,60 @@ def _render_news_cards(items, limit=6, title="📰 Live News", subtitle=""):
         )
         return
 
+    selected_items = list(items)[:limit]
+    article_urls = []
+    for item in selected_items:
+        article_urls.append(
+            item.link if hasattr(item, "link") else item.get("article_url", "")
+        )
+    image_urls = _get_news_images(article_urls)
+
     cards = []
-    for item in list(items)[:limit]:
+    for idx, item in enumerate(selected_items):
         title_text = item.title if hasattr(item, "title") else item.get("title", "")
         desc_text = item.description if hasattr(item, "description") else item.get("description", "")
         article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
         pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
         query = item.query if hasattr(item, "query") else ""
+        image_url = image_urls[idx] if idx < len(image_urls) else ""
+
+        if image_url:
+            media_html = (
+                f'<div class="live-news-image-wrap">'
+                f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" '
+                f'alt="" onerror="this.parentElement.classList.add(\'image-failed\');">'
+                f'</div>'
+            )
+        else:
+            media_html = (
+                f'<div class="live-news-image-wrap live-news-image-fallback">'
+                f'<span>📰</span><small>{_escape_html(query) if query else "시장 뉴스"}</small>'
+                f'</div>'
+            )
+
         cards.append(
             f"""
             <article class="live-news-card">
-              <div class="live-news-meta">
-                <span class="live-news-category">{_escape_html(query) if query else "시장 뉴스"}</span>
+              {media_html}
+              <div class="live-news-card-body">
+                <div class="live-news-meta">
+                  <span class="live-news-category">{_escape_html(query) if query else "시장 뉴스"}</span>
+                </div>
+                <a class="live-news-title" href="{_escape_html(article_url or original_url or '#')}" target="_blank" rel="noopener noreferrer">{_escape_html(title_text)}</a>
+                <div class="live-news-desc">{_escape_html(desc_text)}</div>
+                <div class="live-news-footer">{_format_news_time(pub_date)} · 원문 보기 ↗</div>
               </div>
-              <a class="live-news-title" href="{_escape_html(article_url or original_url or '#')}" target="_blank" rel="noopener noreferrer">{_escape_html(title_text)}</a>
-              <div class="live-news-desc">{_escape_html(desc_text)}</div>
-              <div class="live-news-footer">{_format_news_time(pub_date)} · 원문 보기 ↗</div>
             </article>
             """
         )
     st.markdown('<div class="live-news-grid">' + "".join(cards) + "</div>", unsafe_allow_html=True)
 
 
-def render_home_live_news(limit=6):
+def render_home_live_news(limit=9):
     """메인 Live News: 시장 영향도가 큰 거시·금융 질의를 NAVER 검색 API로 실시간 조회."""
     try:
-        items = _get_home_macro_news(display=max(limit, 8))
+        items = _get_home_macro_news(display=max(limit, 10))
     except Exception as exc:
         items = []
         st.warning(f"Live News를 불러오지 못했습니다: {exc}")
@@ -3498,10 +3574,10 @@ def render_home_live_news(limit=6):
     )
 
 
-def render_home_stock_news(stock_name, stock_code, limit=6):
+def render_home_stock_news(stock_name, stock_code, limit=3):
     """종목 상세 페이지의 종목별 뉴스."""
     try:
-        items = fetch_stock_news(stock_name, stock_code, display=max(limit, 8))
+        items = fetch_stock_news(stock_name, stock_code, display=max(limit, 6))
     except Exception:
         items = []
     if not items:
@@ -4138,6 +4214,8 @@ if selected_code and view_mode_param == "chart":
             )
             st.markdown(f'<div class="finstat-grid">{finstat_items_html}</div>', unsafe_allow_html=True)
             st.caption("ℹ️ 위 재무 수치는 DART 공시 기준 최신 확정 연간 사업보고서(기준 회계연도) 데이터입니다.")
+
+            render_home_stock_news(data.get("stock_name", selected_code), selected_code, limit=3)
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
@@ -4873,7 +4951,7 @@ else:
 
     with main_content:
         st.markdown(f"## 📊 [{data.get('stock_name', selected_code)}] 펀더멘탈 방어력 분석")
-        render_home_stock_news(data.get("stock_name", selected_code), selected_code, limit=6)
+        # 뉴스는 점수 로직 최하단으로 이동
 
         st.markdown("#### 📈 시세 스냅샷")
         st.caption(
