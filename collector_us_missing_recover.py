@@ -30,6 +30,8 @@ EXTRA = {
     "interest_expense": [
         "InterestAndDebtExpense",
         "FinanceCosts",
+        "InterestExpenseNonoperating",
+        "InterestIncomeExpenseNet",
         "InterestExpenseNonOperatingNet",
         "InterestExpenseDebt",
         "InterestExpenseNonOperating",
