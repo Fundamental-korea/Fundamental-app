@@ -4008,7 +4008,28 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
         return
 
-    selected_items = list(items)[:limit]
+    # Defensive dedupe: provider/fallback results can occasionally repeat the same
+    # article under slightly different metadata. Keep one card per canonical URL/title.
+    unique_items = []
+    seen_news_keys = set()
+    for item in list(items):
+        item_url = (
+            item.original_link if hasattr(item, "original_link")
+            else item.get("original_url", "")
+        ) or (
+            item.link if hasattr(item, "link")
+            else item.get("article_url", "")
+        )
+        item_title = item.title if hasattr(item, "title") else item.get("title", "")
+        news_key = str(item_url or item_title or "").strip().lower()
+        if news_key and news_key in seen_news_keys:
+            continue
+        if news_key:
+            seen_news_keys.add(news_key)
+        unique_items.append(item)
+        if len(unique_items) >= limit:
+            break
+    selected_items = unique_items
     article_urls = []
     for item in selected_items:
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
@@ -4083,7 +4104,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             f'</article>'
             f'</a>'
         )
-    st.html('<div class="live-news-grid">' + ''.join(cards) + '</div>')
+    # st.html() can surface raw anchor text unexpectedly in some Streamlit
+    # render paths. Use markdown HTML rendering for the card grid instead.
+    st.markdown('<div class="live-news-grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
 
 
 def render_home_live_news(limit=20):
