@@ -30,7 +30,7 @@ Streamlit Secrets 또는 환경변수로 다음 값을 설정한다.
 
 ## 자동화
 
-현재 GitHub Actions 자동 수집은 추가하지 않는다. API 연동과 화면 검증이 끝난 뒤 마지막 단계에서 자동화를 붙인다.
+Live News 자동 수집은 아래의 GitHub Actions workflow에서 관리한다.
 
 
 ## 뉴스 AI 브리핑
