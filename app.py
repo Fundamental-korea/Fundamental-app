@@ -527,8 +527,6 @@ st.markdown(
         font-size: 11px;
         line-height: 1.65;
         margin: 28px 0 8px;
-        padding-top: 12px;
-        border-top: 2px solid #F4A261;
     }
     .news-reader-facts {
         display: grid;
