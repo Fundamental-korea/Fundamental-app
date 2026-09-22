@@ -2904,8 +2904,7 @@ def _render_news_cards(items, limit=6, title="📰 Live News", subtitle=""):
             f"""
             <article class="live-news-card">
               <div class="live-news-meta">
-                <span class="live-news-category">NAVER 뉴스 검색 결과</span>
-                <span class="live-news-source">검색어 · {_escape_html(query)}</span>
+                <span class="live-news-category">{_escape_html(query) if query else "시장 뉴스"}</span>
               </div>
               <a class="live-news-title" href="{_escape_html(article_url or original_url or '#')}" target="_blank" rel="noopener noreferrer">{_escape_html(title_text)}</a>
               <div class="live-news-desc">{_escape_html(desc_text)}</div>
@@ -2930,7 +2929,6 @@ def render_home_live_news(limit=6):
         title="📰 Live News",
         subtitle="금리·환율·미국 증시·국내 증시·정책 등 시장 전반의 주요 뉴스를 원문과 함께 보여드립니다.",
     )
-    st.caption("NAVER Open API 뉴스 검색 결과 · 원문 출처 및 원문 링크를 함께 제공합니다.")
 
 
 def render_home_stock_news(stock_name, stock_code, limit=6):
@@ -2947,7 +2945,6 @@ def render_home_stock_news(stock_name, stock_code, limit=6):
         title=f"📰 {stock_name} 관련 뉴스",
         subtitle="해당 종목명을 기준으로 조회한 최신 뉴스 검색 결과입니다.",
     )
-    st.caption("NAVER Open API 뉴스 검색 결과 · 검색결과 자체는 임의로 재정렬하거나 편집하지 않습니다.")
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
@@ -3061,7 +3058,7 @@ def render_home_earnings_calendar(limit=12):
                         f"<div class='earnings-compare'>EPS 실제 <strong>{float(actual):,.2f}</strong>"
                         f" · 컨센서스 <strong>{float(estimate):,.2f}</strong>"
                         f" · 서프라이즈 <strong>{float(surprise):+.2f}%</strong>"
-                        f" <span style='font-size:10px'>(Yahoo Finance)</span></div>"
+                        f" <span style='font-size:10px'> </span></div>"
                     )
                 except Exception:
                     compare_html = ""
@@ -3074,7 +3071,7 @@ def render_home_earnings_calendar(limit=12):
                     <div class="earnings-report">{_escape_html(event.report_name)}</div>
                     {compare_html}
                   </div>
-                  <div class="earnings-date">{_escape_html(event.event_date)} · <a href="{_escape_html(event.source_url)}" target="_blank" rel="noopener noreferrer">DART 원문 ↗</a></div>
+                  <div class="earnings-date">{_escape_html(event.event_date)} · <a href="{_escape_html(event.source_url)}" target="_blank" rel="noopener noreferrer">공시 보기 ↗</a></div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -3090,7 +3087,7 @@ def render_home_earnings_calendar(limit=12):
     upcoming = _get_us_upcoming_earnings(days_forward=14, limit=24)
     if upcoming:
         st.markdown(
-            "<div class='earnings-note'>예정일은 Yahoo Finance 제공 일정입니다. 실제 발표일은 변경될 수 있습니다.</div>",
+            "<div class='earnings-note'>예정일은 변경될 수 있습니다.</div>",
             unsafe_allow_html=True,
         )
         for row in upcoming:
