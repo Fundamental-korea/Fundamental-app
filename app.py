@@ -2834,7 +2834,8 @@ def _escape_html(value):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_home_macro_news(display=8):
+def _get_home_macro_news(display=8, cache_version="naver-hub-v2"):
+    # cache_version으로 NAVER API HUB 전환 전 빈 캐시를 강제로 무효화한다.
     return fetch_macro_news(display=display)
 
 
