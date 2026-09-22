@@ -1993,6 +1993,22 @@ def sync_1y_only(stock_code, stock_name, sector, wics_sector, holding_company,
                 quarterly_breakdown.setdefault(metric, {})[q_label] = q.get(metric)
 
         score_missing_count = _count_missing_metrics(score)
+
+        # 업종 내 상대위치(percentile)는 별도 재계산 파이프라인이 관리한다.
+        # 일일/분기 1y 갱신에서 metric_scores를 새로 만들면 이 메타데이터가
+        # 통째로 사라지는 문제가 있었으므로, 기존 값을 임시 보존한다.
+        # 이후 peer-percentile workflow가 최신 1y 값으로 다시 계산한다.
+        existing_1y = (existing_period_scores or {}).get("1y") or {}
+        for _view_name in ("avg", "worst"):
+            _old_metrics = (existing_1y.get(_view_name) or {}).get("metric_scores") or {}
+            _new_metrics = score["scores"]
+            for _metric_key, _new_entry in _new_metrics.items():
+                _old_entry = _old_metrics.get(_metric_key) or {}
+                if _old_entry.get("sector_percentile") is not None:
+                    _new_entry["sector_percentile"] = _old_entry["sector_percentile"]
+                if _old_entry.get("sector_percentile_basis") is not None:
+                    _new_entry["sector_percentile_basis"] = _old_entry["sector_percentile_basis"]
+
         merged_period_scores = dict(existing_period_scores or {})
         merged_period_scores["1y"] = {
             "years_used": [f"{report_year} {report_label}"],
