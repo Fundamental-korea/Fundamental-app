@@ -3901,11 +3901,23 @@ def _render_earnings_detail(selected_date, events, market_filter="전체"):
 
 def render_home_earnings_calendar(limit=12):
     """메인 홈에는 요약만 보여주고, 전체 월간 캘린더는 별도 탭/창으로 연다."""
-    st.markdown(
-        "<div class='live-news-section'><div class='live-news-section-title'>📅 Earnings Calendar</div>"
-        "<div class='live-news-section-subtitle'>최근 발표 실적과 향후 예정 실적을 간단히 확인하고, 전체 월간 캘린더에서 날짜별로 볼 수 있습니다.</div></div>",
-        unsafe_allow_html=True,
-    )
+    # 제목 옆에 전체 월간 캘린더 버튼을 배치해, 아래 콘텐츠와 분리된
+    # 독립적인 액션으로 보이도록 한다.
+    title_col, calendar_col = st.columns([5.8, 1.65], vertical_alignment="center")
+    with title_col:
+        st.markdown(
+            "<div class='live-news-section'>"
+            "<div class='live-news-section-title'>📅 Earnings Calendar</div>"
+            "<div class='live-news-section-subtitle'>최근 발표 실적과 향후 예정 실적을 간단히 확인하고, 전체 월간 캘린더에서 날짜별로 볼 수 있습니다.</div>"
+            "</div>",
+            unsafe_allow_html=True,
+        )
+    with calendar_col:
+        st.link_button(
+            "📅 전체 캘린더",
+            f"?view=earnings_calendar&theme={THEME_MODE}",
+            use_container_width=True,
+        )
 
     recent_events = [
         row for row in _get_earnings_events_db(days_back=30, days_forward=0)
@@ -3987,13 +3999,6 @@ def render_home_earnings_calendar(limit=12):
     else:
         st.markdown('<div class="earnings-note">현재 향후 예정 실적 데이터를 불러오지 못했습니다.</div>', unsafe_allow_html=True)
 
-    st.markdown("<div style='display:flex;justify-content:center;margin:16px 0 4px;'>", unsafe_allow_html=True)
-    st.link_button(
-        "📅 전체 월간 어닝 캘린더 열기",
-        f"?view=earnings_calendar&theme={THEME_MODE}",
-        use_container_width=False,
-    )
-    st.markdown("</div>", unsafe_allow_html=True)
 
 
 def render_home_market_overview(market):
