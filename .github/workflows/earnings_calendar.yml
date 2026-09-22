@@ -7,7 +7,8 @@ on:
       - "EARNINGS_COLLECTOR_TRIGGER.txt"
       - "collector_earnings_calendar.py"
   schedule:
-    - cron: "15 */6 * * *"
+    # Weekly refresh: Monday 02:15 UTC = Monday 11:15 KST
+    - cron: "15 2 * * 1"
 
 jobs:
   collect:
