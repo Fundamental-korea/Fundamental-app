@@ -30,7 +30,7 @@ EXACT_CONCEPTS_V238 = {
     "inventory": set(EXACT_CONCEPTS_V234.get("inventory", set()))
     | {"InventoryOtherThanOreStockpilesNetOfReserves"},
     "interest_expense": set(EXACT_CONCEPTS_V234.get("interest_expense", set()))
-    | {"InterestIncomeExpenseNonoperatingNet"},
+    | {"InterestExpenseNonoperating", "InterestIncomeExpenseNonoperatingNet", "InterestIncomeExpenseNet"},
     "sga": set(EXACT_CONCEPTS_V234.get("sga", set()))
     | {"GeneralAndAdministrativeExpense"},
 }
