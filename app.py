@@ -3824,11 +3824,12 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             back_url=back_url,
         )
         image_is_ai = image_url.startswith("https://image.pollinations.ai/")
+        ai_badge_html = '<span class="live-news-ai-badge">AI 이미지</span>' if image_is_ai else ""
 
         if image_url:
             media_html = (
                 f'<div class="live-news-image-wrap">'
-                f'{"<span class="live-news-ai-badge">AI 이미지</span>" if image_is_ai else ""}'
+                f'{ai_badge_html}'
                 f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" '
                 f'alt="{_escape_html(title_text)}" onerror="this.parentElement.classList.add(\'image-failed\');">'
                 f'</div>'
