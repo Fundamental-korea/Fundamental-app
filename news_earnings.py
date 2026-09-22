@@ -552,13 +552,16 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
     return search_naver_news(query, display=target, sort="date") if query else []
 
 
-def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10) -> list[NaverNewsItem]:
-    """Main Live News feed optimized for Marketaux Free: US 8 + KR 2.
+def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20) -> list[NaverNewsItem]:
+    """Main Live News feed optimized for a richer 20-item mix: US 16 + KR 4.
 
-    Normal path uses exactly 5 Marketaux requests per refresh (4 US topics + 1 KR topic).
-    The app layer caches this feed, so the public page does not spend a request per visitor.
+    Normal path uses 6 US topic requests + 2 Korean topic requests.
+    Each Marketaux request asks for up to 3 articles, after which results are
+    deduplicated and ranked before selecting the final 16 US + 4 KR mix.
+    The app layer caches the feed, so public-page visitors do not spend a
+    Marketaux request on every refresh.
     """
-    target = min(max(display, 1), 10)
+    target = min(max(display, 1), 20)
 
     if queries is not None:
         merged: list[NaverNewsItem] = []
@@ -583,42 +586,53 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10)
         "marketwatch.com,barrons.com,apnews.com,finance.yahoo.com"
     )
 
+    # 주제를 넓혀 비슷한 뉴스가 반복되는 것을 줄이고, 미국 경제 중심 구성을 유지한다.
     us_queries = (
         "Federal Reserve interest rates inflation CPI PCE Treasury yields dollar",
-        "US economy jobs GDP consumer spending tariffs trade policy",
-        "S&P 500 Nasdaq earnings corporate profits market outlook",
-        "US economic growth recession outlook financial markets",
+        "US economy jobs payrolls GDP consumer spending retail sales wages",
+        "S&P 500 Nasdaq Dow earnings corporate profits market outlook",
+        "US Treasury bonds yields dollar financial markets credit conditions",
+        "US tariffs trade policy manufacturing industrial activity business investment",
+        "AI semiconductors technology companies energy oil prices US markets",
     )
-    kr_query = "한국은행 기준금리 원화 코스피 한국 경제 증시"
+    kr_queries = (
+        "한국은행 기준금리 원화 환율 코스피 한국 경제",
+        "한국 수출 반도체 기업실적 코스피 증시 경제 정책",
+    )
 
-    # Free plan: 4 US x 3 articles + 1 KR x 3 articles = at most 15 Marketaux articles/request payloads.
     us_candidates: list[NaverNewsItem] = []
     for query in us_queries:
-        items = search_marketaux_news(
-            query=query,
-            language="en",
-            countries="us",
-            domains=preferred_domains,
-            display=3,
+        us_candidates.extend(
+            search_marketaux_news(
+                query=query,
+                language="en",
+                countries="us",
+                domains=preferred_domains,
+                display=3,
+            )
         )
-        us_candidates.extend(items)
 
-    # If the preferred-source filter is too restrictive at a given moment, make one broad US fallback.
-    if len(us_candidates) < 8:
-        broad_us = search_marketaux_news(
-            query="United States economy Federal Reserve inflation jobs markets earnings tariffs",
-            language="en",
-            countries="us",
-            display=3,
+    # Preferred source filter가 일시적으로 너무 좁으면 broad US 후보를 한 번 추가한다.
+    if len(us_candidates) < 12:
+        us_candidates.extend(
+            search_marketaux_news(
+                query="United States economy Federal Reserve inflation jobs markets earnings tariffs technology energy",
+                language="en",
+                countries="us",
+                display=3,
+            )
         )
-        us_candidates.extend(broad_us)
 
-    kr_candidates = search_marketaux_news(
-        query=kr_query,
-        language="ko",
-        countries="kr",
-        display=3,
-    )
+    kr_candidates: list[NaverNewsItem] = []
+    for query in kr_queries:
+        kr_candidates.extend(
+            search_marketaux_news(
+                query=query,
+                language="ko",
+                countries="kr",
+                display=3,
+            )
+        )
 
     def dedupe(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
         out: list[NaverNewsItem] = []
@@ -632,37 +646,57 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10)
 
     us_ranked = dedupe(us_candidates)
     kr_ranked = dedupe(kr_candidates)
-    selected = us_ranked[:min(8, target)]
-    remaining = max(0, target - len(selected))
-    selected.extend(kr_ranked[:min(2, remaining)])
 
-    # NAVER is only a last-resort gap filler; normal operation does not consume NAVER for a full Marketaux feed.
+    us_needed = min(16, target)
+    kr_needed = min(4, max(0, target - us_needed))
+
+    selected = us_ranked[:us_needed]
+    selected.extend(kr_ranked[:kr_needed])
+
+    # 한쪽 시장 후보가 부족하면 다른 Marketaux 후보로 빈자리를 채우기 전에
+    # NAVER를 마지막 gap-filler로 사용한다. 정상적인 20개 구성에서는 거의 사용되지 않는다.
     if len(selected) < target:
+        fallback_us_needed = max(0, us_needed - sum(1 for item in selected if (item.query or "").strip()))
         fallback_us = search_naver_news(
-            "미국 경제 연준 금리 물가 증시 실적",
-            display=max(3, target),
+            "미국 경제 연준 금리 물가 고용 증시 실적 채권 달러",
+            display=max(6, target),
             sort="date",
         )
         fallback_kr = search_naver_news(
-            "한국은행 기준금리 한국 증시 경제 정책",
-            display=max(3, target),
+            "한국은행 기준금리 원화 환율 수출 반도체 코스피 경제",
+            display=max(4, target),
             sort="date",
         )
         seen = {item.original_link or item.link for item in selected}
+
+        # 목표 미국/한국 비중을 먼저 보존한 뒤, 그래도 부족하면 어느 쪽이든 채운다.
+        current_us = len(selected[:us_needed])
+        current_kr = max(0, len(selected) - current_us)
         for item in fallback_us:
-            if len(selected) >= min(8, target):
+            if current_us >= us_needed:
                 break
             key = item.original_link or item.link
             if key and key not in seen:
                 seen.add(key)
-                selected.append(item)
+                selected.insert(current_us, item)
+                current_us += 1
         for item in fallback_kr:
-            if len(selected) >= target:
+            if current_kr >= kr_needed:
                 break
             key = item.original_link or item.link
             if key and key not in seen:
                 seen.add(key)
                 selected.append(item)
+                current_kr += 1
+
+        if len(selected) < target:
+            for item in fallback_us + fallback_kr:
+                if len(selected) >= target:
+                    break
+                key = item.original_link or item.link
+                if key and key not in seen:
+                    seen.add(key)
+                    selected.append(item)
 
     return selected[:target]
 
