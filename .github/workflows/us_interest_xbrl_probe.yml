@@ -2,7 +2,7 @@ name: US Interest XBRL Probe
 on:
   workflow_dispatch:
   push:
-    paths: ["probe_us_interest_xbrl.py"]
+    paths: ["probe_us_interest_xbrl.py", "US_INTEREST_PROBE_TRIGGER.txt"]
 permissions:
   contents: read
 jobs:
