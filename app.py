@@ -537,9 +537,30 @@ st.markdown(
         margin-top: 4px;
     }
     .earnings-date {
+        color: #4B5563 !important;
+        font-size: 13px;
+        font-weight: 750;
+        white-space: nowrap;
+    }
+    .earnings-compare {
         color: #6B7280 !important;
         font-size: 11px;
+        margin-top: 5px;
         white-space: nowrap;
+    }
+    .earnings-compare strong {
+        color: #374151 !important;
+    }
+    .earnings-upcoming-title {
+        margin: 20px 0 9px;
+        color: #111827 !important;
+        font-size: 15px;
+        font-weight: 850;
+    }
+    .earnings-note {
+        color: #6B7280 !important;
+        font-size: 11px;
+        margin: 6px 0 12px;
     }
     .earnings-date a {
         color: #D97706 !important;
@@ -2928,39 +2949,173 @@ def render_home_stock_news(stock_name, stock_code, limit=6):
     st.caption("NAVER Open API 뉴스 검색 결과 · 검색결과 자체는 임의로 재정렬하거나 편집하지 않습니다.")
 
 
+@st.cache_data(ttl=1800, show_spinner=False)
+def _get_us_upcoming_earnings(days_forward=14, limit=24):
+    """Yahoo Finance 기반 미국 향후 예정 실적. 예정일 데이터가 있는 종목만 표시."""
+    try:
+        start = date.today()
+        end = start + timedelta(days=days_forward)
+        calendar = yf.Calendars(start=start, end=end)
+        df = calendar.get_earnings_calendar(
+            filter_most_active=True,
+            limit=min(limit, 100),
+        )
+        if df is None or df.empty:
+            return []
+        rows = []
+        for symbol, row in df.reset_index().iterrows():
+            reported = row.get("Reported EPS")
+            if pd.notna(reported):
+                continue
+            event_dt = row.get("Event Start Date")
+            if pd.isna(event_dt):
+                continue
+            rows.append({
+                "symbol": str(row.get("Symbol", "")),
+                "company": str(row.get("Company", row.get("Company Name", ""))),
+                "date": pd.to_datetime(event_dt).strftime("%Y-%m-%d"),
+                "timing": str(row.get("Timing", "")),
+                "eps_estimate": row.get("EPS Estimate"),
+            })
+        return rows[:limit]
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _get_yahoo_earnings_history(stock_code):
+    """DART 종목의 Yahoo Finance EPS 컨센서스/실적 보조 데이터."""
+    code = str(stock_code or "").strip()
+    if not code or not code.isdigit():
+        return []
+    try:
+        df = yf.Ticker(f"{code}.KS").get_earnings_dates(limit=12)
+        if df is None or df.empty:
+            return []
+        result = []
+        for idx, row in df.iterrows():
+            dt = pd.to_datetime(idx)
+            result.append({
+                "date": dt.date(),
+                "estimate": row.get("EPS Estimate"),
+                "actual": row.get("Reported EPS"),
+                "surprise": row.get("Surprise(%)"),
+            })
+        return result
+    except Exception:
+        return []
+
+
+def _match_earnings_consensus(event):
+    try:
+        target = date.fromisoformat(str(event.event_date))
+    except Exception:
+        return None
+    history = _get_yahoo_earnings_history(event.stock_code)
+    if not history:
+        return None
+    candidates = []
+    for row in history:
+        if row.get("actual") is None or row.get("estimate") is None:
+            continue
+        if pd.isna(row.get("actual")) or pd.isna(row.get("estimate")):
+            continue
+        delta = abs((row["date"] - target).days)
+        if delta <= 7:
+            candidates.append((delta, row))
+    if not candidates:
+        return None
+    return min(candidates, key=lambda x: x[0])[1]
+
+
 def render_home_earnings_calendar(limit=12):
-    """한국 Earnings Calendar: 최근 DART 실적 공시를 잠정실적 우선으로 표시."""
+    """실적 캘린더: 최근 DART 공시 + 미국 향후 예정 실적을 함께 표시."""
     st.markdown(
         "<div class='live-news-section'><div class='live-news-section-title'>📅 Earnings Calendar</div>"
-        "<div class='live-news-section-subtitle'>최근 DART 공시에서 확인된 잠정실적과 정기보고서를 구분해 보여드립니다.</div></div>",
+        "<div class='live-news-section-subtitle'>실제 공시된 실적과 향후 예정된 실적을 구분해 보여드립니다.</div></div>",
         unsafe_allow_html=True,
     )
+
+    # ① 최근 발표: DART 공식 공시
+    st.markdown("<div class='earnings-upcoming-title'>🇰🇷 최근 발표 실적</div>", unsafe_allow_html=True)
     try:
         events = _get_home_earnings_events(days_back=30)
     except Exception as exc:
         events = []
         st.warning(f"Earnings Calendar을 불러오지 못했습니다: {exc}")
 
-    if not events:
+    if events:
+        for event in events[:limit]:
+            label = "잠정실적" if event.event_type == "preliminary_earnings" else "정기보고서"
+            badge_class = "earnings-primary" if event.event_type == "preliminary_earnings" else "earnings-secondary"
+            consensus = _match_earnings_consensus(event) if event.event_type == "preliminary_earnings" else None
+
+            compare_html = ""
+            if consensus:
+                estimate = consensus.get("estimate")
+                actual = consensus.get("actual")
+                surprise = consensus.get("surprise")
+                try:
+                    compare_html = (
+                        f"<div class='earnings-compare'>EPS 실제 <strong>{float(actual):,.2f}</strong>"
+                        f" · 컨센서스 <strong>{float(estimate):,.2f}</strong>"
+                        f" · 서프라이즈 <strong>{float(surprise):+.2f}%</strong>"
+                        f" <span style='font-size:10px'>(Yahoo Finance)</span></div>"
+                    )
+                except Exception:
+                    compare_html = ""
+
+            st.markdown(
+                f"""
+                <div class="earnings-row">
+                  <div>
+                    <div class="earnings-name">{_escape_html(event.corp_name)} <span class="{badge_class}">{label}</span></div>
+                    <div class="earnings-report">{_escape_html(event.report_name)}</div>
+                    {compare_html}
+                  </div>
+                  <div class="earnings-date">{_escape_html(event.event_date)} · <a href="{_escape_html(event.source_url)}" target="_blank" rel="noopener noreferrer">DART 원문 ↗</a></div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    else:
         st.markdown(
             '<div class="news-empty-state">최근 30일간 표시할 실적 공시가 없습니다.</div>',
             unsafe_allow_html=True,
         )
-        return
 
-    for event in events[:limit]:
-        label = "잠정실적" if event.event_type == "preliminary_earnings" else "정기보고서"
-        badge_class = "earnings-primary" if event.event_type == "preliminary_earnings" else "earnings-secondary"
+    # ② 향후 예정: Yahoo Finance에서 일정이 제공되는 미국 실적
+    st.markdown("<div class='earnings-upcoming-title'>🇺🇸 향후 예정 실적 · 다음 14일</div>", unsafe_allow_html=True)
+    upcoming = _get_us_upcoming_earnings(days_forward=14, limit=24)
+    if upcoming:
         st.markdown(
-            f"""
-            <div class="earnings-row">
-              <div>
-                <div class="earnings-name">{_escape_html(event.corp_name)} <span class="{badge_class}">{label}</span></div>
-                <div class="earnings-report">{_escape_html(event.report_name)}</div>
-              </div>
-              <div class="earnings-date">{_escape_html(event.event_date)} · <a href="{_escape_html(event.source_url)}" target="_blank" rel="noopener noreferrer">DART 원문 ↗</a></div>
-            </div>
-            """,
+            "<div class='earnings-note'>예정일은 Yahoo Finance 제공 일정입니다. 실제 발표일은 변경될 수 있습니다.</div>",
+            unsafe_allow_html=True,
+        )
+        for row in upcoming:
+            eps = row.get("eps_estimate")
+            eps_text = ""
+            try:
+                if pd.notna(eps):
+                    eps_text = f" · 예상 EPS {float(eps):,.2f}"
+            except Exception:
+                pass
+            timing = f" · {row['timing']}" if row.get("timing") and row["timing"] != "nan" else ""
+            st.markdown(
+                f"""
+                <div class="earnings-row">
+                  <div>
+                    <div class="earnings-name">{_escape_html(row['company'])} <span class="earnings-primary">{_escape_html(row['symbol'])}</span></div>
+                    <div class="earnings-report">미국 예정 실적{eps_text}{timing}</div>
+                  </div>
+                  <div class="earnings-date">{_escape_html(row['date'])}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    else:
+        st.markdown(
+            '<div class="earnings-note">현재 향후 예정 실적 데이터를 불러오지 못했습니다.</div>',
             unsafe_allow_html=True,
         )
 
