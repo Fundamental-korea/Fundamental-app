@@ -3679,7 +3679,7 @@ def _generate_ai_news_article(
     entities: str = "",
     source: str = "",
 ) -> str:
-    """Generate a Korean financial-news brief from source metadata without reproducing article text."""
+    """Generate a Korean financial-news brief from Marketaux metadata/context."""
     api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
     if not api_key:
         return ""
@@ -3696,26 +3696,28 @@ def _generate_ai_news_article(
 
     prompt = f"""
 너는 미국·한국 금융시장 전문 뉴스 에디터다.
-아래는 실제 뉴스 공급원이 제공한 메타데이터와 짧은 문맥이다.
+아래 자료는 Marketaux가 제공한 실제 뉴스 메타데이터와 짧은 문맥이다.
 
 {source_material}
 
-이 자료만 근거로 한국어 금융뉴스 브리핑을 작성하라.
+위 자료만 근거로, 독자가 원문을 클릭하지 않아도 사건의 핵심을 이해할 수 있는
+한국어 금융뉴스 브리핑을 작성하라.
 
 작성 규칙:
 1. 원문 문장을 그대로 복사하지 말고 완전히 다른 표현으로 재구성한다.
-2. 제공된 자료에 없는 사실, 숫자, 인용, 발언, 전망을 새로 만들어내지 않는다.
-3. 확인되지 않은 내용은 단정하지 않는다.
-4. 기사 제목을 1개 제안한다.
-5. 본문은 5~7개 짧은 문단, 총 700~1100자 정도로 작성한다.
-6. 구성은 다음 순서다:
-   - 리드: 무슨 일이 있었는지
-   - 배경: 왜 시장이 주목하는지
-   - 핵심 내용: 제공된 자료에서 확인되는 주요 사실
-   - 시장 영향: 금리/주식/환율/채권/해당 기업 등에 어떤 의미가 있는지
-   - 체크포인트: 투자자가 앞으로 확인할 변수
-7. 투자 추천, 매수·매도 지시, 과도한 확신은 금지한다.
-8. 마지막 줄에 '※ AI에 의해 작성된 기사입니다. 원출처: {source or "뉴스 제공원"}'를 정확히 붙인다.
+2. 자료에 없는 사실, 숫자, 인용, 발언, 일정, 전망을 절대로 만들어내지 않는다.
+3. 자료만으로 확인할 수 없는 내용은 추측하지 않는다.
+4. 제목은 1개만 작성한다. 짧고 구체적으로 작성한다.
+5. 본문은 5~7개 문단, 총 700~1100자 정도로 작성한다.
+6. 첫 문단은 '무슨 일이 있었는가'를 바로 설명한다.
+7. 이어서 배경과 핵심 사실을 설명한다.
+8. 시장 영향은 자료에서 합리적으로 연결되는 범위에서만 설명하고,
+   확인되지 않은 인과관계는 단정하지 않는다.
+9. 마지막 문단은 투자자가 확인할 포인트를 설명하되 매수·매도 추천은 하지 않는다.
+10. 기업명·자산명·시장명·수치가 제공된 경우 가능한 한 정확하게 유지한다.
+11. 원문을 장황하게 재현하지 말고 독립적인 금융 브리핑 문체로 작성한다.
+12. 마지막 줄에는 반드시 다음 문구를 그대로 붙인다:
+※ AI에 의해 작성된 기사입니다. 원출처: {source or "뉴스 제공원"}
 
 출력 형식:
 제목:
@@ -3740,7 +3742,6 @@ def _generate_ai_news_article(
                     }
                 ],
                 "generationConfig": {
-                    "temperature": 0.25,
                     "maxOutputTokens": 1400,
                 },
             },
@@ -3753,12 +3754,14 @@ def _generate_ai_news_article(
             .get("content", {})
             .get("parts", [])
         )
-        text_parts = [str(p.get("text", "")).strip() for p in parts if p.get("text")]
-        result = "\n".join(text_parts).strip()
-        return result
+        text_parts = [
+            str(p.get("text", "")).strip()
+            for p in parts
+            if p.get("text")
+        ]
+        return "\n".join(text_parts).strip()
     except Exception:
         return ""
-
 
 def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -> str:
     """대표 이미지가 없을 때 기사 내용에 맞춘 AI 편집 일러스트 URL을 만든다.
