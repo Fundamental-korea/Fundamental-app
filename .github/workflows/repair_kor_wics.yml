@@ -1,0 +1,63 @@
+name: Korea WICS Missing Classification Repair
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "repair_kor_wics_missing.py"
+      - "KOR_WICS_REPAIR_TRIGGER.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Repair missing WICS
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python repair_kor_wics_missing.py
+      - name: Verify WICS coverage and peer percentiles
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python - <<'PY'
+          import os
+          from supabase import create_client
+          key = os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_KEY")
+          sb = create_client(os.environ["SUPABASE_URL"], key)
+          rows=[]; start=0
+          while True:
+              batch=(sb.table("Fundamental").select("stock_code,wics_sector,period_scores")
+                     .not_.is_("period_scores","null").range(start,start+199).execute().data or [])
+              if not batch: break
+              rows.extend(batch)
+              if len(batch)<200: break
+              start += 200
+          null_wics=sum(1 for r in rows if not r.get("wics_sector"))
+          pct_rows=0
+          for r in rows:
+              metrics=(((r.get("period_scores") or {}).get("1y") or {}).get("avg") or {}).get("metric_scores") or {}
+              if any(isinstance(v,dict) and v.get("sector_percentile") is not None for v in metrics.values()):
+                  pct_rows += 1
+          print(f"period_scores_rows={len(rows)}")
+          print(f"null_wics={null_wics}")
+          print(f"percentile_rows={pct_rows}")
+          if null_wics:
+              raise SystemExit("WICS classification still missing")
+          PY
