@@ -3550,7 +3550,7 @@ def _escape_html(value):
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
-def _get_home_macro_news(display=20, cache_version="marketaux-free-v6"):
+def _get_home_macro_news(display=20, cache_version="marketaux-today-kst-v2"):
     # Marketaux Free는 하루 100 requests / 요청당 최대 3 articles.
     # 메인 피드는 2시간 캐시해 최신성을 유지하면서 방문자 새로고침마다 API를 재호출하지 않는다.
     return fetch_macro_news(display=min(max(display, 1), 20))
