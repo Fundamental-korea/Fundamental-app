@@ -4089,7 +4089,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             )
 
         cards.append(
-            f'<a class="live-news-card-link" href="{_escape_html(reader_url)}">'
+            f'<a class="live-news-card-link" href="{_escape_html(reader_url)}" target="_self" rel="noopener">'
             f'<article class="live-news-card">'
             f'{media_html}'
             f'<div class="live-news-card-body">'
@@ -4104,9 +4104,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             f'</article>'
             f'</a>'
         )
-    # st.html() can surface raw anchor text unexpectedly in some Streamlit
-    # render paths. Use markdown HTML rendering for the card grid instead.
-    st.markdown('<div class="live-news-grid">' + ''.join(cards) + '</div>', unsafe_allow_html=True)
+    # Render the complete card grid as HTML so the anchor remains part of the
+    # card instead of being interpreted by Streamlit's Markdown parser.
+    st.html('<div class="live-news-grid">' + ''.join(cards) + '</div>')
 
 
 def render_home_live_news(limit=20):
