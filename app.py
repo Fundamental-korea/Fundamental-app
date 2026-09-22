@@ -2813,9 +2813,11 @@ def render_unified_search_box(stock_db, target_view=None):
                 padding: 10px 16px;
                 cursor: pointer;
                 transition: background 0.15s;
+                text-decoration: none !important;
+                color: inherit !important;
             }}
             .stock-row:hover, .stock-row.active {{
-                background-color: #FFF7ED;
+                background-color: {THEME['surface_warm']};
             }}
             .stock-info {{
                 display: flex;
@@ -2825,34 +2827,38 @@ def render_unified_search_box(stock_db, target_view=None):
             }}
             .flag {{ font-size: 16px; }}
             .ticker {{
-                font-weight: 700;
-                color: {THEME['text']};
+                font-weight: 800;
+                color: {THEME['text']} !important;
+                -webkit-text-fill-color: {THEME['text']} !important;
                 font-size: 14px;
                 min-width: 65px;
             }}
             .name {{
                 font-size: 13px;
-                color: {THEME['text_secondary']};
+                color: {THEME['text_secondary']} !important;
+                -webkit-text-fill-color: {THEME['text_secondary']} !important;
                 white-space: nowrap;
                 overflow: hidden;
                 text-overflow: ellipsis;
             }}
             .exch {{
                 font-size: 11px;
-                color: {THEME['text_muted']};
+                color: {THEME['text_muted']} !important;
+                -webkit-text-fill-color: {THEME['text_muted']} !important;
                 white-space: nowrap;
             }}
             .highlight {{
-                color: {THEME['accent_strong']};
+                color: {THEME['accent_strong']} !important;
+                -webkit-text-fill-color: {THEME['accent_strong']} !important;
                 font-weight: 800;
-                background-color: #FEF3C7;
+                background-color: {THEME['warning_bg']};
                 padding: 0 2px;
                 border-radius: 2px;
             }}
 
             .right-pane {{
                 flex: 35;
-                background-color: #FAFAFA;
+                background-color: {THEME['surface_muted']};
                 padding: 12px 16px;
                 display: flex;
                 flex-direction: column;
@@ -3051,26 +3057,27 @@ def render_unified_search_box(stock_db, target_view=None):
                     const item = match.item;
                     const highlightTicker = highlightMatch(item.ticker, q);
                     const highlightName = highlightMatch(item.name, q);
+                    const targetUrl = buildTargetUrl(item.ticker);
                     html +=
-                        '<div class="stock-row ' + (idx === 0 ? 'active' : '') + '" onclick="selectStock(' +
-                        JSON.stringify(item.ticker) + ')">' +
+                        '<a class="stock-row ' + (idx === 0 ? 'active' : '') + '" href="' + targetUrl + '" target="_blank" rel="noopener noreferrer">' +
                             '<div class="stock-info">' +
                                 '<span class="flag">' + item.flag + '</span>' +
                                 '<span class="ticker">' + highlightTicker + '</span>' +
                                 '<span class="name">' + highlightName + '</span>' +
                             '</div>' +
                             '<span class="exch">' + item.exch + '</span>' +
-                        '</div>';
+                        '</a>';
                 }});
                 listEl.innerHTML = html;
             }}
 
-            function selectStock(ticker) {{
-                const targetUrl = window.parent.location.origin + window.parent.location.pathname + '?code=' + encodeURIComponent(ticker) + '{view_query_suffix}';
+            function buildTargetUrl(ticker) {{
+                return window.parent.location.origin + window.parent.location.pathname +
+                    '?code=' + encodeURIComponent(ticker) + '{view_query_suffix}';
+            }}
 
-                // Streamlit components.html iframe 안의 window.open은 브라우저/배포 환경에 따라
-                // 팝업으로 차단되어 Enter를 눌러도 아무 반응이 없는 경우가 있음.
-                // 먼저 새 탭을 시도하고, 차단되면 같은 탭으로 확실하게 이동한다.
+            function selectStock(ticker) {{
+                const targetUrl = buildTargetUrl(ticker);
                 const popup = window.open(targetUrl, '_blank', 'noopener,noreferrer');
                 if (!popup || popup.closed || typeof popup.closed === 'undefined') {{
                     window.parent.location.href = targetUrl;
