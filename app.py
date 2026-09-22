@@ -514,33 +514,21 @@ st.markdown(
     .news-reader-body + .news-reader-body {
         margin-top: -6px;
     }
-    .news-reader-note {
-        font-size: 11px;
-        line-height: 1.6;
-        margin-bottom: 18px;
-    }
-    .news-reader-summary {
-        margin: 20px 0;
-        padding: 18px 20px;
-        border: 1px solid #E5E7EB;
-        border-radius: 14px;
-        background: #FAFAFA;
-    }
-    .news-reader-ai-label {
-        font-size: 13px;
-        font-weight: 900;
-        margin: 18px 0 10px;
-    }
-    .news-reader-summary-title {
-        font-size: 14px;
-        font-weight: 900;
-        margin-bottom: 10px;
-    }
-    .news-reader-summary-body {
-        font-size: 15px;
-        line-height: 1.8;
-        margin: 0;
+    .news-reader-ai-article {
+        font-size: 16px;
+        line-height: 1.95;
         white-space: pre-wrap;
+        margin: 26px 0 0;
+    }
+    .news-reader-ai-article::first-line {
+        font-weight: 500;
+    }
+    .news-reader-disclosure {
+        font-size: 11px;
+        line-height: 1.65;
+        margin: 28px 0 8px;
+        padding-top: 12px;
+        border-top: 2px solid #F4A261;
     }
     .news-reader-facts {
         display: grid;
@@ -3670,7 +3658,6 @@ def _news_source_label(url: str, fallback: str = "뉴스") -> str:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-@st.cache_data(ttl=86400, show_spinner=False)
 def _generate_ai_news_article(
     title: str,
     description: str = "",
@@ -3701,30 +3688,22 @@ def _generate_ai_news_article(
 {source_material}
 
 위 자료만 근거로, 독자가 원문을 클릭하지 않아도 사건의 핵심을 이해할 수 있는
-한국어 금융뉴스 브리핑을 작성하라.
+한국어 금융뉴스 브리핑 본문만 작성하라.
 
 작성 규칙:
 1. 원문 문장을 그대로 복사하지 말고 완전히 다른 표현으로 재구성한다.
 2. 자료에 없는 사실, 숫자, 인용, 발언, 일정, 전망을 절대로 만들어내지 않는다.
 3. 자료만으로 확인할 수 없는 내용은 추측하지 않는다.
-4. 제목은 1개만 작성한다. 짧고 구체적으로 작성한다.
-5. 본문은 5~7개 문단, 총 700~1100자 정도로 작성한다.
-6. 첫 문단은 '무슨 일이 있었는가'를 바로 설명한다.
-7. 이어서 배경과 핵심 사실을 설명한다.
-8. 시장 영향은 자료에서 합리적으로 연결되는 범위에서만 설명하고,
+4. 본문은 5~7개 문단, 총 700~1100자 정도로 작성한다.
+5. 첫 문단은 '무슨 일이 있었는가'를 바로 설명한다.
+6. 이어서 배경과 핵심 사실을 설명한다.
+7. 시장 영향은 자료에서 합리적으로 연결되는 범위에서만 설명하고,
    확인되지 않은 인과관계는 단정하지 않는다.
-9. 마지막 문단은 투자자가 확인할 포인트를 설명하되 매수·매도 추천은 하지 않는다.
-10. 기업명·자산명·시장명·수치가 제공된 경우 가능한 한 정확하게 유지한다.
-11. 원문을 장황하게 재현하지 말고 독립적인 금융 브리핑 문체로 작성한다.
-12. 마지막 줄에는 반드시 다음 문구를 그대로 붙인다:
-※ AI에 의해 작성된 기사입니다. 원출처: {source or "뉴스 제공원"}
-
-출력 형식:
-제목:
-<제목>
-
-본문:
-<본문>
+8. 마지막 문단은 투자자가 확인할 포인트를 설명하되 매수·매도 추천은 하지 않는다.
+9. 기업명·자산명·시장명·수치가 제공된 경우 가능한 한 정확하게 유지한다.
+10. 원문을 장황하게 재현하지 말고 독립적인 금융 브리핑 문체로 작성한다.
+11. 제목, '본문:' 같은 라벨, AI 안내문, 출처 표시는 출력하지 않는다.
+12. 문단 사이에는 빈 줄 하나만 넣는다.
 """
     try:
         response = requests.post(
@@ -3886,19 +3865,16 @@ def render_news_reader():
                 {_escape_html(news_time)}{ai_badge}
               </div>
               {image_html}
-              <div class="news-reader-ai-label" style="color:{THEME['accent_strong']};">
-                ✦ AI 뉴스 브리핑 · {_escape_html(source)}
-              </div>
-              <div class="news-reader-summary" style="background:{THEME['surface_muted']}; border-color:{THEME['border']};">
-                <p class="news-reader-summary-body" style="color:{THEME['text']};">
-                  {_escape_html(ai_article or description or snippet or "기사 내용을 불러오지 못했습니다.")}
-                </p>
-              </div>
-              <div class="news-reader-note" style="color:{THEME['text_muted']};">
-                ※ AI에 의해 작성된 기사입니다. 원출처의 정보를 바탕으로 재구성했으며, 원문을 그대로 복제하지 않습니다.
+              <div class="news-reader-ai-article" style="color:{THEME['text']};">
+                {_escape_html(ai_article or description or snippet or "기사 내용을 불러오지 못했습니다.")}
               </div>
             </div>
             """
+        )
+        st.html(
+            f'<div class="news-reader-disclosure" style="color:{THEME["text_muted"]};">'
+            '※ AI에 의해 작성된 기사입니다. 원출처의 정보를 바탕으로 재구성했으며, 원문을 그대로 복제하지 않습니다.'
+            '</div>'
         )
         source_url = original_url or article_url
         if source_url:
