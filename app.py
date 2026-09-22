@@ -1,5 +1,6 @@
 import json
 import random
+import re
 import FinanceDataReader as fdr
 import pandas as pd
 import altair as alt
