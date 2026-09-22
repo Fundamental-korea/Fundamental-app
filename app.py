@@ -2951,12 +2951,12 @@ def render_unified_search_box(stock_db, target_view=None):
             const STOCKS = {json_db};
             // 1만 종목 안팎을 매 키 입력마다 다시 normalize/alias-scan하지 않도록
             // 검색용 문자열을 iframe 초기화 때 한 번만 만들어 둔다.
-            const SEARCH_INDEX = STOCKS.map(item => ({
+            const SEARCH_INDEX = STOCKS.map(item => {{
                 item: item,
                 ticker: normalizeSearchText(item.ticker),
                 name: normalizeSearchText(item.name),
                 aliases: (Array.isArray(item.aliases) ? item.aliases : []).map(normalizeSearchText)
-            }));
+            }}));
             const inputEl = document.getElementById('unified_search_input');
             const modalEl = document.getElementById('unified_search_modal');
             const listEl = document.getElementById('unified_search_list');
