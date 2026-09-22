@@ -21,6 +21,7 @@ import os
 import re
 import zipfile
 import time
+from html import unescape
 from typing import Iterable, Optional
 
 import pandas as pd
@@ -130,7 +131,10 @@ def _env(name: str) -> str:
 
 
 def _clean_html(value: str) -> str:
-    return re.sub(r"<[^>]+>", "", value or "").strip()
+    # Marketaux/NAVER가 HTML entity(&quot;, &amp; 등)를 포함해 반환하는 경우
+    # 태그 제거 후 entity도 사람이 읽는 문자로 복원한다.
+    cleaned = re.sub(r"<[^>]+>", "", value or "")
+    return unescape(cleaned).strip()
 
 
 def _classify_dart_report(report_name: str) -> tuple[str, str]:
