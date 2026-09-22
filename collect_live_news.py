@@ -7,7 +7,7 @@ KST = ZoneInfo("Asia/Seoul")
 
 def main() -> None:
     items = fetch_macro_news(display=20)
-    saved = persist_marketaux_news(items)
+    saved = persist_live_news_snapshot(items)
 
     from news_earnings import _get_supabase_client
     client = _get_supabase_client()
