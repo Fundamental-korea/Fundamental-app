@@ -1964,12 +1964,6 @@ def render_us_fundamental_report(code, data):
 
     with col_login:
         render_theme_toggle("theme_toggle_us_report")
-        if st.button("⬅️ 메인으로", use_container_width=True, key="us_report_home"):
-            current_theme = THEME_MODE
-            st.query_params.clear()
-            if current_theme == "dark":
-                st.query_params["theme"] = "dark"
-            st.rerun()
 
     st.markdown("<br>", unsafe_allow_html=True)
 
