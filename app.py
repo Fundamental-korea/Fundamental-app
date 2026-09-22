@@ -4037,20 +4037,47 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
 
 
 def render_home_live_news(limit=20):
-    """메인 Live News: 시장 영향도가 큰 거시·금융 질의를 NAVER 검색 API로 실시간 조회."""
+    """메인 Live News: 20개를 확보하고 화면에는 10개씩 좌우 화살표로 넘겨 보여준다."""
     try:
         items = _get_home_macro_news(display=max(limit, 20))
     except Exception as exc:
         items = []
         st.warning(f"Live News를 불러오지 못했습니다: {exc}")
 
+    page_size = 10
+    total_pages = max(1, (len(items) + page_size - 1) // page_size)
+    current_page = int(st.session_state.get("live_news_page", 0))
+    current_page = max(0, min(current_page, total_pages - 1))
+    st.session_state["live_news_page"] = current_page
+
+    start = current_page * page_size
+    page_items = list(items)[start:start + page_size]
+
     _render_news_cards(
-        items,
-        limit=limit,
+        page_items,
+        limit=page_size,
         title="📰 Live News",
-        subtitle="금리·환율·미국 증시·국내 증시·정책 등 시장 전반의 주요 뉴스를 내부 뉴스 리더에서 보여드립니다.",
+        subtitle="미국 경제·금융 중심의 주요 뉴스 20개를 수집해 10개씩 보여드립니다. 화살표로 다음 뉴스 묶음을 볼 수 있습니다.",
         back_url=f"?theme={THEME_MODE}",
     )
+
+    if total_pages > 1:
+        nav_left, nav_mid, nav_right = st.columns([1, 6, 1])
+        with nav_left:
+            if st.button("←", key="live_news_prev", use_container_width=True, disabled=current_page == 0):
+                st.session_state["live_news_page"] = max(0, current_page - 1)
+                st.rerun()
+        with nav_mid:
+            st.markdown(
+                f"<div style='text-align:center; color:{THEME['text_muted']}; font-size:12px; padding-top:8px;'>"
+                f"{current_page + 1} / {total_pages} · 총 {len(items)}개 뉴스"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        with nav_right:
+            if st.button("→", key="live_news_next", use_container_width=True, disabled=current_page >= total_pages - 1):
+                st.session_state["live_news_page"] = min(total_pages - 1, current_page + 1)
+                st.rerun()
 
 
 @st.cache_data(ttl=21600, show_spinner=False)
@@ -5276,7 +5303,7 @@ elif not selected_code:
 
         # 메인 Live News는 검색창 바로 아래가 기본 화면이다.
         if home_nav == "Live News":
-            render_home_live_news(limit=10)
+            render_home_live_news(limit=20)
         elif home_nav == "US Market Overview":
             render_home_market_overview("US")
         elif home_nav == "Korea Market Overview":
