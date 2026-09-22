@@ -3934,7 +3934,7 @@ def render_home_earnings_calendar(limit=12):
             source_link = ""
             if event["source_url"]:
                 source_link = (
-                    f"<a href='{_escape_html(event.source_url)}' target='_blank' "
+                    f"<a href='{_escape_html(event['source_url'])}' target='_blank' "
                     f"rel='noopener noreferrer' style='color:#D97706;text-decoration:none;font-weight:800;margin-left:8px;'>공시 보기 ↗</a>"
                 )
 
@@ -3946,7 +3946,7 @@ def render_home_earnings_calendar(limit=12):
                     <div class="earnings-report">{_escape_html(event["report_name"])}{source_link}</div>
                     {compare}
                   </div>
-                  <div class="earnings-date">{_escape_html(event.event_date)}</div>
+                  <div class="earnings-date">{_escape_html(event["date"].isoformat())}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -3955,7 +3955,12 @@ def render_home_earnings_calendar(limit=12):
         st.markdown('<div class="news-empty-state">최근 실적 공시가 없습니다.</div>', unsafe_allow_html=True)
 
     st.markdown("<div class='earnings-upcoming-title'>🇺🇸🇰🇷 향후 예정 실적 · 다음 14일</div>", unsafe_allow_html=True)
-    upcoming = _get_us_upcoming_earnings(days_forward=14, limit=10) + _get_kr_upcoming_earnings(days_forward=14)
+    # Earnings are collected by the background job and served from the
+    # Supabase snapshot. Do not call Yahoo/DART from the Streamlit render path.
+    upcoming = [
+        row for row in _get_earnings_events_db(days_back=0, days_forward=14)
+        if row["status"] == "upcoming" and row["event_type"] == "earnings_calendar"
+    ]
     upcoming.sort(key=lambda x: (x["date"], x["market"], x["company"]))
     if upcoming:
         st.markdown("<div class='earnings-note'>예정일은 변경될 수 있습니다.</div>", unsafe_allow_html=True)
