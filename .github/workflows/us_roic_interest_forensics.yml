@@ -1,0 +1,53 @@
+name: US ROIC Interest Forensics
+
+on:
+  push:
+    paths:
+      - "US_ROIC_INTEREST_FORENSICS_TRIGGER.txt"
+      - "diagnose_us_roic_interest.py"
+  workflow_dispatch:
+    inputs:
+      interest_limit:
+        description: "Interest-coverage missing sample size"
+        required: false
+        default: "60"
+        type: string
+      roic_limit:
+        description: "ROIC missing sample size"
+        required: false
+        default: "60"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Run forensic diagnostic
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          python diagnose_us_roic_interest.py --interest-limit "${{ inputs.interest_limit || '60' }}" --roic-limit "${{ inputs.roic_limit || '60' }}"
+      - name: Upload forensic report
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-roic-interest-forensics
+          path: us_roic_interest_forensics.json
+          retention-days: 7
