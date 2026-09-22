@@ -3926,9 +3926,19 @@ def _get_news_images(urls):
     urls = [str(u or "") for u in urls]
     if not urls:
         return []
-    # 첫 화면의 9개 카드만 병렬 조회해서 기사 이미지 때문에 전체 페이지가 직렬로 느려지지 않게 한다.
-    with ThreadPoolExecutor(max_workers=min(6, len(urls))) as executor:
-        return list(executor.map(_get_news_image_url, urls))
+    # 20개 피드로 늘려도 이미지 OG 조회가 로딩을 끌어당기지 않도록
+    # 상위 10개만 서버에서 원문 대표 이미지를 확인한다. 나머지는 필요할 때
+    # 카드별 AI 이미지 fallback을 사용한다.
+    results = [""] * len(urls)
+    lookup_count = min(10, len(urls))
+    lookup_urls = [(idx, urls[idx]) for idx in range(lookup_count) if urls[idx]]
+    if not lookup_urls:
+        return results
+    with ThreadPoolExecutor(max_workers=min(6, len(lookup_urls))) as executor:
+        fetched = executor.map(lambda pair: (pair[0], _get_news_image_url(pair[1])), lookup_urls)
+        for idx, image_url in fetched:
+            results[idx] = image_url
+    return results
 
 
 def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back_url=""):
