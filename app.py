@@ -526,6 +526,11 @@ st.markdown(
         border-radius: 14px;
         background: #FAFAFA;
     }
+    .news-reader-ai-label {
+        font-size: 13px;
+        font-weight: 900;
+        margin: 18px 0 10px;
+    }
     .news-reader-summary-title {
         font-size: 14px;
         font-weight: 900;
@@ -3665,6 +3670,96 @@ def _news_source_label(url: str, fallback: str = "뉴스") -> str:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
+def _generate_ai_news_article(
+    title: str,
+    description: str = "",
+    snippet: str = "",
+    keywords: str = "",
+    entities: str = "",
+    source: str = "",
+) -> str:
+    """Generate a Korean financial-news brief from source metadata without reproducing article text."""
+    api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
+    if not api_key:
+        return ""
+
+    model = str(st.secrets.get("GEMINI_NEWS_MODEL", "gemini-3.5-flash-lite")).strip()
+    source_material = "\n".join([
+        f"제목: {title}",
+        f"출처: {source}",
+        f"설명: {description}",
+        f"짧은 본문 문맥: {snippet}",
+        f"핵심 키워드: {keywords}",
+        f"관련 기업·자산: {entities}",
+    ])
+
+    prompt = f"""
+너는 미국·한국 금융시장 전문 뉴스 에디터다.
+아래는 실제 뉴스 공급원이 제공한 메타데이터와 짧은 문맥이다.
+
+{source_material}
+
+이 자료만 근거로 한국어 금융뉴스 브리핑을 작성하라.
+
+작성 규칙:
+1. 원문 문장을 그대로 복사하지 말고 완전히 다른 표현으로 재구성한다.
+2. 제공된 자료에 없는 사실, 숫자, 인용, 발언, 전망을 새로 만들어내지 않는다.
+3. 확인되지 않은 내용은 단정하지 않는다.
+4. 기사 제목을 1개 제안한다.
+5. 본문은 5~7개 짧은 문단, 총 700~1100자 정도로 작성한다.
+6. 구성은 다음 순서다:
+   - 리드: 무슨 일이 있었는지
+   - 배경: 왜 시장이 주목하는지
+   - 핵심 내용: 제공된 자료에서 확인되는 주요 사실
+   - 시장 영향: 금리/주식/환율/채권/해당 기업 등에 어떤 의미가 있는지
+   - 체크포인트: 투자자가 앞으로 확인할 변수
+7. 투자 추천, 매수·매도 지시, 과도한 확신은 금지한다.
+8. 마지막 줄에 '※ AI에 의해 작성된 기사입니다. 원출처: {source or "뉴스 제공원"}'를 정확히 붙인다.
+
+출력 형식:
+제목:
+<제목>
+
+본문:
+<본문>
+"""
+    try:
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            headers={
+                "x-goog-api-key": api_key,
+                "Content-Type": "application/json",
+            },
+            json={
+                "contents": [
+                    {
+                        "parts": [
+                            {"text": prompt}
+                        ]
+                    }
+                ],
+                "generationConfig": {
+                    "temperature": 0.25,
+                    "maxOutputTokens": 1400,
+                },
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        parts = (
+            payload.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [])
+        )
+        text_parts = [str(p.get("text", "")).strip() for p in parts if p.get("text")]
+        result = "\n".join(text_parts).strip()
+        return result
+    except Exception:
+        return ""
+
+
 def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -> str:
     """대표 이미지가 없을 때 기사 내용에 맞춘 AI 편집 일러스트 URL을 만든다.
     브라우저에서 직접 이미지를 요청하므로 서버에 이미지 파일을 저장하지 않는다."""
@@ -3734,6 +3829,14 @@ def render_news_reader():
     keywords = str(qp.get("news_keywords", "")).strip()
     entities = str(qp.get("news_entities", "")).strip()
     image_url = str(qp.get("news_image", "")).strip()
+    ai_article = _generate_ai_news_article(
+        title=title,
+        description=description,
+        snippet=snippet,
+        keywords=keywords,
+        entities=entities,
+        source=source,
+    )
     back_url = str(qp.get("news_back", "")).strip() or f"?theme={THEME_MODE}"
 
     if not title:
@@ -3780,26 +3883,16 @@ def render_news_reader():
                 {_escape_html(news_time)}{ai_badge}
               </div>
               {image_html}
+              <div class="news-reader-ai-label" style="color:{THEME['accent_strong']};">
+                ✦ AI 뉴스 브리핑 · {_escape_html(source)}
+              </div>
               <div class="news-reader-summary" style="background:{THEME['surface_muted']}; border-color:{THEME['border']};">
-                <div class="news-reader-summary-title" style="color:{THEME['text']};">기사 핵심 내용</div>
-                <p class="news-reader-summary-body" style="color:{THEME['text']};">{_escape_html(description or snippet or "기사 요약 정보가 없습니다.")}</p>
+                <p class="news-reader-summary-body" style="color:{THEME['text']};">
+                  {_escape_html(ai_article or description or snippet or "기사 내용을 불러오지 못했습니다.")}
+                </p>
               </div>
-              {f'<div class="news-reader-body" style="color:{THEME["text_secondary"]};">{_escape_html(snippet)}</div>' if snippet and snippet != description else ''}
-              <div class="news-reader-facts">
-                <div class="news-reader-fact" style="background:{THEME['surface']}; border-color:{THEME['border']};">
-                  <div class="news-reader-fact-label" style="color:{THEME['text_muted']};">출처</div>
-                  <div class="news-reader-fact-value" style="color:{THEME['text']};">{_escape_html(source)}</div>
-                </div>
-                <div class="news-reader-fact" style="background:{THEME['surface']}; border-color:{THEME['border']};">
-                  <div class="news-reader-fact-label" style="color:{THEME['text_muted']};">주제</div>
-                  <div class="news-reader-fact-value" style="color:{THEME['text']};">{_escape_html(category or "시장 뉴스")}</div>
-                </div>
-              </div>
-              {f'<div class="news-reader-note" style="color:{THEME["text_muted"]};">관련 기업·자산 · {_escape_html(entities)}</div>' if entities else ''}
-              {f'<div class="news-reader-note" style="color:{THEME["text_muted"]};">핵심 키워드 · {_escape_html(keywords)}</div>' if keywords else ''}
               <div class="news-reader-note" style="color:{THEME['text_muted']};">
-                Marketaux와 출처 페이지에서 제공되는 제목·요약·문맥 정보를 우리 사이트 형식으로 정리했습니다.
-                기사 전문은 그대로 복제하지 않습니다.
+                ※ AI에 의해 작성된 기사입니다. 원출처의 정보를 바탕으로 재구성했으며, 원문을 그대로 복제하지 않습니다.
               </div>
             </div>
             """
