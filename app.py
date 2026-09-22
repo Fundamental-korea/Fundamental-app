@@ -1448,6 +1448,201 @@ if THEME_MODE == "dark":
         [style*="#F1F5F9"] {
             background-color: __THEME_SURFACE__ !important;
         }
+        /* ===== Live News / Earnings dark-mode v2 =====
+           새 기능 영역의 텍스트/배경/링크/버튼을 명시적으로 분리해
+           Streamlit 기본 테마와 전역 CSS의 충돌을 막는다. */
+        .live-news-section-title,
+        .live-news-section-subtitle,
+        .live-news-source,
+        .live-news-category,
+        .live-news-title,
+        .live-news-desc,
+        .live-news-footer,
+        .news-empty-state,
+        .earnings-name,
+        .earnings-company-ko,
+        .earnings-report,
+        .earnings-date,
+        .earnings-compare,
+        .earnings-upcoming-title,
+        .earnings-note,
+        .earnings-calendar-month,
+        .earnings-calendar-sub,
+        .earnings-calendar-week,
+        .earnings-calendar-day,
+        .earnings-calendar-empty,
+        .earnings-calendar-more,
+        .earnings-calendar-company-ko,
+        .earnings-detail-name,
+        .earnings-detail-meta,
+        .earnings-summary-label,
+        .earnings-summary-value,
+        .earnings-page-title,
+        .earnings-page-subtitle,
+        .earnings-detail-compare {
+            color: __THEME_TEXT__ !important;
+            -webkit-text-fill-color: __THEME_TEXT__ !important;
+        }
+
+        .live-news-section-subtitle,
+        .live-news-source,
+        .live-news-category,
+        .live-news-desc,
+        .live-news-footer,
+        .earnings-company-ko,
+        .earnings-report,
+        .earnings-compare,
+        .earnings-note,
+        .earnings-calendar-sub,
+        .earnings-calendar-week,
+        .earnings-calendar-empty,
+        .earnings-calendar-more,
+        .earnings-detail-meta,
+        .earnings-summary-label,
+        .earnings-page-subtitle,
+        .earnings-detail-compare {
+            color: __THEME_TEXT_MUTED__ !important;
+            -webkit-text-fill-color: __THEME_TEXT_MUTED__ !important;
+        }
+
+        .live-news-card,
+        .news-empty-state,
+        .earnings-row,
+        .earnings-calendar-shell,
+        .earnings-calendar-cell,
+        .earnings-detail-card,
+        .earnings-summary-card {
+            background: __THEME_SURFACE__ !important;
+            color: __THEME_TEXT__ !important;
+            border-color: __THEME_BORDER__ !important;
+        }
+
+        .live-news-card:hover {
+            background: __THEME_SURFACE__ !important;
+            border-color: __THEME_BORDER__ !important;
+        }
+
+        .live-news-title,
+        .live-news-title:visited,
+        .live-news-title:hover,
+        .live-news-title:active {
+            color: __THEME_TEXT__ !important;
+            -webkit-text-fill-color: __THEME_TEXT__ !important;
+        }
+
+        .live-news-footer,
+        .earnings-report,
+        .earnings-note,
+        .earnings-calendar-sub,
+        .earnings-detail-meta {
+            background: transparent !important;
+        }
+
+        .earnings-calendar-event,
+        .earnings-calendar-event.us {
+            background: __THEME_SURFACE_MUTED__ !important;
+            border-left-color: __THEME_BORDER__ !important;
+            color: __THEME_TEXT__ !important;
+            -webkit-text-fill-color: __THEME_TEXT__ !important;
+        }
+
+        .earnings-calendar-event.kr,
+        .earnings-consensus-chip,
+        .earnings-primary {
+            background: __THEME_WARNING_BG__ !important;
+            border-color: __THEME_ACCENT__ !important;
+            color: __THEME_WARNING_TEXT__ !important;
+            -webkit-text-fill-color: __THEME_WARNING_TEXT__ !important;
+        }
+
+        .earnings-consensus-chip strong,
+        .earnings-primary,
+        .earnings-secondary {
+            color: __THEME_WARNING_TEXT__ !important;
+            -webkit-text-fill-color: __THEME_WARNING_TEXT__ !important;
+        }
+
+        .earnings-secondary {
+            background: __THEME_SURFACE_MUTED__ !important;
+            border-color: __THEME_BORDER__ !important;
+            color: __THEME_TEXT_MUTED__ !important;
+            -webkit-text-fill-color: __THEME_TEXT_MUTED__ !important;
+        }
+
+        .earnings-open-calendar {
+            background: __THEME_SURFACE_WARM__ !important;
+            border-color: __THEME_ACCENT__ !important;
+            color: __THEME_ACCENT_STRONG__ !important;
+            -webkit-text-fill-color: __THEME_ACCENT_STRONG__ !important;
+        }
+
+        .earnings-open-calendar:hover {
+            background: __THEME_ACCENT__ !important;
+            color: #FFFFFF !important;
+            -webkit-text-fill-color: #FFFFFF !important;
+        }
+
+        .earnings-detail-market.us {
+            background: __THEME_SURFACE_MUTED__ !important;
+            color: __THEME_TEXT_MUTED__ !important;
+            -webkit-text-fill-color: __THEME_TEXT_MUTED__ !important;
+        }
+
+        .earnings-detail-market.kr {
+            background: __THEME_WARNING_BG__ !important;
+            color: __THEME_WARNING_TEXT__ !important;
+            -webkit-text-fill-color: __THEME_WARNING_TEXT__ !important;
+        }
+
+        .earnings-date a,
+        .earnings-date a:visited,
+        .earnings-date a:hover,
+        .earnings-date a:active {
+            color: __THEME_ACCENT_STRONG__ !important;
+            -webkit-text-fill-color: __THEME_ACCENT_STRONG__ !important;
+        }
+
+        [class*="st-key-earnings_cell_"] button,
+        [class*="st-key-earnings_cell_"] button p,
+        [class*="st-key-earnings_cell_"] button span {
+            background: transparent !important;
+            color: __THEME_TEXT__ !important;
+            -webkit-text-fill-color: __THEME_TEXT__ !important;
+        }
+
+        [class*="st-key-earnings_cell_"] button:hover,
+        [class*="st-key-earnings_cell_"] button:focus {
+            background: __THEME_SURFACE_WARM__ !important;
+            color: __THEME_ACCENT_STRONG__ !important;
+            -webkit-text-fill-color: __THEME_ACCENT_STRONG__ !important;
+        }
+
+        [class*="st-key-earnings_cell_selected_"] {
+            background: __THEME_SURFACE_WARM__ !important;
+            border-color: __THEME_ACCENT__ !important;
+        }
+
+        /* Streamlit의 전역 button CSS가 HTML 카드 내부의 명시적 스타일보다
+           우선되는 경우를 막는다. */
+        .earnings-calendar-shell a,
+        .earnings-calendar-shell span,
+        .earnings-calendar-shell strong,
+        .earnings-calendar-shell div,
+        .earnings-detail-card a,
+        .earnings-detail-card span,
+        .earnings-detail-card strong,
+        .earnings-detail-card div,
+        .earnings-row a,
+        .earnings-row span,
+        .earnings-row strong,
+        .earnings-row div,
+        .live-news-card a,
+        .live-news-card span,
+        .live-news-card strong,
+        .live-news-card div {
+            -webkit-text-fill-color: currentColor;
+        }
+
         </style>
     """
     theme_replacements = {
