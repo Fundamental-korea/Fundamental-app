@@ -10,10 +10,11 @@ from supabase import create_client
 import yfinance as yf
 import base64
 import calendar as pycalendar
-from datetime import date, timedelta
+from datetime import date, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
 from urllib.parse import quote, urlencode, urlparse
+from zoneinfo import ZoneInfo
 import hashlib
 
 from search_aliases import aliases_for
@@ -21,7 +22,7 @@ from search_aliases import aliases_for
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
 from historical_pattern import analyze_all_indicator_patterns
-from news_earnings import fetch_dart_disclosures, fetch_macro_news, fetch_stock_news, build_earnings_events
+from news_earnings import NaverNewsItem, fetch_dart_disclosures, fetch_macro_news, fetch_stock_news, build_earnings_events
 import importlib
 import chart_indicators as _chart_indicators
 _chart_indicators = importlib.reload(_chart_indicators)
@@ -3549,11 +3550,60 @@ def _escape_html(value):
     )
 
 
-@st.cache_data(ttl=7200, show_spinner=False)
-def _get_home_macro_news(display=20, cache_version="marketaux-today-kst-v2"):
-    # Marketaux Free는 하루 100 requests / 요청당 최대 3 articles.
-    # 메인 피드는 2시간 캐시해 최신성을 유지하면서 방문자 새로고침마다 API를 재호출하지 않는다.
-    return fetch_macro_news(display=min(max(display, 1), 20))
+@st.cache_data(ttl=300, show_spinner=False)
+def _get_home_macro_news(display=20, cache_version="supabase-live-news-v1"):
+    """Read the automatically refreshed today's Live News snapshot from Supabase."""
+    target = min(max(display, 1), 20)
+    if supabase is not None:
+        try:
+            kst = ZoneInfo("Asia/Seoul")
+            now_kst = datetime.now(kst)
+            start_kst = now_kst.replace(hour=0, minute=0, second=0, microsecond=0)
+            next_kst = start_kst + timedelta(days=1)
+            start_utc = start_kst.astimezone(timezone.utc).isoformat()
+            next_utc = next_kst.astimezone(timezone.utc).isoformat()
+
+            result = (
+                supabase.table("news_items")
+                .select(
+                    "source,source_id,title,description,article_url,original_url,"
+                    "published_at,metadata"
+                )
+                .eq("source", "MARKETAUX")
+                .eq("is_macro", True)
+                .gte("published_at", start_utc)
+                .lt("published_at", next_utc)
+                .order("published_at", desc=True)
+                .limit(target)
+                .execute()
+            )
+
+            rows = []
+            for row in result.data or []:
+                meta = row.get("metadata") or {}
+                rows.append(
+                    NaverNewsItem(
+                        title=str(row.get("title") or ""),
+                        description=str(row.get("description") or ""),
+                        link=str(row.get("article_url") or row.get("original_url") or ""),
+                        original_link=str(row.get("original_url") or row.get("article_url") or ""),
+                        pub_date=str(row.get("published_at") or ""),
+                        query=str(meta.get("query") or "시장 뉴스"),
+                        source=str(meta.get("source_label") or "Marketaux"),
+                        image_url=str(meta.get("image_url") or ""),
+                        snippet=str(meta.get("snippet") or ""),
+                        keywords=str(meta.get("keywords") or ""),
+                        entities=str(meta.get("entities") or ""),
+                    )
+                )
+            if rows:
+                return rows
+        except Exception:
+            pass
+
+    # First deployment/temporary collector failure fallback: use the existing
+    # direct Marketaux collector once rather than leaving the feed blank.
+    return fetch_macro_news(display=target)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
