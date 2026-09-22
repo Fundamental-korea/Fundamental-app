@@ -85,7 +85,8 @@ FACT_ALIASES = {
     "inventory": ["InventoryNet", "InventoryGross"],
     "cash": ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
     "receivables": ["AccountsReceivableNetCurrent", "AccountsReceivableNet", "AccountsAndNotesReceivableNetCurrent", "AccountsReceivableGrossCurrent"],
-    "interest_expense": ["InterestExpenseNonOperating", "InterestExpenseDebt", "InterestExpenseNonOperatingNet", "InterestExpenseNonOperatingAndOther", "InterestAndDebtExpense", "InterestExpense"],
+    "interest_expense": ["InterestExpenseNonoperating", "InterestExpenseNonOperating", "InterestExpenseDebt", "InterestExpenseNonOperatingNet", "InterestExpenseNonOperatingAndOther", "InterestAndDebtExpense", "InterestExpense"],
+    "interest_expense_net": ["InterestIncomeExpenseNet"],
     "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
     "sga": ["SellingGeneralAndAdministrativeExpense", "SellingGeneralAndAdministrativeExpenseIncludingDepreciationAmortization", "GeneralAndAdministrativeExpense", "SellingExpense"],
     "eps": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
@@ -127,6 +128,7 @@ IFRS_FACT_ALIASES = {
     "cash": ["CashAndCashEquivalents"],
     "receivables": ["TradeAndOtherReceivables", "TradeReceivables"],
     "interest_expense": ["FinanceCosts", "InterestExpense"],
+    "interest_expense_net": ["InterestIncomeExpenseNet"],
     "operating_cash_flow": ["CashFlowsFromUsedInOperatingActivities"],
     "sga": ["SellingGeneralAndAdministrativeExpense"],
     "eps": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
@@ -515,14 +517,22 @@ def annual_metrics(index, year):
     receivables = latest_annual_value(index, "receivables", year)
     inventory = latest_annual_value(index, "inventory", year)
     interest = latest_annual_value(index, "interest_expense", year)
+    # Some issuers report only net interest income/(expense). For coverage,
+    # a negative net expense is converted to a positive interest burden.
+    if interest is None:
+        net_interest = latest_annual_value(index, "interest_expense_net", year)
+        if net_interest is not None:
+            interest = abs(float(net_interest))
     ocf = latest_annual_value(index, "operating_cash_flow", year)
     sga = latest_annual_value(index, "sga", year)
     eps = latest_annual_value(index, "eps", year)
     debt_current = latest_annual_value(index, "debt_current", year)
     debt_noncurrent = latest_annual_value(index, "debt_noncurrent", year)
     debt_total = latest_annual_value(index, "debt_total", year)
-    if debt_current is not None and debt_noncurrent is not None:
-        debt = debt_current + debt_noncurrent
+    if debt_current is not None or debt_noncurrent is not None:
+        # A filing may disclose only one maturity bucket. Do not discard a
+        # valid reported component merely because the other bucket is absent.
+        debt = (debt_current or 0.0) + (debt_noncurrent or 0.0)
     elif debt_total is not None:
         debt = debt_total
     else:
