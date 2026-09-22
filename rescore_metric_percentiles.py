@@ -173,43 +173,39 @@ def main():
         return
 
     print("\n💾 Supabase에 반영 중...")
+
+    # 행별 upsert는 2,500+개에서 지나치게 느리므로 배치 upsert로 반영한다.
+    # period_scores JSONB 전체를 저장하되, 각 배치 안에서는 한 번의 API 호출만 사용한다.
     actually_updated = 0
-    zero_row_codes = []
-    for i, u in enumerate(updates, 1):
+    batch_size = 100
+    for start_idx in range(0, len(updates), batch_size):
+        batch = updates[start_idx:start_idx + batch_size]
+        payload = [
+            {"stock_code": u["stock_code"], "period_scores": u["period_scores"]}
+            for u in batch
+        ]
         for attempt in range(3):
             try:
-                # ⚠️ .update()에서 .upsert()로 변경 - Supabase RLS가 UPDATE 정책은 없고
-                # INSERT/UPSERT 정책만 있는 경우, .update()는 에러 없이 0건 처리되고
-                # "성공"으로 잘못 보고되는 문제가 있었음 (실측으로 확인됨: 로그는 완료라고
-                # 뜨는데 DB엔 반영 안 됨). collector.py 등 다른 스크립트가 전부 upsert를
-                # 써서 정상 작동했던 것과 동일한 방식으로 통일.
                 res = (
                     supabase.table("Fundamental")
-                    .upsert(
-                        {"stock_code": u["stock_code"], "period_scores": u["period_scores"]},
-                        on_conflict="stock_code",
-                    )
+                    .upsert(payload, on_conflict="stock_code")
                     .execute()
                 )
-                # 응답에 실제로 데이터가 돌아왔는지 확인 - 빈 배열이면 필터/RLS에 걸려
-                # 실제로는 반영 안 된 것일 수 있으므로 별도로 추적
-                if res.data:
-                    actually_updated += 1
+                returned = len(res.data or [])
+                if returned:
+                    actually_updated += returned
                 else:
-                    zero_row_codes.append(u["stock_code"])
+                    raise RuntimeError("배치 upsert 응답이 비어 있습니다.")
                 break
             except Exception as e:
                 if attempt == 2:
-                    print(f"   ⚠️ [{u['stock_code']}] 업데이트 실패(3회 재시도 후 포기): {e}")
-                else:
-                    print(f"   ⚠️ [{u['stock_code']}] 업데이트 재시도 중... ({e})")
-        if i % 200 == 0:
-            print(f"   {i}/{len(updates)} 완료... (실제 반영 확인 {actually_updated}건)")
-
-    print(f"\n🎉 전체 {len(updates)}개 종목 중 실제 반영 확인된 건: {actually_updated}개")
-    if zero_row_codes:
-        print(f"⚠️ 응답이 비어있던(실제 반영 안 됐을 가능성) 종목 {len(zero_row_codes)}개, 예시: {zero_row_codes[:10]}")
-        print("   -> 이게 0이 아니면 Supabase 테이블의 RLS 정책(UPDATE/UPSERT 권한)을 확인하세요.")
+                    raise RuntimeError(
+                        f"peer percentile batch {start_idx}:{start_idx + len(batch)} failed: {e}"
+                    )
+                print(f"   ⚠️ 배치 재시도 중... ({e})")
+        print(f"   {min(start_idx + batch_size, len(updates))}/{len(updates)} 완료...")
+    
+    print(f"\n🎉 실제 반영 확인: {actually_updated}개 행")
 
 
 if __name__ == "__main__":
