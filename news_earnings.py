@@ -476,11 +476,18 @@ PREFERRED_GLOBAL_NEWS_DOMAINS = (
 
 def _rank_global_news(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
     preferred = {domain: idx for idx, domain in enumerate(PREFERRED_GLOBAL_NEWS_DOMAINS)}
-    return sorted(
-        items,
-        key=lambda item: (preferred.get(_source_domain(item), 999), item.pub_date or ""),
-        reverse=False,
-    )
+
+    def rank(item: NaverNewsItem):
+        source_rank = preferred.get(_source_domain(item), 999)
+        try:
+            published_ts = datetime.fromisoformat(
+                (item.pub_date or "").replace("Z", "+00:00")
+            ).timestamp()
+        except Exception:
+            published_ts = 0
+        return source_rank, -published_ts
+
+    return sorted(items, key=rank)
 
 
 def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 8) -> list[NaverNewsItem]:
