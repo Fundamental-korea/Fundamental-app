@@ -3550,10 +3550,10 @@ def _escape_html(value):
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
-def _get_home_macro_news(display=10, cache_version="marketaux-free-v5"):
+def _get_home_macro_news(display=20, cache_version="marketaux-free-v6"):
     # Marketaux Free는 하루 100 requests / 요청당 최대 3 articles.
-    # 메인 피드는 2시간 캐시해 최신성을 높이면서 방문자 새로고침마다 API를 재호출하지 않는다.
-    return fetch_macro_news(display=display)
+    # 메인 피드는 2시간 캐시해 최신성을 유지하면서 방문자 새로고침마다 API를 재호출하지 않는다.
+    return fetch_macro_news(display=min(max(display, 1), 20))
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -3692,7 +3692,7 @@ def _generate_ai_news_article(
 1. 원문 문장을 그대로 복사하지 말고 완전히 다른 표현으로 재구성한다.
 2. 자료에 없는 사실, 숫자, 인용, 발언, 일정, 전망을 절대로 만들어내지 않는다.
 3. 자료만으로 확인할 수 없는 내용은 추측하지 않는다.
-4. 본문은 5~7개 문단, 총 700~1100자 정도로 작성한다.
+4. 본문은 7~9개 문단, 총 1200~1800자 정도로 작성한다.
 5. 첫 문단은 '무슨 일이 있었는가'를 바로 설명한다.
 6. 이어서 배경과 핵심 사실을 설명한다.
 7. 시장 영향은 자료에서 합리적으로 연결되는 범위에서만 설명하고,
@@ -3719,7 +3719,7 @@ def _generate_ai_news_article(
                     }
                 ],
                 "generationConfig": {
-                    "maxOutputTokens": 1400,
+                    "maxOutputTokens": 2200,
                 },
             },
             timeout=30,
@@ -4026,10 +4026,10 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
     st.html('<div class="live-news-grid">' + ''.join(cards) + '</div>')
 
 
-def render_home_live_news(limit=9):
+def render_home_live_news(limit=20):
     """메인 Live News: 시장 영향도가 큰 거시·금융 질의를 NAVER 검색 API로 실시간 조회."""
     try:
-        items = _get_home_macro_news(display=max(limit, 10))
+        items = _get_home_macro_news(display=max(limit, 20))
     except Exception as exc:
         items = []
         st.warning(f"Live News를 불러오지 못했습니다: {exc}")
