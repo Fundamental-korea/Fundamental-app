@@ -2949,6 +2949,14 @@ def render_unified_search_box(stock_db, target_view=None):
 
         <script>
             const STOCKS = {json_db};
+            // 1만 종목 안팎을 매 키 입력마다 다시 normalize/alias-scan하지 않도록
+            // 검색용 문자열을 iframe 초기화 때 한 번만 만들어 둔다.
+            const SEARCH_INDEX = STOCKS.map(item => ({
+                item: item,
+                ticker: normalizeSearchText(item.ticker),
+                name: normalizeSearchText(item.name),
+                aliases: (Array.isArray(item.aliases) ? item.aliases : []).map(normalizeSearchText)
+            }));
             const inputEl = document.getElementById('unified_search_input');
             const modalEl = document.getElementById('unified_search_modal');
             const listEl = document.getElementById('unified_search_list');
@@ -2971,8 +2979,7 @@ def render_unified_search_box(stock_db, target_view=None):
                 return qi === query.length ? (query.length / text.length) : 0;
             }}
 
-            function scoreField(field, query) {{
-                const text = normalizeSearchText(field);
+            function scoreFieldNormalized(text, query) {{
                 if (!text) return 0;
                 if (text === query) return 1000;
                 if (text.startsWith(query)) return 820;
@@ -2982,39 +2989,29 @@ def render_unified_search_box(stock_db, target_view=None):
                 return 0;
             }}
 
-            function scoreStock(item, query) {{
-                const ticker = normalizeSearchText(item.ticker);
-                const name = normalizeSearchText(item.name);
-                const aliases = Array.isArray(item.aliases) ? item.aliases : [];
-
+            function scoreStock(searchItem, query) {{
                 let best = 0;
-                if (ticker === query) best = 1200;
-                if (name === query) best = Math.max(best, 1150);
+                if (searchItem.ticker === query) best = 1200;
+                if (searchItem.name === query) best = Math.max(best, 1150);
 
-                for (const alias of aliases) {{
-                    const aliasScore = scoreField(alias, query);
-                    if (aliasScore > 0) {{
-                        best = Math.max(best, aliasScore + 20);
-                    }}
+                for (const alias of searchItem.aliases) {{
+                    const aliasScore = scoreFieldNormalized(alias, query);
+                    if (aliasScore > 0) best = Math.max(best, aliasScore + 20);
                 }}
 
-                const nameScore = scoreField(item.name, query);
-                if (nameScore > 0) {{
-                    best = Math.max(best, nameScore);
-                }}
+                const nameScore = scoreFieldNormalized(searchItem.name, query);
+                if (nameScore > 0) best = Math.max(best, nameScore);
 
-                const tickerScore = scoreField(item.ticker, query);
-                if (tickerScore > 0) {{
-                    best = Math.max(best, tickerScore + 10);
-                }}
+                const tickerScore = scoreFieldNormalized(searchItem.ticker, query);
+                if (tickerScore > 0) best = Math.max(best, tickerScore + 10);
                 return best;
             }}
 
             function searchStocks(query) {{
                 const q = normalizeSearchText(query);
                 if (!q) return [];
-                return STOCKS
-                    .map(item => ({{ item: item, score: scoreStock(item, q) }}))
+                return SEARCH_INDEX
+                    .map(searchItem => ({{ item: searchItem.item, score: scoreStock(searchItem, q) }}))
                     .filter(x => x.score > 0)
                     .sort((a, b) => {{
                         if (b.score !== a.score) return b.score - a.score;
