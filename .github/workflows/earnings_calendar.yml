@@ -2,6 +2,10 @@ name: Earnings Calendar Collector
 
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "EARNINGS_COLLECTOR_TRIGGER.txt"
+      - "collector_earnings_calendar.py"
   schedule:
     - cron: "15 */6 * * *"
 
