@@ -101,6 +101,7 @@ class NaverNewsItem:
     image_url: str = ""
     snippet: str = ""
     keywords: str = ""
+    entities: str = ""
 
 
 @dataclass(frozen=True)
@@ -447,6 +448,18 @@ def search_marketaux_news(
         image_url = str(article.get("image_url") or "").strip()
         source = _marketaux_source_label(article)
         published_at = str(article.get("published_at") or "").strip()
+
+        entity_rows = []
+        for entity in (article.get("entities") or [])[:8]:
+            entity_name = str(entity.get("name") or "").strip()
+            symbol = str(entity.get("symbol") or "").strip()
+            industry = str(entity.get("industry") or "").strip()
+            if entity_name or symbol:
+                label = f"{entity_name} ({symbol})" if entity_name and symbol else (entity_name or symbol)
+                if industry:
+                    label += f" · {industry}"
+                entity_rows.append(label)
+
         items.append(
             NaverNewsItem(
                 title=_clean_html(title),
@@ -459,6 +472,7 @@ def search_marketaux_news(
                 image_url=image_url,
                 snippet=_clean_html(str(article.get("snippet") or "")),
                 keywords=_clean_html(str(article.get("keywords") or "")),
+                entities=" | ".join(entity_rows),
             )
         )
         # NaverNewsItem에는 이미지 필드가 없으므로 대표 이미지는 app.py에서 URL을 다시 확인한다.
