@@ -47,6 +47,12 @@ def fallback_wics_sector(stock_name, sector):
     """
     text = f"{stock_name or ''} {sector or ''}"
 
+    # 특수 종목명은 업종 문자열보다 우선한다.
+    if stock_name in ("파라택시스코리아",):
+        return "금융"
+    if stock_name in ("알에프세미",):
+        return "IT"
+
     # 특수 금융/보험/증권
     if any(k in text for k in ("스팩", "은행", "증권", "보험", "카드", "캐피탈", "금융", "리스", "여신", "신용", "부동산")):
         return "금융"
@@ -86,9 +92,8 @@ def fallback_wics_sector(stock_name, sector):
     if any(k in text for k in ("전기", "수도", "가스 공급", "유틸리티")):
         return "유틸리티"
 
-    # 특수 종목명은 KSIC만으로 판별하기 어려워 사업 성격을 보완한다.
-    if stock_name in ("파라택시스코리아",):
-        return "금융"
+    if "기타 제품 제조업" in text:
+        return "소재"
 
     # 남은 건설/기계/조선/운송/도매 등은 산업재로 분류
     if any(k in text for k in ("건설", "건축", "기계", "조선", "선박", "운송", "도매", "금속가공",
