@@ -397,7 +397,9 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10)
                 seen.add(key)
                 merged.append(item)
 
-    # 각 질의의 NAVER 검색결과 순서를 그대로 유지한다. 검색결과 간 재정렬은 하지 않는다.\n    return merged\n
+    # 각 질의의 NAVER 검색결과 순서를 그대로 유지한다. 검색결과 간 재정렬은 하지 않는다.
+    return merged
+
 
 
 def _get_supabase_client():
