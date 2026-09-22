@@ -1,7 +1,7 @@
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from news_earnings import fetch_macro_news, persist_marketaux_news
+from news_earnings import fetch_macro_news, persist_live_news_snapshot
 
 KST = ZoneInfo("Asia/Seoul")
 
