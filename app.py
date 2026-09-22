@@ -3649,7 +3649,6 @@ def render_home_earnings_calendar(limit=12):
 
 
 def render_home_market_overview(market):
-def render_home_market_overview(market):
     title = "🇺🇸 US Market Overview" if market == "US" else "🇰🇷 Korea Market Overview"
     subtitle = "주요 지수의 최신 일봉 기준 시세 흐름입니다." if market == "US" else "국내 주요 지수의 최신 일봉 기준 시세 흐름입니다."
     st.markdown(
