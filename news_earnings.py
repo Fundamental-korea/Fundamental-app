@@ -724,6 +724,9 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
                     seen.add(key)
                     selected.append(item)
 
+    # Final safety filter: NAVER gap-fillers and any provider edge cases must also
+    # belong to today's Korea calendar date.
+    selected = [item for item in selected if is_today_kst(item)]
     return selected[:target]
 
 
