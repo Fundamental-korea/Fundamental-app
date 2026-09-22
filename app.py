@@ -532,6 +532,13 @@ st.markdown(
         font-size: 14px;
         font-weight: 850;
     }
+    .earnings-company-ko {
+        color: #6B7280 !important;
+        font-size: 0.82em;
+        font-weight: 650;
+        margin-left: 4px;
+        white-space: nowrap;
+    }
     .earnings-report {
         color: #6B7280 !important;
         font-size: 11px;
@@ -3412,6 +3419,17 @@ def _format_eps(value):
         return ""
 
 
+def _korean_company_alias(symbol, company_name=""):
+    """검색 alias에 등록된 한국어 기업명을 실적 UI에서 보조 표기로 사용한다."""
+    key = str(symbol or "").strip().upper()
+    aliases = aliases_for(key, company_name)
+    for alias in aliases:
+        if any("\uAC00" <= ch <= "\uD7A3" for ch in str(alias)):
+            if str(alias).strip().casefold() != str(company_name or "").strip().casefold():
+                return str(alias).strip()
+    return ""
+
+
 def _earnings_calendar_events():
     """월간 캘린더에 필요한 이벤트를 한 번에 구성."""
     events = []
@@ -3597,7 +3615,7 @@ def _render_earnings_detail(selected_date, events, market_filter="전체"):
             <div class='earnings-detail-card'>
               <div class='earnings-detail-top'>
                 <div>
-                  <div class='earnings-detail-name'>{_escape_calendar_text(row['company'])} <span style='color:#6B7280 !important;font-size:11px;font-weight:800;'>({row['symbol']})</span></div>
+                  <div class='earnings-detail-name'>{_escape_calendar_text(row['company'])}{f"<span class='earnings-company-ko'>({_escape_calendar_text(_korean_company_alias(row['symbol'], row['company']))})</span>" if row['market'] == 'US' and _korean_company_alias(row['symbol'], row['company']) else ''} <span style='color:#6B7280 !important;font-size:11px;font-weight:800;'>({row['symbol']})</span></div>
                   <div class='earnings-detail-meta'>{_escape_calendar_text(" · ".join(meta_parts))} {source_link}</div>
                 </div>
                 <span class='earnings-detail-market {market_class}'>{market_label}</span>
@@ -3674,7 +3692,7 @@ def render_home_earnings_calendar(limit=12):
                 f"""
                 <div class="earnings-row">
                   <div style="flex:1 1 auto;min-width:180px;">
-                    <div class="earnings-name">{_escape_html(row['company'])} <span class="earnings-primary">{_escape_html(row['symbol'])}</span></div>
+                    <div class="earnings-name">{_escape_html(row['company'])}{f"<span class='earnings-company-ko'>({_escape_html(_korean_company_alias(row['symbol'], row['company']))})</span>" if row['market'] == 'US' and _korean_company_alias(row['symbol'], row['company']) else ''} <span class="earnings-primary">{_escape_html(row['symbol'])}</span></div>
                     <div class="earnings-report">{market_text} 예정 실적 · {timing}</div>
                   </div>
                   <div class="earnings-date-wrap">
