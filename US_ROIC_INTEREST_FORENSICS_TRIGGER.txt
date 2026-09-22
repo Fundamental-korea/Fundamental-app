@@ -1,0 +1,2 @@
+Forensic diagnostic trigger: 2026-09-22T13:00:00+09:00
+Read-only: no US_Fundamental writes.
