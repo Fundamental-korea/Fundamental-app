@@ -98,6 +98,7 @@ class NaverNewsItem:
     pub_date: str
     query: str
     source: str = "NAVER"
+    image_url: str = ""
 
 
 @dataclass(frozen=True)
@@ -397,7 +398,8 @@ def search_marketaux_news(
     symbols: Optional[str] = None,
     language: str = "en",
     countries: str = "",
-    display: int = 20,
+    domains: str = "",
+    display: int = 3,
 ) -> list[NaverNewsItem]:
     """Fetch global financial news from Marketaux and normalize it to NaverNewsItem."""
     token = _marketaux_token()
@@ -407,9 +409,11 @@ def search_marketaux_news(
     params = {
         "api_token": token,
         "language": language,
-        "limit": min(max(display, 3), 100),
-        "published_after": (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M"),
+        "limit": min(max(display, 1), 3),
+        "published_after": (datetime.utcnow() - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M"),
         "must_have_entities": "true",
+        "group_similar": "true",
+        "sort": "published_at",
     }
     if query.strip():
         params["search"] = query.strip()
@@ -417,6 +421,8 @@ def search_marketaux_news(
         params["symbols"] = symbols.strip()
     if countries:
         params["countries"] = countries.strip()
+    if domains:
+        params["domains"] = domains.strip()
 
     try:
         response = requests.get(
@@ -448,6 +454,7 @@ def search_marketaux_news(
                 pub_date=published_at,
                 query=query or "US market news",
                 source=source,
+                image_url=image_url,
             )
         )
         # NaverNewsItem에는 이미지 필드가 없으므로 대표 이미지는 app.py에서 URL을 다시 확인한다.
@@ -490,177 +497,156 @@ def _rank_global_news(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
     return sorted(items, key=rank)
 
 
-def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 8) -> list[NaverNewsItem]:
-    """Fetch company news. Prefer Marketaux global financial sources, then fall back to NAVER."""
+def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 3) -> list[NaverNewsItem]:
+    """Fetch company news with one Marketaux request, then NAVER fallback."""
     name = str(stock_name or "").strip()
     code = str(stock_code or "").strip()
     if not name and not code:
         return []
 
+    target = min(max(display, 1), 3)
     marketaux_items: list[NaverNewsItem] = []
+
     if code and not code.isdigit():
-        marketaux_items = search_marketaux_news(symbols=code, language="en", display=max(display, 10))
+        marketaux_items = search_marketaux_news(
+            symbols=code,
+            language="en",
+            countries="us",
+            display=target,
+        )
     elif name:
         marketaux_items = search_marketaux_news(
             query=name,
-            language="ko" if code.isdigit() else "en",
-            countries="kr" if code.isdigit() else "",
-            display=max(display, 10),
+            language="ko",
+            countries="kr",
+            display=target,
         )
 
     if marketaux_items:
-        return _rank_global_news(marketaux_items)[:display]
+        return _rank_global_news(marketaux_items)[:target]
 
-    terms = [name]
-    if code and not code.isdigit():
-        terms.append(code)
-    query = " ".join([term for term in terms if term])
-    return search_naver_news(query, display=display, sort="date") if query else []
+    terms = [term for term in (name, code) if term and not (term == code and code.isdigit())]
+    query = " ".join(terms)
+    return search_naver_news(query, display=target, sort="date") if query else []
 
 
 def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10) -> list[NaverNewsItem]:
-    """Main Live News feed: prefer global financial news, keeping an 8 US / 2 Korea mix."""
+    """Main Live News feed optimized for the Free Marketaux plan: US 8 + KR 2."""
+    target = min(max(display, 1), 10)
+
     if queries is not None:
-        queries = list(queries)
         merged: list[NaverNewsItem] = []
         seen: set[str] = set()
-        for query in queries:
-            for item in search_marketaux_news(query, language="en", display=max(display, 10)):
+        for query in list(queries):
+            items = search_marketaux_news(
+                query=query,
+                language="en",
+                display=3,
+            )
+            if not items:
+                items = search_naver_news(query, display=min(target, 3), sort="date")
+            for item in items:
                 key = item.original_link or item.link
                 if key and key not in seen:
                     seen.add(key)
                     merged.append(item)
-            if not merged:
-                for item in search_naver_news(query, display=display, sort="date"):
-                    key = item.original_link or item.link
-                    if key and key not in seen:
-                        seen.add(key)
-                        merged.append(item)
-        return _rank_global_news(merged)[:display]
+                if len(merged) >= target:
+                    break
+            if len(merged) >= target:
+                break
+        return _rank_global_news(merged)[:target]
 
-    us_query = (
-        "United States economy Federal Reserve interest rates inflation CPI PCE "
-        "jobs Treasury yields dollar S&P 500 Nasdaq earnings tariffs trade policy"
+    preferred_domains = (
+        "reuters.com,bloomberg.com,wsj.com,ft.com,cnbc.com,"
+        "marketwatch.com,barrons.com,apnews.com,finance.yahoo.com"
     )
-    kr_query = "한국은행 기준금리 원화 코스피 한국 경제 정책"
 
-    us_items = search_marketaux_news(query=us_query, language="en", countries="us", display=max(display, 20))
-    kr_items = search_marketaux_news(query=kr_query, language="ko", countries="kr", display=max(display, 8))
+    # 4 US requests x 3 articles = up to 12 candidates -> choose 8.
+    # One KR request x 3 articles -> choose 2. Total: 5 Marketaux requests
+    # per refresh in the normal case, versus the previous 10-query approach.
+    us_queries = (
+        "Federal Reserve interest rates inflation CPI PCE Treasury yields dollar",
+        "US economy jobs GDP consumer spending tariffs trade policy",
+        "S&P 500 Nasdaq earnings corporate profits market outlook",
+        "US economic growth recession outlook financial markets",
+    )
+    kr_query = "한국은행 기준금리 원화 코스피 한국 경제 증시"
 
-    # Prefer a Reuters/Bloomberg/major-financial source when it is present, while
-    # retaining fallback coverage from other reputable publishers.
-    us_ranked = _rank_global_news(us_items)
-    kr_ranked = _rank_global_news(kr_items)
-    selected = us_ranked[: min(8, display)] + kr_ranked[: max(0, display - min(8, display))]
+    us_candidates: list[NaverNewsItem] = []
+    kr_candidates: list[NaverNewsItem] = []
 
-    # Marketaux free tiers can return only a few articles per request. Fill gaps from
-    # the existing NAVER feed instead of leaving the Live News panel empty.
-    if len(selected) < display:
-        fallback = search_naver_news("미국 경제 증시 연준 물가 금리 기업 실적", display=max(display * 2, 12), sort="date")
-        fallback_kr = search_naver_news("한국은행 기준금리 한국 증시 경제 정책", display=max(display, 6), sort="date")
-        seen = {item.original_link or item.link for item in selected}
-        for item in fallback:
+    for query in us_queries:
+        items = search_marketaux_news(
+            query=query,
+            language="en",
+            countries="us",
+            domains=preferred_domains,
+            display=3,
+        )
+        if not items:
+            items = search_marketaux_news(
+                query=query,
+                language="en",
+                countries="us",
+                display=3,
+            )
+        us_candidates.extend(items)
+
+    kr_candidates = search_marketaux_news(
+        query=kr_query,
+        language="ko",
+        countries="kr",
+        display=3,
+    )
+
+    def dedupe(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
+        out: list[NaverNewsItem] = []
+        seen: set[str] = set()
+        for item in _rank_global_news(items):
             key = item.original_link or item.link
-            if key and key not in seen and len([x for x in selected if x.source != "NAVER"]) < min(8, display):
+            if key and key not in seen:
+                seen.add(key)
+                out.append(item)
+        return out
+
+    us_ranked = dedupe(us_candidates)
+    kr_ranked = dedupe(kr_candidates)
+
+    selected = us_ranked[: min(8, target)]
+    kr_slots = max(0, target - len(selected))
+    selected.extend(kr_ranked[: min(2, kr_slots)])
+
+    # Only fall back to NAVER when Marketaux could not fill its intended mix.
+    # This keeps Marketaux usage bounded rather than burning requests on every refresh.
+    if len(selected) < target:
+        fallback_us = search_naver_news(
+            "미국 경제 연준 금리 물가 증시 실적",
+            display=max(3, target),
+            sort="date",
+        )
+        fallback_kr = search_naver_news(
+            "한국은행 기준금리 한국 증시 경제 정책",
+            display=max(3, target),
+            sort="date",
+        )
+        seen = {item.original_link or item.link for item in selected}
+        for item in fallback_us:
+            if len(selected) >= min(8, target):
+                break
+            key = item.original_link or item.link
+            if key and key not in seen:
                 seen.add(key)
                 selected.append(item)
         for item in fallback_kr:
-            if len(selected) >= display:
+            if len(selected) >= target:
                 break
             key = item.original_link or item.link
             if key and key not in seen:
                 seen.add(key)
                 selected.append(item)
 
-    # Final hard cap keeps the UI deterministic.
-    return selected[:display]
+    return selected[:target]
 
-
-
-def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10) -> list[NaverNewsItem]:
-    """메인 Live News용 피드.
-
-    기본 화면은 미국 경제·금융 8개 + 한국 경제·증시 2개로 구성해
-    글로벌 시장 뉴스 비중을 높이면서 국내 뉴스도 일정 비율 유지한다.
-    각 질의에서 최신 검색결과를 우선 1개씩 뽑아 주제 편중을 줄이고,
-    부족한 경우 같은 버킷의 다음 검색결과로 보충한다.
-    """
-    if queries is not None:
-        queries = list(queries)
-        merged: list[NaverNewsItem] = []
-        seen: set[str] = set()
-        for query in queries:
-            for item in search_naver_news(query, display=display, sort="date"):
-                key = item.original_link or item.link
-                if key and key not in seen:
-                    seen.add(key)
-                    merged.append(item)
-        return merged
-
-    us_queries = (
-        "미국 연준 금리",
-        "미국 CPI PCE 물가",
-        "미국 고용 노동시장",
-        "미국 국채 금리 달러",
-        "S&P500 나스닥 미국 증시",
-        "미국 기업 실적 전망",
-        "미국 관세 무역 정책",
-        "미국 경제 전망 경기",
-    )
-    kr_queries = (
-        "한국은행 기준금리 원화",
-        "한국 증시 경제 정책",
-    )
-
-    def collect_bucket(bucket_queries: tuple[str, ...], target: int) -> list[NaverNewsItem]:
-        candidates_by_query: list[list[NaverNewsItem]] = []
-        for query in bucket_queries:
-            try:
-                candidates_by_query.append(search_naver_news(query, display=max(display, 6), sort="date"))
-            except Exception:
-                candidates_by_query.append([])
-
-        selected: list[NaverNewsItem] = []
-        seen: set[str] = set()
-
-        # 1차: 질의마다 최신 1개씩 -> 주제 다양성을 우선 확보
-        for results in candidates_by_query:
-            if len(selected) >= target:
-                break
-            for item in results:
-                key = item.original_link or item.link
-                if key and key not in seen:
-                    seen.add(key)
-                    selected.append(item)
-                    break
-
-        # 2차: 빈 질의가 있으면 같은 버킷의 다음 결과로 보충
-        if len(selected) < target:
-            for rank in range(1, max((len(x) for x in candidates_by_query), default=0)):
-                for results in candidates_by_query:
-                    if len(selected) >= target:
-                        break
-                    if rank >= len(results):
-                        continue
-                    item = results[rank]
-                    key = item.original_link or item.link
-                    if key and key not in seen:
-                        seen.add(key)
-                        selected.append(item)
-                if len(selected) >= target:
-                    break
-
-        return selected
-
-    us_count = min(8, max(0, display))
-    kr_count = min(2, max(0, display - us_count))
-    if display > 10:
-        # 향후 카드 수를 늘려도 기본 비중 8:2를 유지한다.
-        us_count = round(display * 0.8)
-        kr_count = display - us_count
-
-    merged = collect_bucket(us_queries, us_count) + collect_bucket(kr_queries, kr_count)
-    return merged[:display]
 
 
 def _get_supabase_client():
