@@ -614,7 +614,6 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
             search_marketaux_news(
                 query=query,
                 language="en",
-                countries="us",
                 display=3,
                 today_only=True,
                 must_have_entities=False,
