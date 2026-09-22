@@ -48,15 +48,15 @@ def fallback_wics_sector(stock_name, sector):
     text = f"{stock_name or ''} {sector or ''}"
 
     # 특수 금융/보험/증권
-    if any(k in text for k in ("스팩", "은행", "증권", "보험", "카드", "캐피탈", "금융", "리스", "여신", "신용")):
+    if any(k in text for k in ("스팩", "은행", "증권", "보험", "카드", "캐피탈", "금융", "리스", "여신", "신용", "부동산")):
         return "금융"
 
     # 건강관리
-    if any(k in text for k in ("의약", "제약", "바이오", "의료", "의학", "진단", "연구개발")):
+    if any(k in text for k in ("의약", "제약", "바이오", "의료", "의학", "진단", "연구개발", "과학기술 서비스")):
         return "건강관리"
 
     # 통신/미디어
-    if any(k in text for k in ("방송", "통신 서비스", "전기 통신", "광고업", "영화", "영상", "미디어", "엔터테인먼트")):
+    if any(k in text for k in ("방송", "통신 서비스", "전기 통신", "광고업", "영화", "영상", "미디어", "엔터테인먼트", "출판", "교육")):
         return "통신서비스"
 
     # IT
@@ -74,17 +74,21 @@ def fallback_wics_sector(stock_name, sector):
         return "소재"
 
     # 필수소비재
-    if any(k in text for k in ("식품", "음료", "담배", "사료", "생활용품", "가정용품")):
+    if any(k in text for k in ("식품", "음료", "담배", "사료", "생활용품", "가정용품", "어로", "수산")):
         return "필수소비재"
 
     # 경기소비재
-    if any(k in text for k in ("자동차", "차량", "부품", "의류", "신발", "화장품", "소매", "도매",
+    if any(k in text for k in ("자동차", "차량", "부품", "의류", "신발", "화장품", "소매", "도매", "가정용 기기",
                                "유통", "가구", "레저", "호텔", "관광", "여행")):
         return "경기소비재"
 
     # 유틸리티
     if any(k in text for k in ("전기", "수도", "가스 공급", "유틸리티")):
         return "유틸리티"
+
+    # 특수 종목명은 KSIC만으로 판별하기 어려워 사업 성격을 보완한다.
+    if stock_name in ("파라택시스코리아",):
+        return "금융"
 
     # 남은 건설/기계/조선/운송/도매 등은 산업재로 분류
     if any(k in text for k in ("건설", "건축", "기계", "조선", "선박", "운송", "도매", "금속가공",
