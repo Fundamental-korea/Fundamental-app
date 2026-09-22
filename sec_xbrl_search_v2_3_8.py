@@ -33,6 +33,25 @@ EXACT_CONCEPTS_V238 = {
     | {"InterestExpenseNonoperating", "InterestIncomeExpenseNonoperatingNet", "InterestIncomeExpenseNet"},
     "sga": set(EXACT_CONCEPTS_V234.get("sga", set()))
     | {"GeneralAndAdministrativeExpense"},
+    # Keep filing-XBRL recovery aligned with collector_us_fundamental.py.
+    # Some issuers expose debt only through these lease-inclusive
+    # current/non-current concepts, so they must bypass the generic label gate.
+    "debt_current": set(EXACT_CONCEPTS_V234.get("debt_current", set()))
+    | {
+        "DebtAndFinanceLeaseLiabilitiesCurrent",
+        "LeaseLiabilitiesCurrent",
+        "LongTermDebtAndFinanceLeaseObligationsCurrent",
+        "LongTermDebtAndCapitalLeaseObligationsCurrent",
+    },
+    "debt_noncurrent": set(EXACT_CONCEPTS_V234.get("debt_noncurrent", set()))
+    | {
+        "DebtAndFinanceLeaseLiabilitiesNoncurrent",
+        "LeaseLiabilitiesNoncurrent",
+        "LongTermDebtAndFinanceLeaseObligationsNoncurrent",
+        "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
+    },
+    "debt_total": set(EXACT_CONCEPTS_V234.get("debt_total", set()))
+    | {"LongTermDebtAndCapitalLeaseObligations"},
 }
 
 
