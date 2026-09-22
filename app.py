@@ -563,26 +563,36 @@ st.markdown(
         font-size: 11px;
         margin: 6px 0 12px;
     }
-    .earnings-consensus-bar {
-        flex: 1 1 360px;
-        min-width: 260px;
-        max-width: 520px;
-        min-height: 36px;
-        padding: 0 18px;
-        border-radius: 6px;
-        background: #FFD900;
-        color: #111827 !important;
-        display: flex;
+    .earnings-consensus-chip {
+        display: inline-flex;
         align-items: center;
         justify-content: center;
+        min-height: 30px;
+        padding: 0 11px;
+        border-radius: 7px;
+        background: #FFF7ED;
+        border: 1px solid #FED7AA;
+        color: #111827 !important;
         box-sizing: border-box;
         font-size: 12px;
         font-weight: 900;
-        letter-spacing: -0.1px;
+        white-space: nowrap;
     }
-    .earnings-consensus-bar strong {
+    .earnings-consensus-chip strong {
         color: #111827 !important;
         font-size: 13px;
+        margin-left: 3px;
+    }
+    .earnings-date-wrap {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: 8px;
+        flex: 0 0 auto;
+        min-width: 230px;
+    }
+    .earnings-date-wrap .earnings-date {
+        white-space: nowrap;
     }
     .earnings-calendar-shell {
         background: rgba(255,255,255,0.94);
@@ -637,6 +647,27 @@ st.markdown(
         font-size: 13px;
         font-weight: 900;
         margin-bottom: 6px;
+    }
+    .earnings-calendar-cell button {
+        width: 100% !important;
+        min-height: 30px !important;
+        padding: 2px 4px !important;
+        border: 0 !important;
+        background: transparent !important;
+        color: #111827 !important;
+        box-shadow: none !important;
+        justify-content: flex-start !important;
+        font-size: 13px !important;
+        font-weight: 900 !important;
+        margin: 0 0 4px 0 !important;
+    }
+    .earnings-calendar-cell button:hover {
+        background: #FFF7ED !important;
+        color: #D97706 !important;
+    }
+    .earnings-calendar-cell.selected {
+        border: 2px solid #F4A261;
+        background: #FFFDF9;
     }
     .earnings-calendar-empty {
         color: #D1D5DB !important;
@@ -778,7 +809,6 @@ st.markdown(
     }
     @media (max-width: 900px) {
         .earnings-summary-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
-        .earnings-consensus-bar { max-width: none; width: 100%; }
     }
     @media (max-width: 700px) {
         .earnings-calendar-cell { min-height: 96px; padding: 6px; }
@@ -3419,8 +3449,8 @@ def _earnings_calendar_events():
     return sorted(deduped.values(), key=lambda x: (x["date"], x["market"], x["company"]))
 
 
-def _render_earnings_calendar_grid(month_start, events, market_filter="전체"):
-    """7열 월간 캘린더. 실제 이벤트는 날짜 셀 안에 시장별 작은 카드로 표시."""
+def _render_earnings_calendar_grid(month_start, events, market_filter="전체", selected_date=None):
+    """7열 월간 캘린더. 날짜 셀을 클릭하면 선택 날짜를 반환한다."""
     filtered = [
         row for row in events
         if market_filter == "전체" or row["market"] == ("US" if market_filter == "🇺🇸 미국" else "KR")
@@ -3457,10 +3487,18 @@ def _render_earnings_calendar_grid(month_start, events, market_filter="전체"):
                 cell_date = date(month_start.year, month_start.month, day_num)
                 items = by_date.get(cell_date, [])
                 today_class = " is-today" if cell_date == today else ""
-                body = (
-                    f"<div class='earnings-calendar-cell{today_class}'>"
-                    f"<div class='earnings-calendar-day'>{day_num}일</div>"
-                )
+                selected_class = " selected" if selected_date == cell_date else ""
+
+                st.markdown(f"<div class='earnings-calendar-cell{today_class}{selected_class}'>", unsafe_allow_html=True)
+
+                if st.button(
+                    f"{day_num}일",
+                    key=f"earnings_day_{month_start.isoformat()}_{market_filter}_{cell_date.isoformat()}",
+                    use_container_width=True,
+                ):
+                    st.session_state["earnings_calendar_selected_date"] = cell_date
+                    st.rerun()
+
                 for item in items[:3]:
                     market_class = "us" if item["market"] == "US" else "kr"
                     market_tag = "US" if item["market"] == "US" else "KR"
@@ -3468,17 +3506,17 @@ def _render_earnings_calendar_grid(month_start, events, market_filter="전체"):
                     if len(name) > 14:
                         name = name[:13] + "…"
                     status_mark = "예정" if item["status"] == "upcoming" else "실적"
-                    body += (
-                        f"<div class='earnings-calendar-event {market_class}' "
-                        f"title='{_escape_calendar_text(item['company'])} · {status_mark}'>"
-                        f"{market_tag} · {_escape_calendar_text(name)}</div>"
+                    st.markdown(
+                        f"<div class='earnings-calendar-event {market_class}' title='{_escape_calendar_text(item['company'])} · {status_mark}'>"
+                        f"{market_tag} · {_escape_calendar_text(name)}</div>",
+                        unsafe_allow_html=True,
                     )
                 if len(items) > 3:
-                    body += f"<div class='earnings-calendar-more'>+ {len(items)-3}개 더보기</div>"
+                    st.markdown(f"<div class='earnings-calendar-more'>+ {len(items)-3}개 더보기</div>", unsafe_allow_html=True)
                 elif not items:
-                    body += "<div class='earnings-calendar-empty'>-</div>"
-                body += "</div>"
-                st.markdown(body, unsafe_allow_html=True)
+                    st.markdown("<div class='earnings-calendar-empty'>-</div>", unsafe_allow_html=True)
+
+                st.markdown("</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
@@ -3626,12 +3664,14 @@ def render_home_earnings_calendar(limit=12):
             st.markdown(
                 f"""
                 <div class="earnings-row">
-                  <div style="flex:0 0 220px;min-width:180px;">
+                  <div style="flex:1 1 auto;min-width:180px;">
                     <div class="earnings-name">{_escape_html(row['company'])} <span class="earnings-primary">{_escape_html(row['symbol'])}</span></div>
                     <div class="earnings-report">{market_text} 예정 실적 · {timing}</div>
                   </div>
-                  <div class="earnings-consensus-bar">{eps_text}</div>
-                  <div class="earnings-date">{row['date'].isoformat()}</div>
+                  <div class="earnings-date-wrap">
+                    <div class="earnings-date">{row['date'].isoformat()}</div>
+                    <div class="earnings-consensus-chip">컨센서스 <strong>{eps if eps else '—'}</strong></div>
+                  </div>
                 </div>
                 """,
                 unsafe_allow_html=True,
@@ -4277,23 +4317,23 @@ elif view_mode_param == "earnings_calendar":
             unsafe_allow_html=True,
         )
 
-        _render_earnings_calendar_grid(month_start, all_events, market_filter)
-
         available_dates = sorted({row["date"] for row in month_events})
-        if available_dates:
-            default_date = date.today() if date.today() in available_dates else available_dates[0]
-            selected_date = st.selectbox(
-                "날짜별 상세 보기",
-                available_dates,
-                index=available_dates.index(default_date),
-                format_func=lambda d: d.strftime("%Y-%m-%d (%a)"),
-                key=f"earnings_calendar_date_{month_start.isoformat()}_{market_filter}",
-            )
-            _render_earnings_detail(selected_date, all_events, market_filter)
+        current_selected = st.session_state.get("earnings_calendar_selected_date")
+        if current_selected not in available_dates:
+            current_selected = None
+
+        _render_earnings_calendar_grid(
+            month_start,
+            all_events,
+            market_filter,
+            selected_date=current_selected,
+        )
+
+        if current_selected:
+            _render_earnings_detail(current_selected, all_events, market_filter)
         else:
             st.markdown(
-                "<div class='news-empty-state'>이 달에는 현재 표시할 실적 일정이 없습니다. "
-                "다음 달로 이동하거나 시장 필터를 바꿔보세요.</div>",
+                "<div class='news-empty-state'>위 캘린더에서 날짜를 클릭하면 해당 날짜의 실적 일정이 바로 아래에 표시됩니다.</div>",
                 unsafe_allow_html=True,
             )
 
