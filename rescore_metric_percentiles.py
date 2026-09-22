@@ -33,7 +33,7 @@ from scoring import METRIC_KEYS, METRIC_DIRECTION
 DRY_RUN = False  # 실제 DB 반영 모드. 필요 시 True로 바꿔 dry-run 검증 가능.
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
-SUPABASE_KEY = os.environ.get("SUPABASE_KEY", "")
+SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_KEY", "")
 
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
 
