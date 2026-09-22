@@ -13,6 +13,8 @@ import calendar as pycalendar
 from datetime import date, timedelta
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
+from urllib.parse import quote, urlencode, urlparse
+import hashlib
 
 from search_aliases import aliases_for
 
@@ -447,6 +449,72 @@ st.markdown(
         grid-template-columns: repeat(3, minmax(0, 1fr));
         gap: 14px;
         margin-bottom: 16px;
+    }
+    .live-news-card-link {
+        display: block;
+        color: inherit !important;
+        text-decoration: none !important;
+    }
+    .live-news-card-link:hover,
+    .live-news-card-link:focus,
+    .live-news-card-link:visited {
+        color: inherit !important;
+        text-decoration: none !important;
+    }
+    .live-news-ai-badge {
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        z-index: 2;
+        padding: 3px 7px;
+        border-radius: 999px;
+        background: rgba(17, 24, 39, 0.78);
+        color: #FFFFFF !important;
+        font-size: 9px;
+        font-weight: 800;
+        letter-spacing: .1px;
+        backdrop-filter: blur(3px);
+    }
+    .news-reader-wrap {
+        max-width: 980px;
+        margin: 0 auto;
+    }
+    .news-reader-kicker {
+        font-size: 11px;
+        font-weight: 800;
+        letter-spacing: .2px;
+        margin-bottom: 8px;
+    }
+    .news-reader-title {
+        font-size: 32px;
+        line-height: 1.3;
+        font-weight: 900;
+        margin: 0 0 12px;
+    }
+    .news-reader-meta {
+        font-size: 12px;
+        line-height: 1.5;
+        margin-bottom: 18px;
+    }
+    .news-reader-image {
+        width: 100%;
+        max-height: 520px;
+        object-fit: cover;
+        border-radius: 16px;
+        display: block;
+        margin: 0 0 18px;
+        border: 1px solid #E5E7EB;
+    }
+    .news-reader-body {
+        font-size: 15px;
+        line-height: 1.85;
+        white-space: pre-wrap;
+        margin: 0 0 18px;
+    }
+    .news-reader-note {
+        font-size: 11px;
+        line-height: 1.6;
+        margin-bottom: 18px;
     }
     .live-news-card {
         background: #FFFFFF;
@@ -3503,6 +3571,162 @@ def _get_home_market_indices(market):
     return result
 
 
+def _news_source_label(url: str, fallback: str = "뉴스") -> str:
+    """원문 URL의 도메인에서 사람이 읽기 쉬운 뉴스 출처명을 만든다."""
+    raw = str(url or "").strip()
+    if not raw:
+        return fallback
+    try:
+        host = urlparse(raw).netloc.lower().split(":")[0]
+        if host.startswith("www."):
+            host = host[4:]
+        known = {
+            "reuters.com": "Reuters",
+            "bloomberg.com": "Bloomberg",
+            "wsj.com": "The Wall Street Journal",
+            "ft.com": "Financial Times",
+            "cnbc.com": "CNBC",
+            "marketwatch.com": "MarketWatch",
+            "seekingalpha.com": "Seeking Alpha",
+            "investing.com": "Investing.com",
+            "yna.co.kr": "연합뉴스",
+            "newsis.com": "뉴시스",
+            "sedaily.com": "서울경제",
+            "mk.co.kr": "매일경제",
+            "hankyung.com": "한국경제",
+        }
+        if host in known:
+            return known[host]
+        return host or fallback
+    except Exception:
+        return fallback
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -> str:
+    """대표 이미지가 없을 때 기사 내용에 맞춘 AI 편집 일러스트 URL을 만든다.
+    브라우저에서 직접 이미지를 요청하므로 서버에 이미지 파일을 저장하지 않는다."""
+    key = f"{title}|{description}|{query}"
+    seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:8], 16)
+    topic = (description or title or query or "financial markets")[:260]
+    prompt = (
+        "Editorial financial news illustration for a professional stock-market website. "
+        "No readable text, no logos, no recognizable real people. "
+        "Landscape 16:9 composition, realistic newsroom/editorial photography aesthetic. "
+        f"Visualize this news topic: {topic}. "
+        f"Search category: {query or 'financial markets'}."
+    )
+    return (
+        "https://image.pollinations.ai/prompt/"
+        + quote(prompt, safe="")
+        + f"?width=960&height=540&seed={seed}&nologo=true"
+    )
+
+
+def _build_news_reader_url(
+    *,
+    title: str,
+    description: str,
+    article_url: str,
+    original_url: str,
+    pub_date: str,
+    image_url: str,
+    source: str,
+    category: str,
+    back_url: str = "",
+) -> str:
+    payload = {
+        "news_view": "reader",
+        "news_title": title,
+        "news_desc": description,
+        "news_url": article_url,
+        "news_original_url": original_url,
+        "news_time": _format_news_time(pub_date),
+        "news_image": image_url,
+        "news_source": source,
+        "news_category": category or "시장 뉴스",
+        "news_back": back_url,
+        "theme": THEME_MODE,
+    }
+    payload = {k: v for k, v in payload.items() if v}
+    return "?" + urlencode(payload)
+
+
+def render_news_reader():
+    """외부 기사 HTML을 그대로 열지 않고, 우리 사이트의 내부 뉴스 리더 화면으로 표시한다."""
+    qp = st.query_params
+    title = str(qp.get("news_title", "")).strip()
+    description = str(qp.get("news_desc", "")).strip()
+    article_url = str(qp.get("news_url", "")).strip()
+    original_url = str(qp.get("news_original_url", "")).strip()
+    news_time = str(qp.get("news_time", "")).strip()
+    source = str(qp.get("news_source", "")).strip() or _news_source_label(original_url or article_url)
+    category = str(qp.get("news_category", "")).strip() or "시장 뉴스"
+    image_url = str(qp.get("news_image", "")).strip()
+    back_url = str(qp.get("news_back", "")).strip() or f"?theme={THEME_MODE}"
+
+    if not title:
+        st.info("표시할 뉴스가 없습니다.")
+        st.stop()
+
+    if not image_url:
+        image_url = _get_news_image_url(original_url or article_url)
+    if not image_url:
+        image_url = _get_ai_news_image_url(title, description, category)
+
+    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
+    with col_logo:
+        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
+    with col_quote:
+        render_quote_box()
+    with col_login:
+        render_theme_toggle("theme_toggle_news_reader")
+        st.link_button("← 이전 화면", back_url, use_container_width=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    left_ad, article_main, right_ad = st.columns([0.6, 6.8, 0.6])
+    with left_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
+    with article_main:
+        ai_badge = " · AI 생성 이미지" if image_url.startswith("https://image.pollinations.ai/") else ""
+        image_html = (
+            f'<img class="news-reader-image" src="{_escape_html(image_url)}" alt="{_escape_html(title)}" '
+            f'loading="eager" onerror="this.style.display=\'none\';">'
+            if image_url else ""
+        )
+        st.html(
+            f"""
+            <div class="news-reader-wrap">
+              <div class="news-reader-kicker" style="color:{THEME['accent_strong']};">
+                {_escape_html(category)} · {_escape_html(source)}
+              </div>
+              <h1 class="news-reader-title" style="color:{THEME['text']};">
+                {_escape_html(title)}
+              </h1>
+              <div class="news-reader-meta" style="color:{THEME['text_muted']};">
+                {_escape_html(news_time)}{ai_badge}
+              </div>
+              {image_html}
+              <div class="news-reader-body" style="color:{THEME['text']};">
+                {_escape_html(description)}
+              </div>
+              <div class="news-reader-note" style="color:{THEME['text_muted']};">
+                이 페이지는 뉴스 검색 결과의 제목·요약·대표 이미지를 우리 사이트 화면에 맞게 보여주는 내부 리더입니다.
+                기사 전문은 원문 제공자의 권리를 존중하기 위해 복제하지 않으며, 아래 버튼에서 원문을 확인할 수 있습니다.
+              </div>
+            </div>
+            """
+        )
+        source_url = original_url or article_url
+        if source_url:
+            st.link_button("원문 보기 ↗", source_url, use_container_width=True)
+
+    with right_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def _get_news_image_url(article_url: str) -> str:
     """기사 원문에서 대표 이미지(og:image)를 가볍게 가져온다. 실패하면 빈 문자열."""
@@ -3548,7 +3772,7 @@ def _get_news_images(urls):
         return list(executor.map(_get_news_image_url, urls))
 
 
-def _render_news_cards(items, limit=9, title="📰 Live News", subtitle=""):
+def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back_url=""):
     st.markdown(
         f"""
         <div class="live-news-section">
@@ -3568,9 +3792,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle=""):
     selected_items = list(items)[:limit]
     article_urls = []
     for item in selected_items:
-        article_urls.append(
-            item.link if hasattr(item, "link") else item.get("article_url", "")
-        )
+        original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
+        article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
+        article_urls.append(original_url or article_url)
     image_urls = _get_news_images(article_urls)
 
     cards = []
@@ -3581,13 +3805,32 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle=""):
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
         pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
         query = item.query if hasattr(item, "query") else ""
+        source_hint = item.source if hasattr(item, "source") else item.get("source", "")
         image_url = image_urls[idx] if idx < len(image_urls) else ""
+
+        direct_url = original_url or article_url
+        if not image_url:
+            image_url = _get_ai_news_image_url(title_text, desc_text, query)
+        source_label = _news_source_label(direct_url, source_hint or "뉴스")
+        reader_url = _build_news_reader_url(
+            title=title_text,
+            description=desc_text,
+            article_url=article_url,
+            original_url=original_url,
+            pub_date=pub_date,
+            image_url=image_url,
+            source=source_label,
+            category=query,
+            back_url=back_url,
+        )
+        image_is_ai = image_url.startswith("https://image.pollinations.ai/")
 
         if image_url:
             media_html = (
                 f'<div class="live-news-image-wrap">'
+                f'{"<span class="live-news-ai-badge">AI 이미지</span>" if image_is_ai else ""}'
                 f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" '
-                f'alt="" onerror="this.parentElement.classList.add(\'image-failed\');">'
+                f'alt="{_escape_html(title_text)}" onerror="this.parentElement.classList.add(\'image-failed\');">'
                 f'</div>'
             )
         else:
@@ -3598,21 +3841,20 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle=""):
             )
 
         cards.append(
+            f'<a class="live-news-card-link" href="{_escape_html(reader_url)}">'
             f'<article class="live-news-card">'
             f'{media_html}'
             f'<div class="live-news-card-body">'
             f'<div class="live-news-meta">'
+            f'<span class="live-news-source">{_escape_html(source_label)}</span>'
             f'<span class="live-news-category">{_escape_html(query) if query else "시장 뉴스"}</span>'
             f'</div>'
-            f'<a class="live-news-title" '
-            f'href="{_escape_html(article_url or original_url or "#")}" '
-            f'target="_blank" rel="noopener noreferrer">'
-            f'{_escape_html(title_text)}'
-            f'</a>'
+            f'<div class="live-news-title">{_escape_html(title_text)}</div>'
             f'<div class="live-news-desc">{_escape_html(desc_text)}</div>'
-            f'<div class="live-news-footer">{_format_news_time(pub_date)} · 원문 보기 ↗</div>'
+            f'<div class="live-news-footer">{_format_news_time(pub_date)} · 기사 보기 ↗</div>'
             f'</div>'
             f'</article>'
+            f'</a>'
         )
     st.html('<div class="live-news-grid">' + ''.join(cards) + '</div>')
 
@@ -3629,7 +3871,8 @@ def render_home_live_news(limit=9):
         items,
         limit=limit,
         title="📰 Live News",
-        subtitle="금리·환율·미국 증시·국내 증시·정책 등 시장 전반의 주요 뉴스를 원문과 함께 보여드립니다.",
+        subtitle="금리·환율·미국 증시·국내 증시·정책 등 시장 전반의 주요 뉴스를 내부 뉴스 리더에서 보여드립니다.",
+        back_url=f"?theme={THEME_MODE}",
     )
 
 
@@ -3645,7 +3888,8 @@ def render_home_stock_news(stock_name, stock_code, limit=3):
         items,
         limit=limit,
         title=f"📰 {stock_name} 관련 뉴스",
-        subtitle="해당 종목명을 기준으로 조회한 최신 뉴스 검색 결과입니다.",
+        subtitle="해당 종목명을 기준으로 조회한 최신 뉴스 검색 결과입니다. 카드를 누르면 우리 사이트의 내부 뉴스 리더로 이동합니다.",
+        back_url=f"?code={stock_code}&theme={THEME_MODE}",
     )
 
 
@@ -4158,6 +4402,10 @@ def render_home_market_overview(market):
 
 
 query_params = st.query_params
+if query_params.get("news_view") == "reader":
+    render_news_reader()
+    st.stop()
+
 selected_code = query_params.get("code", None)
 view_mode_param = query_params.get("view", None)
 
@@ -4846,7 +5094,7 @@ elif not selected_code:
 
         # 메인 Live News는 검색창 바로 아래가 기본 화면이다.
         if home_nav == "Live News":
-            render_home_live_news(limit=6)
+            render_home_live_news(limit=9)
         elif home_nav == "US Market Overview":
             render_home_market_overview("US")
         elif home_nav == "Korea Market Overview":
@@ -5887,6 +6135,13 @@ else:
                                     st.caption(f"✅ {baseline_period} 평균 대비 특이 변동 없음 (점수차 {abs(score_gap)}점)")
                             else:
                                 st.caption("비교할 기준 기간 데이터가 부족해 급변 여부를 판단할 수 없습니다.")
+
+                # 개별종목 점수/설명 영역의 최하단: 관련 최신 뉴스 3개
+                render_home_stock_news(
+                    data.get("stock_name", selected_code),
+                    selected_code,
+                    limit=3,
+                )
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
