@@ -568,11 +568,10 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
 def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20) -> list[NaverNewsItem]:
     """Main Live News feed optimized for a richer 20-item mix: US 16 + KR 4.
 
-    Normal path uses 6 US topic requests + 2 Korean topic requests.
-    Each Marketaux request asks for up to 3 articles, after which results are
-    deduplicated and ranked before selecting the final 16 US + 4 KR mix.
-    The app layer caches the feed, so public-page visitors do not spend a
-    Marketaux request on every refresh.
+    Scheduled refreshes use exactly 6 US + 1 KR Marketaux requests per run.
+    With a 2-hour schedule, that is at most 84 Marketaux requests/day.
+    NAVER is used only as a gap filler when today's Marketaux candidates are
+    insufficient, preserving the Free plan's daily API budget.
     """
     target = min(max(display, 1), 20)
 
@@ -620,17 +619,6 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
                 language="en",
                 countries="us",
                 domains=preferred_domains,
-                display=3,
-            )
-        )
-
-    # Preferred source filter가 일시적으로 너무 좁으면 broad US 후보를 한 번 추가한다.
-    if len(us_candidates) < 12:
-        us_candidates.extend(
-            search_marketaux_news(
-                query="United States economy Federal Reserve inflation jobs markets earnings tariffs technology energy",
-                language="en",
-                countries="us",
                 display=3,
                 today_only=True,
             )
@@ -773,7 +761,7 @@ def persist_earnings_events(events: Iterable[EarningsEvent], *, supabase_client=
     return len(response.data or rows)
 
 
-def persist_marketaux_news(
+def persist_live_news_snapshot(
     items: Iterable[NaverNewsItem],
     *,
     supabase_client=None,
@@ -791,7 +779,7 @@ def persist_marketaux_news(
 
         rows.append(
             {
-                "source": "MARKETAUX",
+                "source": "NAVER" if str(item.source or "").strip().upper() == "NAVER" else "MARKETAUX",
                 "source_id": source_id,
                 "market": "GLOBAL",
                 "stock_code": None,
@@ -901,7 +889,7 @@ __all__ = [
     "fetch_macro_news",
     "filter_investor_news",
     "persist_earnings_events",
-    "persist_marketaux_news",
+    "persist_live_news_snapshot",
     "persist_naver_news",
     "to_records",
 ]
