@@ -26,6 +26,7 @@ from typing import Iterable, Optional
 import pandas as pd
 import requests
 import xml.etree.ElementTree as ET
+from urllib.parse import urlparse
 
 
 DART_LIST_URL = "https://opendart.fss.or.kr/api/list.json"
@@ -366,15 +367,207 @@ def search_naver_news(
     return items
 
 
-def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 8) -> list[NaverNewsItem]:
-    """Fetch company-specific NAVER news for the individual stock page."""
-    terms = [str(stock_name).strip()]
-    if stock_code and str(stock_code).strip() and not str(stock_code).isdigit():
-        terms.append(str(stock_code).strip())
-    query = " ".join(terms)
-    if not query:
+def _marketaux_token() -> str:
+    """Marketaux API token. Optional: absent token falls back to the NAVER provider."""
+    return _env("MARKETAUX_API_TOKEN") if _env_optional("MARKETAUX_API_TOKEN") else ""
+
+
+def _env_optional(name: str) -> str:
+    value = os.getenv(name, "").strip()
+    if not value:
+        try:
+            import streamlit as st
+            value = str(st.secrets.get(name, "")).strip()
+        except Exception:
+            value = ""
+    return value
+
+
+def _marketaux_source_label(article: dict) -> str:
+    source = article.get("source") or ""
+    if source:
+        return str(source)
+    domain = urlparse(str(article.get("url") or "")).netloc.lower().split(":")[0]
+    return domain.removeprefix("www.") or "News"
+
+
+def search_marketaux_news(
+    query: str = "",
+    *,
+    symbols: Optional[str] = None,
+    language: str = "en",
+    countries: str = "",
+    display: int = 20,
+) -> list[NaverNewsItem]:
+    """Fetch global financial news from Marketaux and normalize it to NaverNewsItem."""
+    token = _marketaux_token()
+    if not token:
         return []
-    return search_naver_news(query, display=display, sort="date")
+
+    params = {
+        "api_token": token,
+        "language": language,
+        "limit": min(max(display, 3), 100),
+        "published_after": (datetime.utcnow() - timedelta(days=3)).strftime("%Y-%m-%dT%H:%M"),
+        "must_have_entities": "true",
+    }
+    if query.strip():
+        params["search"] = query.strip()
+    if symbols:
+        params["symbols"] = symbols.strip()
+    if countries:
+        params["countries"] = countries.strip()
+
+    try:
+        response = requests.get(
+            "https://api.marketaux.com/v1/news/all",
+            params=params,
+            timeout=15,
+        )
+        response.raise_for_status()
+        payload = response.json()
+    except Exception:
+        return []
+
+    items: list[NaverNewsItem] = []
+    for article in payload.get("data", []) or []:
+        url = str(article.get("url") or "").strip()
+        title = str(article.get("title") or "").strip()
+        if not url or not title:
+            continue
+        description = str(article.get("description") or article.get("snippet") or "").strip()
+        image_url = str(article.get("image_url") or "").strip()
+        source = _marketaux_source_label(article)
+        published_at = str(article.get("published_at") or "").strip()
+        items.append(
+            NaverNewsItem(
+                title=_clean_html(title),
+                description=_clean_html(description),
+                link=url,
+                original_link=url,
+                pub_date=published_at,
+                query=query or "US market news",
+                source=source,
+            )
+        )
+        # NaverNewsItem에는 이미지 필드가 없으므로 대표 이미지는 app.py에서 URL을 다시 확인한다.
+    return items
+
+
+def _source_domain(item: NaverNewsItem) -> str:
+    try:
+        return urlparse(item.original_link or item.link).netloc.lower().removeprefix("www.")
+    except Exception:
+        return ""
+
+
+PREFERRED_GLOBAL_NEWS_DOMAINS = (
+    "reuters.com",
+    "bloomberg.com",
+    "wsj.com",
+    "ft.com",
+    "cnbc.com",
+    "marketwatch.com",
+    "barrons.com",
+    "apnews.com",
+    "finance.yahoo.com",
+)
+
+
+def _rank_global_news(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
+    preferred = {domain: idx for idx, domain in enumerate(PREFERRED_GLOBAL_NEWS_DOMAINS)}
+    return sorted(
+        items,
+        key=lambda item: (preferred.get(_source_domain(item), 999), item.pub_date or ""),
+        reverse=False,
+    )
+
+
+def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 8) -> list[NaverNewsItem]:
+    """Fetch company news. Prefer Marketaux global financial sources, then fall back to NAVER."""
+    name = str(stock_name or "").strip()
+    code = str(stock_code or "").strip()
+    if not name and not code:
+        return []
+
+    marketaux_items: list[NaverNewsItem] = []
+    if code and not code.isdigit():
+        marketaux_items = search_marketaux_news(symbols=code, language="en", display=max(display, 10))
+    elif name:
+        marketaux_items = search_marketaux_news(
+            query=name,
+            language="ko" if code.isdigit() else "en",
+            countries="kr" if code.isdigit() else "",
+            display=max(display, 10),
+        )
+
+    if marketaux_items:
+        return _rank_global_news(marketaux_items)[:display]
+
+    terms = [name]
+    if code and not code.isdigit():
+        terms.append(code)
+    query = " ".join([term for term in terms if term])
+    return search_naver_news(query, display=display, sort="date") if query else []
+
+
+def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10) -> list[NaverNewsItem]:
+    """Main Live News feed: prefer global financial news, keeping an 8 US / 2 Korea mix."""
+    if queries is not None:
+        queries = list(queries)
+        merged: list[NaverNewsItem] = []
+        seen: set[str] = set()
+        for query in queries:
+            for item in search_marketaux_news(query, language="en", display=max(display, 10)):
+                key = item.original_link or item.link
+                if key and key not in seen:
+                    seen.add(key)
+                    merged.append(item)
+            if not merged:
+                for item in search_naver_news(query, display=display, sort="date"):
+                    key = item.original_link or item.link
+                    if key and key not in seen:
+                        seen.add(key)
+                        merged.append(item)
+        return _rank_global_news(merged)[:display]
+
+    us_query = (
+        "United States economy Federal Reserve interest rates inflation CPI PCE "
+        "jobs Treasury yields dollar S&P 500 Nasdaq earnings tariffs trade policy"
+    )
+    kr_query = "한국은행 기준금리 원화 코스피 한국 경제 정책"
+
+    us_items = search_marketaux_news(query=us_query, language="en", countries="us", display=max(display, 20))
+    kr_items = search_marketaux_news(query=kr_query, language="ko", countries="kr", display=max(display, 8))
+
+    # Prefer a Reuters/Bloomberg/major-financial source when it is present, while
+    # retaining fallback coverage from other reputable publishers.
+    us_ranked = _rank_global_news(us_items)
+    kr_ranked = _rank_global_news(kr_items)
+    selected = us_ranked[: min(8, display)] + kr_ranked[: max(0, display - min(8, display))]
+
+    # Marketaux free tiers can return only a few articles per request. Fill gaps from
+    # the existing NAVER feed instead of leaving the Live News panel empty.
+    if len(selected) < display:
+        fallback = search_naver_news("미국 경제 증시 연준 물가 금리 기업 실적", display=max(display * 2, 12), sort="date")
+        fallback_kr = search_naver_news("한국은행 기준금리 한국 증시 경제 정책", display=max(display, 6), sort="date")
+        seen = {item.original_link or item.link for item in selected}
+        for item in fallback:
+            key = item.original_link or item.link
+            if key and key not in seen and len([x for x in selected if x.source != "NAVER"]) < min(8, display):
+                seen.add(key)
+                selected.append(item)
+        for item in fallback_kr:
+            if len(selected) >= display:
+                break
+            key = item.original_link or item.link
+            if key and key not in seen:
+                seen.add(key)
+                selected.append(item)
+
+    # Final hard cap keeps the UI deterministic.
+    return selected[:display]
+
 
 
 def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10) -> list[NaverNewsItem]:
@@ -586,6 +779,7 @@ __all__ = [
     "fetch_dart_disclosures",
     "build_earnings_events",
     "search_naver_news",
+    "search_marketaux_news",
     "fetch_stock_news",
     "fetch_macro_news",
     "filter_investor_news",
