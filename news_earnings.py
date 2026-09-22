@@ -609,8 +609,7 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
         "AI semiconductors technology companies energy oil prices US markets",
     )
     kr_queries = (
-        "한국은행 기준금리 원화 환율 코스피 한국 경제",
-        "한국 수출 반도체 기업실적 코스피 증시 경제 정책",
+        "한국은행 기준금리 원화 환율 코스피 한국 경제 수출 반도체 증시",
     )
 
     us_candidates: list[NaverNewsItem] = []
@@ -679,54 +678,42 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
     selected = us_ranked[:us_needed]
     selected.extend(kr_ranked[:kr_needed])
 
-    # 한쪽 시장 후보가 부족하면 다른 Marketaux 후보로 빈자리를 채우기 전에
-    # NAVER를 마지막 gap-filler로 사용한다. 정상적인 20개 구성에서는 거의 사용되지 않는다.
+    # Marketaux Free는 1회 요청당 최대 3건이므로 7회(run)만으로도
+    # 18 US + 3 KR 후보를 확보할 수 있다. 부족한 4번째 KR/20번째 전체 자리는
+    # Marketaux 추가 호출 대신 NAVER를 사용해 하루 API 예산을 보존한다.
     if len(selected) < target:
-        fallback_us_needed = max(0, us_needed - sum(1 for item in selected if (item.query or "").strip()))
         fallback_us = search_naver_news(
             "미국 경제 연준 금리 물가 고용 증시 실적 채권 달러",
-            display=max(6, target),
+            display=6,
             sort="date",
         )
         fallback_kr = search_naver_news(
             "한국은행 기준금리 원화 환율 수출 반도체 코스피 경제",
-            display=max(4, target),
+            display=4,
             sort="date",
         )
         seen = {item.original_link or item.link for item in selected}
 
-        # 목표 미국/한국 비중을 먼저 보존한 뒤, 그래도 부족하면 어느 쪽이든 채운다.
-        current_us = len(selected[:us_needed])
-        current_kr = max(0, len(selected) - current_us)
         for item in fallback_us:
-            if current_us >= us_needed:
+            if len(selected) >= target:
                 break
-            key = item.original_link or item.link
-            if key and key not in seen:
-                seen.add(key)
-                selected.insert(current_us, item)
-                current_us += 1
-        for item in fallback_kr:
-            if current_kr >= kr_needed:
-                break
+            if not is_today_kst(item):
+                continue
             key = item.original_link or item.link
             if key and key not in seen:
                 seen.add(key)
                 selected.append(item)
-                current_kr += 1
 
-        if len(selected) < target:
-            for item in fallback_us + fallback_kr:
-                if len(selected) >= target:
-                    break
-                key = item.original_link or item.link
-                if key and key not in seen:
-                    seen.add(key)
-                    selected.append(item)
+        for item in fallback_kr:
+            if len(selected) >= target:
+                break
+            if not is_today_kst(item):
+                continue
+            key = item.original_link or item.link
+            if key and key not in seen:
+                seen.add(key)
+                selected.append(item)
 
-    # Final safety filter: NAVER gap-fillers and any provider edge cases must also
-    # belong to today's Korea calendar date.
-    selected = [item for item in selected if is_today_kst(item)]
     return selected[:target]
 
 
@@ -781,6 +768,62 @@ def persist_earnings_events(events: Iterable[EarningsEvent], *, supabase_client=
     response = (
         client.table("earnings_events")
         .upsert(rows, on_conflict="market,receipt_no")
+        .execute()
+    )
+    return len(response.data or rows)
+
+
+def persist_marketaux_news(
+    items: Iterable[NaverNewsItem],
+    *,
+    supabase_client=None,
+) -> int:
+    """Persist the automated Marketaux macro feed into news_items."""
+    rows = []
+    for item in items:
+        source_id = item.original_link or item.link
+        if not item.title or not source_id:
+            continue
+        try:
+            published_at = pd.to_datetime(item.pub_date, utc=True).isoformat()
+        except Exception:
+            published_at = None
+
+        rows.append(
+            {
+                "source": "MARKETAUX",
+                "source_id": source_id,
+                "market": "GLOBAL",
+                "stock_code": None,
+                "stock_name": None,
+                "category": "macro",
+                "title": item.title,
+                "description": item.description,
+                "article_url": item.link,
+                "original_url": item.original_link,
+                "published_at": published_at,
+                "is_macro": True,
+                "is_investor_relevant": True,
+                "event_type": None,
+                "filter_reason": None,
+                "metadata": {
+                    "query": item.query,
+                    "source_label": item.source,
+                    "image_url": item.image_url,
+                    "snippet": item.snippet,
+                    "keywords": item.keywords,
+                    "entities": item.entities,
+                },
+            }
+        )
+
+    if not rows:
+        return 0
+
+    client = supabase_client or _get_supabase_client()
+    response = (
+        client.table("news_items")
+        .upsert(rows, on_conflict="source,source_id")
         .execute()
     )
     return len(response.data or rows)
@@ -858,6 +901,7 @@ __all__ = [
     "fetch_macro_news",
     "filter_investor_news",
     "persist_earnings_events",
+    "persist_marketaux_news",
     "persist_naver_news",
     "to_records",
 ]
