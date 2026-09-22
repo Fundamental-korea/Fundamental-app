@@ -8,6 +8,7 @@ import streamlit.components.v1 as components
 from supabase import create_client
 import yfinance as yf
 import base64
+import calendar as pycalendar
 from datetime import date, timedelta
 
 from search_aliases import aliases_for
@@ -561,6 +562,229 @@ st.markdown(
         color: #6B7280 !important;
         font-size: 11px;
         margin: 6px 0 12px;
+    }
+    .earnings-consensus-bar {
+        flex: 1 1 360px;
+        min-width: 260px;
+        max-width: 520px;
+        min-height: 36px;
+        padding: 0 18px;
+        border-radius: 6px;
+        background: #FFD900;
+        color: #111827 !important;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-sizing: border-box;
+        font-size: 12px;
+        font-weight: 900;
+        letter-spacing: -0.1px;
+    }
+    .earnings-consensus-bar strong {
+        color: #111827 !important;
+        font-size: 13px;
+    }
+    .earnings-calendar-shell {
+        background: rgba(255,255,255,0.94);
+        border: 1px solid #E5E7EB;
+        border-radius: 16px;
+        padding: 18px;
+        box-shadow: 0 8px 24px rgba(15,23,42,0.05);
+        margin-top: 10px;
+    }
+    .earnings-calendar-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+    .earnings-calendar-month {
+        color: #111827 !important;
+        font-size: 22px;
+        font-weight: 900;
+        letter-spacing: -0.5px;
+    }
+    .earnings-calendar-sub {
+        color: #6B7280 !important;
+        font-size: 11px;
+        margin-top: 3px;
+    }
+    .earnings-calendar-week {
+        color: #6B7280 !important;
+        font-size: 11px;
+        font-weight: 850;
+        text-align: center;
+        padding: 8px 0;
+        border-bottom: 1px solid #E5E7EB;
+    }
+    .earnings-calendar-cell {
+        min-height: 122px;
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 10px;
+        padding: 8px;
+        margin-bottom: 8px;
+        box-sizing: border-box;
+        overflow: hidden;
+    }
+    .earnings-calendar-cell.is-today {
+        border: 2px solid #F4A261;
+        background: #FFFDF9;
+    }
+    .earnings-calendar-day {
+        color: #111827 !important;
+        font-size: 13px;
+        font-weight: 900;
+        margin-bottom: 6px;
+    }
+    .earnings-calendar-empty {
+        color: #D1D5DB !important;
+        font-size: 12px;
+    }
+    .earnings-calendar-event {
+        display: block;
+        padding: 4px 6px;
+        margin-top: 4px;
+        border-radius: 6px;
+        background: #F8FAFC;
+        border-left: 3px solid #F4A261;
+        color: #1F2937 !important;
+        font-size: 10px;
+        line-height: 1.25;
+        font-weight: 750;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+    .earnings-calendar-event.kr {
+        border-left-color: #D97706;
+        background: #FFF7ED;
+    }
+    .earnings-calendar-event.us {
+        border-left-color: #9CA3AF;
+        background: #F8FAFC;
+    }
+    .earnings-calendar-more {
+        color: #6B7280 !important;
+        font-size: 9px;
+        font-weight: 800;
+        margin-top: 4px;
+    }
+    .earnings-open-calendar {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 42px;
+        padding: 0 18px;
+        border: 1.5px solid #F4A261;
+        border-radius: 10px;
+        background: #FFFDF9;
+        color: #D97706 !important;
+        text-decoration: none !important;
+        font-size: 14px;
+        font-weight: 900;
+        box-shadow: 0 3px 8px rgba(244,162,97,0.10);
+    }
+    .earnings-open-calendar:hover {
+        background: #F4A261;
+        color: #FFFFFF !important;
+    }
+    .earnings-page-title {
+        color: #111827 !important;
+        font-size: 27px;
+        font-weight: 900;
+        letter-spacing: -0.7px;
+        margin-bottom: 2px;
+    }
+    .earnings-page-subtitle {
+        color: #6B7280 !important;
+        font-size: 12px;
+        margin-bottom: 16px;
+    }
+    .earnings-summary-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0,1fr));
+        gap: 10px;
+        margin: 14px 0 16px;
+    }
+    .earnings-summary-card {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 11px;
+        padding: 12px 14px;
+    }
+    .earnings-summary-label {
+        color: #6B7280 !important;
+        font-size: 10px;
+        font-weight: 800;
+    }
+    .earnings-summary-value {
+        color: #111827 !important;
+        font-size: 20px;
+        font-weight: 900;
+        margin-top: 3px;
+    }
+    .earnings-detail-card {
+        background: #FFFFFF;
+        border: 1px solid #E5E7EB;
+        border-radius: 11px;
+        padding: 13px 15px;
+        margin-bottom: 8px;
+    }
+    .earnings-detail-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
+    }
+    .earnings-detail-name {
+        color: #111827 !important;
+        font-size: 14px;
+        font-weight: 900;
+    }
+    .earnings-detail-meta {
+        color: #6B7280 !important;
+        font-size: 11px;
+        margin-top: 4px;
+        line-height: 1.45;
+    }
+    .earnings-detail-market {
+        flex: 0 0 auto;
+        border-radius: 999px;
+        padding: 3px 8px;
+        font-size: 10px;
+        font-weight: 900;
+    }
+    .earnings-detail-market.us {
+        background: #F3F4F6;
+        color: #374151 !important;
+    }
+    .earnings-detail-market.kr {
+        background: #FFF7ED;
+        color: #9A3412 !important;
+    }
+    .earnings-detail-compare {
+        margin-top: 9px;
+        padding-top: 9px;
+        border-top: 1px dashed #E5E7EB;
+        color: #374151 !important;
+        font-size: 11px;
+        font-weight: 750;
+    }
+    .earnings-detail-compare strong {
+        color: #111827 !important;
+        font-weight: 900;
+    }
+    @media (max-width: 900px) {
+        .earnings-summary-grid { grid-template-columns: repeat(2, minmax(0,1fr)); }
+        .earnings-consensus-bar { max-width: none; width: 100%; }
+    }
+    @media (max-width: 700px) {
+        .earnings-calendar-cell { min-height: 96px; padding: 6px; }
+        .earnings-calendar-event { font-size: 9px; }
+        .earnings-calendar-month { font-size: 19px; }
+        .earnings-detail-top { flex-direction: column; }
     }
     .earnings-date a {
         color: #D97706 !important;
@@ -2947,6 +3171,7 @@ def render_home_stock_news(stock_name, stock_code, limit=6):
     )
 
 
+
 @st.cache_data(ttl=1800, show_spinner=False)
 def _get_us_upcoming_earnings(days_forward=14, limit=24):
     """Yahoo Finance 기반 미국 향후 예정 실적. 예정일 데이터가 있는 종목만 표시."""
@@ -2961,7 +3186,7 @@ def _get_us_upcoming_earnings(days_forward=14, limit=24):
         if df is None or df.empty:
             return []
         rows = []
-        for symbol, row in df.reset_index().iterrows():
+        for _, row in df.reset_index().iterrows():
             reported = row.get("Reported EPS")
             if pd.notna(reported):
                 continue
@@ -2969,13 +3194,131 @@ def _get_us_upcoming_earnings(days_forward=14, limit=24):
             if pd.isna(event_dt):
                 continue
             rows.append({
+                "market": "US",
                 "symbol": str(row.get("Symbol", "")),
                 "company": str(row.get("Company", row.get("Company Name", ""))),
-                "date": pd.to_datetime(event_dt).strftime("%Y-%m-%d"),
+                "date": pd.to_datetime(event_dt).date(),
                 "timing": str(row.get("Timing", "")),
                 "eps_estimate": row.get("EPS Estimate"),
+                "actual": None,
+                "surprise": None,
+                "status": "upcoming",
             })
         return rows[:limit]
+    except Exception:
+        return []
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _get_us_earnings_window(days_back=45, days_forward=90, limit=100):
+    """월간 캘린더용 미국 실적: 발표 완료 + 예정 일정을 함께 조회."""
+    try:
+        start = date.today() - timedelta(days=days_back)
+        end = date.today() + timedelta(days=days_forward)
+        calendar = yf.Calendars(start=start, end=end)
+        df = calendar.get_earnings_calendar(
+            filter_most_active=True,
+            limit=min(limit, 100),
+        )
+        if df is None or df.empty:
+            return []
+        rows = []
+        for _, row in df.reset_index().iterrows():
+            event_dt = row.get("Event Start Date")
+            if pd.isna(event_dt):
+                continue
+            event_date = pd.to_datetime(event_dt).date()
+            reported = row.get("Reported EPS")
+            rows.append({
+                "market": "US",
+                "symbol": str(row.get("Symbol", "")),
+                "company": str(row.get("Company", row.get("Company Name", ""))),
+                "date": event_date,
+                "timing": str(row.get("Timing", "")),
+                "eps_estimate": row.get("EPS Estimate"),
+                "actual": reported if pd.notna(reported) else None,
+                "surprise": row.get("Surprise(%)") if pd.notna(row.get("Surprise(%)")) else None,
+                "status": "reported" if pd.notna(reported) else "upcoming",
+            })
+        rows.sort(key=lambda x: x["date"])
+        return rows
+    except Exception:
+        return []
+
+
+# 초기 한국 미래 어닝 일정은 Yahoo Finance의 종목별 Earnings Date를 사용한다.
+# 전 종목을 한 번에 조회하면 페이지 로딩이 과도해질 수 있어, 우선 국내 대표/활발 종목을
+# 대상으로 월간 캘린더를 구성하고 추후 종목 범위를 별도 ingestion으로 확장할 수 있게 분리한다.
+KR_EARNINGS_WATCHLIST = [
+    ("005930", "삼성전자"),
+    ("000660", "SK하이닉스"),
+    ("005380", "현대차"),
+    ("000270", "기아"),
+    ("035420", "NAVER"),
+    ("035720", "카카오"),
+    ("051910", "LG화학"),
+    ("006400", "삼성SDI"),
+    ("105560", "KB금융"),
+    ("055550", "신한지주"),
+    ("000810", "삼성화재"),
+    ("012330", "현대모비스"),
+    ("028260", "삼성물산"),
+    ("034730", "SK"),
+    ("003550", "LG"),
+    ("096770", "SK이노베이션"),
+    ("009150", "삼성전기"),
+    ("066570", "LG전자"),
+    ("068270", "셀트리온"),
+    ("012450", "한화에어로스페이스"),
+    ("042700", "한미반도체"),
+    ("086520", "에코프로"),
+    ("247540", "에코프로비엠"),
+    ("352820", "하이브"),
+    ("259960", "크래프톤"),
+]
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _get_kr_upcoming_earnings(days_forward=120):
+    """한국 대표 종목의 향후 실적 예정일. Yahoo Finance 종목별 calendar 기반."""
+    try:
+        today = date.today()
+        end_date = today + timedelta(days=days_forward)
+        rows = []
+
+        for code, name in KR_EARNINGS_WATCHLIST:
+            calendar_data = {}
+            try:
+                calendar_data = yf.Ticker(f"{code}.KS").calendar or {}
+            except Exception:
+                calendar_data = {}
+
+            earnings_dates = calendar_data.get("Earnings Date") or []
+            if not earnings_dates:
+                continue
+
+            estimate = calendar_data.get("Earnings Average")
+            for raw_date in earnings_dates:
+                try:
+                    event_date = pd.to_datetime(raw_date).date()
+                except Exception:
+                    continue
+                if not (today <= event_date <= end_date):
+                    continue
+
+                rows.append({
+                    "market": "KR",
+                    "symbol": code,
+                    "company": name,
+                    "date": event_date,
+                    "timing": "예정",
+                    "eps_estimate": estimate,
+                    "actual": None,
+                    "surprise": None,
+                    "status": "upcoming",
+                })
+        rows.sort(key=lambda x: (x["date"], x["company"]))
+        return rows
     except Exception:
         return []
 
@@ -3026,98 +3369,286 @@ def _match_earnings_consensus(event):
     return min(candidates, key=lambda x: x[0])[1]
 
 
-def render_home_earnings_calendar(limit=12):
-    """실적 캘린더: 최근 DART 공시 + 미국 향후 예정 실적을 함께 표시."""
+def _escape_calendar_text(value):
+    return _escape_html(str(value or ""))
+
+
+def _format_eps(value):
+    try:
+        if value is None or pd.isna(value):
+            return ""
+        return f"{float(value):,.2f}"
+    except Exception:
+        return ""
+
+
+def _earnings_calendar_events():
+    """월간 캘린더에 필요한 이벤트를 한 번에 구성."""
+    events = []
+
+    # 최근 DART 실적 공시는 실제 발표일 기준으로 포함한다.
+    try:
+        dart_events = _get_home_earnings_events(days_back=60)
+    except Exception:
+        dart_events = []
+    for event in dart_events:
+        events.append({
+            "market": "KR",
+            "symbol": str(event.stock_code),
+            "company": str(event.corp_name),
+            "date": date.fromisoformat(str(event.event_date)),
+            "timing": "발표",
+            "eps_estimate": None,
+            "actual": None,
+            "surprise": None,
+            "status": "reported",
+            "report_name": str(event.report_name or ""),
+            "source_url": str(event.source_url or ""),
+        })
+
+    events.extend(_get_us_earnings_window(days_back=60, days_forward=120, limit=100))
+    events.extend(_get_kr_upcoming_earnings(days_forward=120))
+
+    # 동일 기업/날짜가 여러 소스에서 중복되면 미래 일정 우선.
+    deduped = {}
+    for row in events:
+        key = (row["market"], row["symbol"], row["date"])
+        if key not in deduped or row["status"] == "upcoming":
+            deduped[key] = row
+
+    return sorted(deduped.values(), key=lambda x: (x["date"], x["market"], x["company"]))
+
+
+def _render_earnings_calendar_grid(month_start, events, market_filter="전체"):
+    """7열 월간 캘린더. 실제 이벤트는 날짜 셀 안에 시장별 작은 카드로 표시."""
+    filtered = [
+        row for row in events
+        if market_filter == "전체" or row["market"] == ("US" if market_filter == "🇺🇸 미국" else "KR")
+    ]
+    by_date = {}
+    for row in filtered:
+        by_date.setdefault(row["date"], []).append(row)
+
+    st.markdown("<div class='earnings-calendar-shell'>", unsafe_allow_html=True)
     st.markdown(
-        "<div class='live-news-section'><div class='live-news-section-title'>📅 Earnings Calendar</div>"
-        "<div class='live-news-section-subtitle'>실제 공시된 실적과 향후 예정된 실적을 구분해 보여드립니다.</div></div>",
+        f"<div class='earnings-calendar-head'><div>"
+        f"<div class='earnings-calendar-month'>{month_start.year}년 {month_start.month}월</div>"
+        f"<div class='earnings-calendar-sub'>실적 발표일 기준 · 예정 일정은 변경될 수 있습니다.</div>"
+        f"</div></div>",
         unsafe_allow_html=True,
     )
 
-    # ① 최근 발표: DART 공식 공시
-    st.markdown("<div class='earnings-upcoming-title'>🇰🇷 최근 발표 실적</div>", unsafe_allow_html=True)
-    try:
-        events = _get_home_earnings_events(days_back=30)
-    except Exception as exc:
-        events = []
-        st.warning(f"Earnings Calendar을 불러오지 못했습니다: {exc}")
+    header_cols = st.columns(7)
+    for col, name in zip(header_cols, ["월", "화", "수", "목", "금", "토", "일"]):
+        with col:
+            st.markdown(f"<div class='earnings-calendar-week'>{name}</div>", unsafe_allow_html=True)
 
-    if events:
-        for event in events[:limit]:
-            label = "잠정실적" if event.event_type == "preliminary_earnings" else "정기보고서"
-            badge_class = "earnings-primary" if event.event_type == "preliminary_earnings" else "earnings-secondary"
-            consensus = _match_earnings_consensus(event) if event.event_type == "preliminary_earnings" else None
+    weeks = pycalendar.monthcalendar(month_start.year, month_start.month)
+    today = date.today()
 
-            compare_html = ""
-            if consensus:
-                estimate = consensus.get("estimate")
-                actual = consensus.get("actual")
-                surprise = consensus.get("surprise")
-                try:
-                    compare_html = (
-                        f"<div class='earnings-compare'>EPS 실제 <strong>{float(actual):,.2f}</strong>"
-                        f" · 컨센서스 <strong>{float(estimate):,.2f}</strong>"
-                        f" · 서프라이즈 <strong>{float(surprise):+.2f}%</strong>"
-                        f" <span style='font-size:10px'> </span></div>"
+    for week in weeks:
+        cols = st.columns(7)
+        for col, day_num in zip(cols, week):
+            with col:
+                if day_num == 0:
+                    st.markdown("<div style='min-height:122px;'></div>", unsafe_allow_html=True)
+                    continue
+
+                cell_date = date(month_start.year, month_start.month, day_num)
+                items = by_date.get(cell_date, [])
+                today_class = " is-today" if cell_date == today else ""
+                body = (
+                    f"<div class='earnings-calendar-cell{today_class}'>"
+                    f"<div class='earnings-calendar-day'>{day_num}일</div>"
+                )
+                for item in items[:3]:
+                    market_class = "us" if item["market"] == "US" else "kr"
+                    market_tag = "US" if item["market"] == "US" else "KR"
+                    name = item["company"]
+                    if len(name) > 14:
+                        name = name[:13] + "…"
+                    status_mark = "예정" if item["status"] == "upcoming" else "실적"
+                    body += (
+                        f"<div class='earnings-calendar-event {market_class}' "
+                        f"title='{_escape_calendar_text(item['company'])} · {status_mark}'>"
+                        f"{market_tag} · {_escape_calendar_text(name)}</div>"
                     )
-                except Exception:
-                    compare_html = ""
+                if len(items) > 3:
+                    body += f"<div class='earnings-calendar-more'>+ {len(items)-3}개 더보기</div>"
+                elif not items:
+                    body += "<div class='earnings-calendar-empty'>-</div>"
+                body += "</div>"
+                st.markdown(body, unsafe_allow_html=True)
+    st.markdown("</div>", unsafe_allow_html=True)
 
-            st.markdown(
-                f"""
-                <div class="earnings-row">
-                  <div>
-                    <div class="earnings-name">{_escape_html(event.corp_name)} <span class="{badge_class}">{label}</span></div>
-                    <div class="earnings-report">{_escape_html(event.report_name)}</div>
-                    {compare_html}
-                  </div>
-                  <div class="earnings-date">{_escape_html(event.event_date)} · <a href="{_escape_html(event.source_url)}" target="_blank" rel="noopener noreferrer">공시 보기 ↗</a></div>
-                </div>
-                """,
-                unsafe_allow_html=True,
-            )
-    else:
+
+def _render_earnings_detail(selected_date, events, market_filter="전체"):
+    filtered = [
+        row for row in events
+        if row["date"] == selected_date
+        and (market_filter == "전체" or row["market"] == ("US" if market_filter == "🇺🇸 미국" else "KR"))
+    ]
+    st.markdown(
+        f"<div class='earnings-upcoming-title'>{selected_date.strftime('%Y년 %m월 %d일')} 실적 일정</div>",
+        unsafe_allow_html=True,
+    )
+
+    if not filtered:
         st.markdown(
-            '<div class="news-empty-state">최근 30일간 표시할 실적 공시가 없습니다.</div>',
+            "<div class='news-empty-state'>선택한 날짜에는 현재 표시할 실적 일정이 없습니다.</div>",
             unsafe_allow_html=True,
         )
+        return
 
-    # ② 향후 예정: Yahoo Finance에서 일정이 제공되는 미국 실적
-    st.markdown("<div class='earnings-upcoming-title'>🇺🇸 향후 예정 실적 · 다음 14일</div>", unsafe_allow_html=True)
-    upcoming = _get_us_upcoming_earnings(days_forward=14, limit=24)
-    if upcoming:
-        st.markdown(
-            "<div class='earnings-note'>예정일은 변경될 수 있습니다.</div>",
-            unsafe_allow_html=True,
-        )
-        for row in upcoming:
-            eps = row.get("eps_estimate")
-            eps_text = ""
+    for row in filtered:
+        market_class = "us" if row["market"] == "US" else "kr"
+        market_label = "🇺🇸 미국" if row["market"] == "US" else "🇰🇷 한국"
+        meta_parts = []
+        if row.get("timing") and row["timing"] != "nan":
+            meta_parts.append(row["timing"])
+        if row["status"] == "upcoming":
+            meta_parts.append("향후 예정")
+        else:
+            meta_parts.append("발표 완료")
+
+        eps_est = _format_eps(row.get("eps_estimate"))
+        actual = _format_eps(row.get("actual"))
+        surprise = _format_eps(row.get("surprise"))
+
+        if row["market"] == "KR" and row["status"] == "reported" and not actual:
+            # DART 공시 자체에는 Yahoo 컨센서스가 없는 경우가 있어, 상세 카드에서만
+            # best-effort로 실제 EPS/컨센서스를 보강한다.
             try:
-                if pd.notna(eps):
-                    eps_text = f" · 예상 EPS {float(eps):,.2f}"
+                dart_event = type("E", (), {
+                    "event_date": row["date"].isoformat(),
+                    "stock_code": row["symbol"],
+                })()
+                consensus = _match_earnings_consensus(dart_event)
+                if consensus:
+                    eps_est = _format_eps(consensus.get("estimate"))
+                    actual = _format_eps(consensus.get("actual"))
+                    surprise = _format_eps(consensus.get("surprise"))
             except Exception:
                 pass
-            timing = f" · {row['timing']}" if row.get("timing") and row["timing"] != "nan" else ""
+
+        compare = ""
+        if actual or eps_est:
+            if actual and eps_est:
+                surprise_text = f" · 서프라이즈 <strong>{surprise:+}%</strong>" if surprise else ""
+                compare = (
+                    f"<div class='earnings-detail-compare'>"
+                    f"실제 EPS <strong>{actual}</strong> · 컨센서스 <strong>{eps_est}</strong>{surprise_text}"
+                    f"</div>"
+                )
+            elif eps_est:
+                compare = (
+                    f"<div class='earnings-detail-compare'>예상 EPS <strong>{eps_est}</strong></div>"
+                )
+
+        source_link = ""
+        if row.get("source_url"):
+            source_link = (
+                f"<a href='{_escape_calendar_text(row['source_url'])}' target='_blank' "
+                f"rel='noopener noreferrer' style='color:#D97706;text-decoration:none;font-weight:800;'>공시 보기 ↗</a>"
+            )
+
+        st.markdown(
+            f"""
+            <div class='earnings-detail-card'>
+              <div class='earnings-detail-top'>
+                <div>
+                  <div class='earnings-detail-name'>{_escape_calendar_text(row['company'])} <span style='color:#6B7280 !important;font-size:11px;font-weight:800;'>({row['symbol']})</span></div>
+                  <div class='earnings-detail-meta'>{_escape_calendar_text(" · ".join(meta_parts))} {source_link}</div>
+                </div>
+                <span class='earnings-detail-market {market_class}'>{market_label}</span>
+              </div>
+              {compare}
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+
+def render_home_earnings_calendar(limit=12):
+    """메인 홈에는 요약만 보여주고, 전체 월간 캘린더는 별도 탭/창으로 연다."""
+    st.markdown(
+        "<div class='live-news-section'><div class='live-news-section-title'>📅 Earnings Calendar</div>"
+        "<div class='live-news-section-subtitle'>최근 발표 실적과 향후 예정 실적을 간단히 확인하고, 전체 월간 캘린더에서 날짜별로 볼 수 있습니다.</div></div>",
+        unsafe_allow_html=True,
+    )
+
+    try:
+        recent_events = _get_home_earnings_events(days_back=30)
+    except Exception:
+        recent_events = []
+
+    st.markdown("<div class='earnings-upcoming-title'>🇰🇷 최근 발표 실적</div>", unsafe_allow_html=True)
+    if recent_events:
+        for event in recent_events[:min(limit, 5)]:
+            label = "잠정실적" if event.event_type == "preliminary_earnings" else "정기보고서"
+            consensus = _match_earnings_consensus(event) if event.event_type == "preliminary_earnings" else None
+            compare = ""
+            if consensus:
+                actual = _format_eps(consensus.get("actual"))
+                estimate = _format_eps(consensus.get("estimate"))
+                surprise = _format_eps(consensus.get("surprise"))
+                if actual and estimate:
+                    compare = (
+                        f"<div class='earnings-compare'>실제 EPS <strong>{actual}</strong> · "
+                        f"컨센서스 <strong>{estimate}</strong> · 서프라이즈 <strong>{surprise:+}%</strong></div>"
+                    )
             st.markdown(
                 f"""
                 <div class="earnings-row">
                   <div>
-                    <div class="earnings-name">{_escape_html(row['company'])} <span class="earnings-primary">{_escape_html(row['symbol'])}</span></div>
-                    <div class="earnings-report">미국 예정 실적{eps_text}{timing}</div>
+                    <div class="earnings-name">{_escape_html(event.corp_name)} <span class="earnings-primary">{label}</span></div>
+                    <div class="earnings-report">{_escape_html(event.report_name)}</div>
+                    {compare}
                   </div>
-                  <div class="earnings-date">{_escape_html(row['date'])}</div>
+                  <div class="earnings-date">{_escape_html(event.event_date)}</div>
                 </div>
                 """,
                 unsafe_allow_html=True,
             )
     else:
-        st.markdown(
-            '<div class="earnings-note">현재 향후 예정 실적 데이터를 불러오지 못했습니다.</div>',
-            unsafe_allow_html=True,
-        )
+        st.markdown('<div class="news-empty-state">최근 실적 공시가 없습니다.</div>', unsafe_allow_html=True)
+
+    st.markdown("<div class='earnings-upcoming-title'>🇺🇸🇰🇷 향후 예정 실적 · 다음 14일</div>", unsafe_allow_html=True)
+    upcoming = _get_us_upcoming_earnings(days_forward=14, limit=10) + _get_kr_upcoming_earnings(days_forward=14)
+    upcoming.sort(key=lambda x: (x["date"], x["market"], x["company"]))
+    if upcoming:
+        st.markdown("<div class='earnings-note'>예정일은 변경될 수 있습니다.</div>", unsafe_allow_html=True)
+        for row in upcoming[:min(limit, 10)]:
+            eps = _format_eps(row.get("eps_estimate"))
+            eps_text = f"컨센서스 EPS {eps}" if eps else "컨센서스 데이터 없음"
+            market_text = "미국" if row["market"] == "US" else "한국"
+            timing = row.get("timing") if row.get("timing") not in (None, "", "nan") else "예정"
+            st.markdown(
+                f"""
+                <div class="earnings-row">
+                  <div style="flex:0 0 220px;min-width:180px;">
+                    <div class="earnings-name">{_escape_html(row['company'])} <span class="earnings-primary">{_escape_html(row['symbol'])}</span></div>
+                    <div class="earnings-report">{market_text} 예정 실적 · {timing}</div>
+                  </div>
+                  <div class="earnings-consensus-bar">{eps_text}</div>
+                  <div class="earnings-date">{row['date'].isoformat()}</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+    else:
+        st.markdown('<div class="earnings-note">현재 향후 예정 실적 데이터를 불러오지 못했습니다.</div>', unsafe_allow_html=True)
+
+    st.markdown("<div style='display:flex;justify-content:center;margin:16px 0 4px;'>", unsafe_allow_html=True)
+    st.link_button(
+        "📅 전체 월간 어닝 캘린더 열기",
+        f"?view=earnings_calendar&theme={THEME_MODE}",
+        use_container_width=False,
+    )
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
+def render_home_market_overview(market):
 def render_home_market_overview(market):
     title = "🇺🇸 US Market Overview" if market == "US" else "🇰🇷 Korea Market Overview"
     subtitle = "주요 지수의 최신 일봉 기준 시세 흐름입니다." if market == "US" else "국내 주요 지수의 최신 일봉 기준 시세 흐름입니다."
@@ -3639,6 +4170,141 @@ elif selected_code and view_mode_param == "analysis":
             st.line_chart(hist_df["Close"])
         else:
             st.info("실시간 차트 데이터를 불러올 수 없습니다.")
+
+
+elif view_mode_param == "earnings_calendar":
+    # ==========================================
+    # [5-0] Earnings Calendar 전용 전체 화면
+    # 메인 홈의 로고/명언/광고 구조만 유지하고, 캘린더를 독립 화면처럼 보여준다.
+    # st.link_button은 새 탭을 열기 때문에 메인 화면과 캘린더를 동시에 유지할 수 있다.
+    # ==========================================
+    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
+
+    with col_logo:
+        st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
+
+    with col_quote:
+        render_quote_box()
+
+    with col_login:
+        render_theme_toggle("theme_toggle_earnings_calendar")
+        st.markdown(
+            f"<a href='?theme={THEME_MODE}' target='_self' "
+            "style='display:inline-flex;align-items:center;justify-content:center;"
+            "min-height:38px;padding:0 13px;border:1.5px solid #D1D5DB;border-radius:10px;"
+            "background:#FFFFFF;color:#1A1A1A;text-decoration:none;font-size:13px;font-weight:850;'>"
+            "메인으로</a>",
+            unsafe_allow_html=True,
+        )
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    left_ad, calendar_main, right_ad = st.columns([0.6, 6.8, 0.6])
+
+    with left_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
+    with calendar_main:
+        st.markdown("<div class='earnings-page-title'>📅 Earnings Calendar</div>", unsafe_allow_html=True)
+        st.markdown(
+            "<div class='earnings-page-subtitle'>미국·한국 시장의 최근 발표 및 향후 예정 실적을 월간 캘린더로 확인하세요. "
+            "향후 일정은 변경될 수 있으며, 실제 발표일과 차이가 날 수 있습니다.</div>",
+            unsafe_allow_html=True,
+        )
+
+        market_filter = st.radio(
+            "시장",
+            ["전체", "🇺🇸 미국", "🇰🇷 한국"],
+            horizontal=True,
+            label_visibility="collapsed",
+            key="earnings_calendar_market_filter",
+        )
+
+        if "earnings_calendar_month" not in st.session_state:
+            st.session_state["earnings_calendar_month"] = date.today().replace(day=1)
+
+        month_start = st.session_state["earnings_calendar_month"]
+
+        nav_prev, nav_title, nav_next = st.columns([1.1, 5.8, 1.1])
+        with nav_prev:
+            if st.button("‹ 이전", key="earnings_calendar_prev", use_container_width=True):
+                year = month_start.year
+                month = month_start.month - 1
+                if month == 0:
+                    year -= 1
+                    month = 12
+                st.session_state["earnings_calendar_month"] = date(year, month, 1)
+                st.rerun()
+        with nav_title:
+            st.markdown(
+                f"<div style='text-align:center;padding:7px 0;color:#111827;font-size:20px;font-weight:900;'>"
+                f"{month_start.year}년 {month_start.month}월</div>",
+                unsafe_allow_html=True,
+            )
+        with nav_next:
+            if st.button("다음 ›", key="earnings_calendar_next", use_container_width=True):
+                year = month_start.year
+                month = month_start.month + 1
+                if month == 13:
+                    year += 1
+                    month = 1
+                st.session_state["earnings_calendar_month"] = date(year, month, 1)
+                st.rerun()
+
+        all_events = _earnings_calendar_events()
+        visible_events = [
+            row for row in all_events
+            if market_filter == "전체" or row["market"] == ("US" if market_filter == "🇺🇸 미국" else "KR")
+        ]
+
+        month_events = [row for row in visible_events if row["date"].year == month_start.year and row["date"].month == month_start.month]
+        total_count = len(month_events)
+        us_count = sum(1 for row in month_events if row["market"] == "US")
+        kr_count = sum(1 for row in month_events if row["market"] == "KR")
+        consensus_count = sum(
+            1 for row in month_events
+            if row.get("eps_estimate") is not None and not pd.isna(row.get("eps_estimate"))
+        )
+
+        st.markdown(
+            f"""
+            <div class='earnings-summary-grid'>
+              <div class='earnings-summary-card'><div class='earnings-summary-label'>이번 달 일정</div><div class='earnings-summary-value'>{total_count}</div></div>
+              <div class='earnings-summary-card'><div class='earnings-summary-label'>🇺🇸 미국</div><div class='earnings-summary-value'>{us_count}</div></div>
+              <div class='earnings-summary-card'><div class='earnings-summary-label'>🇰🇷 한국</div><div class='earnings-summary-value'>{kr_count}</div></div>
+              <div class='earnings-summary-card'><div class='earnings-summary-label'>컨센서스 제공</div><div class='earnings-summary-value'>{consensus_count}</div></div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+        _render_earnings_calendar_grid(month_start, all_events, market_filter)
+
+        available_dates = sorted({row["date"] for row in month_events})
+        if available_dates:
+            default_date = date.today() if date.today() in available_dates else available_dates[0]
+            selected_date = st.selectbox(
+                "날짜별 상세 보기",
+                available_dates,
+                index=available_dates.index(default_date),
+                format_func=lambda d: d.strftime("%Y-%m-%d (%a)"),
+                key=f"earnings_calendar_date_{month_start.isoformat()}_{market_filter}",
+            )
+            _render_earnings_detail(selected_date, all_events, market_filter)
+        else:
+            st.markdown(
+                "<div class='news-empty-state'>이 달에는 현재 표시할 실적 일정이 없습니다. "
+                "다음 달로 이동하거나 시장 필터를 바꿔보세요.</div>",
+                unsafe_allow_html=True,
+            )
+
+        st.caption(
+            "※ 미국 예정 일정은 Yahoo Finance 제공 일정, 한국 예정 일정도 Yahoo Finance 종목별 Earnings Date를 "
+            "기반으로 한 참고 일정입니다. 확정 공시가 나오면 DART 발표 실적이 별도로 표시됩니다."
+        )
+
+    with right_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
 elif not selected_code:
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
