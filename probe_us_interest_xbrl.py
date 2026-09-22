@@ -6,7 +6,7 @@ s=requests.Session(); s.headers.update({"User-Agent":ua})
 for ticker,cik in [("AAPL","0000320193"),("AAL","0000006201"),("AAON","0000824142")]:
  facts=s.get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json").json()
  subs=s.get(f"https://data.sec.gov/submissions/CIK{cik}.json").json()
- idx=build_fact_index(facts)
+ idx=build_fact_index(facts)\n if ticker=="AAPL":\n  from collector_us_fundamental import annual_records\n  print("DIRECT ANNUAL", annual_records((facts.get("facts",{}).get("us-gaap",{}).get("InterestExpenseNonOperating") or {})))
  years=sorted(set(idx.get("revenue",{}))|set(idx.get("operating_income",{})))
  y=max(years)
  print("\n",ticker,"year",y,"index interest",idx.get("interest_expense",{}).get(y))
