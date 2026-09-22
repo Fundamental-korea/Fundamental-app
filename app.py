@@ -5207,6 +5207,13 @@ elif selected_code and view_mode_param == "analysis":
         else:
             st.info("실시간 차트 데이터를 불러올 수 없습니다.")
 
+        # 관련 최신 뉴스는 기간 탭/지표 반복문이 모두 끝난 뒤 한 번만 렌더링한다.
+        render_home_stock_news(
+            data.get("stock_name", selected_code),
+            selected_code,
+            limit=3,
+        )
+
 
 elif view_mode_param == "earnings_calendar":
     # ==========================================
@@ -5338,13 +5345,6 @@ elif view_mode_param == "earnings_calendar":
             "※ 미국 예정 일정은 Yahoo Finance 제공 일정, 한국 예정 일정도 Yahoo Finance 종목별 Earnings Date를 "
             "기반으로 한 참고 일정입니다. 확정 공시가 나오면 DART 발표 실적이 별도로 표시됩니다."
         )
-
-                # 개별종목 점수/설명 영역의 최하단: 관련 최신 뉴스 3개
-                render_home_stock_news(
-                    data.get("stock_name", selected_code),
-                    selected_code,
-                    limit=3,
-                )
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
