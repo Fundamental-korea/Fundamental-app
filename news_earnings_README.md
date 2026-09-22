@@ -43,3 +43,24 @@ Streamlit Secrets에 다음 값을 추가한다.
 
 AI 브리핑 본문은 Supabase에 별도 저장하지 않고 애플리케이션 캐시에 24시간 보관한다.
 따라서 뉴스 AI 기능을 추가해도 뉴스 DB의 저장 용량 증가를 최소화한다.
+
+## Live News 자동 갱신
+
+Live News 메인 피드는 GitHub Actions의 live_news_refresh.yml이 **2시간마다** 실행되어 자동 수집한다.
+수집된 당일 뉴스 20개는 Supabase의 news_items에 저장하고, Streamlit은 화면 표시 시 이 스냅샷을 읽는다.
+따라서 방문자가 페이지를 새로고침할 때마다 Marketaux API를 반복 호출하지 않는다.
+
+현재 자동 수집 예산은 1회 실행당 Marketaux **7 requests**(미국 6 + 한국 1)로 설계되어 있다.
+Marketaux Free의 현재 한도는 **하루 100 requests, 요청당 최대 3 articles**이므로,
+2시간 간격으로 하루 12회 실행해도 최대 **84 requests/day**이다. 남은 16 requests는
+개별 종목 뉴스 등의 사용자 요청에 사용할 여지를 남긴다.
+
+GitHub Actions의 Repository Secrets에 다음 값을 추가해야 한다.
+
+```text
+MARKETAUX_API_TOKEN
+SUPABASE_URL
+SUPABASE_SERVICE_ROLE_KEY
+```
+
+기존에 SUPABASE_KEY만 사용하는 경우에는 SUPABASE_SERVICE_ROLE_KEY 대신 SUPABASE_KEY를 사용할 수 있다.
