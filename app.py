@@ -3376,14 +3376,46 @@ def _get_home_macro_news(display=8, cache_version="naver-hub-v2"):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_home_earnings_events(days_back=30):
-    disclosures = fetch_dart_disclosures(
-        start_date=date.today() - timedelta(days=days_back),
-        end_date=date.today(),
-        page_count=100,
-        max_pages=20,
-    )
-    return build_earnings_events(disclosures)
+def _get_earnings_events_db(days_back=90, days_forward=120):
+    """Earnings UI는 외부 API를 직접 호출하지 않고 수집된 DB snapshot만 읽는다."""
+    if supabase is None:
+        return []
+    try:
+        start_date = (date.today() - timedelta(days=days_back)).isoformat()
+        end_date = (date.today() + timedelta(days=days_forward)).isoformat()
+        result = (
+            supabase.table("earnings_events")
+            .select("market,stock_code,stock_name,event_date,event_type,report_name,source_url,metadata,is_primary_event")
+            .gte("event_date", start_date)
+            .lte("event_date", end_date)
+            .order("event_date")
+            .order("stock_name")
+            .limit(2000)
+            .execute()
+        )
+        rows = []
+        today = date.today()
+        for row in result.data or []:
+            meta = row.get("metadata") or {}
+            event_date = date.fromisoformat(str(row["event_date"]))
+            rows.append({
+                "market": row.get("market"),
+                "symbol": str(row.get("stock_code") or ""),
+                "company": row.get("stock_name") or "",
+                "date": event_date,
+                "timing": meta.get("timing") or ("발표" if event_date < today else "예정"),
+                "eps_estimate": meta.get("eps_estimate"),
+                "actual": meta.get("actual"),
+                "surprise": meta.get("surprise"),
+                "status": meta.get("status") or ("upcoming" if event_date >= today and row.get("event_type") == "earnings_calendar" else "reported"),
+                "event_type": row.get("event_type") or "",
+                "report_name": row.get("report_name") or "",
+                "source_url": row.get("source_url") or "",
+            })
+        return rows
+    except Exception:
+        return []
+
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -3661,7 +3693,7 @@ def _get_yahoo_earnings_history(stock_code):
 
 def _match_earnings_consensus(event):
     try:
-        target = date.fromisoformat(str(event.event_date))
+        target = date.fromisoformat(str(event["date"].isoformat()))
     except Exception:
         return None
     history = _get_yahoo_earnings_history(event.stock_code)
@@ -3705,40 +3737,15 @@ def _korean_company_alias(symbol, company_name=""):
     return ""
 
 
+@st.cache_data(ttl=300, show_spinner=False)
 def _earnings_calendar_events():
-    """월간 캘린더에 필요한 이벤트를 한 번에 구성."""
-    events = []
-
-    # 최근 DART 실적 공시는 실제 발표일 기준으로 포함한다.
-    try:
-        dart_events = _get_home_earnings_events(days_back=60)
-    except Exception:
-        dart_events = []
-    for event in dart_events:
-        events.append({
-            "market": "KR",
-            "symbol": str(event.stock_code),
-            "company": str(event.corp_name),
-            "date": date.fromisoformat(str(event.event_date)),
-            "timing": "발표",
-            "eps_estimate": None,
-            "actual": None,
-            "surprise": None,
-            "status": "reported",
-            "report_name": str(event.report_name or ""),
-            "source_url": str(event.source_url or ""),
-        })
-
-    events.extend(_get_us_earnings_window(days_back=60, days_forward=120, limit=100))
-    events.extend(_get_kr_upcoming_earnings(days_forward=120))
-
-    # 동일 기업/날짜가 여러 소스에서 중복되면 미래 일정 우선.
+    """수집된 earnings_events snapshot만 읽어 월간 캘린더를 즉시 구성."""
+    events = _get_earnings_events_db(days_back=90, days_forward=120)
     deduped = {}
     for row in events:
         key = (row["market"], row["symbol"], row["date"])
         if key not in deduped or row["status"] == "upcoming":
             deduped[key] = row
-
     return sorted(deduped.values(), key=lambda x: (x["date"], x["market"], x["company"]))
 
 
@@ -3854,22 +3861,6 @@ def _render_earnings_detail(selected_date, events, market_filter="전체"):
         actual = _format_eps(row.get("actual"))
         surprise = _format_eps(row.get("surprise"))
 
-        if row["market"] == "KR" and row["status"] == "reported" and not actual:
-            # DART 공시 자체에는 Yahoo 컨센서스가 없는 경우가 있어, 상세 카드에서만
-            # best-effort로 실제 EPS/컨센서스를 보강한다.
-            try:
-                dart_event = type("E", (), {
-                    "event_date": row["date"].isoformat(),
-                    "stock_code": row["symbol"],
-                })()
-                consensus = _match_earnings_consensus(dart_event)
-                if consensus:
-                    eps_est = _format_eps(consensus.get("estimate"))
-                    actual = _format_eps(consensus.get("actual"))
-                    surprise = _format_eps(consensus.get("surprise"))
-            except Exception:
-                pass
-
         compare = ""
         if actual or eps_est:
             if actual and eps_est:
@@ -3916,16 +3907,20 @@ def render_home_earnings_calendar(limit=12):
         unsafe_allow_html=True,
     )
 
-    try:
-        recent_events = _get_home_earnings_events(days_back=30)
-    except Exception:
-        recent_events = []
+    recent_events = [
+        row for row in _get_earnings_events_db(days_back=30, days_forward=0)
+        if row["market"] == "KR" and row["status"] == "reported"
+    ]
 
     st.markdown("<div class='earnings-upcoming-title'>🇰🇷 최근 발표 실적</div>", unsafe_allow_html=True)
     if recent_events:
         for event in recent_events[:min(limit, 5)]:
-            label = "잠정실적" if event.event_type == "preliminary_earnings" else "정기보고서"
-            consensus = _match_earnings_consensus(event) if event.event_type == "preliminary_earnings" else None
+            label = "잠정실적" if event["event_type"] == "preliminary_earnings" else "정기보고서"
+            consensus = {
+                "actual": event.get("actual"),
+                "estimate": event.get("eps_estimate"),
+                "surprise": event.get("surprise"),
+            } if any(event.get(k) is not None for k in ("actual", "eps_estimate", "surprise")) else None
             compare = ""
             if consensus:
                 actual = _format_eps(consensus.get("actual"))
@@ -3937,7 +3932,7 @@ def render_home_earnings_calendar(limit=12):
                         f"컨센서스 <strong>{estimate}</strong> · 서프라이즈 <strong>{surprise}%</strong></div>"
                     )
             source_link = ""
-            if event.source_url:
+            if event["source_url"]:
                 source_link = (
                     f"<a href='{_escape_html(event.source_url)}' target='_blank' "
                     f"rel='noopener noreferrer' style='color:#D97706;text-decoration:none;font-weight:800;margin-left:8px;'>공시 보기 ↗</a>"
@@ -3947,8 +3942,8 @@ def render_home_earnings_calendar(limit=12):
                 f"""
                 <div class="earnings-row">
                   <div>
-                    <div class="earnings-name">{_escape_html(event.corp_name)} <span class="earnings-primary">{label}</span></div>
-                    <div class="earnings-report">{_escape_html(event.report_name)}{source_link}</div>
+                    <div class="earnings-name">{_escape_html(event["company"])} <span class="earnings-primary">{label}</span></div>
+                    <div class="earnings-report">{_escape_html(event["report_name"])}{source_link}</div>
                     {compare}
                   </div>
                   <div class="earnings-date">{_escape_html(event.event_date)}</div>
