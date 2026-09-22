@@ -648,9 +648,9 @@ st.markdown(
         font-weight: 900;
         margin-bottom: 6px;
     }
-    .earnings-calendar-cell button {
+    [class*="st-key-earnings_cell_"] button {
         width: 100% !important;
-        min-height: 30px !important;
+        min-height: 28px !important;
         padding: 2px 4px !important;
         border: 0 !important;
         background: transparent !important;
@@ -661,13 +661,13 @@ st.markdown(
         font-weight: 900 !important;
         margin: 0 0 4px 0 !important;
     }
-    .earnings-calendar-cell button:hover {
+    [class*="st-key-earnings_cell_"] button:hover {
         background: #FFF7ED !important;
         color: #D97706 !important;
     }
-    .earnings-calendar-cell.selected {
-        border: 2px solid #F4A261;
-        background: #FFFDF9;
+    [class*="st-key-earnings_cell_selected_"] {
+        border: 2px solid #F4A261 !important;
+        background: #FFFDF9 !important;
     }
     .earnings-calendar-empty {
         color: #D1D5DB !important;
@@ -3486,37 +3486,39 @@ def _render_earnings_calendar_grid(month_start, events, market_filter="전체", 
 
                 cell_date = date(month_start.year, month_start.month, day_num)
                 items = by_date.get(cell_date, [])
-                today_class = " is-today" if cell_date == today else ""
-                selected_class = " selected" if selected_date == cell_date else ""
+                is_selected = selected_date == cell_date
 
-                st.markdown(f"<div class='earnings-calendar-cell{today_class}{selected_class}'>", unsafe_allow_html=True)
+                cell_key = (
+                    f"earnings_cell_selected_{month_start.isoformat()}_{market_filter}_{cell_date.isoformat()}"
+                    if is_selected
+                    else f"earnings_cell_{month_start.isoformat()}_{market_filter}_{cell_date.isoformat()}"
+                )
 
-                if st.button(
-                    f"{day_num}일",
-                    key=f"earnings_day_{month_start.isoformat()}_{market_filter}_{cell_date.isoformat()}",
-                    use_container_width=True,
-                ):
-                    st.session_state["earnings_calendar_selected_date"] = cell_date
-                    st.rerun()
+                with col.container(height=122, border=True, key=cell_key):
+                    if st.button(
+                        f"{day_num}일",
+                        key=f"earnings_day_{month_start.isoformat()}_{market_filter}_{cell_date.isoformat()}",
+                        use_container_width=True,
+                    ):
+                        st.session_state["earnings_calendar_selected_date"] = cell_date
+                        st.rerun()
 
-                for item in items[:3]:
-                    market_class = "us" if item["market"] == "US" else "kr"
-                    market_tag = "US" if item["market"] == "US" else "KR"
-                    name = item["company"]
-                    if len(name) > 14:
-                        name = name[:13] + "…"
-                    status_mark = "예정" if item["status"] == "upcoming" else "실적"
-                    st.markdown(
-                        f"<div class='earnings-calendar-event {market_class}' title='{_escape_calendar_text(item['company'])} · {status_mark}'>"
-                        f"{market_tag} · {_escape_calendar_text(name)}</div>",
-                        unsafe_allow_html=True,
-                    )
-                if len(items) > 3:
-                    st.markdown(f"<div class='earnings-calendar-more'>+ {len(items)-3}개 더보기</div>", unsafe_allow_html=True)
-                elif not items:
-                    st.markdown("<div class='earnings-calendar-empty'>-</div>", unsafe_allow_html=True)
-
-                st.markdown("</div>", unsafe_allow_html=True)
+                    for item in items[:3]:
+                        market_class = "us" if item["market"] == "US" else "kr"
+                        market_tag = "US" if item["market"] == "US" else "KR"
+                        name = item["company"]
+                        if len(name) > 14:
+                            name = name[:13] + "…"
+                        status_mark = "예정" if item["status"] == "upcoming" else "실적"
+                        st.markdown(
+                            f"<div class='earnings-calendar-event {market_class}' title='{_escape_calendar_text(item['company'])} · {status_mark}'>"
+                            f"{market_tag} · {_escape_calendar_text(name)}</div>",
+                            unsafe_allow_html=True,
+                        )
+                    if len(items) > 3:
+                        st.markdown(f"<div class='earnings-calendar-more'>+ {len(items)-3}개 더보기</div>", unsafe_allow_html=True)
+                    elif not items:
+                        st.markdown("<div class='earnings-calendar-empty'>-</div>", unsafe_allow_html=True)
     st.markdown("</div>", unsafe_allow_html=True)
 
 
