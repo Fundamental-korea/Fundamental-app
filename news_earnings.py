@@ -378,28 +378,89 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
 
 
 def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 10) -> list[NaverNewsItem]:
-    """Fetch the main-page macro/news feed described in the planning document."""
-    queries = list(queries or (
-        "한국은행 기준금리",
-        "원달러 환율",
-        "미국 증시",
-        "나스닥",
-        "코스피",
-        "정부 증시 정책",
-    ))
-    merged: list[NaverNewsItem] = []
-    seen: set[str] = set()
+    """메인 Live News용 피드.
 
-    for query in queries:
-        for item in search_naver_news(query, display=display, sort="date"):
-            key = item.original_link or item.link
-            if key and key not in seen:
-                seen.add(key)
-                merged.append(item)
+    기본 화면은 미국 경제·금융 8개 + 한국 경제·증시 2개로 구성해
+    글로벌 시장 뉴스 비중을 높이면서 국내 뉴스도 일정 비율 유지한다.
+    각 질의에서 최신 검색결과를 우선 1개씩 뽑아 주제 편중을 줄이고,
+    부족한 경우 같은 버킷의 다음 검색결과로 보충한다.
+    """
+    if queries is not None:
+        queries = list(queries)
+        merged: list[NaverNewsItem] = []
+        seen: set[str] = set()
+        for query in queries:
+            for item in search_naver_news(query, display=display, sort="date"):
+                key = item.original_link or item.link
+                if key and key not in seen:
+                    seen.add(key)
+                    merged.append(item)
+        return merged
 
-    # 각 질의의 NAVER 검색결과 순서를 그대로 유지한다. 검색결과 간 재정렬은 하지 않는다.
-    return merged
+    us_queries = (
+        "미국 연준 금리",
+        "미국 CPI PCE 물가",
+        "미국 고용 노동시장",
+        "미국 국채 금리 달러",
+        "S&P500 나스닥 미국 증시",
+        "미국 기업 실적 전망",
+        "미국 관세 무역 정책",
+        "미국 경제 전망 경기",
+    )
+    kr_queries = (
+        "한국은행 기준금리 원화",
+        "한국 증시 경제 정책",
+    )
 
+    def collect_bucket(bucket_queries: tuple[str, ...], target: int) -> list[NaverNewsItem]:
+        candidates_by_query: list[list[NaverNewsItem]] = []
+        for query in bucket_queries:
+            try:
+                candidates_by_query.append(search_naver_news(query, display=max(display, 6), sort="date"))
+            except Exception:
+                candidates_by_query.append([])
+
+        selected: list[NaverNewsItem] = []
+        seen: set[str] = set()
+
+        # 1차: 질의마다 최신 1개씩 -> 주제 다양성을 우선 확보
+        for results in candidates_by_query:
+            if len(selected) >= target:
+                break
+            for item in results:
+                key = item.original_link or item.link
+                if key and key not in seen:
+                    seen.add(key)
+                    selected.append(item)
+                    break
+
+        # 2차: 빈 질의가 있으면 같은 버킷의 다음 결과로 보충
+        if len(selected) < target:
+            for rank in range(1, max((len(x) for x in candidates_by_query), default=0)):
+                for results in candidates_by_query:
+                    if len(selected) >= target:
+                        break
+                    if rank >= len(results):
+                        continue
+                    item = results[rank]
+                    key = item.original_link or item.link
+                    if key and key not in seen:
+                        seen.add(key)
+                        selected.append(item)
+                if len(selected) >= target:
+                    break
+
+        return selected
+
+    us_count = min(8, max(0, display))
+    kr_count = min(2, max(0, display - us_count))
+    if display > 10:
+        # 향후 카드 수를 늘려도 기본 비중 8:2를 유지한다.
+        us_count = round(display * 0.8)
+        kr_count = display - us_count
+
+    merged = collect_bucket(us_queries, us_count) + collect_bucket(kr_queries, kr_count)
+    return merged[:display]
 
 
 def _get_supabase_client():
