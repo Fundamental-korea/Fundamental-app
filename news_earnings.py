@@ -610,7 +610,7 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
     for q in us_queries:
         batch=search_marketaux_news(query=q,language="en",display=3,today_only=True,must_have_entities=False); us.extend(batch); print(f"[LIVE NEWS DEBUG] Marketaux US batch={len(batch)} total={len(us)}")
     for q in kr_queries:
-        batch=search_marketaux_news(query=q,language="ko",countries="kr",display=3,today_only=True,must_have_entities=False,group_similar=False); kr.extend(batch); print(f"[LIVE NEWS DEBUG] Marketaux KR batch={len(batch)} total={len(kr)}")
+        batch=search_marketaux_news(query=q,language="ko",countries="kr",display=3,today_only=True,must_have_entities=False); kr.extend(batch); print(f"[LIVE NEWS DEBUG] Marketaux KR batch={len(batch)} total={len(kr)}")
     def dedupe_today(items):
         out=[]; seen=set()
         for item in _rank_global_news([x for x in items if _is_today_kst(x)]):
