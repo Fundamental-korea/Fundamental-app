@@ -21,6 +21,7 @@ from search_aliases import aliases_for
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
 from historical_pattern import analyze_all_indicator_patterns
+from market_overview import fetch_market_overview, load_market_overview
 from news_earnings import (
     NaverNewsItem,
     fetch_dart_disclosures,
@@ -3680,28 +3681,19 @@ def _get_earnings_events_db(days_back=90, days_forward=120):
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_home_market_indices(market):
-    specs = (
-        [("S&P 500", "^GSPC"), ("Nasdaq", "^IXIC"), ("Dow Jones", "^DJI")]
-        if market == "US"
-        else [("KOSPI", "^KS11"), ("KOSDAQ", "^KQ11")]
-    )
-    result = []
-    for label, ticker in specs:
-        try:
-            hist = yf.Ticker(ticker).history(period="5d", interval="1d", auto_adjust=False)
-            if hist is None or hist.empty or "Close" not in hist.columns:
-                continue
-            close = hist["Close"].dropna()
-            if close.empty:
-                continue
-            latest = float(close.iloc[-1])
-            previous = float(close.iloc[-2]) if len(close) >= 2 else latest
-            change_pct = ((latest / previous) - 1.0) * 100.0 if previous else 0.0
-            result.append({"label": label, "value": latest, "change_pct": change_pct})
-        except Exception:
-            continue
-    return result
+def _get_home_market_overview(market):
+    """DB snapshot first; direct source fallback keeps the home page resilient."""
+    target = str(market).upper()
+    try:
+        persisted = load_market_overview(target)
+        if persisted:
+            return persisted
+    except Exception:
+        pass
+    try:
+        return fetch_market_overview(target)
+    except Exception:
+        return []
 
 
 def _news_source_label(url: str, fallback: str = "뉴스") -> str:
