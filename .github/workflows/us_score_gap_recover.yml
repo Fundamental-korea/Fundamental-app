@@ -4,6 +4,11 @@ on:
   workflow_run:
     workflows: ["US Missing Metrics Recovery 4-9"]
     types: [completed]
+  push:
+    paths:
+      - "US_SCORE_GAP_TRIGGER.txt"
+      - "collector_us_standard_fallback.py"
+      - "collector_us_score_gap_recover.py"
   workflow_dispatch:
 
 permissions:
@@ -50,4 +55,6 @@ jobs:
           sb=create_client(os.environ["SUPABASE_URL"],os.environ["SUPABASE_KEY"])
           q=sb.table("US_Fundamental").select("ticker",count="exact",head=True).eq("data_unavailable",False).is_("total_score","null").execute()
           print(f"score_null={q.count}")
+          if q.count and q.count > 0:
+              raise SystemExit(f"score_gap verification failed: score_null={q.count}")
           PY
