@@ -6,3 +6,4 @@ opendartreader
 requests
 yfinance
 plotly
+# Streamlit Cloud full-redeploy marker: 2026-09-23
