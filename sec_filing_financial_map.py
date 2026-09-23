@@ -70,6 +70,7 @@ STANDARD_DEBT_TOTAL = {
     "Debt",
     "TotalDebt",
     "DebtAndFinanceLeaseLiabilities",
+    "DebtAndCapitalLeaseObligations",
     "LongTermDebtAndCapitalLeaseObligations",
     "LongTermDebtAndFinanceLeaseObligations",
     "DebtLongtermAndShorttermCombinedAmount",
@@ -142,7 +143,6 @@ FINANCE_LEASE_CONCEPTS = {
     "CapitalLeaseObligation",
     "CapitalLeaseObligationsCurrent",
     "CapitalLeaseObligationsNoncurrent",
-    "DebtAndCapitalLeaseObligations",
 }
 OPERATING_LEASE_CONCEPTS = {
     "OperatingLeaseLiabilityCurrent",
