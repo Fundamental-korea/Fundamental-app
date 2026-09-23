@@ -3553,14 +3553,14 @@ def _escape_html(value):
 def _get_home_macro_news_direct_fallback(
     display=20,
     day_key="",
-    cache_version="live-news-fetch-v6-debug",
+    cache_version="live-news-fetch-v7-rss",
 ):
     """Live News provider fallback. The version key intentionally busts stale 2h results."""
     return fetch_macro_news(display=min(max(display, 1), 20))
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_home_macro_news(display=20, cache_version="supabase-live-news-v6-debug"):
+def _get_home_macro_news(display=20, cache_version="supabase-live-news-v7-rss"):
     """Read today's automated Live News snapshot; recover safely if incomplete."""
     target = min(max(display, 1), 20)
     if supabase is not None:
