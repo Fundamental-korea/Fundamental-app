@@ -1,6 +1,11 @@
 name: Live News Auto Refresh
 
 on:
+  push:
+    paths:
+      - "news_earnings.py"
+      - "collect_live_news.py"
+      - ".github/workflows/live_news_refresh.yml"
   schedule:
     # Every 2 hours, UTC.
     - cron: "0 */2 * * *"
