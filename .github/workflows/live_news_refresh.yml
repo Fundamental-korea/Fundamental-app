@@ -54,4 +54,5 @@ jobs:
           SUPABASE_URL: https://cnweggechipghcivruie.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          FORCE_LIVE_NEWS_REFRESH: ${{ github.event_name == 'push' && '1' || '0' }}
         run: python collect_live_news.py
