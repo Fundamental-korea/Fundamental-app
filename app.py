@@ -3578,7 +3578,7 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v7-rss"):
                     "source,source_id,title,description,article_url,original_url,"
                     "published_at,metadata"
                 )
-                .in_("source", ["MARKETAUX", "NAVER", "RSS"])
+                .in_("source", ["MARKETAUX", "NAVER", "RSS", "BING NEWS"])
                 .eq("is_macro", True)
                 .gte("published_at", start_utc)
                 .lt("published_at", next_utc)
@@ -3614,7 +3614,7 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v7-rss"):
     return _get_home_macro_news_direct_fallback(
         display=target,
         day_key=day_key,
-        cache_version="live-news-fetch-v6-debug",
+        cache_version="live-news-fetch-v8-rss",
     )
 
 
