@@ -30,7 +30,7 @@ EXACT_CONCEPTS_V238 = {
     "inventory": set(EXACT_CONCEPTS_V234.get("inventory", set()))
     | {"InventoryOtherThanOreStockpilesNetOfReserves"},
     "interest_expense": set(EXACT_CONCEPTS_V234.get("interest_expense", set()))
-    | {"InterestExpenseNonoperating", "InterestIncomeExpenseNonoperatingNet", "InterestIncomeExpenseNet"},
+    | {"InterestExpenseNonoperating", "InterestExpenseNonOperating", "InterestIncomeExpenseNonoperatingNet", "InterestIncomeExpenseNet"},
     "sga": set(EXACT_CONCEPTS_V234.get("sga", set()))
     | {"GeneralAndAdministrativeExpense"},
     # Keep filing-XBRL recovery aligned with collector_us_fundamental.py.
@@ -215,6 +215,66 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
                 form=g.get("form"), filed=g.get("filed"), instant=False,
                 dimensioned=False, source="filing-xbrl-derived", score=103.0,
                 reason="same-context duration identity: GrossProfit - OperatingExpenses",
+            )
+
+        # Some industrial issuers do not present an operating-income subtotal.
+        # If the filing supplies pretax income, interest expense, and a signed
+        # non-operating income/expense line in the same context, reconstruct
+        # operating income from the statement identity:
+        # pretax = operating income - interest expense - other non-operating.
+        pretax = self._same_context_duration(
+            rows,
+            {
+                "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+                "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+                "IncomeLossFromContinuingOperationsBeforeIncomeTaxes",
+                "ProfitLossBeforeTax",
+            },
+            year,
+        )
+        interest = self._same_context_duration(
+            rows,
+            {
+                "InterestExpenseNonoperating",
+                "InterestExpenseNonOperating",
+                "InterestExpenseDebt",
+                "InterestExpenseNonOperatingNet",
+                "InterestExpenseNonoperatingNet",
+                "InterestExpenseNonOperatingAndOther",
+                "InterestAndDebtExpense",
+                "InterestExpense",
+                "InterestIncomeExpenseNet",
+                "InterestIncomeExpenseNonoperatingNet",
+            },
+            year,
+        )
+        other = self._same_context_duration(
+            rows,
+            {
+                "OtherNonoperatingIncomeExpense",
+                "OtherNonoperatingIncome",
+                "OtherNonoperatingExpense",
+                "NonoperatingIncomeExpense",
+                "OtherIncomeExpenseNet",
+            },
+            year,
+        )
+        for key, p in pretax.items():
+            if key not in interest or key not in other:
+                continue
+            i = interest[key]
+            o = other[key]
+            value = float(p["value"]) + abs(float(i["value"])) + float(o["value"])
+            return XBRLCandidate(
+                metric="operating_income", namespace="derived",
+                concept="DerivedOperatingIncomeFromPretaxInterestAndOther",
+                label="Operating income (derived from pretax income, interest, and other non-operating income/expense)",
+                value=value,
+                unit=p.get("unit") or i.get("unit") or o.get("unit") or "",
+                end=p.get("end"), start=p.get("start"), fy=p.get("fy"),
+                form=p.get("form"), filed=p.get("filed"), instant=False,
+                dimensioned=False, source="filing-xbrl-derived", score=101.0,
+                reason="same-context duration identity: Pretax + InterestExpense + OtherNonoperatingIncomeExpense",
             )
         return None
 
