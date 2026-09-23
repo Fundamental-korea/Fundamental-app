@@ -497,7 +497,6 @@ def search_marketaux_news(
         # NaverNewsItem에는 이미지 필드가 없으므로 대표 이미지는 app.py에서 URL을 다시 확인한다.
     return items
 
-
 def _source_domain(item: NaverNewsItem) -> str:
     try:
         return urlparse(item.original_link or item.link).netloc.lower().removeprefix("www.")
@@ -906,3 +905,85 @@ def persist_live_news_snapshot(
     client = supabase_client or _get_supabase_client()
     response = (
         client.table("news_items")
+        .upsert(rows, on_conflict="source,source_id")
+        .execute()
+    )
+    return len(response.data or [])
+
+
+def persist_naver_news(
+    items: Iterable[NaverNewsItem],
+    *,
+    market: str = "KR",
+    stock_code: Optional[str] = None,
+    stock_name: Optional[str] = None,
+    category: str = "macro",
+    supabase_client=None,
+) -> int:
+    """Persist filtered NAVER news for either macro or a specific stock."""
+    rows = []
+    for item in items:
+        source_id = item.original_link or item.link
+        if not item.title or not source_id:
+            continue
+        try:
+            published_at = datetime.strptime(
+                item.pub_date, "%a, %d %b %Y %H:%M:%S %z"
+            ).isoformat()
+        except ValueError:
+            published_at = None
+
+        rows.append(
+            {
+                "source": "NAVER",
+                "source_id": source_id,
+                "market": market,
+                "stock_code": stock_code,
+                "stock_name": stock_name,
+                "category": category,
+                "title": item.title,
+                "description": item.description,
+                "article_url": item.link,
+                "original_url": item.original_link,
+                "published_at": published_at,
+                "is_macro": category == "macro",
+                "is_investor_relevant": True,
+                "event_type": None,
+                "filter_reason": None,
+                "metadata": {"query": item.query},
+            }
+        )
+
+    if not rows:
+        return 0
+
+    client = supabase_client or _get_supabase_client()
+    response = (
+        client.table("news_items")
+        .upsert(rows, on_conflict="source,source_id")
+        .execute()
+    )
+    return len(response.data or rows)
+
+def to_records(items: Iterable[object]) -> list[dict]:
+    return [asdict(item) for item in items]
+
+
+__all__ = [
+    "DartDisclosure",
+    "NaverNewsItem",
+    "EarningsEvent",
+    "load_dart_corp_codes",
+    "get_corp_code",
+    "fetch_dart_disclosures",
+    "build_earnings_events",
+    "search_naver_news",
+    "search_marketaux_news",
+    "fetch_stock_news",
+    "fetch_macro_news",
+    "filter_investor_news",
+    "persist_earnings_events",
+    "persist_live_news_snapshot",
+    "persist_naver_news",
+    "to_records",
+]
