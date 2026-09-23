@@ -27,14 +27,13 @@ from typing import Iterable, Optional
 import pandas as pd
 import requests
 import xml.etree.ElementTree as ET
-from urllib.parse import parse_qsl, urlencode, urlparse
+from urllib.parse import urlparse
 from zoneinfo import ZoneInfo
 
 
 DART_LIST_URL = "https://opendart.fss.or.kr/api/list.json"
 DART_CORPCODE_URL = "https://opendart.fss.or.kr/api/corpCode.xml"
 NAVER_NEWS_URL = "https://naverapihub.apigw.ntruss.com/search/v1/news"
-GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 
 # Planning-document policy: exclude short-term/speculative content.
 EXCLUDED_NEWS_TERMS = (
@@ -340,7 +339,6 @@ def search_naver_news(
     sort: str = "date",
 ) -> list[NaverNewsItem]:
     """Search NAVER News using the official NAVER API HUB Search News API."""
-    print(f"[LIVE NEWS DEBUG] NAVER start | query={query!r} | display={display}")
     client_id = _env("NAVER_CLIENT_ID")
     client_secret = _env("NAVER_CLIENT_SECRET")
 
@@ -360,8 +358,6 @@ def search_naver_news(
     )
     response.raise_for_status()
     payload = response.json()
-    raw_count = len(payload.get("items", []) or [])
-    print(f"[LIVE NEWS DEBUG] NAVER response | query={query!r} | status={response.status_code} | items={raw_count}")
 
     items = []
     for item in payload.get("items", []):
@@ -377,63 +373,6 @@ def search_naver_news(
         )
     # NAVER 검색 API 약관(2026-09-07 개정)에 따라 검색결과 자체를 임의로
     # 재정렬/변형/삭제하지 않고, 질의어로 범위를 좁힌 검색결과를 그대로 반환한다.
-    return items
-
-
-def search_google_news_rss(
-    query: str,
-    *,
-    language: str = "en",
-    display: int = 20,
-) -> list[NaverNewsItem]:
-    """Emergency no-key news fallback using Google News RSS."""
-    query = str(query or "").strip()
-    if not query:
-        return []
-
-    if language.startswith("ko"):
-        params = {"q": query, "hl": "ko", "gl": "KR", "ceid": "KR:ko"}
-    else:
-        params = {"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"}
-
-    try:
-        response = requests.get(
-            GOOGLE_NEWS_RSS_URL,
-            params=params,
-            timeout=10,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNews/1.0)"},
-        )
-        response.raise_for_status()
-        root = ET.fromstring(response.content)
-    except Exception as exc:
-        print(f"[Google News RSS] request failed: {type(exc).__name__}: {exc}")
-        return []
-
-    items: list[NaverNewsItem] = []
-    for item in root.findall(".//item")[: max(1, min(display, 20))]:
-        title = _clean_html(item.findtext("title") or "")
-        link = (item.findtext("link") or "").strip()
-        pub_date = (item.findtext("pubDate") or "").strip()
-        description = _clean_html(item.findtext("description") or "")
-        source_el = item.find("source")
-        source = (
-            _clean_html(source_el.text or "")
-            if source_el is not None and source_el.text
-            else "Google News"
-        )
-        if not title or not link:
-            continue
-        items.append(
-            NaverNewsItem(
-                title=title,
-                description=description,
-                link=link,
-                original_link=link,
-                pub_date=pub_date,
-                query=query,
-                source=source,
-            )
-        )
     return items
 
 
@@ -461,49 +400,6 @@ def _marketaux_source_label(article: dict) -> str:
     return domain.removeprefix("www.") or "News"
 
 
-def _canonical_news_key(item: NaverNewsItem) -> str:
-    """Build a stable dedupe key while ignoring common tracking parameters."""
-    raw = str(item.original_link or item.link or "").strip()
-    if raw:
-        try:
-            parsed = urlparse(raw)
-            tracking = {
-                "utm_source", "utm_medium", "utm_campaign", "utm_term",
-                "utm_content", "utm_id", "gclid", "fbclid"
-            }
-            kept = [
-                (key, value)
-                for key, value in parse_qsl(parsed.query, keep_blank_values=True)
-                if key.lower() not in tracking
-            ]
-            clean_query = urlencode(kept)
-            return parsed._replace(query=clean_query, fragment="").geturl().rstrip("/").lower()
-        except Exception:
-            return raw.lower()
-    title = re.sub(r"\s+", " ", str(item.title or "")).strip().lower()
-    return title
-
-
-def _is_today_kst(item: NaverNewsItem) -> bool:
-    try:
-        published = pd.to_datetime(item.pub_date, utc=True)
-        return published.tz_convert("Asia/Seoul").date() == datetime.now(
-            ZoneInfo("Asia/Seoul")
-        ).date()
-    except Exception:
-        return False
-
-
-def _marketaux_error_detail(response) -> str:
-    try:
-        payload = response.json()
-        error = payload.get("error") or payload.get("errors") or payload
-        text_value = str(error)
-    except Exception:
-        text_value = response.text
-    return re.sub(r"api_token[^,}]*", "api_token=***", text_value, flags=re.IGNORECASE)[:500]
-
-
 def search_marketaux_news(
     query: str = "",
     *,
@@ -514,41 +410,33 @@ def search_marketaux_news(
     display: int = 3,
     today_only: bool = False,
     must_have_entities: bool = True,
-    group_similar: bool = True,
 ) -> list[NaverNewsItem]:
-    """Fetch Marketaux news and normalize it to the shared news item model."""
+    """Fetch global financial news from Marketaux and normalize it to NaverNewsItem."""
     token = _marketaux_token()
-    print(f"[LIVE NEWS DEBUG] Marketaux start | query={query!r} | language={language} | display={display} | token_present={bool(token)} | today_only={today_only}")
     if not token:
-        print("[LIVE NEWS DEBUG] Marketaux skipped | MARKETAUX_API_TOKEN missing")
         return []
 
-    limit = min(max(display, 1), 3)
     params = {
         "api_token": token,
         "language": language,
-        "limit": limit,
-        "group_similar": "true" if group_similar else "false",
-        "must_have_entities": "true" if must_have_entities else "false",
+        "limit": min(max(display, 1), 3),
+        "group_similar": "true",
         "sort": "published_at",
     }
+
+    # Marketaux timestamps are UTC. Live News "today" is defined by the
+    # Korea calendar day (Asia/Seoul), then converted to UTC for the API.
+    params["must_have_entities"] = "true" if must_have_entities else "false"
 
     if today_only:
         kst = ZoneInfo("Asia/Seoul")
         now_kst = datetime.now(kst)
         start_kst = now_kst.replace(hour=0, minute=0, second=0, microsecond=0)
         next_kst = start_kst + timedelta(days=1)
-        params["published_after"] = start_kst.astimezone(timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%S"
-        )
-        params["published_before"] = next_kst.astimezone(timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%S"
-        )
+        params["published_after"] = start_kst.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+        params["published_before"] = next_kst.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
     else:
-        params["published_after"] = (
-            datetime.now(timezone.utc) - timedelta(days=2)
-        ).strftime("%Y-%m-%dT%H:%M:%S")
-
+        params["published_after"] = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M")
     if query.strip():
         params["search"] = query.strip()
     if symbols:
@@ -564,16 +452,9 @@ def search_marketaux_news(
             params=params,
             timeout=15,
         )
-        if not response.ok:
-            print(
-                f"[Marketaux] HTTP {response.status_code}: "
-                f"{_marketaux_error_detail(response)}"
-            )
-            return []
+        response.raise_for_status()
         payload = response.json()
-        print(f"[LIVE NEWS DEBUG] Marketaux response | query={query!r} | status={response.status_code} | articles={len(payload.get("data", []) or [])}")
-    except Exception as exc:
-        print(f"[Marketaux] request failed: {type(exc).__name__}: {exc}")
+    except Exception:
         return []
 
     items: list[NaverNewsItem] = []
@@ -582,6 +463,10 @@ def search_marketaux_news(
         title = str(article.get("title") or "").strip()
         if not url or not title:
             continue
+        description = str(article.get("description") or article.get("snippet") or "").strip()
+        image_url = str(article.get("image_url") or "").strip()
+        source = _marketaux_source_label(article)
+        published_at = str(article.get("published_at") or "").strip()
 
         entity_rows = []
         for entity in (article.get("entities") or [])[:8]:
@@ -589,18 +474,10 @@ def search_marketaux_news(
             symbol = str(entity.get("symbol") or "").strip()
             industry = str(entity.get("industry") or "").strip()
             if entity_name or symbol:
-                label = (
-                    f"{entity_name} ({symbol})"
-                    if entity_name and symbol
-                    else (entity_name or symbol)
-                )
+                label = f"{entity_name} ({symbol})" if entity_name and symbol else (entity_name or symbol)
                 if industry:
                     label += f" · {industry}"
                 entity_rows.append(label)
-
-        description = str(
-            article.get("description") or article.get("snippet") or ""
-        ).strip()
 
         items.append(
             NaverNewsItem(
@@ -608,16 +485,16 @@ def search_marketaux_news(
                 description=_clean_html(description),
                 link=url,
                 original_link=url,
-                pub_date=str(article.get("published_at") or "").strip(),
-                query=query or "시장 뉴스",
-                source=_marketaux_source_label(article),
-                image_url=str(article.get("image_url") or "").strip(),
+                pub_date=published_at,
+                query=query or "US market news",
+                source=source,
+                image_url=image_url,
                 snippet=_clean_html(str(article.get("snippet") or "")),
                 keywords=_clean_html(str(article.get("keywords") or "")),
                 entities=" | ".join(entity_rows),
             )
         )
-    print(f"[LIVE NEWS DEBUG] Marketaux normalized | query={query!r} | items={len(items)}")
+        # NaverNewsItem에는 이미지 필드가 없으므로 대표 이미지는 app.py에서 URL을 다시 확인한다.
     return items
 
 
@@ -645,327 +522,131 @@ def _rank_global_news(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
     preferred = {domain: idx for idx, domain in enumerate(PREFERRED_GLOBAL_NEWS_DOMAINS)}
 
     def rank(item: NaverNewsItem):
+        source_rank = preferred.get(_source_domain(item), 999)
         try:
             published_ts = datetime.fromisoformat(
-                str(item.pub_date or "").replace("Z", "+00:00")
+                (item.pub_date or "").replace("Z", "+00:00")
             ).timestamp()
         except Exception:
             published_ts = 0
-        source_rank = preferred.get(_source_domain(item), 999)
-        # 최신 기사 우선, 동일 시각대에서 선호 출처를 앞세운다.
-        return -published_ts, source_rank
+        return source_rank, -published_ts
 
     return sorted(items, key=rank)
 
 
-def fetch_stock_news(
-    stock_name: str,
-    stock_code: Optional[str] = None,
-    display: int = 3,
-) -> list[NaverNewsItem]:
-    """Reliable on-demand stock news without consuming the main Marketaux quota.
-
-    Main Live News reserves Marketaux for the scheduled 6 US + 1 KR feed.
-    Korean stocks use NAVER first; US stocks use Google News RSS first.
-    """
+def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 3) -> list[NaverNewsItem]:
+    """Fetch company news with one Marketaux request, then NAVER fallback."""
     name = str(stock_name or "").strip()
     code = str(stock_code or "").strip()
     if not name and not code:
         return []
 
     target = min(max(display, 1), 3)
+    marketaux_items: list[NaverNewsItem] = []
 
-    if code.isdigit():
-        # 한국 개별종목: NAVER 회사명 검색 -> RSS emergency fallback
-        candidates: list[NaverNewsItem] = []
-        for query in (name, f"{name} {code}".strip()):
-            if not query:
-                continue
-            try:
-                candidates.extend(
-                    search_naver_news(query, display=target, sort="date")
-                )
-            except Exception as exc:
-                print(
-                    f"[NAVER stock news] request failed: "
-                    f"{type(exc).__name__}: {exc}"
-                )
-
-            unique = []
-            seen = set()
-            for item in _rank_global_news(candidates):
-                key = _canonical_news_key(item)
-                if key and key not in seen:
-                    seen.add(key)
-                    unique.append(item)
-                    if len(unique) >= target:
-                        return unique[:target]
-
-        rss = search_google_news_rss(
-            name or code,
-            language="ko",
+    if code and not code.isdigit():
+        marketaux_items = search_marketaux_news(
+            symbols=code,
+            language="en",
+            countries="us",
             display=target,
         )
-        if rss:
-            return _rank_global_news(rss)[:target]
-        return []
-
-    # 미국 개별종목: Google News RSS를 우선 사용해
-    # 메인 Live News용 Marketaux 2시간/일일 예산을 침범하지 않는다.
-    rss_queries = [f"{name} {code}".strip(), name, code]
-    rss_candidates: list[NaverNewsItem] = []
-    seen = set()
-    for query in rss_queries:
-        if not query:
-            continue
-        rss_candidates.extend(
-            search_google_news_rss(query, language="en", display=target)
-        )
-        unique = []
-        for item in _rank_global_news(rss_candidates):
-            key = _canonical_news_key(item)
-            if key and key not in seen:
-                seen.add(key)
-                unique.append(item)
-                if len(unique) >= target:
-                    return unique[:target]
-
-    # RSS가 비어 있으면 NAVER의 글로벌 검색을 마지막 보조 경로로 사용한다.
-    if name:
-        try:
-            fallback = search_naver_news(name, display=target, sort="date")
-        except Exception:
-            fallback = []
-        if fallback:
-            return _rank_global_news(fallback)[:target]
-
-    return []
-
-
-def fetch_macro_news(
-    queries: Optional[Iterable[str]] = None,
-    display: int = 20,
-) -> list[NaverNewsItem]:
-    """Main Live News: 16 US + 4 KR, strictly today's KST news.
-
-    Primary: Marketaux (6 US + 1 KR requests/run).
-    Secondary: NAVER gap-fill.
-    Emergency: Google News RSS, which requires no API key and adds no Marketaux usage.
-    """
-    target = min(max(display, 1), 20)
-    print(f"[LIVE NEWS DEBUG] ===== fetch_macro_news START | target={target} =====")
-    print(f"[LIVE NEWS DEBUG] Provider config | Marketaux={bool(_marketaux_token())} | NAVER={bool(_env_optional("NAVER_CLIENT_ID")) and bool(_env_optional("NAVER_CLIENT_SECRET"))} | RSS=True")
-
-    if queries is not None:
-        merged: list[NaverNewsItem] = []
-        seen: set[str] = set()
-        for query in list(queries):
-            items = search_marketaux_news(
-                query=query,
-                language="en",
-                display=3,
-                today_only=True,
-                must_have_entities=False,
-                group_similar=False,
-            )
-            if not items:
-                try:
-                    items = [
-                        item for item in search_naver_news(
-                            query, display=min(target, 3), sort="date"
-                        )
-                        if _is_today_kst(item)
-                    ]
-                except Exception:
-                    items = []
-            for item in items:
-                key = _canonical_news_key(item)
-                if not key or key in seen:
-                    continue
-                seen.add(key)
-                merged.append(item)
-                if len(merged) >= target:
-                    return _rank_global_news(merged)[:target]
-        return _rank_global_news(merged)[:target]
-
-    us_queries = (
-        "Federal Reserve interest rates inflation CPI PCE Treasury yields dollar",
-        "US economy jobs payrolls GDP consumer spending retail sales wages",
-        "S&P 500 Nasdaq Dow earnings corporate profits market outlook",
-        "US Treasury bonds yields dollar financial markets credit conditions",
-        "US tariffs trade policy manufacturing industrial activity business investment",
-        "AI semiconductors technology companies energy oil prices US markets",
-    )
-    kr_queries = (
-        "한국은행 기준금리 원화 환율 코스피 한국 경제 수출 반도체 증시",
-    )
-
-    us_candidates: list[NaverNewsItem] = []
-    for query in us_queries:
-        batch = search_marketaux_news(
-            query=query,
-            language="en",
-            display=3,
-            today_only=True,
-            must_have_entities=False,
-            group_similar=False,
-        )
-        us_candidates.extend(batch)
-        print(f"[LIVE NEWS DEBUG] US Marketaux batch | {len(batch)} items | total_candidates={len(us_candidates)}")
-
-    kr_candidates: list[NaverNewsItem] = []
-    for query in kr_queries:
-        batch = search_marketaux_news(
-            query=query,
+    elif name:
+        marketaux_items = search_marketaux_news(
+            query=name,
             language="ko",
             countries="kr",
-            display=3,
-            today_only=True,
-            must_have_entities=False,
-            group_similar=False,
-        )
-        kr_candidates.extend(batch)
-        print(f"[LIVE NEWS DEBUG] KR Marketaux batch | {len(batch)} items | total_candidates={len(kr_candidates)}")
-
-    us_ranked = []
-    seen = set()
-    for item in _rank_global_news([x for x in us_candidates if _is_today_kst(x)]):
-        key = _canonical_news_key(item)
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        us_ranked.append(item)
-
-    kr_ranked = []
-    seen = set()
-    for item in _rank_global_news([x for x in kr_candidates if _is_today_kst(x)]):
-        key = _canonical_news_key(item)
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        kr_ranked.append(item)
-
-    us_target = min(16, target)
-    kr_target = min(4, max(0, target - us_target))
-
-    selected_us = us_ranked[:us_target]
-    selected_kr = kr_ranked[:kr_target]
-    print(f"[LIVE NEWS DEBUG] After Marketaux | US={len(selected_us)}/{us_target} | KR={len(selected_kr)}/{kr_target}")
-
-    fallback_us: list[NaverNewsItem] = []
-    fallback_kr: list[NaverNewsItem] = []
-
-    if len(selected_us) < us_target or len(selected_kr) < kr_target:
-        try:
-            fallback_us = [
-                item for item in search_naver_news(
-                    "미국 경제 연준 금리 물가 고용 증시 실적 채권 달러",
-                    display=20,
-                    sort="date",
-                )
-                if _is_today_kst(item)
-            ]
-        except Exception as exc:
-            print(f"[LIVE NEWS DEBUG] NAVER US gap-fill failed | {type(exc).__name__}: {exc}")
-            fallback_us = []
-        print(f"[LIVE NEWS DEBUG] NAVER US gap-fill candidates={len(fallback_us)}")
-
-        try:
-            fallback_kr = [
-                item for item in search_naver_news(
-                    "한국은행 기준금리 원화 환율 수출 반도체 코스피 경제",
-                    display=10,
-                    sort="date",
-                )
-                if _is_today_kst(item)
-            ]
-        except Exception as exc:
-            print(f"[LIVE NEWS DEBUG] NAVER KR gap-fill failed | {type(exc).__name__}: {exc}")
-            fallback_kr = []
-        print(f"[LIVE NEWS DEBUG] NAVER KR gap-fill candidates={len(fallback_kr)}")
-
-    selected = list(selected_us) + list(selected_kr)
-    selected_keys = {_canonical_news_key(item) for item in selected}
-
-    for item in fallback_us:
-        if len(selected_us) >= us_target:
-            break
-        key = _canonical_news_key(item)
-        if key and key not in selected_keys:
-            selected_us.append(item)
-            selected_keys.add(key)
-
-    for item in fallback_kr:
-        if len(selected_kr) >= kr_target:
-            break
-        key = _canonical_news_key(item)
-        if key and key not in selected_keys:
-            selected_kr.append(item)
-            selected_keys.add(key)
-
-    selected = list(selected_us) + list(selected_kr)
-
-    # 최종 비상 경로: Naver까지 비어 있으면 Google News RSS로 현재일 뉴스를 채운다.
-    if len(selected) < target:
-        rss_us = []
-        rss_kr = []
-        for query in (
-            "Federal Reserve inflation interest rates US economy markets earnings",
-            "US stocks Treasury yields dollar tariffs technology energy",
-        ):
-            rss_us.extend(
-                item for item in search_google_news_rss(
-                    query, language="en", display=10
-                )
-                if _is_today_kst(item)
-            )
-
-        rss_kr.extend(
-            item for item in search_google_news_rss(
-                "한국은행 금리 환율 코스피 경제 수출 반도체 증시",
-                language="ko",
-                display=10,
-            )
-            if _is_today_kst(item)
+            display=target,
         )
 
+    if marketaux_items:
+        return _rank_global_news(marketaux_items)[:target]
+
+    terms = [term for term in (name, code) if term and not (term == code and code.isdigit())]
+    query = " ".join(terms)
+    return search_naver_news(query, display=target, sort="date") if query else []
+
+
+
+GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
+
+def search_google_news_rss(query: str, *, language: str = "en", display: int = 20) -> list[NaverNewsItem]:
+    query = str(query or "").strip()
+    if not query: return []
+    params = {"q": query, "hl": "ko", "gl": "KR", "ceid": "KR:ko"} if language.startswith("ko") else {"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"}
+    try:
+        response = requests.get(GOOGLE_NEWS_RSS_URL, params=params, timeout=10, headers={"User-Agent":"Mozilla/5.0 (compatible; FundamentalNews/1.0)"})
+        response.raise_for_status(); root = ET.fromstring(response.content)
+    except Exception as exc:
+        print(f"[LIVE NEWS DEBUG] RSS failed | {query!r} | {type(exc).__name__}: {exc}"); return []
+    out=[]
+    for node in root.findall(".//item")[:max(1,min(display,20))]:
+        title=_clean_html(node.findtext("title") or ""); link=(node.findtext("link") or "").strip(); pub=(node.findtext("pubDate") or "").strip(); desc=_clean_html(node.findtext("description") or "")
+        src=node.find("source"); source=_clean_html(src.text or "") if src is not None and src.text else "Google News"
+        if title and link: out.append(NaverNewsItem(title=title,description=desc,link=link,original_link=link,pub_date=pub,query=query,source=source))
+    print(f"[LIVE NEWS DEBUG] RSS response | {query!r} | items={len(out)}"); return out
+
+def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20) -> list[NaverNewsItem]:
+    """Main Live News: 16 US + 4 KR, KST-today only; NAVER optional, RSS emergency."""
+    target=min(max(display,1),20)
+    naver_ok=bool(_env_optional("NAVER_CLIENT_ID")) and bool(_env_optional("NAVER_CLIENT_SECRET"))
+    print(f"[LIVE NEWS DEBUG] START target={target} Marketaux={bool(_marketaux_token())} NAVER={naver_ok} RSS=True")
+    if queries is not None:
+        merged=[]; seen=set()
+        for query in list(queries):
+            items=search_marketaux_news(query=query,language="en",display=3,today_only=True)
+            if not items and naver_ok:
+                try: items=[x for x in search_naver_news(query,display=min(target,3),sort="date") if _is_today_kst(x)]
+                except Exception as exc: print(f"[LIVE NEWS DEBUG] NAVER fallback failed | {type(exc).__name__}: {exc}"); items=[]
+            if not items: items=[x for x in search_google_news_rss(query,language="en",display=min(target,3)) if _is_today_kst(x)]
+            for item in items:
+                key=_canonical_news_key(item)
+                if key and key not in seen: seen.add(key); merged.append(item)
+                if len(merged)>=target: return _rank_global_news(merged)[:target]
+        return _rank_global_news(merged)[:target]
+    us_queries=("Federal Reserve interest rates inflation CPI PCE Treasury yields dollar","US economy jobs payrolls GDP consumer spending retail sales wages","S&P 500 Nasdaq Dow earnings corporate profits market outlook","US Treasury bonds yields dollar financial markets credit conditions","US tariffs trade policy manufacturing industrial activity business investment","AI semiconductors technology companies energy oil prices US markets")
+    kr_queries=("한국은행 기준금리 원화 환율 코스피 한국 경제 수출 반도체 증시",)
+    us=[]; kr=[]
+    for q in us_queries:
+        batch=search_marketaux_news(query=q,language="en",display=3,today_only=True,must_have_entities=False,group_similar=False); us.extend(batch); print(f"[LIVE NEWS DEBUG] Marketaux US batch={len(batch)} total={len(us)}")
+    for q in kr_queries:
+        batch=search_marketaux_news(query=q,language="ko",countries="kr",display=3,today_only=True,must_have_entities=False,group_similar=False); kr.extend(batch); print(f"[LIVE NEWS DEBUG] Marketaux KR batch={len(batch)} total={len(kr)}")
+    def dedupe_today(items):
+        out=[]; seen=set()
+        for item in _rank_global_news([x for x in items if _is_today_kst(x)]):
+            key=_canonical_news_key(item)
+            if key and key not in seen: seen.add(key); out.append(item)
+        return out
+    us_rank=dedupe_today(us); kr_rank=dedupe_today(kr)
+    us_target=min(16,target); kr_target=min(4,max(0,target-us_target))
+    selected_us=us_rank[:us_target]; selected_kr=kr_rank[:kr_target]; selected_keys={_canonical_news_key(x) for x in selected_us+selected_kr}
+    if naver_ok and (len(selected_us)<us_target or len(selected_kr)<kr_target):
+        for q,bucket,needed,label in (("미국 경제 연준 금리 물가 고용 증시 실적 채권 달러",selected_us,us_target,"US"),("한국은행 기준금리 원화 환율 수출 반도체 코스피 경제",selected_kr,kr_target,"KR")):
+            try:
+                candidates=[x for x in search_naver_news(q,display=20,sort="date") if _is_today_kst(x)]
+                for item in candidates:
+                    if len(bucket)>=needed: break
+                    key=_canonical_news_key(item)
+                    if key and key not in selected_keys: selected_keys.add(key); bucket.append(item)
+                print(f"[LIVE NEWS DEBUG] NAVER {label} candidates={len(candidates)} selected={len(bucket)}")
+            except Exception as exc: print(f"[LIVE NEWS DEBUG] NAVER {label} unavailable | {type(exc).__name__}: {exc}")
+    if len(selected_us)<us_target or len(selected_kr)<kr_target:
+        rss_us=[]; rss_kr=[]
+        for q in ("Federal Reserve inflation interest rates US economy markets earnings","US stocks Treasury yields dollar tariffs technology energy"):
+            rss_us.extend([x for x in search_google_news_rss(q,language="en",display=10) if _is_today_kst(x)])
+        rss_kr.extend([x for x in search_google_news_rss("한국은행 금리 환율 코스피 경제 수출 반도체 증시",language="ko",display=10) if _is_today_kst(x)])
         for item in _rank_global_news(rss_us):
-            if len(selected_us) >= us_target:
-                break
-            key = _canonical_news_key(item)
-            if key and key not in selected_keys:
-                selected_us.append(item)
-                selected_keys.add(key)
-
+            if len(selected_us)>=us_target: break
+            key=_canonical_news_key(item)
+            if key and key not in selected_keys: selected_keys.add(key); selected_us.append(item)
         for item in _rank_global_news(rss_kr):
-            if len(selected_kr) >= kr_target:
-                break
-            key = _canonical_news_key(item)
-            if key and key not in selected_keys:
-                selected_kr.append(item)
-                selected_keys.add(key)
-
-        selected = list(selected_us) + list(selected_kr)
-        selected_keys = {_canonical_news_key(item) for item in selected}
-        print(f"[LIVE NEWS DEBUG] After RSS gap-fill | US={len(selected_us)} | KR={len(selected_kr)} | total={len(selected)}")
-
-        # 그래도 모자라면 양쪽 RSS 후보에서 남은 현재일 기사를 추가한다.
-        for item in _rank_global_news(rss_us + rss_kr):
-            if len(selected) >= target:
-                break
-            key = _canonical_news_key(item)
-            if key and key not in selected_keys:
-                selected.append(item)
-                selected_keys.add(key)
-
-    final = selected[:target]
-    print(f"[LIVE NEWS DEBUG] ===== fetch_macro_news END | US={len(selected_us)} | KR={len(selected_kr)} | TOTAL={len(final)} =====")
-    if final:
-        print("[LIVE NEWS DEBUG] Final sources | " + ", ".join(f"{x.source}:{x.title[:45]}" for x in final[:20]))
-    else:
-        print("[LIVE NEWS DEBUG] FINAL EMPTY — all providers returned no usable articles")
+            if len(selected_kr)>=kr_target: break
+            key=_canonical_news_key(item)
+            if key and key not in selected_keys: selected_keys.add(key); selected_kr.append(item)
+        print(f"[LIVE NEWS DEBUG] RSS selected US={len(selected_us)}/{us_target} KR={len(selected_kr)}/{kr_target}")
+    final=(selected_us+selected_kr)[:target]
+    print(f"[LIVE NEWS DEBUG] END total={len(final)} US={len(selected_us)} KR={len(selected_kr)}")
     return final
-
 
 
 def _get_supabase_client():
@@ -1019,3 +700,140 @@ def persist_earnings_events(events: Iterable[EarningsEvent], *, supabase_client=
     response = (
         client.table("earnings_events")
         .upsert(rows, on_conflict="market,receipt_no")
+        .execute()
+    )
+    return len(response.data or rows)
+
+
+def persist_live_news_snapshot(
+    items: Iterable[NaverNewsItem],
+    *,
+    supabase_client=None,
+) -> int:
+    """Persist the automated Marketaux macro feed into news_items."""
+    rows = []
+    for item in items:
+        source_id = item.original_link or item.link
+        if not item.title or not source_id:
+            continue
+        try:
+            published_at = pd.to_datetime(item.pub_date, utc=True).isoformat()
+        except Exception:
+            published_at = None
+
+        rows.append(
+            {
+                "source": "NAVER" if str(item.source or "").strip().upper() == "NAVER" else "MARKETAUX",
+                "source_id": source_id,
+                "market": "GLOBAL",
+                "stock_code": None,
+                "stock_name": None,
+                "category": "macro",
+                "title": item.title,
+                "description": item.description,
+                "article_url": item.link,
+                "original_url": item.original_link,
+                "published_at": published_at,
+                "is_macro": True,
+                "is_investor_relevant": True,
+                "event_type": None,
+                "filter_reason": None,
+                "metadata": {
+                    "query": item.query,
+                    "source_label": item.source,
+                    "image_url": item.image_url,
+                    "snippet": item.snippet,
+                    "keywords": item.keywords,
+                    "entities": item.entities,
+                },
+            }
+        )
+
+    if not rows:
+        return 0
+
+    client = supabase_client or _get_supabase_client()
+    response = (
+        client.table("news_items")
+        .upsert(rows, on_conflict="source,source_id")
+        .execute()
+    )
+    return len(response.data or rows)
+
+
+def persist_naver_news(
+    items: Iterable[NaverNewsItem],
+    *,
+    market: str = "KR",
+    stock_code: Optional[str] = None,
+    stock_name: Optional[str] = None,
+    category: str = "macro",
+    supabase_client=None,
+) -> int:
+    """Persist filtered NAVER news for either macro or a specific stock."""
+    rows = []
+    for item in items:
+        source_id = item.original_link or item.link
+        if not item.title or not source_id:
+            continue
+        try:
+            published_at = datetime.strptime(
+                item.pub_date, "%a, %d %b %Y %H:%M:%S %z"
+            ).isoformat()
+        except ValueError:
+            published_at = None
+
+        rows.append(
+            {
+                "source": "NAVER",
+                "source_id": source_id,
+                "market": market,
+                "stock_code": stock_code,
+                "stock_name": stock_name,
+                "category": category,
+                "title": item.title,
+                "description": item.description,
+                "article_url": item.link,
+                "original_url": item.original_link,
+                "published_at": published_at,
+                "is_macro": category == "macro",
+                "is_investor_relevant": True,
+                "event_type": None,
+                "filter_reason": None,
+                "metadata": {"query": item.query},
+            }
+        )
+
+    if not rows:
+        return 0
+
+    client = supabase_client or _get_supabase_client()
+    response = (
+        client.table("news_items")
+        .upsert(rows, on_conflict="source,source_id")
+        .execute()
+    )
+    return len(response.data or rows)
+
+def to_records(items: Iterable[object]) -> list[dict]:
+    return [asdict(item) for item in items]
+
+
+__all__ = [
+    "DartDisclosure",
+    "NaverNewsItem",
+    "EarningsEvent",
+    "load_dart_corp_codes",
+    "get_corp_code",
+    "fetch_dart_disclosures",
+    "build_earnings_events",
+    "search_naver_news",
+    "search_marketaux_news",
+    "fetch_stock_news",
+    "fetch_macro_news",
+    "filter_investor_news",
+    "persist_earnings_events",
+    "persist_live_news_snapshot",
+    "persist_naver_news",
+    "to_records",
+]
