@@ -1,0 +1,20 @@
+name: App syntax check
+
+on:
+  pull_request:
+    paths:
+      - "app.py"
+      - ".github/workflows/app-syntax-check.yml"
+
+jobs:
+  pycompile:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Compile app.py
+        run: python -m py_compile app.py
