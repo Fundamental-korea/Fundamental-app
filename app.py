@@ -5,7 +5,6 @@ import FinanceDataReader as fdr
 import pandas as pd
 import altair as alt
 import streamlit as st
-import streamlit.components.v1 as components
 from supabase import create_client
 import yfinance as yf
 import base64
@@ -2889,7 +2888,7 @@ def render_naver_style_chart(hist_df, indicators, visible_map=None, height=None,
     </body>
     </html>
     """
-    components.html(custom_html, height=height + 50, scrolling=False)
+    st.iframe(custom_html, height=height + 50)
 
 
 # ==========================================
@@ -3134,7 +3133,7 @@ def render_unified_search_box(stock_db, target_view=None):
                 return String(value ?? '')
                     .normalize('NFKC')
                     .toLowerCase()
-                    .replace(/\s+/g, '')
+                    .replace(/\\s+/g, '')
                     .replace(/[._\-\/'’(),&]+/g, '');
             }}
 
@@ -3286,7 +3285,7 @@ def render_unified_search_box(stock_db, target_view=None):
     </body>
     </html>
     """
-    components.html(custom_html, height=420)
+    st.iframe(custom_html, height=420)
 
 
 # ==========================================
@@ -4860,7 +4859,7 @@ if selected_code and view_mode_param == "chart":
         st.markdown(f"### 📈 {stock_name_for_chart} ({selected_code}) 상세 차트")
 
         tv_symbol = f"KRX:{selected_code}" if selected_code.isdigit() else selected_code
-        components.html(
+        st.iframe(
             f"""
             <div class="tradingview-widget-container" style="height:600px;">
               <div id="tradingview_chart" style="height:100%;"></div>
