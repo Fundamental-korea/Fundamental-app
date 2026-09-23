@@ -586,6 +586,14 @@ def search_google_news_rss(query: str, *, language: str = "en", display: int = 2
         if title and link: out.append(NaverNewsItem(title=title,description=desc,link=link,original_link=link,pub_date=pub,query=query,source=source))
     print(f"[LIVE NEWS DEBUG] RSS response | {query!r} | items={len(out)}"); return out
 
+
+def _is_today_kst(item: NaverNewsItem) -> bool:
+    try:
+        published = pd.to_datetime(item.pub_date, utc=True)
+        return published.tz_convert("Asia/Seoul").date() == datetime.now(ZoneInfo("Asia/Seoul")).date()
+    except Exception:
+        return False
+
 def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20) -> list[NaverNewsItem]:
     """Main Live News: 16 US + 4 KR, KST-today only; NAVER optional, RSS emergency."""
     target=min(max(display,1),20)
