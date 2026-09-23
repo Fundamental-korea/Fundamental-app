@@ -4011,11 +4011,11 @@ def _get_news_topic_key(title: str = "", description: str = "", query: str = "",
         ("crypto_assets", ("bitcoin", "btc", "ethereum", "crypto", "암호화폐", "가상자산", "코인", "블록체인")),
         ("energy_oil", ("oil", "crude", "brent", "wti", "energy", "gas", "석유", "유가", "원유", "에너지", "천연가스")),
         ("ai_semiconductors", ("nvidia", "semiconductor", "chip", "chips", "artificial intelligence", "openai", "amd", "tsmc", "반도체", "인공지능", " ai", "ai ")),
-        ("interest_rates", ("federal reserve", "fed", "fomc", "interest rate", "rates", "inflation", "cpi", "pce", "central bank", "연준", "금리", "물가", "인플레이션", "한국은행")),
         ("bonds_yields", ("bond", "bonds", "treasury", "yield", "yields", "채권", "국채", "수익률")),
         ("dollar_fx", ("dollar", "usd", "currency", "forex", "fx", "exchange rate", "yuan", "won", "달러", "환율", "원화", "위안")),
         ("trade_global", ("tariff", "tariffs", "trade", "import", "export", "shipping", "manufacturing", "무역", "관세", "수입", "수출", "해운", "제조")),
         ("korea_asia", ("korea", "south korea", "kospi", "kosdaq", "seoul", "japan", "asia", "한국", "코스피", "코스닥", "서울", "아시아", "일본")),
+        ("interest_rates", ("federal reserve", "fed", "fomc", "interest rate", "rates", "inflation", "cpi", "pce", "central bank", "연준", "금리", "물가", "인플레이션", "한국은행")),
         ("economy_jobs", ("jobs", "job", "payroll", "employment", "wage", "consumer", "retail", "spending", "sales", "gdp", "경제", "고용", "임금", "소비", "소매", "판매", "성장")),
     )
     for topic, keywords in topic_keywords:
@@ -4110,8 +4110,8 @@ def render_news_reader():
     if not news_topic:
         news_topic = _get_news_topic_key(title, description, category, source)
     static_reader_image = _get_news_topic_image_data_uri(news_topic)
-    if not image_url:
-        image_url = static_reader_image or _get_news_image_url(original_url or article_url)
+    # 뉴스 리더도 카드와 동일하게 외부 원문 이미지 대신 로컬 주제 이미지를 사용한다.
+    image_url = static_reader_image or _get_news_image_url(original_url or article_url)
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     with col_logo:
@@ -4501,9 +4501,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
         article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
         article_urls.append(original_url or article_url)
-    provided_image_urls = [getattr(item, "image_url", "") for item in selected_items]
-    # 원문 HTML 재조회는 제거하고 공급원이 이미 준 이미지 URL만 사용한다.
-    image_urls = provided_image_urls
+    # 카드 표지는 로컬 주제 이미지 라이브러리만 사용한다.
+    # 공급원/원문 이미지 URL은 외부 서버 장애 시 깨질 수 있으므로 화면에서 사용하지 않는다.
+    image_urls = [""] * len(selected_items)
 
     localized_cards = {}
     translation_input = tuple(
@@ -4552,17 +4552,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
         static_topic_image = _get_news_topic_image_data_uri(news_topic)
 
-        # 공급원 이미지가 있으면 우선 사용하고, 누락/실패 시 고정 주제 이미지로 대체한다.
-        image_candidates = [
-            image_urls[idx] if idx < len(image_urls) else "",
-            provided_image_url,
-        ]
-        image_url = ""
-        for candidate_image in image_candidates:
-            if candidate_image and _news_image_url_hint_ok(candidate_image):
-                image_url = candidate_image
-                break
-        image_url = image_url or static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL
+        # 외부 이미지가 아니라 앱에 포함된 고정 주제 이미지를 항상 사용한다.
+        # 따라서 깨진 이미지/403/핫링크 차단/느린 외부 이미지 로딩이 카드에 영향을 주지 않는다.
+        image_url = static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL
 
         direct_url = original_url or article_url
         # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
@@ -4578,7 +4570,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             article_url=article_url,
             original_url=original_url,
             pub_date=pub_date,
-            image_url=image_url,
+            image_url="",
             source=source_label,
             category=query,
             back_url=back_url,
