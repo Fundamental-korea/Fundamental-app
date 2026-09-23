@@ -21,7 +21,14 @@ from search_aliases import aliases_for
 from scoring import METRIC_WEIGHTS, ROA_WEIGHT  # 지표별 가중치 - "총점 기여도" 표시에 사용 (scoring.py가 단일 소스)
 from us_scoring import PROFILE_DESCRIPTIONS, PROFILE_LABELS
 from historical_pattern import analyze_all_indicator_patterns
-from news_earnings import NaverNewsItem, fetch_dart_disclosures, fetch_macro_news, fetch_stock_news, build_earnings_events
+from news_earnings import (
+    NaverNewsItem,
+    fetch_dart_disclosures,
+    fetch_macro_news,
+    fetch_stock_news,
+    build_earnings_events,
+    _sort_news_latest_first,
+)
 import importlib
 import chart_indicators as _chart_indicators
 _chart_indicators = importlib.reload(_chart_indicators)
