@@ -656,7 +656,11 @@ def fetch_stock_news(
     stock_code: Optional[str] = None,
     display: int = 3,
 ) -> list[NaverNewsItem]:
-    """US: Marketaux first. KR: NAVER first. Both have RSS emergency fallback."""
+    """Reliable on-demand stock news without consuming the main Marketaux quota.
+
+    Main Live News reserves Marketaux for the scheduled 6 US + 1 KR feed.
+    Korean stocks use NAVER first; US stocks use Google News RSS first.
+    """
     name = str(stock_name or "").strip()
     code = str(stock_code or "").strip()
     if not name and not code:
@@ -665,15 +669,20 @@ def fetch_stock_news(
     target = min(max(display, 1), 3)
 
     if code.isdigit():
-        # 한국 주식은 NAVER 회사명 검색이 가장 직접적인 경로다.
+        # 한국 개별종목: NAVER 회사명 검색 -> RSS emergency fallback
         candidates: list[NaverNewsItem] = []
         for query in (name, f"{name} {code}".strip()):
             if not query:
                 continue
             try:
-                candidates.extend(search_naver_news(query, display=target, sort="date"))
+                candidates.extend(
+                    search_naver_news(query, display=target, sort="date")
+                )
             except Exception as exc:
-                print(f"[NAVER stock news] request failed: {type(exc).__name__}: {exc}")
+                print(
+                    f"[NAVER stock news] request failed: "
+                    f"{type(exc).__name__}: {exc}"
+                )
 
             unique = []
             seen = set()
@@ -685,65 +694,45 @@ def fetch_stock_news(
                     if len(unique) >= target:
                         return unique[:target]
 
-        marketaux_items = search_marketaux_news(
-            query=name,
+        rss = search_google_news_rss(
+            name or code,
             language="ko",
             display=target,
-            today_only=False,
-            must_have_entities=False,
-            group_similar=False,
         )
-        if marketaux_items:
-            return _rank_global_news(marketaux_items)[:target]
-
-        rss = search_google_news_rss(name, language="ko", display=target)
         if rss:
             return _rank_global_news(rss)[:target]
         return []
 
-    # 미국 개별종목은 ticker entity 검색을 먼저 사용한다.
-    marketaux_items = search_marketaux_news(
-        symbols=code,
-        language="en",
-        display=target,
-        today_only=False,
-        must_have_entities=True,
-        group_similar=False,
-    )
-    if len(marketaux_items) < target and name:
-        marketaux_items.extend(
-            search_marketaux_news(
-                query=name,
-                language="en",
-                display=target,
-                today_only=False,
-                must_have_entities=False,
-                group_similar=False,
-            )
-        )
-
-    unique = []
+    # 미국 개별종목: Google News RSS를 우선 사용해
+    # 메인 Live News용 Marketaux 2시간/일일 예산을 침범하지 않는다.
+    rss_queries = [f"{name} {code}".strip(), name, code]
+    rss_candidates: list[NaverNewsItem] = []
     seen = set()
-    for item in _rank_global_news(marketaux_items):
-        key = _canonical_news_key(item)
-        if not key or key in seen:
+    for query in rss_queries:
+        if not query:
             continue
-        seen.add(key)
-        unique.append(item)
-        if len(unique) >= target:
-            return unique[:target]
+        rss_candidates.extend(
+            search_google_news_rss(query, language="en", display=target)
+        )
+        unique = []
+        for item in _rank_global_news(rss_candidates):
+            key = _canonical_news_key(item)
+            if key and key not in seen:
+                seen.add(key)
+                unique.append(item)
+                if len(unique) >= target:
+                    return unique[:target]
 
+    # RSS가 비어 있으면 NAVER의 글로벌 검색을 마지막 보조 경로로 사용한다.
     if name:
-        rss = search_google_news_rss(name, language="en", display=target)
-        if rss:
-            return _rank_global_news(rss)[:target]
+        try:
+            fallback = search_naver_news(name, display=target, sort="date")
+        except Exception:
+            fallback = []
+        if fallback:
+            return _rank_global_news(fallback)[:target]
 
-    try:
-        fallback = search_naver_news(name, display=target, sort="date")
-    except Exception:
-        fallback = []
-    return _rank_global_news(fallback)[:target]
-
+    return []
 
 
 def fetch_macro_news(
