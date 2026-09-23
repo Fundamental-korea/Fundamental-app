@@ -264,7 +264,17 @@ class SECXBRLSearchV2_3_8(SECXBRLSearchV2_3_5):
                 continue
             i = interest[key]
             o = other[key]
-            value = float(p["value"]) + abs(float(i["value"])) + float(o["value"])
+            interest_value = abs(float(i["value"]))
+            other_concept = _local_concept(o.get("concept"))
+            other_value = float(o["value"])
+            # Income increases pretax income, while expense decreases it.
+            # The common OtherNonoperatingIncomeExpense concept is signed
+            # as income-positive; explicit *Expense concepts are expense-positive.
+            if other_concept in {"OtherNonoperatingExpense"}:
+                operating_value = float(p["value"]) + interest_value + other_value
+            else:
+                operating_value = float(p["value"]) + interest_value - other_value
+            value = operating_value
             return XBRLCandidate(
                 metric="operating_income", namespace="derived",
                 concept="DerivedOperatingIncomeFromPretaxInterestAndOther",
