@@ -8,6 +8,7 @@ on:
       - ".github/workflows/live_news_refresh.yml"
   schedule:
     # Hourly watchdog. collect_live_news.py enforces the ~2h minimum interval.
+    # Workflow changes also trigger an immediate collection after a deployment patch.
     - cron: "0 * * * *"
   workflow_dispatch:
 
