@@ -3578,7 +3578,7 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v5"):
                     "source,source_id,title,description,article_url,original_url,"
                     "published_at,metadata"
                 )
-                .in_("source", ["MARKETAUX", "NAVER"])
+                .in_("source", ["MARKETAUX", "NAVER", "RSS"])
                 .eq("is_macro", True)
                 .gte("published_at", start_utc)
                 .lt("published_at", next_utc)
@@ -3769,6 +3769,10 @@ def _translate_news_cards(
             },
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "maxOutputTokens": 2000,
+                    "temperature": 0.1,
+                },
             },
             timeout=30,
         )
@@ -4186,7 +4190,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
     if needs_localization:
         localized_cards = _translate_news_cards(
             translation_input,
-            cache_version="live-news-korean-v5",
+            cache_version="live-news-korean-v6",
         )
 
     cards = []
