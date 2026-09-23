@@ -3713,7 +3713,7 @@ def _news_source_label(url: str, fallback: str = "뉴스") -> str:
 def _translate_news_cards(
     items: tuple[tuple[str, str], ...],
 ) -> dict:
-    """Translate visible main Live News cards into Korean in one Gemini batch call."""
+    """Translate visible main Live News cards into Korean with one structured Gemini call."""
     clean_items = tuple(
         (
             str(title or "").replace("\n", " ").strip(),
@@ -3730,24 +3730,21 @@ def _translate_news_cards(
 
     model = str(st.secrets.get("GEMINI_NEWS_MODEL", "gemini-3.5-flash-lite")).strip()
     source_lines = "\n".join(
-        f"{idx}. 제목: {title}\n   설명: {description}"
+        f"{idx}. 원문 제목: {title}\n   원문 설명: {description}"
         for idx, (title, description) in enumerate(clean_items, start=1)
     )
     prompt = f"""
-너는 미국·한국 금융시장 뉴스 편집자다.
-아래 Live News 카드의 원문 제목과 설명을 한국어로 자연스럽게 현지화하라.
+너는 한국의 금융 뉴스 편집자다.
+아래 미국·한국 시장 뉴스 카드들을 한국어로 정확하게 현지화하라.
 
 {source_lines}
 
-규칙:
-1. 영어 제목은 의미를 정확히 보존한 한국어 금융 뉴스 제목으로 번역한다.
-2. 이미 한국어인 제목은 의미를 유지하면서 자연스럽게 다듬는다.
-3. 설명도 원문에 있는 내용만 사용해 한국어 한 문장으로 옮긴다.
-4. 새로운 사실, 숫자, 인용, 전망, 투자 추천을 추가하지 않는다.
-5. 각 줄은 반드시 아래 형식으로 출력한다.
-1<TAB>한국어 제목<TAB>한국어 설명
-2<TAB>한국어 제목<TAB>한국어 설명
-...
+작업:
+- 영어 제목은 금융 기사 제목처럼 자연스러운 한국어 제목으로 번역한다.
+- 영어 설명도 한국어로 자연스럽게 번역한다.
+- 이미 한국어인 경우 의미를 바꾸지 말고 그대로 다듬는다.
+- 원문에 없는 사실, 숫자, 인용, 전망, 투자 의견을 추가하지 않는다.
+- 각 번호는 반드시 입력 뉴스와 1:1로 대응한다.
 """
 
     try:
@@ -3759,7 +3756,23 @@ def _translate_news_cards(
             },
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"maxOutputTokens": 1400},
+                "generationConfig": {
+                    "maxOutputTokens": 1600,
+                    "temperature": 0.15,
+                    "responseMimeType": "application/json",
+                    "responseSchema": {
+                        "type": "ARRAY",
+                        "items": {
+                            "type": "OBJECT",
+                            "properties": {
+                                "id": {"type": "INTEGER"},
+                                "title": {"type": "STRING"},
+                                "description": {"type": "STRING"},
+                            },
+                            "required": ["id", "title", "description"],
+                        },
+                    },
+                },
             },
             timeout=30,
         )
@@ -3776,23 +3789,26 @@ def _translate_news_cards(
             if part.get("text")
         ).strip()
 
+        parsed = json.loads(result)
+        if not isinstance(parsed, list):
+            return {}
+
         localized = {}
-        for line in result.splitlines():
-            line = line.strip()
-            if not line or "\t" not in line:
-                continue
-            fields = [field.strip() for field in line.split("\t")]
-            if len(fields) < 3:
+        for row in parsed:
+            if not isinstance(row, dict):
                 continue
             try:
-                idx = int(re.sub(r"[^0-9]", "", fields[0]))
-            except ValueError:
+                idx = int(row.get("id"))
+            except (TypeError, ValueError):
                 continue
             if 1 <= idx <= len(clean_items):
-                localized[idx - 1] = {
-                    "title": fields[1],
-                    "description": fields[2],
-                }
+                translated_title = str(row.get("title") or "").strip()
+                translated_description = str(row.get("description") or "").strip()
+                if translated_title:
+                    localized[idx - 1] = {
+                        "title": translated_title,
+                        "description": translated_description,
+                    }
         return localized
     except Exception:
         return {}
