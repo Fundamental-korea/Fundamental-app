@@ -10,7 +10,7 @@ from supabase import create_client
 import yfinance as yf
 import base64
 import calendar as pycalendar
-from datetime import date, timedelta, timezone
+from datetime import datetime, date, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
 from urllib.parse import quote, urlencode, urlparse
@@ -3710,6 +3710,94 @@ def _news_source_label(url: str, fallback: str = "뉴스") -> str:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
+def _translate_news_cards(
+    items: tuple[tuple[str, str], ...],
+) -> dict:
+    """Translate visible main Live News cards into Korean in one Gemini batch call."""
+    clean_items = tuple(
+        (
+            str(title or "").replace("\n", " ").strip(),
+            str(description or "").replace("\n", " ").strip(),
+        )
+        for title, description in items
+    )
+    if not clean_items:
+        return {}
+
+    api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
+    if not api_key:
+        return {}
+
+    model = str(st.secrets.get("GEMINI_NEWS_MODEL", "gemini-3.5-flash-lite")).strip()
+    source_lines = "\n".join(
+        f"{idx}. 제목: {title}\n   설명: {description}"
+        for idx, (title, description) in enumerate(clean_items, start=1)
+    )
+    prompt = f"""
+너는 미국·한국 금융시장 뉴스 편집자다.
+아래 Live News 카드의 원문 제목과 설명을 한국어로 자연스럽게 현지화하라.
+
+{source_lines}
+
+규칙:
+1. 영어 제목은 의미를 정확히 보존한 한국어 금융 뉴스 제목으로 번역한다.
+2. 이미 한국어인 제목은 의미를 유지하면서 자연스럽게 다듬는다.
+3. 설명도 원문에 있는 내용만 사용해 한국어 한 문장으로 옮긴다.
+4. 새로운 사실, 숫자, 인용, 전망, 투자 추천을 추가하지 않는다.
+5. 각 줄은 반드시 아래 형식으로 출력한다.
+1<TAB>한국어 제목<TAB>한국어 설명
+2<TAB>한국어 제목<TAB>한국어 설명
+...
+"""
+
+    try:
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            headers={
+                "x-goog-api-key": api_key,
+                "Content-Type": "application/json",
+            },
+            json={
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"maxOutputTokens": 1400},
+            },
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload = response.json()
+        parts = (
+            payload.get("candidates", [{}])[0]
+            .get("content", {})
+            .get("parts", [])
+        )
+        result = "\n".join(
+            str(part.get("text", "")).strip()
+            for part in parts
+            if part.get("text")
+        ).strip()
+
+        localized = {}
+        for line in result.splitlines():
+            line = line.strip()
+            if not line or "\t" not in line:
+                continue
+            fields = [field.strip() for field in line.split("\t")]
+            if len(fields) < 3:
+                continue
+            try:
+                idx = int(re.sub(r"[^0-9]", "", fields[0]))
+            except ValueError:
+                continue
+            if 1 <= idx <= len(clean_items):
+                localized[idx - 1] = {
+                    "title": fields[1],
+                    "description": fields[2],
+                }
+        return localized
+    except Exception:
+        return {}
+
+@st.cache_data(ttl=86400, show_spinner=False)
 def _generate_ai_news_article(
     title: str,
     description: str = "",
@@ -4051,10 +4139,24 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         article_urls.append(original_url or article_url)
     image_urls = _get_news_images(article_urls)
 
+    localized_cards = {}
+    if title == "📰 Live News":
+        translation_input = tuple(
+            (
+                item.title if hasattr(item, "title") else item.get("title", ""),
+                item.description if hasattr(item, "description") else item.get("description", ""),
+            )
+            for item in selected_items
+        )
+        localized_cards = _translate_news_cards(translation_input)
+
     cards = []
     for idx, item in enumerate(selected_items):
         title_text = item.title if hasattr(item, "title") else item.get("title", "")
         desc_text = item.description if hasattr(item, "description") else item.get("description", "")
+        localized = localized_cards.get(idx, {})
+        display_title = str(localized.get("title") or title_text).strip()
+        display_desc = str(localized.get("description") or desc_text).strip()
         article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
         pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
@@ -4070,6 +4172,11 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         if not image_url:
             image_url = _get_ai_news_image_url(title_text, desc_text, query)
         source_label = _news_source_label(direct_url, source_hint or "뉴스")
+        category_display = (
+            "한국 경제·증시"
+            if title == "📰 Live News" and re.search(r"[가-힣]", str(query or ""))
+            else ("미국 경제·금융" if title == "📰 Live News" else (query or "시장 뉴스"))
+        )
         reader_url = _build_news_reader_url(
             title=title_text,
             description=desc_text,
@@ -4092,13 +4199,13 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 f'<div class="live-news-image-wrap">'
                 f'{ai_badge_html}'
                 f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" '
-                f'alt="{_escape_html(title_text)}" onerror="this.parentElement.classList.add(\'image-failed\');">'
+                f'alt="{_escape_html(display_title)}" onerror="this.parentElement.classList.add(\'image-failed\');">'
                 f'</div>'
             )
         else:
             media_html = (
                 f'<div class="live-news-image-wrap live-news-image-fallback">'
-                f'<span>📰</span><small>{_escape_html(query) if query else "시장 뉴스"}</small>'
+                f'<span>📰</span><small>{_escape_html(category_display)}</small>'
                 f'</div>'
             )
 
@@ -4109,10 +4216,10 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             f'<div class="live-news-card-body">'
             f'<div class="live-news-meta">'
             f'<span class="live-news-source">{_escape_html(source_label)}</span>'
-            f'<span class="live-news-category">{_escape_html(query) if query else "시장 뉴스"}</span>'
+            f'<span class="live-news-category">{_escape_html(category_display)}</span>'
             f'</div>'
-            f'<div class="live-news-title">{_escape_html(title_text)}</div>'
-            f'<div class="live-news-desc">{_escape_html(desc_text)}</div>'
+            f'<div class="live-news-title">{_escape_html(display_title)}</div>'
+            f'<div class="live-news-desc">{_escape_html(display_desc)}</div>'
             f'<div class="live-news-footer">{_format_news_time(pub_date)} · 기사 보기 ↗</div>'
             f'</div>'
             f'</article>'
