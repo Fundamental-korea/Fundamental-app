@@ -747,9 +747,17 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
         # Emergency mode: Google News is already sorted newest-first. Do not apply
         # a calendar-day filter here; publisher-local timestamps can shift the KST date.
         rss_us=[]; rss_kr=[]
+        # Bing RSS를 먼저 사용한다. Google RSS에는 thumbnail이 없지만
+        # Bing RSS는 기사별 News:Image를 제공하므로 실제 뉴스 썸네일을 확보할 수 있다.
         for q in ("Federal Reserve inflation interest rates US economy markets earnings","US stocks Treasury yields dollar tariffs technology energy"):
-            rss_us.extend(search_google_news_rss(q,language="en",display=20))
-        rss_kr.extend(search_google_news_rss("한국은행 금리 환율 코스피 경제 수출 반도체 증시",language="ko",display=20))
+            rss_us.extend(search_bing_news_rss(q,language="en",display=20))
+        rss_kr.extend(search_bing_news_rss("한국은행 금리 환율 코스피 경제 수출 반도체 증시",language="ko",display=20))
+        # Bing에서 부족하면 Google News RSS로 보완한다.
+        if len(rss_us) < us_target:
+            for q in ("Federal Reserve inflation interest rates US economy markets earnings","US stocks Treasury yields dollar tariffs technology energy"):
+                rss_us.extend(search_google_news_rss(q,language="en",display=20))
+        if len(rss_kr) < kr_target:
+            rss_kr.extend(search_google_news_rss("한국은행 금리 환율 코스피 경제 수출 반도체 증시",language="ko",display=20))
         today_rss_us = [x for x in rss_us if _is_today_kst(x)]
         today_rss_kr = [x for x in rss_kr if _is_today_kst(x)]
         recent_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
