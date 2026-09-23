@@ -4467,6 +4467,8 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
         query = item.query if hasattr(item, "query") else ""
         source_hint = item.source if hasattr(item, "source") else item.get("source", "")
+        source_label = str(source_hint or "News").strip()
+        category_display = str(query or "Market").strip()
         snippet_text = getattr(item, "snippet", "")
         keywords_text = getattr(item, "keywords", "")
         entities_text = getattr(item, "entities", "")
