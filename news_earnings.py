@@ -528,6 +528,12 @@ def _news_timestamp(item: NaverNewsItem) -> float:
 def _sort_news_latest_first(items: Iterable[NaverNewsItem]) -> list[NaverNewsItem]:
     return sorted(list(items), key=lambda item: (_news_timestamp(item), str(item.title or "")), reverse=True)
 
+def _within_last_days(items: Iterable[NaverNewsItem], days: int = 7) -> list[NaverNewsItem]:
+    cutoff = datetime.now(timezone.utc) - timedelta(days=days)
+    return [item for item in items if _news_timestamp(item) >= cutoff.timestamp()]
+
+
+
 
 def _rank_global_news(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
     return _sort_news_latest_first(items)
@@ -557,8 +563,9 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
             display=target,
         )
 
+    marketaux_items = _within_last_days(marketaux_items, 7)
     if marketaux_items:
-        return _rank_global_news(marketaux_items)[:target]
+        return _sort_news_latest_first(marketaux_items)[:target]
 
     terms = [term for term in (name, code) if term and not (term == code and code.isdigit())]
     query = " ".join(terms)
@@ -568,6 +575,7 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
     if _env_optional("NAVER_CLIENT_ID") and _env_optional("NAVER_CLIENT_SECRET"):
         try:
             naver_items = search_naver_news(query, display=target, sort="date")
+            naver_items = _within_last_days(naver_items, 7)
             if naver_items:
                 return _sort_news_latest_first(naver_items)[:target]
         except Exception as exc:
@@ -578,7 +586,7 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
         language="ko",
         display=max(target * 4, 12),
     )
-    return _sort_news_latest_first(rss_items)[:target]
+    return _sort_news_latest_first(_within_last_days(rss_items, 7))[:target]
 
 
 
