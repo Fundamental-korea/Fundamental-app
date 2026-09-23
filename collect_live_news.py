@@ -12,7 +12,7 @@ def main() -> None:
     from news_earnings import _get_supabase_client
     client = _get_supabase_client()
     cutoff = datetime.now(timezone.utc) - timedelta(days=7)
-    client.table("news_items").delete().eq("source", "MARKETAUX").eq(
+    client.table("news_items").delete().in_("source", ["MARKETAUX", "NAVER", "RSS"]).eq(
         "is_macro", True
     ).lt("published_at", cutoff.isoformat()).execute()
 
