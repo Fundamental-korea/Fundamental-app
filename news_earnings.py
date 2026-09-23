@@ -639,10 +639,18 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
                 print(f"[LIVE NEWS DEBUG] NAVER {label} candidates={len(candidates)} selected={len(bucket)}")
             except Exception as exc: print(f"[LIVE NEWS DEBUG] NAVER {label} unavailable | {type(exc).__name__}: {exc}")
     if len(selected_us)<us_target or len(selected_kr)<kr_target:
+        # Google News sometimes reports publisher-local timestamps that land on the
+        # previous KST calendar date. Emergency mode therefore accepts the latest 48h.
+        rss_cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+        def rss_recent(item):
+            try:
+                return pd.to_datetime(item.pub_date, utc=True).to_pydatetime() >= rss_cutoff
+            except Exception:
+                return False
         rss_us=[]; rss_kr=[]
         for q in ("Federal Reserve inflation interest rates US economy markets earnings","US stocks Treasury yields dollar tariffs technology energy"):
-            rss_us.extend([x for x in search_google_news_rss(q,language="en",display=10) if _is_today_kst(x)])
-        rss_kr.extend([x for x in search_google_news_rss("한국은행 금리 환율 코스피 경제 수출 반도체 증시",language="ko",display=10) if _is_today_kst(x)])
+            rss_us.extend([x for x in search_google_news_rss(q,language="en",display=10) if rss_recent(x)])
+        rss_kr.extend([x for x in search_google_news_rss("한국은행 금리 환율 코스피 경제 수출 반도체 증시",language="ko",display=10) if rss_recent(x)])
         for item in _rank_global_news(rss_us):
             if len(selected_us)>=us_target: break
             key=_canonical_news_key(item)
