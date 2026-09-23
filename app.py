@@ -4107,7 +4107,7 @@ def _news_image_dimensions(image_url: str):
         content_type = str(response.headers.get("Content-Type", "")).lower()
 
         # PNG: IHDR width/height
-        if data.startswith(b"\\x89PNG\\r\\n\\x1a\\n") and len(data) >= 24:
+        if data.startswith(b"\x89PNG\r\n\x1a\n") and len(data) >= 24:
             return (int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big"))
 
         # WEBP: VP8X / VP8 / VP8L
@@ -4124,7 +4124,7 @@ def _news_image_dimensions(image_url: str):
                     return (width, height)
 
         # JPEG: SOF marker까지 스캔하여 width/height 확인
-        if data.startswith(b"\\xff\\xd8"):
+        if data.startswith(b"\xff\xd8"):
             i = 2
             sof_markers = {
                 0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
