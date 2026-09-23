@@ -4342,7 +4342,7 @@ def render_home_stock_news(stock_name, stock_code, limit=3):
             stock_name,
             stock_code,
             limit,
-            cache_version="stock-news-v5",
+            cache_version="stock-news-v6-rss",
         )
     except Exception:
         items = []
