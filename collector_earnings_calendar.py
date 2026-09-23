@@ -9,7 +9,7 @@ The UI reads only the Supabase snapshot, so external calls happen here in CI.
 from __future__ import annotations
 
 import io
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
 
 import pandas as pd
 import requests
@@ -346,31 +346,93 @@ def main():
         if e.receipt_no
     ]
 
-    rows.extend(_yahoo_us(us_universe))
-    rows.extend(_yahoo_kr(kr_universe))
+    yahoo_us_rows = _yahoo_us(us_universe)
+    yahoo_kr_rows = _yahoo_kr(kr_universe)
+    rows.extend(yahoo_us_rows)
+    rows.extend(yahoo_kr_rows)
 
-    yahoo_rows = len(rows) - len(dart_events)
+    yahoo_rows = len(yahoo_us_rows) + len(yahoo_kr_rows)
     if yahoo_rows == 0:
-        raise RuntimeError("No Yahoo earnings rows collected; refusing to replace snapshot.")
+        raise RuntimeError("No Yahoo earnings rows collected; refusing to modify snapshot.")
 
-    (
+    # 기존 스냅샷을 통째로 삭제하지 않는다.
+    # 발표 직후 Yahoo 응답에서 EPS Estimate가 일시적으로 비어도
+    # 이전에 저장해 둔 컨센서스를 보존하고, Actual/Surprise만 추가한다.
+    existing = (
         client.table("earnings_events")
-        .delete()
+        .select("id,market,stock_code,event_date,receipt_no,metadata,report_name")
         .eq("event_type", "earnings_calendar")
         .gte("event_date", start.isoformat())
         .lte("event_date", end.isoformat())
+        .limit(10000)
         .execute()
     )
+    existing_rows = existing.data or []
+    existing_by_receipt = {
+        (str(r.get("market") or ""), str(r.get("receipt_no") or "")): r
+        for r in existing_rows
+        if r.get("receipt_no")
+    }
 
+    merged_rows = []
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    for row in rows:
+        old = existing_by_receipt.get(
+            (str(row.get("market") or ""), str(row.get("receipt_no") or ""))
+        )
+        old_meta = (old or {}).get("metadata") or {}
+        meta = dict(row.get("metadata") or {})
+
+        # 발표 전 처음 잡힌 컨센서스는 별도 snapshot 필드로 보존한다.
+        consensus_snapshot = (
+            old_meta.get("consensus_eps_snapshot")
+            if old_meta.get("consensus_eps_snapshot") is not None
+            else old_meta.get("eps_estimate")
+        )
+        incoming_estimate = meta.get("eps_estimate")
+        if consensus_snapshot is None and incoming_estimate is not None:
+            consensus_snapshot = incoming_estimate
+
+        # Yahoo가 발표 후 estimate를 생략/변경해도 화면 비교에는 최초 컨센서스를 사용한다.
+        if consensus_snapshot is not None:
+            meta["consensus_eps_snapshot"] = consensus_snapshot
+            meta["eps_estimate"] = consensus_snapshot
+
+        # Actual / Surprise가 이번 응답에 없으면 기존 값을 유지한다.
+        if meta.get("actual") is None and old_meta.get("actual") is not None:
+            meta["actual"] = old_meta.get("actual")
+        if meta.get("surprise") is None and old_meta.get("surprise") is not None:
+            meta["surprise"] = old_meta.get("surprise")
+
+        if meta.get("actual") is not None:
+            meta["status"] = "reported"
+            meta["reported_at"] = old_meta.get("reported_at") or now_iso
+        elif old_meta.get("status") == "reported":
+            meta["status"] = "reported"
+        else:
+            meta["status"] = meta.get("status") or "upcoming"
+
+        if not meta.get("timing") and old_meta.get("timing"):
+            meta["timing"] = old_meta.get("timing")
+        meta["source_last_checked_at"] = now_iso
+
+        merged = dict(row)
+        merged["metadata"] = meta
+        merged_rows.append(merged)
+
+    # 같은 종목의 예정일이 Yahoo에서 변경된 경우 새 날짜를 추가한다.
+    # 기존 데이터를 먼저 지우지 않으므로 부분 장애가 발생해도 기존 일정이 사라지지 않는다.
     client.table("earnings_events").upsert(
-        rows,
+        merged_rows,
         on_conflict="market,receipt_no",
     ).execute()
 
     print(
         f"[EARNINGS] US_UNIVERSE={len(us_universe)} "
         f"KR_UNIVERSE={len(kr_universe)} "
-        f"DART={len(dart_events)} Yahoo={yahoo_rows} total_upsert={len(rows)}"
+        f"DART={len(dart_events)} Yahoo={yahoo_rows} "
+        f"total_upsert={len(merged_rows)} preserved_snapshot_rows={len(existing_rows)}"
     )
 
 
