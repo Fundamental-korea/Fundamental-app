@@ -4163,6 +4163,17 @@ def _news_image_quality_ok(image_url: str) -> bool:
     if not url:
         return False
 
+    # 검색 공급원에서 제공하는 Bing News 썸네일은 원본 기사가 아니므로 사용하지 않는다.
+    try:
+        parsed_url = urlparse(url)
+        if (
+            "bing.com" in parsed_url.netloc
+            and ("th=" in parsed_url.query or parsed_url.path.rstrip("/").endswith("/th"))
+        ):
+            return False
+    except Exception:
+        pass
+
     # URL 자체가 명백한 썸네일/작은 변환본인 경우 우선 제외한다.
     lowres_hints = (
         "thumbnail", "thumb", "small", "tiny", "lowres",
@@ -4346,15 +4357,23 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         keywords_text = getattr(item, "keywords", "")
         entities_text = getattr(item, "entities", "")
         provided_image_url = getattr(item, "image_url", "")
-        # 이미지 우선순위: 원문 대표 이미지 → 공급원 이미지 → AI 금융 보조 이미지.
-        image_url = (
-            (image_urls[idx] if idx < len(image_urls) else "")
-            or provided_image_url
-            or AI_NEWS_FALLBACK_IMAGE_URL
-        )
+
+        # 이미지 우선순위: 검증된 원문 대표 이미지 → 검증된 공급원 이미지 → AI 금융 보조 이미지.
+        # 원문/공급원 이미지 모두 동일한 해상도 검사를 통과해야 사용한다.
+        image_candidates = [
+            image_urls[idx] if idx < len(image_urls) else "",
+            provided_image_url,
+        ]
+        image_url = ""
+        for candidate_image in image_candidates:
+            if candidate_image and _news_image_quality_ok(candidate_image):
+                image_url = candidate_image
+                break
+        if not image_url:
+            image_url = AI_NEWS_FALLBACK_IMAGE_URL
 
         direct_url = original_url or article_url
-        # 카드 표지는 원문 대표 이미지만 사용하며, AI 이미지는 생성하지 않는다.
+        # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
         source_label = _news_source_label(direct_url, source_hint or "뉴스")
         category_display = (
             "한국 경제·증시"
