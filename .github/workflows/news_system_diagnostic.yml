@@ -1,0 +1,60 @@
+name: News system diagnostic
+
+on:
+  push:
+    branches:
+      - diag/news-system
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Diagnose Gemini translation endpoint
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_NEWS_MODEL: ${{ secrets.GEMINI_NEWS_MODEL }}
+        run: |
+          python - <<'PY'
+          import os, requests, json
+          key=os.environ.get("GEMINI_API_KEY","").strip()
+          model=os.environ.get("GEMINI_NEWS_MODEL","").strip() or "gemini-3.5-flash-lite"
+          print("GEMINI_KEY_PRESENT=", bool(key))
+          print("GEMINI_MODEL=", model)
+          prompt='''Translate this financial headline into natural Korean.
+          1. Federal Reserve keeps interest rates unchanged'''
+          for version in ("v1beta","v1"):
+              url=f"https://generativelanguage.googleapis.com/{version}/models/{model}:generateContent"
+              try:
+                  r=requests.post(url,headers={"x-goog-api-key":key,"Content-Type":"application/json"},json={"contents":[{"parts":[{"text":prompt}]}],"generationConfig":{"maxOutputTokens":100}},timeout=30)
+                  print("ENDPOINT",version,"STATUS",r.status_code)
+                  print("BODY",r.text[:1000])
+              except Exception as e:
+                  print("ENDPOINT",version,"ERROR",type(e).__name__,e)
+          PY
+      - name: Diagnose Korean stock news
+        env:
+          MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
+        run: |
+          python - <<'PY'
+          from news_earnings import fetch_stock_news
+          for name,code in [("삼성전자","005930"),("SK하이닉스","000660"),("NVIDIA","NVDA")]:
+              try:
+                  items=fetch_stock_news(name,code,3)
+                  print("STOCK",name,code,"COUNT",len(items))
+                  for x in items:
+                      print("  ",repr(x.title),repr(x.source),repr(x.link),repr(x.pub_date))
+              except Exception as e:
+                  print("STOCK",name,code,"ERROR",type(e).__name__,e)
+          PY
+      - name: Compile
+        run: python -m py_compile app.py news_earnings.py collect_live_news.py
