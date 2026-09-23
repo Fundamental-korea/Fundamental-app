@@ -3761,13 +3761,13 @@ def _translate_news_cards(
                     "temperature": 0.15,
                     "response_mime_type": "application/json",
                     "response_schema": {
-                        "type": "ARRAY",
+                        "type": "array",
                         "items": {
-                            "type": "OBJECT",
+                            "type": "object",
                             "properties": {
-                                "id": {"type": "INTEGER"},
-                                "title": {"type": "STRING"},
-                                "description": {"type": "STRING"},
+                                "id": {"type": "integer"},
+                                "title": {"type": "string"},
+                                "description": {"type": "string"},
                             },
                             "required": ["id", "title", "description"],
                         },
