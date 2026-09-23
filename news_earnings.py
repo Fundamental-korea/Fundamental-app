@@ -604,12 +604,12 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
     # 4) Bing News RSS
     for lang in languages:
         for q in queries:
-            add_candidates(f"BING-{lang}", search_bing_news_rss(q, language=lang, display=30))
+            add_candidates(f"BING-{lang}", search_bing_news_rss(q, language=lang, display=30, recent_days=7))
 
     # 5) Google News RSS
     for lang in languages:
         for q in queries:
-            add_candidates(f"GOOGLE-{lang}", search_google_news_rss(q, language=lang, display=30))
+            add_candidates(f"GOOGLE-{lang}", search_google_news_rss(q, language=lang, display=30, recent_days=7))
 
     result = _sort_news_latest_first(collected)[:target]
     print(f"[STOCK NEWS] END name={name!r} code={code!r} market={'KR' if is_kr else 'US'} total={len(result)}/{target}")
@@ -618,7 +618,7 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
 BING_NEWS_RSS_URL = "https://www.bing.com/news/search"
 
 
-def search_bing_news_rss(query: str, *, language: str = "en", display: int = 20) -> list[NaverNewsItem]:
+def search_bing_news_rss(query: str, *, language: str = "en", display: int = 20, recent_days: Optional[int] = None) -> list[NaverNewsItem]:
     query = str(query or "").strip()
     if not query:
         return []
@@ -629,6 +629,10 @@ def search_bing_news_rss(query: str, *, language: str = "en", display: int = 20)
         "setlang": "ko-KR" if language.startswith("ko") else "en-US",
         "cc": "KR" if language.startswith("ko") else "US",
     }
+    if recent_days:
+        qft_map = {1: 'interval="7"', 7: 'interval="8"', 30: 'interval="9"'}
+        freshness_key = 1 if int(recent_days) <= 1 else (7 if int(recent_days) <= 7 else 30)
+        params["qft"] = qft_map[freshness_key]
     try:
         response = requests.get(
             BING_NEWS_RSS_URL,
@@ -682,10 +686,14 @@ def search_bing_news_rss(query: str, *, language: str = "en", display: int = 20)
 
 GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
 
-def search_google_news_rss(query: str, *, language: str = "en", display: int = 20) -> list[NaverNewsItem]:
+def search_google_news_rss(query: str, *, language: str = "en", display: int = 20, recent_days: Optional[int] = None) -> list[NaverNewsItem]:
     query = str(query or "").strip()
     if not query: return []
-    params = {"q": query, "hl": "ko", "gl": "KR", "ceid": "KR:ko"} if language.startswith("ko") else {"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"}
+    search_query = query
+    if recent_days:
+        days = max(1, min(int(recent_days), 30))
+        search_query = f"{search_query} when:{days}d"
+    params = {"q": search_query, "hl": "ko", "gl": "KR", "ceid": "KR:ko"} if language.startswith("ko") else {"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"}
     try:
         response = requests.get(GOOGLE_NEWS_RSS_URL, params=params, timeout=10, headers={"User-Agent":"Mozilla/5.0 (compatible; FundamentalNews/1.0)"})
         response.raise_for_status(); root = ET.fromstring(response.content)
@@ -763,19 +771,19 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
 
     if len(selected_us)<us_target:
         for q in ("Federal Reserve inflation interest rates US economy markets earnings","US stocks Treasury yields dollar tariffs technology energy","US economy markets stocks companies finance"):
-            add_unique(selected_us,search_bing_news_rss(q,language="en",display=30),us_target)
+            add_unique(selected_us,search_bing_news_rss(q,language="en",display=30,recent_days=1),us_target)
             if len(selected_us)>=us_target: break
     if len(selected_kr)<kr_target:
         for q in kr_queries:
-            add_unique(selected_kr,search_bing_news_rss(q,language="ko",display=30),kr_target)
+            add_unique(selected_kr,search_bing_news_rss(q,language="ko",display=30,recent_days=1),kr_target)
             if len(selected_kr)>=kr_target: break
     if len(selected_us)<us_target:
         for q in ("Federal Reserve inflation interest rates US economy markets earnings","US stocks Treasury yields dollar tariffs technology energy","US economy markets stocks companies finance"):
-            add_unique(selected_us,search_google_news_rss(q,language="en",display=30),us_target)
+            add_unique(selected_us,search_google_news_rss(q,language="en",display=30,recent_days=1),us_target)
             if len(selected_us)>=us_target: break
     if len(selected_kr)<kr_target:
         for q in kr_queries:
-            add_unique(selected_kr,search_google_news_rss(q,language="ko",display=30),kr_target)
+            add_unique(selected_kr,search_google_news_rss(q,language="ko",display=30,recent_days=1),kr_target)
             if len(selected_kr)>=kr_target: break
 
     final=_sort_news_latest_first(selected_us+selected_kr)[:target]
@@ -898,85 +906,3 @@ def persist_live_news_snapshot(
     client = supabase_client or _get_supabase_client()
     response = (
         client.table("news_items")
-        .upsert(rows, on_conflict="source,source_id")
-        .execute()
-    )
-    return len(response.data or [])
-
-
-def persist_naver_news(
-    items: Iterable[NaverNewsItem],
-    *,
-    market: str = "KR",
-    stock_code: Optional[str] = None,
-    stock_name: Optional[str] = None,
-    category: str = "macro",
-    supabase_client=None,
-) -> int:
-    """Persist filtered NAVER news for either macro or a specific stock."""
-    rows = []
-    for item in items:
-        source_id = item.original_link or item.link
-        if not item.title or not source_id:
-            continue
-        try:
-            published_at = datetime.strptime(
-                item.pub_date, "%a, %d %b %Y %H:%M:%S %z"
-            ).isoformat()
-        except ValueError:
-            published_at = None
-
-        rows.append(
-            {
-                "source": "NAVER",
-                "source_id": source_id,
-                "market": market,
-                "stock_code": stock_code,
-                "stock_name": stock_name,
-                "category": category,
-                "title": item.title,
-                "description": item.description,
-                "article_url": item.link,
-                "original_url": item.original_link,
-                "published_at": published_at,
-                "is_macro": category == "macro",
-                "is_investor_relevant": True,
-                "event_type": None,
-                "filter_reason": None,
-                "metadata": {"query": item.query},
-            }
-        )
-
-    if not rows:
-        return 0
-
-    client = supabase_client or _get_supabase_client()
-    response = (
-        client.table("news_items")
-        .upsert(rows, on_conflict="source,source_id")
-        .execute()
-    )
-    return len(response.data or rows)
-
-def to_records(items: Iterable[object]) -> list[dict]:
-    return [asdict(item) for item in items]
-
-
-__all__ = [
-    "DartDisclosure",
-    "NaverNewsItem",
-    "EarningsEvent",
-    "load_dart_corp_codes",
-    "get_corp_code",
-    "fetch_dart_disclosures",
-    "build_earnings_events",
-    "search_naver_news",
-    "search_marketaux_news",
-    "fetch_stock_news",
-    "fetch_macro_news",
-    "filter_investor_news",
-    "persist_earnings_events",
-    "persist_live_news_snapshot",
-    "persist_naver_news",
-    "to_records",
-]
