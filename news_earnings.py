@@ -594,6 +594,19 @@ def _is_today_kst(item: NaverNewsItem) -> bool:
     except Exception:
         return False
 
+
+def _canonical_news_key(item: NaverNewsItem) -> str:
+    raw = str(item.original_link or item.link or "").strip()
+    if raw:
+        try:
+            parsed=urlparse(raw)
+            tracking={"utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","gclid","fbclid"}
+            kept=[(k,v) for k,v in parse_qsl(parsed.query,keep_blank_values=True) if k.lower() not in tracking]
+            return parsed._replace(query=urlencode(kept),fragment="").geturl().rstrip("/").lower()
+        except Exception:
+            return raw.lower()
+    return re.sub(r"\s+"," ",str(item.title or "")).strip().lower()
+
 def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20) -> list[NaverNewsItem]:
     """Main Live News: 16 US + 4 KR, KST-today only; NAVER optional, RSS emergency."""
     target=min(max(display,1),20)
