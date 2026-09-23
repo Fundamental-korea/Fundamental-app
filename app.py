@@ -3759,8 +3759,8 @@ def _translate_news_cards(
                 "generationConfig": {
                     "maxOutputTokens": 1600,
                     "temperature": 0.15,
-                    "responseMimeType": "application/json",
-                    "responseSchema": {
+                    "response_mime_type": "application/json",
+                    "response_schema": {
                         "type": "ARRAY",
                         "items": {
                             "type": "OBJECT",
