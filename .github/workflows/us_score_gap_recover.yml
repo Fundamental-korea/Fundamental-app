@@ -9,6 +9,9 @@ on:
       - "US_SCORE_GAP_TRIGGER.txt"
       - "collector_us_standard_fallback.py"
       - "collector_us_score_gap_recover.py"
+      - "collector_us_fundamental.py"
+      - "collector_us_utility_v4.py"
+      - "collector_us_fundamental_v5.py"
   workflow_dispatch:
 
 permissions:
