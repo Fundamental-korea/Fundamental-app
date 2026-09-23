@@ -3983,10 +3983,11 @@ def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -
         f"Category/context: {query or 'financial markets'}."
     )
     return (
-        "https://image.pollinations.ai/prompt/"
+        "https://gen.pollinations.ai/image/"
         + quote(prompt, safe="")
-        + f"?width=1536&height=864&seed={seed}&nologo=true"
+        + f"?model=flux-2-klein-4b&width=1536&height=864&seed={seed}&nologo=true&enhance=true"
     )
+
 
 def _build_news_reader_url(
     *,
@@ -4186,6 +4187,32 @@ def _news_image_dimensions(image_url: str):
     return (0, 0)
 
 
+def _news_image_url_hint_ok(image_url: str) -> bool:
+    """이미지 URL 문자열만 검사한다. 네트워크 요청은 하지 않아 카드 로딩을 막지 않는다."""
+    url = str(image_url or "").strip().lower()
+    if not url.startswith(("http://", "https://")):
+        return False
+    lowres_hints = (
+        "thumbnail", "thumb", "small", "tiny", "lowres",
+        "150x", "180x", "200x", "240x", "300x", "320x", "400x",
+        "width=150", "width=180", "width=200", "width=240",
+        "width=300", "width=320", "width=400",
+        "w_150", "w_180", "w_200", "w_240", "w_300", "w_320", "w_400",
+    )
+    if any(hint in url for hint in lowres_hints):
+        return False
+    try:
+        parsed = urlparse(url)
+        if (
+            "bing.com" in parsed.netloc
+            and ("th=" in parsed.query or parsed.path.rstrip("/").endswith("/th"))
+        ):
+            return False
+    except Exception:
+        return False
+    return True
+
+
 def _news_image_quality_ok(image_url: str) -> bool:
     """뉴스 카드에서 흐릿하게 보일 가능성이 높은 저해상도 썸네일을 차단한다."""
     url = str(image_url or "").strip().lower()
@@ -4339,25 +4366,37 @@ def _get_news_image_url(article_url: str) -> str:
         # 정상 크기 후보를 우선 반환한다. 대표 이미지 후보가 하나뿐이고
         # 치수 확인이 안 되는 경우에도 URL은 유지한다.
         for image_url in candidates:
-            if _news_image_quality_ok(image_url):
+            if _news_image_url_hint_ok(image_url):
                 return image_url
     except Exception:
         pass
     return ""
 
-def _get_news_images(urls):
+def _get_news_images(urls, provided_urls=None):
+    """공급원 이미지가 이미 있으면 즉시 사용하고, 없는 카드만 원문 페이지를 조회한다."""
     urls = [str(u or "") for u in urls]
+    provided = [str(u or "") for u in (provided_urls or [])]
     if not urls:
         return []
-    # 현재 화면에 표시할 카드 전체에 대해 원문 대표 이미지를 확인한다.
-    # 병렬 조회로 로딩 시간을 관리하고, 실패 시 공급원 썸네일을 사용한다.
+
     results = [""] * len(urls)
-    lookup_count = len(urls)
-    lookup_urls = [(idx, urls[idx]) for idx in range(lookup_count) if urls[idx]]
+    for idx in range(min(len(urls), len(provided))):
+        if _news_image_url_hint_ok(provided[idx]):
+            results[idx] = provided[idx]
+
+    lookup_urls = [
+        (idx, urls[idx])
+        for idx in range(len(urls))
+        if urls[idx] and not results[idx]
+    ]
     if not lookup_urls:
         return results
-    with ThreadPoolExecutor(max_workers=min(6, len(lookup_urls))) as executor:
-        fetched = executor.map(lambda pair: (pair[0], _get_news_image_url(pair[1])), lookup_urls)
+
+    with ThreadPoolExecutor(max_workers=min(4, len(lookup_urls))) as executor:
+        fetched = executor.map(
+            lambda pair: (pair[0], _get_news_image_url(pair[1])),
+            lookup_urls,
+        )
         for idx, image_url in fetched:
             results[idx] = image_url
     return results
@@ -4407,7 +4446,8 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
         article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
         article_urls.append(original_url or article_url)
-    image_urls = _get_news_images(article_urls)
+    provided_image_urls = [getattr(item, "image_url", "") for item in selected_items]
+    image_urls = _get_news_images(article_urls, provided_image_urls)
 
     localized_cards = {}
     translation_input = tuple(
@@ -4457,7 +4497,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         ]
         image_url = ""
         for candidate_image in image_candidates:
-            if candidate_image and _news_image_quality_ok(candidate_image):
+            if candidate_image and _news_image_url_hint_ok(candidate_image):
                 image_url = candidate_image
                 break
         if not image_url:
@@ -4494,10 +4534,13 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         if image_url:
             media_html = (
                 f'<div class="live-news-image-wrap">'
-                f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" '
-                f'alt="{_escape_html(display_title)}" onerror="this.onerror=null;this.src=\'{_escape_html(AI_NEWS_FALLBACK_IMAGE_URL)}\';">'
+                f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" decoding="async" '
+                f'alt="{_escape_html(display_title)}" '
+                f'onerror="this.onerror=function(){{this.style.display=\\'none\\';this.nextElementSibling.style.display=\\'flex\\';}};'
+                f'this.src=\\'{_escape_html(AI_NEWS_FALLBACK_IMAGE_URL)}\\';">'
+                f'<div class="live-news-image-error" style="display:none;">📰<small>이미지 불러오기 실패</small></div>'
                 f'</div>'
-            )
+            )            )
         else:
             # 원문 대표 이미지가 없을 때 분류명을 이미지처럼 보여주지 않는다.
             # 실제 이미지가 없다는 사실만 중립적으로 표시해 신뢰도 저하를 방지한다.
