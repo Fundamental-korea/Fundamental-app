@@ -1,0 +1,1 @@
+2026-09-23 score-gap recovery rerun after standard fallback import fix
