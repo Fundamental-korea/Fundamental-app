@@ -57,8 +57,8 @@ import streamlit as st
 
 # GitHub의 실제 Raw 이미지 URL
 RAW_LOGO_URL = "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/logo.png"
-// 원문 대표 이미지가 없을 때 사용하는 주제 중립적 금융 보조 이미지.
-// 카드에는 별도의 AI 라벨을 표시하지 않으며, 원문/공급원 이미지가 항상 우선한다.
+# 원문 대표 이미지가 없을 때 사용하는 주제 중립적 금융 보조 이미지.
+# 카드에는 별도의 AI 라벨을 표시하지 않으며, 원문/공급원 이미지가 항상 우선한다.
 AI_NEWS_FALLBACK_IMAGE_URL = "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/ai_news_finance_fallback.jpg"
 
 # 이미지를 가져와 Base64로 변환하는 함수
