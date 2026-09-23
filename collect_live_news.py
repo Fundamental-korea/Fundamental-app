@@ -9,7 +9,50 @@ from news_earnings import (
 
 KST = ZoneInfo("Asia/Seoul")
 
+MIN_COLLECTION_INTERVAL = timedelta(minutes=110)
+
+
+def _latest_collection_at(client):
+    try:
+        result = (
+            client.table("news_items")
+            .select("collected_at")
+            .eq("is_macro", True)
+            .in_("source", ["MARKETAUX", "NAVER", "RSS"])
+            .order("collected_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        rows = result.data or []
+        if not rows or not rows[0].get("collected_at"):
+            return None
+        return datetime.fromisoformat(str(rows[0]["collected_at"]).replace("Z", "+00:00"))
+    except Exception as exc:
+        print(f"[LIVE NEWS] latest collection lookup failed: {type(exc).__name__}: {exc}")
+        return None
+
+
 def main() -> None:
+    from news_earnings import _get_supabase_client
+
+    client = _get_supabase_client()
+
+    # Workflow는 매시간 watchdog처럼 실행하지만, 실제 뉴스 수집은 약 2시간 간격으로 제한한다.
+    # GitHub Actions schedule이 한 번 지연되어도 다음 hourly run에서 자동 복구된다.
+    latest_collection_at = _latest_collection_at(client)
+    now_utc = datetime.now(timezone.utc)
+    if latest_collection_at is not None:
+        if latest_collection_at.tzinfo is None:
+            latest_collection_at = latest_collection_at.replace(tzinfo=timezone.utc)
+        age = now_utc - latest_collection_at.astimezone(timezone.utc)
+        if age < MIN_COLLECTION_INTERVAL:
+            print(
+                f"[LIVE NEWS] watchdog skip: last_collection="
+                f"{latest_collection_at.isoformat()} age={age} "
+                f"< {MIN_COLLECTION_INTERVAL}"
+            )
+            return
+
     items = fetch_macro_news(display=20)
     if len(items) < 10:
         raise RuntimeError(
@@ -17,8 +60,6 @@ def main() -> None:
             "refusing to modify the existing 20-item feed"
         )
 
-    from news_earnings import _get_supabase_client
-    client = _get_supabase_client()
     owned_sources = ["MARKETAUX", "NAVER", "RSS"]
 
     # 기존 피드와 비교해 이번 실행에서 처음 발견된 기사만 신규 기사로 판단한다.
@@ -122,11 +163,16 @@ def main() -> None:
         (str(row.get("collected_at") or "") for row in db_rows),
         default="",
     )
+    newest_published_at = max(
+        (str(row.get("published_at") or "") for row in db_rows),
+        default="",
+    )
     now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
     print(
         f"[LIVE NEWS] {now_kst} fetched={len(items)} new={len(new_items)} "
         f"persisted={saved} feed_rows={len(db_rows)} stale_removed={len(stale_rows)} "
-        f"unique_articles={len(unique_keys)} newest_collected_at={newest_collected_at}"
+        f"unique_articles={len(unique_keys)} newest_published_at={newest_published_at} "
+        f"newest_collected_at={newest_collected_at}"
     )
 
     if len(db_rows) < min(10, len(items)):
@@ -139,6 +185,7 @@ def main() -> None:
             f"Live News DB verification failed: duplicate articles remain "
             f"(rows={len(db_rows)}, unique={len(unique_keys)})"
         )
+
 
 if __name__ == "__main__":
     main()
