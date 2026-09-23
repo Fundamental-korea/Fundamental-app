@@ -27,7 +27,7 @@ from typing import Iterable, Optional
 import pandas as pd
 import requests
 import xml.etree.ElementTree as ET
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qsl, urlencode
 from zoneinfo import ZoneInfo
 
 
@@ -518,21 +518,19 @@ PREFERRED_GLOBAL_NEWS_DOMAINS = (
 )
 
 
+def _news_timestamp(item: NaverNewsItem) -> float:
+    try:
+        return float(pd.to_datetime(item.pub_date, utc=True).timestamp())
+    except Exception:
+        return 0.0
+
+
+def _sort_news_latest_first(items: Iterable[NaverNewsItem]) -> list[NaverNewsItem]:
+    return sorted(list(items), key=lambda item: (_news_timestamp(item), str(item.title or "")), reverse=True)
+
+
 def _rank_global_news(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
-    preferred = {domain: idx for idx, domain in enumerate(PREFERRED_GLOBAL_NEWS_DOMAINS)}
-
-    def rank(item: NaverNewsItem):
-        source_rank = preferred.get(_source_domain(item), 999)
-        try:
-            published_ts = datetime.fromisoformat(
-                (item.pub_date or "").replace("Z", "+00:00")
-            ).timestamp()
-        except Exception:
-            published_ts = 0
-        return source_rank, -published_ts
-
-    return sorted(items, key=rank)
-
+    return _sort_news_latest_first(items)
 
 def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 3) -> list[NaverNewsItem]:
     """Fetch company news with one Marketaux request, then NAVER fallback."""
@@ -564,7 +562,23 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
 
     terms = [term for term in (name, code) if term and not (term == code and code.isdigit())]
     query = " ".join(terms)
-    return search_naver_news(query, display=target, sort="date") if query else []
+    if not query:
+        return []
+
+    if _env_optional("NAVER_CLIENT_ID") and _env_optional("NAVER_CLIENT_SECRET"):
+        try:
+            naver_items = search_naver_news(query, display=target, sort="date")
+            if naver_items:
+                return _sort_news_latest_first(naver_items)[:target]
+        except Exception as exc:
+            print(f"[STOCK NEWS] NAVER fallback failed | {name} | {type(exc).__name__}: {exc}")
+
+    rss_items = search_google_news_rss(
+        f'"{name}" {code}' if code.isdigit() else query,
+        language="ko",
+        display=max(target * 4, 12),
+    )
+    return _sort_news_latest_first(rss_items)[:target]
 
 
 
@@ -658,16 +672,34 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
         for q in ("Federal Reserve inflation interest rates US economy markets earnings","US stocks Treasury yields dollar tariffs technology energy"):
             rss_us.extend(search_google_news_rss(q,language="en",display=20))
         rss_kr.extend(search_google_news_rss("한국은행 금리 환율 코스피 경제 수출 반도체 증시",language="ko",display=20))
-        for item in _rank_global_news(rss_us):
+        today_rss_us = [x for x in rss_us if _is_today_kst(x)]
+        today_rss_kr = [x for x in rss_kr if _is_today_kst(x)]
+        recent_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
+        def recent_24h(items):
+            return [x for x in items if _news_timestamp(x) >= recent_cutoff.timestamp()]
+
+        for item in _sort_news_latest_first(today_rss_us):
             if len(selected_us)>=us_target: break
             key=_canonical_news_key(item)
             if key and key not in selected_keys: selected_keys.add(key); selected_us.append(item)
-        for item in _rank_global_news(rss_kr):
+        for item in _sort_news_latest_first(today_rss_kr):
             if len(selected_kr)>=kr_target: break
             key=_canonical_news_key(item)
             if key and key not in selected_keys: selected_keys.add(key); selected_kr.append(item)
-        print(f"[LIVE NEWS DEBUG] RSS selected US={len(selected_us)}/{us_target} KR={len(selected_kr)}/{kr_target}")
-    final=(selected_us+selected_kr)[:target]
+
+        if len(selected_us)<us_target:
+            for item in _sort_news_latest_first(recent_24h(rss_us)):
+                if len(selected_us)>=us_target: break
+                key=_canonical_news_key(item)
+                if key and key not in selected_keys: selected_keys.add(key); selected_us.append(item)
+        if len(selected_kr)<kr_target:
+            for item in _sort_news_latest_first(recent_24h(rss_kr)):
+                if len(selected_kr)>=kr_target: break
+                key=_canonical_news_key(item)
+                if key and key not in selected_keys: selected_keys.add(key); selected_kr.append(item)
+
+        print(f"[LIVE NEWS DEBUG] RSS selected US={len(selected_us)}/{us_target} KR={len(selected_kr)}/{kr_target} today={len(today_rss_us)}/{len(today_rss_kr)}")
+    final=_sort_news_latest_first(selected_us+selected_kr)[:target]
     print(f"[LIVE NEWS DEBUG] END total={len(final)} US={len(selected_us)} KR={len(selected_kr)}")
     return final
 
@@ -746,7 +778,7 @@ def persist_live_news_snapshot(
 
         rows.append(
             {
-                "source": "NAVER" if str(item.source or "").strip().upper() == "NAVER" else "MARKETAUX",
+                "source": ("NAVER" if str(item.source or "").strip().upper() == "NAVER" else ("RSS" if str(item.source or "").strip().upper() in {"GOOGLE NEWS", "RSS"} else "MARKETAUX")),
                 "source_id": source_id,
                 "market": "GLOBAL",
                 "stock_code": None,
@@ -781,7 +813,7 @@ def persist_live_news_snapshot(
         .upsert(rows, on_conflict="source,source_id")
         .execute()
     )
-    return len(response.data or rows)
+    return len(response.data or [])
 
 
 def persist_naver_news(
