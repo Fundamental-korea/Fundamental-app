@@ -4467,7 +4467,6 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
         query = item.query if hasattr(item, "query") else ""
         source_hint = item.source if hasattr(item, "source") else item.get("source", "")
-        source_label = _news_source_label(direct_url, source_hint or "뉴스")
         category_display = str(query or "시장 뉴스").strip()
         snippet_text = getattr(item, "snippet", "")
         keywords_text = getattr(item, "keywords", "")
@@ -4477,6 +4476,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         # 이미지 우선순위: 검증된 원문 대표 이미지 → 검증된 공급원 이미지 → 기사별 AI 이미지.
         # AI fallback은 실제 원문 이미지가 없는 경우에만 생성한다.
         direct_url = original_url or article_url
+        source_label = _news_source_label(direct_url, source_hint or "뉴스")
         # 카드 클릭은 내부 뉴스 리더로 연결하고, 원문 URL을 안전한 fallback으로 사용한다.
         reader_url = original_url or article_url
         image_candidates = [
