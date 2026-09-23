@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B1220"/><stop offset="0.55" stop-color="#16243B"/><stop offset="1" stop-color="#09101C"/></linearGradient>
+    <radialGradient id="glow1"><stop stop-color="#8ED1FC" stop-opacity=".45"/><stop offset="1" stop-color="#8ED1FC" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glow2"><stop stop-color="#F4A261" stop-opacity=".32"/><stop offset="1" stop-color="#F4A261" stop-opacity="0"/></radialGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#E7ECF5"/><stop offset=".5" stop-color="#9AA8BC"/><stop offset="1" stop-color="#4A5A70"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000" flood-opacity=".35"/></filter>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="120" cy="80" r="330" fill="url(#glow1)"/>
+  <circle cx="1160" cy="610" r="300" fill="url(#glow2)"/>
+  <g opacity=".16" stroke="#DCE7F5" fill="none">
+    <path d="M0 590H1280M0 510H1280M0 430H1280M0 350H1280M0 270H1280M160 0V720M320 0V720M480 0V720M640 0V720M800 0V720M960 0V720M1120 0V720"/>
+  </g>
+  <text x="70" y="88" fill="#F4A261" font-family="Arial,sans-serif" font-size="28" font-weight="700" letter-spacing="6">AI & SEMICONDUCTORS</text>
+  <g filter="url(#shadow)">
+  <rect x="425" y="175" width="430" height="390" rx="52" fill="#121B2A" stroke="#8ED1FC" stroke-width="10"/>
+  <rect x="505" y="255" width="270" height="230" rx="28" fill="#0B111C" stroke="#F4A261" stroke-width="9"/>
+  <g stroke="#8ED1FC" stroke-width="11" stroke-linecap="round">
+    <path d="M390 245h65M390 320h65M390 395h65M390 470h65M825 245h65M825 320h65M825 395h65M825 470h65"/>
+    <path d="M500 135v55M575 135v55M650 135v55M725 135v55M500 555v55M575 555v55M650 555v55M725 555v55"/>
+  </g>
+  <path d="M545 435 L595 370 L640 415 L708 315" stroke="#F4A261" stroke-width="14" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="708" cy="315" r="20" fill="#F6F8FB"/>
+</g>
+  <rect x="70" y="625" width="240" height="5" rx="3" fill="#8ED1FC" opacity=".8"/>
+  <rect x="318" y="625" width="110" height="5" rx="3" fill="#F4A261" opacity=".65"/>
+</svg>
