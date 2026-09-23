@@ -89,5 +89,23 @@ jobs:
           if not any("관련 뉴스" in str(x) for x in texts):
               raise SystemExit(2)
           PY
+      - name: Test public translation fallback
+        run: |
+          python - <<'PY'
+          import requests
+          text = "Federal Reserve keeps interest rates unchanged"
+          r = requests.get(
+              "https://translate.googleapis.com/translate_a/single",
+              params={"client":"gtx","sl":"en","tl":"ko","dt":"t","q":text},
+              timeout=20,
+          )
+          print("TRANSLATE_STATUS", r.status_code)
+          print("TRANSLATE_BODY", r.text[:1000])
+          if r.status_code != 200:
+              raise SystemExit(1)
+          if "연방" not in r.text and "미국" not in r.text:
+              raise SystemExit(2)
+          PY
+
       - name: Compile
         run: python -m py_compile app.py news_earnings.py collect_live_news.py
