@@ -997,8 +997,7 @@ st.markdown(
     .earnings-detail-compare {
         margin-top: 9px;
         padding-top: 9px;
-        border-top: 1px dashed #E5E7EB;
-        color: #374151 !important;
+        border-top: 1px dashed #E5E7EB;        color: #374151 !important;
         font-size: 11px;
         font-weight: 750;
     }
@@ -1997,8 +1996,7 @@ def get_combined_stock_db():
     except Exception:
         us_stocks = [
             {"ticker": "AAPL", "name": "Apple Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
-            {"ticker": "NVDA", "name": "NVIDIA Corporation", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
-            {"ticker": "TSLA", "name": "Tesla Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
+            {"ticker": "NVDA", "name": "NVIDIA Corporation", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},            {"ticker": "TSLA", "name": "Tesla Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
             {"ticker": "MSFT", "name": "Microsoft Corp.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
             {"ticker": "AMZN", "name": "Amazon.com Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
             {"ticker": "GOOGL", "name": "Alphabet Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
@@ -2997,8 +2995,7 @@ def render_unified_search_box(stock_db, target_view=None):
                 transition: background 0.15s;
                 text-decoration: none !important;
                 color: inherit !important;
-            }}
-            .stock-row:hover, .stock-row.active {{
+            }}            .stock-row:hover, .stock-row.active {{
                 background-color: {THEME['surface_warm']};
             }}
             .stock-info {{
@@ -3997,8 +3994,7 @@ def render_news_reader():
     image_url = str(qp.get("news_image", "")).strip()
     ai_result = _generate_ai_news_article(
         title=title,
-        description=description,
-        snippet=snippet,
+        description=description,        snippet=snippet,
         keywords=keywords,
         entities=entities,
         source=source,
@@ -4217,7 +4213,8 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         keywords_text = getattr(item, "keywords", "")
         entities_text = getattr(item, "entities", "")
         provided_image_url = getattr(item, "image_url", "")
-        # 원문 OG/Twitter 이미지를 최우선으로 사용하고, 실패할 때만 공급원 썸네일을 사용한다.\n        image_url = (image_urls[idx] if idx < len(image_urls) else "") or provided_image_url
+        # 원문 OG/Twitter 이미지를 최우선으로 사용하고, 실패할 때만 공급원 썸네일을 사용한다.
+        image_url = (image_urls[idx] if idx < len(image_urls) else "") or provided_image_url
 
         direct_url = original_url or article_url
         # 카드 표지는 원문 대표 이미지만 사용하며, AI 이미지는 생성하지 않는다.
@@ -4997,7 +4994,6 @@ if selected_code and view_mode_param == "chart":
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
-
 elif view_mode_param == "analysis_search":
     # ==========================================
     # [5-0] 차트 분석 전용 검색 화면 - Chart Analysis 탭에서 새 창으로 열림
@@ -5997,8 +5993,7 @@ else:
             overview["BPS"] = (f"{ov_bps:,.0f}{won}", "neutral")
             if live_price and ov_bps > 0:
                 overview["PBR"] = (f"{live_price / ov_bps:.2f}", "neutral")
-        elif ov_pbr_stored is not None and ov_pbr_stored > 0 and live_price:
-            bps_est = live_price / ov_pbr_stored
+        elif ov_pbr_stored is not None and ov_pbr_stored > 0 and live_price:            bps_est = live_price / ov_pbr_stored
             overview["BPS(추정)"] = (f"{bps_est:,.0f}{won}", "neutral")
             overview["PBR"] = (f"{ov_pbr_stored}", "neutral")
 
