@@ -3772,17 +3772,13 @@ def _translate_news_cards(
 
     try:
         response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent",
             headers={
                 "x-goog-api-key": api_key,
                 "Content-Type": "application/json",
             },
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "maxOutputTokens": 2000,
-                    "temperature": 0.1,
-                },
             },
             timeout=30,
         )
@@ -4452,7 +4448,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
     if needs_localization:
         localized_cards = _translate_news_cards(
             translation_input,
-            cache_version="live-news-korean-v7",
+            cache_version="live-news-korean-v6",
         )
 
     cards = []
@@ -4467,16 +4463,11 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         pub_date = item.pub_date if hasattr(item, "pub_date") else item.get("published_at", "")
         query = item.query if hasattr(item, "query") else ""
         source_hint = item.source if hasattr(item, "source") else item.get("source", "")
-        category_display = str(query or "시장 뉴스").strip()
         snippet_text = getattr(item, "snippet", "")
         keywords_text = getattr(item, "keywords", "")
         entities_text = getattr(item, "entities", "")
         provided_image_url = getattr(item, "image_url", "")
-
-        # 이미지 우선순위: 검증된 원문 대표 이미지 → 검증된 공급원 이미지 → 기사별 AI 이미지.
-        # AI fallback은 실제 원문 이미지가 없는 경우에만 생성한다.
-        direct_url = original_url or article_url
-        source_label = _news_source_label(direct_url, source_hint or "뉴스")
+        # 원문 대표 이미지 → 공급원 이미지 → 기사별 AI 이미지 순서로 선택한다.
         image_candidates = [
             image_urls[idx] if idx < len(image_urls) else "",
             provided_image_url,
@@ -4487,15 +4478,13 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 image_url = candidate_image
                 break
 
-        ai_fallback_url = _get_ai_news_image_url(
-            title=title_text,
-            description=desc_text,
-            query=query,
-            article_url=direct_url,
+        direct_url = original_url or article_url
+        source_label = _news_source_label(direct_url, source_hint or "뉴스")
+        category_display = (
+            "한국 경제·증시"
+            if title == "📰 Live News" and re.search(r"[가-힣]", str(query or ""))
+            else ("미국 경제·금융" if title == "📰 Live News" else (query or "시장 뉴스"))
         )
-        if not image_url:
-            image_url = ai_fallback_url
-
         reader_url = _build_news_reader_url(
             title=title_text,
             description=desc_text,
@@ -4510,25 +4499,31 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             keywords=keywords_text,
             entities=entities_text,
         )
-
-        # 메인 카드에는 AI 이미지 여부를 별도 배지로 표시하지 않는다.
-
+        ai_fallback_url = _get_ai_news_image_url(
+            title=title_text,
+            description=desc_text,
+            query=query,
+            article_url=direct_url,
+        )
+        if not image_url:
+            image_url = ai_fallback_url
+        image_is_ai = image_url.startswith("https://image.pollinations.ai/")
+        ai_badge_html = '<span class="live-news-ai-badge">AI 이미지</span>' if image_is_ai else ""
 
         if image_url:
             media_html = (
                 f'<div class="live-news-image-wrap">'
+                f'{ai_badge_html}'
                 f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" '
                 f'alt="{_escape_html(display_title)}" data-fallback="{_escape_html(ai_fallback_url)}" '
                 f'onerror="this.onerror=null;this.src=this.dataset.fallback;">'
                 f'</div>'
             )
         else:
-            # 원문 대표 이미지가 없을 때 분류명을 이미지처럼 보여주지 않는다.
-            # 실제 이미지가 없다는 사실만 중립적으로 표시해 신뢰도 저하를 방지한다.
             media_html = (
-                '<div class="live-news-image-wrap live-news-image-fallback">'
-                '<span>📰</span><small>원문 이미지 없음</small>'
-                '</div>'
+                f'<div class="live-news-image-wrap live-news-image-fallback">'
+                f'<span>📰</span><small>{_escape_html(category_display)}</small>'
+                f'</div>'
             )
 
         cards.append(
