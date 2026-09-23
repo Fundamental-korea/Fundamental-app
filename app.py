@@ -3134,7 +3134,7 @@ def render_unified_search_box(stock_db, target_view=None):
                     .normalize('NFKC')
                     .toLowerCase()
                     .replace(/\\s+/g, '')
-                    .replace(/[._\-\/'’(),&]+/g, '');
+                    .replace(/[._\/'’(),&-]+/g, '');
             }}
 
             // normalizeSearchText 정의 이후에 검색 인덱스를 생성해야 합니다.
@@ -4298,7 +4298,7 @@ def render_home_live_news(limit=20):
         page_items,
         limit=page_size,
         title="📰 Live News",
-        subtitle="미국 경제·금융 중심의 주요 뉴스 20개 · 카드 제목과 설명은 한국어로 AI 현지화 · 10개씩 표시",
+        subtitle="미국·한국 경제·금융 중심의 주요 뉴스 20개 · 카드 제목과 설명은 한국어로 AI 현지화 · 10개씩 표시",
         back_url=f"?theme={THEME_MODE}",
     )
 
