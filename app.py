@@ -15,6 +15,7 @@ from html import unescape
 from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
 import hashlib
+from pathlib import Path
 
 from search_aliases import aliases_for
 
@@ -516,6 +517,11 @@ st.markdown(
         margin: 0 0 18px;
         border: 1px solid #E5E7EB;
     }
+    .news-reader-static-image > svg {
+        display: block !important;
+        width: 100% !important;
+        height: auto !important;
+    }
     .news-reader-body {
         font-size: 15px;
         line-height: 1.85;
@@ -601,6 +607,21 @@ st.markdown(
         height: 148px;
         overflow: hidden;
         background: #F3F4F6;
+    }
+    .live-news-static-svg,
+    .live-news-static-fallback {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+    }
+    .live-news-static-svg > svg,
+    .live-news-static-fallback > svg {
+        display: block !important;
+        width: 100% !important;
+        height: 100% !important;
+        min-width: 100% !important;
+        object-fit: cover;
     }
     .live-news-image {
         display: block;
@@ -3990,17 +4011,36 @@ def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -
 
 
 NEWS_TOPIC_IMAGE_FILES = {
-    "global_markets": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/global_markets.svg",
-    "interest_rates": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/interest_rates.svg",
-    "bonds_yields": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/bonds_yields.svg",
-    "dollar_fx": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/dollar_fx.svg",
-    "energy_oil": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/energy_oil.svg",
-    "ai_semiconductors": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/ai_semiconductors.svg",
-    "trade_global": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/trade_global.svg",
-    "korea_asia": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/korea_asia.svg",
-    "economy_jobs": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/economy_jobs.svg",
-    "crypto_assets": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/crypto_assets.svg",
+    "global_markets": "assets/news_topics/global_markets.svg",
+    "interest_rates": "assets/news_topics/interest_rates.svg",
+    "bonds_yields": "assets/news_topics/bonds_yields.svg",
+    "dollar_fx": "assets/news_topics/dollar_fx.svg",
+    "energy_oil": "assets/news_topics/energy_oil.svg",
+    "ai_semiconductors": "assets/news_topics/ai_semiconductors.svg",
+    "trade_global": "assets/news_topics/trade_global.svg",
+    "korea_asia": "assets/news_topics/korea_asia.svg",
+    "economy_jobs": "assets/news_topics/economy_jobs.svg",
+    "crypto_assets": "assets/news_topics/crypto_assets.svg",
 }
+
+
+def _get_news_topic_svg_markup(topic_key: str) -> str:
+    """앱 내부 SVG를 직접 HTML에 삽입해 외부 이미지 요청을 없앤다."""
+    key = str(topic_key or "global_markets")
+    relative_path = NEWS_TOPIC_IMAGE_FILES.get(
+        key,
+        NEWS_TOPIC_IMAGE_FILES["global_markets"],
+    )
+    path = Path(__file__).resolve().parent / relative_path
+    try:
+        svg = path.read_text(encoding="utf-8").strip()
+        return svg if svg.startswith("<svg") else ""
+    except Exception as exc:
+        print(
+            f"[Live News Images] static SVG load failed: {relative_path} | "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return ""
 
 
 def _get_news_topic_key(title: str = "", description: str = "", query: str = "", source: str = "") -> str:
@@ -4030,7 +4070,7 @@ def _get_news_topic_image_url(topic_key: str) -> str:
 
 
 def _normalize_news_image_url(image_url: str) -> str:
-    """공급원 이미지 URL을 브라우저에서 로드할 수 있는 HTTPS URL로 정규화한다."""
+    """기존 공급원 이미지를 복원하되 명백한 썸네일/저해상도 URL은 제외한다."""
     url = str(image_url or "").strip()
     if not url:
         return ""
@@ -4038,7 +4078,21 @@ def _normalize_news_image_url(image_url: str) -> str:
         url = "https:" + url
     elif url.startswith("http://"):
         url = "https://" + url[7:]
-    return url if url.startswith("https://") else ""
+    if not url.startswith("https://"):
+        return ""
+    lowered = url.lower()
+    if "bing.com" in lowered and ("th?id=" in lowered or "pid=news" in lowered or "/th" in lowered):
+        return ""
+    lowres_hints = (
+        "thumbnail", "thumb", "small", "tiny", "lowres",
+        "150x", "180x", "200x", "240x", "300x", "320x", "400x",
+        "width=150", "width=180", "width=200", "width=240",
+        "width=300", "width=320", "width=400",
+        "w_150", "w_180", "w_200", "w_240", "w_300", "w_320", "w_400",
+    )
+    if any(hint in lowered for hint in lowres_hints):
+        return ""
+    return url
 
 
 def _build_news_reader_url(
@@ -4112,9 +4166,8 @@ def render_news_reader():
 
     if not news_topic:
         news_topic = _get_news_topic_key(title, description, category, source)
-    static_reader_image = _get_news_topic_image_url(news_topic)
-    # 뉴스 리더도 카드와 동일하게 외부 원문 이미지 대신 로컬 주제 이미지를 사용한다.
-    image_url = static_reader_image or _get_news_image_url(original_url or article_url)
+    static_reader_svg = _get_news_topic_svg_markup(news_topic)
+    image_url = ""
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     with col_logo:
@@ -4588,15 +4641,20 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             media_html = (
                 f"<div class='live-news-image-wrap'>"
                 f"<img class='live-news-image' src='{_escape_html(image_url)}' alt='' loading='lazy' decoding='async' "
-                f"onerror=\"this.onerror=null;this.src='{_escape_html(static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL)}';\">"
+                f"onerror=\"this.style.display='none';this.nextElementSibling.style.display='flex';\">"
+                f"<div class='live-news-static-fallback' style='display:none;'>{static_topic_svg}</div>"
+                f"</div>"
+            )
+        elif static_topic_svg:
+            media_html = (
+                f"<div class='live-news-image-wrap live-news-static-svg'>"
+                f"{static_topic_svg}"
                 f"</div>"
             )
         else:
-            # 원문 대표 이미지가 없을 때 분류명을 이미지처럼 보여주지 않는다.
-            # 실제 이미지가 없다는 사실만 중립적으로 표시해 신뢰도 저하를 방지한다.
             media_html = (
                 '<div class="live-news-image-wrap live-news-image-fallback">'
-                '<span>📰</span><small>원문 이미지 없음</small>'
+                '<span>📰</span><small>이미지 준비 중</small>'
                 '</div>'
             )
 
