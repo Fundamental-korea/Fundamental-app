@@ -107,5 +107,25 @@ jobs:
               raise SystemExit(2)
           PY
 
+      - name: Test MyMemory translation fallback
+        run: |
+          python - <<'PY'
+          import requests
+          text = "Federal Reserve keeps interest rates unchanged"
+          r = requests.get(
+              "https://api.mymemory.translated.net/get",
+              params={"q": text, "langpair": "en|ko"},
+              timeout=20,
+          )
+          print("MYMEMORY_STATUS", r.status_code)
+          print("MYMEMORY_BODY", r.text[:1500])
+          if r.status_code != 200:
+              raise SystemExit(1)
+          data = r.json()
+          translated = str(data.get("responseData", {}).get("translatedText", "")).strip()
+          if not translated:
+              raise SystemExit(2)
+          PY
+
       - name: Compile
         run: python -m py_compile app.py news_earnings.py collect_live_news.py
