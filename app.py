@@ -4321,12 +4321,12 @@ def render_home_live_news(limit=20):
                 st.rerun()
 
 
-@st.cache_data(ttl=21600, show_spinner=False)
+@st.cache_data(ttl=1800, show_spinner=False)
 def _get_stock_news_cached(
     stock_name,
     stock_code,
     limit=3,
-    cache_version="stock-news-v9",
+    cache_version="stock-news-v10",
 ):
     return fetch_stock_news(
         stock_name,
@@ -4342,7 +4342,7 @@ def render_home_stock_news(stock_name, stock_code, limit=3):
             stock_name,
             stock_code,
             limit,
-            cache_version="stock-news-v9",
+            cache_version="stock-news-v10",
         )
     except Exception:
         items = []
