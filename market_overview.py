@@ -174,6 +174,32 @@ def persist_market_overview(rows: list[dict[str, Any]]) -> int:
     return len(result.data or rows)
 
 
+
+
+def load_market_overview(market: str) -> list[dict[str, Any]]:
+    """Load the latest persisted snapshot for an Overview market."""
+    if not SUPABASE_URL or not SUPABASE_KEY:
+        return []
+
+    try:
+        client = _require_supabase()
+        result = (
+            client.table("market_overview_snapshot")
+            .select(
+                "market,symbol,label,metric_group,value,change_pct,change_abs,"
+                "asof_date,source,updated_at"
+            )
+            .eq("market", str(market).upper())
+            .order("metric_group")
+            .order("symbol")
+            .execute()
+        )
+        return list(result.data or [])
+    except Exception as exc:
+        print(f"[MARKET_OVERVIEW] DB load failed: {exc}")
+        return []
+
+
 def collect_and_persist(market: str | None = None) -> int:
     markets = [str(market).upper()] if market else ["US", "KR"]
     total = 0
