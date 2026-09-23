@@ -3562,27 +3562,27 @@ def _escape_html(value):
 def _get_home_macro_news_direct_fallback(
     display=20,
     day_key="",
-    cache_version="live-news-fetch-v11",
+    cache_version="live-news-fetch-v12",
 ):
     """Live News provider fallback. Cache version is bumped with feed logic changes."""
     return fetch_macro_news(display=min(max(display, 1), 20))
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_home_macro_news(display=20, cache_version="supabase-live-news-v10"):
+def _get_home_macro_news(display=20, cache_version="supabase-live-news-v11"):
     """자동 수집 DB를 우선하고, 부족하면 실시간 공급원으로 즉시 20개까지 보충한다."""
     target = min(max(display, 1), 20)
     db_rows: list[NaverNewsItem] = []
 
     if supabase is not None:
         try:
-            # 자동수집 스냅샷은 collected_at으로 판별하고, 실제 발행시각으로 최신순 정렬한다.
-            snapshot_cutoff = (datetime.now(timezone.utc) - timedelta(hours=6)).isoformat()
+            # collector가 유지하는 rolling feed(최대 20개)를 그대로 읽고,
+            # 실제 발행시각을 기준으로 최신 기사가 항상 앞에 오도록 정렬한다.
             result = (
                 supabase.table("news_items")
                 .select("source,source_id,title,description,article_url,original_url,published_at,collected_at,metadata")
                 .eq("is_macro", True)
-                .gte("collected_at", snapshot_cutoff)
+                .in_("source", ["MARKETAUX", "NAVER", "RSS"])
                 .order("published_at", desc=True)
                 .limit(target)
                 .execute()
@@ -3619,7 +3619,7 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v10"):
 
     day_key = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
     fallback = _get_home_macro_news_direct_fallback(
-        display=target, day_key=day_key, cache_version="live-news-fetch-v11"
+        display=target, day_key=day_key, cache_version="live-news-fetch-v12"
     )
     merged = []
     seen = set()
@@ -4316,7 +4316,7 @@ def render_home_live_news(limit=20):
         page_items,
         limit=page_size,
         title="📰 Live News",
-        subtitle="미국·한국 경제·금융 중심의 주요 뉴스 20개 · 카드 제목과 설명은 한국어로 AI 현지화 · 10개씩 표시",
+        subtitle="미국·한국 경제·금융 중심의 주요 뉴스 20개 · 최신 기사부터 표시 · 새로 수집된 기사는 앞쪽에 추가 · 2시간 자동수집 · 10개씩 표시",
         back_url=f"?theme={THEME_MODE}",
     )
 
