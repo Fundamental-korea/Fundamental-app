@@ -4242,20 +4242,20 @@ def _get_news_image_url(article_url: str) -> str:
 
         # 1) srcset / data-srcset: 브라우저가 선택하는 가장 큰 원본 후보를 우선한다.
         srcset_values = re.findall(
-            r'(?:srcset|data-srcset)=["\\']([^"\\']+)["\\']',
+            r"""(?:srcset|data-srcset)=["']([^"']+)["']""",
             html,
             flags=re.IGNORECASE,
         )
         srcset_candidates = []
         for srcset in srcset_values:
-            for entry in re.split(r"\\s*,\\s*", srcset):
+            for entry in re.split(r"\s*,\s*", srcset):
                 parts = entry.strip().split()
                 if not parts:
                     continue
                 raw_url = parts[0]
                 width = 0
                 if len(parts) > 1:
-                    match_width = re.match(r"(\\d+)w$", parts[1])
+                    match_width = re.match(r"(\d+)w$", parts[1])
                     if match_width:
                         width = int(match_width.group(1))
                 srcset_candidates.append((width, raw_url))
@@ -4264,7 +4264,7 @@ def _get_news_image_url(article_url: str) -> str:
 
         # 2) JSON-LD 구조화 데이터의 image / primaryImageOfPage 후보.
         for match in re.finditer(
-            r'"(?:image|contentUrl|thumbnailUrl)"\\s*:\\s*"([^"]+)"',
+            r'"(?:image|contentUrl|thumbnailUrl)"\s*:\s*"([^"]+)"',
             html,
             flags=re.IGNORECASE,
         ):
@@ -4297,7 +4297,7 @@ def _get_news_image_url(article_url: str) -> str:
         # 4) 흔한 lazy-load 원본 속성.
         for attr in ("data-original", "data-src", "data-lazy-src"):
             for match in re.finditer(
-                rf'{attr}=["\\']([^"\\']+)["\\']',
+                rf"""{attr}=["']([^"']+)["']""",
                 html,
                 flags=re.IGNORECASE,
             ):
