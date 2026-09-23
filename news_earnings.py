@@ -1019,9 +1019,12 @@ def persist_live_news_snapshot(
         except Exception:
             published_at = None
 
+        source_name = str(item.source or "").strip().upper()
+        stored_source = "NAVER" if source_name == "NAVER" else ("RSS" if source_name.startswith("GOOGLE") else "MARKETAUX")
+
         rows.append(
             {
-                "source": "NAVER" if str(item.source or "").strip().upper() == "NAVER" else "MARKETAUX",
+                "source": stored_source,
                 "source_id": source_id,
                 "market": "GLOBAL",
                 "stock_code": None,
