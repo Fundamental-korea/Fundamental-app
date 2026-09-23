@@ -785,12 +785,19 @@ def fetch_macro_news(
         seen.add(key)
         kr_ranked.append(item)
 
-    selected = us_ranked[: min(16, target)]
-    kr_target = min(4, max(0, target - len(selected)))
-    selected.extend(kr_ranked[:kr_target])
+    us_target = min(16, target)
+    kr_target = min(4, max(0, target - us_target))
+
+    # 목표 비중을 먼저 정확하게 구성한다.
+    selected_us = us_ranked[:us_target]
+    selected_kr = kr_ranked[:kr_target]
 
     # Marketaux 7회 예산을 절대로 넘기지 않고 NAVER로 부족분을 채운다.
-    if len(selected) < target:
+    fallback_us: list[NaverNewsItem] = []
+    fallback_kr: list[NaverNewsItem] = []
+    if len(selected_us) < us_target or len(selected_kr) < kr_target or (
+        len(selected_us) + len(selected_kr) < target
+    ):
         try:
             fallback_us = [
                 item for item in search_naver_news(
@@ -815,40 +822,39 @@ def fetch_macro_news(
         except Exception:
             fallback_kr = []
 
-        selected_keys = {_canonical_news_key(item) for item in selected}
+    selected = list(selected_us) + list(selected_kr)
+    selected_keys = {_canonical_news_key(item) for item in selected}
 
-        # 먼저 US 부족분을 16개까지 채우고,
-        # 이어 KR 부족분을 4개까지 채운다.
-        current_us = len(selected[: min(16, target)])
-        current_kr = max(0, len(selected) - current_us)
+    # US 부족분 -> NAVER US
+    for item in fallback_us:
+        if len(selected_us) >= us_target:
+            break
+        key = _canonical_news_key(item)
+        if key and key not in selected_keys:
+            selected_us.append(item)
+            selected_keys.add(key)
 
-        for item in fallback_us:
-            if len(selected) >= target or current_us >= min(16, target):
-                break
-            key = _canonical_news_key(item)
-            if key and key not in selected_keys:
-                selected_keys.add(key)
-                selected.append(item)
-                current_us += 1
+    # KR 부족분 -> NAVER KR
+    for item in fallback_kr:
+        if len(selected_kr) >= kr_target:
+            break
+        key = _canonical_news_key(item)
+        if key and key not in selected_keys:
+            selected_kr.append(item)
+            selected_keys.add(key)
 
-        for item in fallback_kr:
-            if len(selected) >= target or current_kr >= min(4, target):
-                break
-            key = _canonical_news_key(item)
-            if key and key not in selected_keys:
-                selected_keys.add(key)
-                selected.append(item)
-                current_kr += 1
+    selected = list(selected_us) + list(selected_kr)
+    selected_keys = {_canonical_news_key(item) for item in selected}
 
-        # 그래도 부족하면 남은 오늘 뉴스로 마지막 빈자리를 채운다.
-        if len(selected) < target:
-            for item in fallback_us + fallback_kr:
-                if len(selected) >= target:
-                    break
-                key = _canonical_news_key(item)
-                if key and key not in selected_keys:
-                    selected_keys.add(key)
-                    selected.append(item)
+    # 그래도 20개가 안 되면 오늘의 남은 후보로 마지막 빈자리를 채운다.
+    for item in us_ranked + kr_ranked + fallback_us + fallback_kr:
+        if len(selected) >= target:
+            break
+        key = _canonical_news_key(item)
+        if key and key not in selected_keys:
+            selected.append(item)
+            selected_keys.add(key)
+
 
     return selected[:target]
 
