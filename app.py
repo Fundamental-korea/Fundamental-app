@@ -4271,7 +4271,7 @@ def render_home_live_news(limit=20):
         page_items,
         limit=page_size,
         title="📰 Live News",
-        subtitle="미국 경제·금융 중심의 주요 뉴스 20개를 수집해 10개씩 보여드립니다. 화살표로 다음 뉴스 묶음을 볼 수 있습니다.",
+        subtitle="미국 경제·금융 중심의 주요 뉴스 20개 · 카드 제목과 설명은 한국어로 AI 현지화 · 10개씩 표시하며 화살표로 다음 묶음을 볼 수 있습니다.",
         back_url=f"?theme={THEME_MODE}",
     )
 
