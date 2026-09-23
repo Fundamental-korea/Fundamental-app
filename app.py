@@ -3773,7 +3773,7 @@ def _translate_news_cards(
 
     try:
         response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent",
             headers={
                 "x-goog-api-key": api_key,
                 "Content-Type": "application/json",
@@ -4392,7 +4392,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
     if needs_localization:
         localized_cards = _translate_news_cards(
             translation_input,
-            cache_version="live-news-korean-v6",
+            cache_version="live-news-korean-v7",
         )
 
     cards = []
@@ -4540,7 +4540,7 @@ def _get_stock_news_cached(
     stock_name,
     stock_code,
     limit=3,
-    cache_version="stock-news-v12",
+    cache_version="stock-news-v13",
 ):
     return fetch_stock_news(
         stock_name,
@@ -4556,7 +4556,7 @@ def render_home_stock_news(stock_name, stock_code, limit=3):
             stock_name,
             stock_code,
             limit,
-            cache_version="stock-news-v11",
+            cache_version="stock-news-v13",
         )
     except Exception:
         items = []
