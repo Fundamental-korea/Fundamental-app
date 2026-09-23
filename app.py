@@ -4452,7 +4452,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
     if needs_localization:
         localized_cards = _translate_news_cards(
             translation_input,
-            cache_version="live-news-korean-v6",
+            cache_version="live-news-korean-v7",
         )
 
     cards = []
