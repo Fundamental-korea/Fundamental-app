@@ -516,9 +516,14 @@ def run():
 
             needed = []
             if rec.get("missing_roic"):
-                needed.append("roic")
+                roic_inputs = rec.get("roic_inputs") or {}
+                for metric in ROIC_KEYS:
+                    if roic_inputs.get(metric) is None:
+                        needed.append(metric)
             if rec.get("missing_interest"):
-                needed.append("interest_expense")
+                interest_inputs = rec.get("interest_inputs") or {}
+                if interest_inputs.get("interest_expense") is None:
+                    needed.append("interest_expense")
             for metric in needed:
                 try:
                     rr = resolver.resolve(m["cik"], metric, year=year, limit=5)
