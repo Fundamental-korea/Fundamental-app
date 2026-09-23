@@ -4113,7 +4113,7 @@ def _get_news_images(urls):
     # 상위 10개만 서버에서 원문 대표 이미지를 확인한다. 나머지는 필요할 때
     # 카드별 AI 이미지 fallback을 사용한다.
     results = [""] * len(urls)
-    lookup_count = min(10, len(urls))
+    lookup_count = len(urls)
     lookup_urls = [(idx, urls[idx]) for idx in range(lookup_count) if urls[idx]]
     if not lookup_urls:
         return results
@@ -4212,8 +4212,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         image_url = provided_image_url or (image_urls[idx] if idx < len(image_urls) else "")
 
         direct_url = original_url or article_url
-        if not image_url:
-            image_url = _get_ai_news_image_url(title_text, desc_text, query)
+        # 카드 표지는 원문 대표 이미지만 사용하며, AI 이미지는 생성하지 않는다.
         source_label = _news_source_label(direct_url, source_hint or "뉴스")
         category_display = (
             "한국 경제·증시"
@@ -4326,7 +4325,7 @@ def _get_stock_news_cached(
     stock_name,
     stock_code,
     limit=3,
-    cache_version="stock-news-v5",
+    cache_version="stock-news-v6-rss",
 ):
     return fetch_stock_news(
         stock_name,
