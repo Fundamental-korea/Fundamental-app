@@ -57,6 +57,9 @@ import streamlit as st
 
 # GitHub의 실제 Raw 이미지 URL
 RAW_LOGO_URL = "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/logo.png"
+// 원문 대표 이미지가 없을 때 사용하는 주제 중립적 금융 보조 이미지.
+// 카드에는 별도의 AI 라벨을 표시하지 않으며, 원문/공급원 이미지가 항상 우선한다.
+AI_NEWS_FALLBACK_IMAGE_URL = "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/ai_news_finance_fallback.jpg"
 
 # 이미지를 가져와 Base64로 변환하는 함수
 @st.cache_data
@@ -4227,8 +4230,12 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         keywords_text = getattr(item, "keywords", "")
         entities_text = getattr(item, "entities", "")
         provided_image_url = getattr(item, "image_url", "")
-        # 원문 OG/Twitter 이미지를 최우선으로 사용하고, 실패할 때만 공급원 썸네일을 사용한다.
-        image_url = (image_urls[idx] if idx < len(image_urls) else "") or provided_image_url
+        # 이미지 우선순위: 원문 대표 이미지 → 공급원 이미지 → AI 금융 보조 이미지.
+        image_url = (
+            (image_urls[idx] if idx < len(image_urls) else "")
+            or provided_image_url
+            or AI_NEWS_FALLBACK_IMAGE_URL
+        )
 
         direct_url = original_url or article_url
         # 카드 표지는 원문 대표 이미지만 사용하며, AI 이미지는 생성하지 않는다.
@@ -4252,13 +4259,11 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             keywords=keywords_text,
             entities=entities_text,
         )
-        image_is_ai = image_url.startswith("https://image.pollinations.ai/")
-        ai_badge_html = '<span class="live-news-ai-badge">AI 이미지</span>' if image_is_ai else ""
+        # 메인 카드에는 AI 이미지 여부를 별도 배지로 표시하지 않는다.
 
         if image_url:
             media_html = (
                 f'<div class="live-news-image-wrap">'
-                f'{ai_badge_html}'
                 f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" '
                 f'alt="{_escape_html(display_title)}" onerror="this.parentElement.classList.add(\'image-failed\');">'
                 f'</div>'
