@@ -1,3 +1,4 @@
+import os
 from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
@@ -39,7 +40,7 @@ def main() -> None:
 
     # Workflow는 매시간 watchdog처럼 실행하지만, 실제 뉴스 수집은 약 2시간 간격으로 제한한다.
     # GitHub Actions schedule이 한 번 지연되어도 다음 hourly run에서 자동 복구된다.
-    force_refresh = str(__import__("os").getenv("FORCE_LIVE_NEWS_REFRESH", "")).strip() == "1"
+    force_refresh = os.getenv("FORCE_LIVE_NEWS_REFRESH", "").strip() == "1"
     latest_collection_at = _latest_collection_at(client)
     now_utc = datetime.now(timezone.utc)
     if latest_collection_at is not None and not force_refresh:
