@@ -5065,9 +5065,9 @@ def _format_market_overview_value(row):
     if label == "US 10Y":
         return f"{float(value):.2f}%"
     if label == "USD/KRW":
-        return f"{float(value):,.1f}"
+        return f"₩{float(value):,.1f}"
     if label in {"Gold", "WTI Oil"}:
-        return f"{float(value):,.2f}"
+        return f"${float(value):,.2f}"
     return f"{float(value):,.2f}"
 
 
@@ -5106,6 +5106,17 @@ def render_home_market_overview(market):
     group_titles = {"market": "주요 지수", "conditions": "시장 환경"}
     for group in ("market", "conditions"):
         group_rows = [row for row in rows if row.get("metric_group") == group]
+        order = (
+            ["S&P 500", "Nasdaq", "Dow Jones", "Russell 2000"]
+            if market == "US" and group == "market"
+            else ["VIX", "US 10Y", "Gold", "WTI Oil"]
+            if market == "US"
+            else ["KOSPI", "KOSDAQ"]
+            if group == "market"
+            else ["USD/KRW", "Gold", "WTI Oil"]
+        )
+        rank = {label: idx for idx, label in enumerate(order)}
+        group_rows.sort(key=lambda row: rank.get(str(row.get("label") or ""), 999))
         if not group_rows:
             continue
         if group == "conditions":
