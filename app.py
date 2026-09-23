@@ -4265,7 +4265,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             media_html = (
                 f'<div class="live-news-image-wrap">'
                 f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" '
-                f'alt="{_escape_html(display_title)}" onerror="this.parentElement.classList.add(\'image-failed\');">'
+                f'alt="{_escape_html(display_title)}" onerror="this.onerror=null;this.src=\'{_escape_html(AI_NEWS_FALLBACK_IMAGE_URL)}\';">'
                 f'</div>'
             )
         else:
