@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 720" width="1280" height="720">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0B1220"/><stop offset="0.55" stop-color="#16243B"/><stop offset="1" stop-color="#09101C"/></linearGradient>
+    <radialGradient id="glow1"><stop stop-color="#8ED1FC" stop-opacity=".45"/><stop offset="1" stop-color="#8ED1FC" stop-opacity="0"/></radialGradient>
+    <radialGradient id="glow2"><stop stop-color="#F4A261" stop-opacity=".32"/><stop offset="1" stop-color="#F4A261" stop-opacity="0"/></radialGradient>
+    <linearGradient id="metal" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#E7ECF5"/><stop offset=".5" stop-color="#9AA8BC"/><stop offset="1" stop-color="#4A5A70"/></linearGradient>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="18" stdDeviation="18" flood-color="#000" flood-opacity=".35"/></filter>
+  </defs>
+  <rect width="1280" height="720" fill="url(#bg)"/>
+  <circle cx="120" cy="80" r="330" fill="url(#glow1)"/>
+  <circle cx="1160" cy="610" r="300" fill="url(#glow2)"/>
+  <g opacity=".16" stroke="#DCE7F5" fill="none">
+    <path d="M0 590H1280M0 510H1280M0 430H1280M0 350H1280M0 270H1280M160 0V720M320 0V720M480 0V720M640 0V720M800 0V720M960 0V720M1120 0V720"/>
+  </g>
+  <text x="70" y="88" fill="#F4A261" font-family="Arial,sans-serif" font-size="28" font-weight="700" letter-spacing="6">DOLLAR & FX</text>
+  <g filter="url(#shadow)">
+  <rect x="330" y="220" width="620" height="300" rx="40" fill="#E7E0D0" stroke="#A7A08F" stroke-width="8" transform="rotate(-8 640 370)"/>
+  <circle cx="640" cy="370" r="95" fill="none" stroke="#71766E" stroke-width="8"/>
+  <path d="M640 300V440 M690 325 C650 290 588 315 588 350 C588 405 692 360 692 410 C692 450 630 465 588 425" fill="none" stroke="#71766E" stroke-width="12" stroke-linecap="round"/>
+  <path d="M420 290h110M750 435h110" stroke="#71766E" stroke-width="9" stroke-linecap="round" opacity=".65"/>
+  <circle cx="170" cy="175" r="85" fill="url(#metal)"/><circle cx="1110" cy="540" r="85" fill="#F4A261" opacity=".85"/>
+</g>
+  <rect x="70" y="625" width="240" height="5" rx="3" fill="#8ED1FC" opacity=".8"/>
+  <rect x="318" y="625" width="110" height="5" rx="3" fill="#F4A261" opacity=".65"/>
+</svg>
