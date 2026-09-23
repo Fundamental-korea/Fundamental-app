@@ -4199,17 +4199,17 @@ def _get_news_image_url(article_url: str) -> str:
         response.raise_for_status()
         html = response.text[:800_000]
         patterns = (
-            r'<meta[^>]+property=["\\']og:image:secure_url["\\'][^>]+content=["\\']([^"\\']+)',
-            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+property=["\\']og:image:secure_url["\\']',
-            r'<meta[^>]+property=["\\']og:image["\\'][^>]+content=["\\']([^"\\']+)',
-            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+property=["\\']og:image["\\']',
-            r'<meta[^>]+name=["\\']twitter:image:src["\\'][^>]+content=["\\']([^"\\']+)',
-            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+name=["\\']twitter:image:src["\\']',
-            r'<meta[^>]+name=["\\']twitter:image["\\'][^>]+content=["\\']([^"\\']+)',
-            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+name=["\\']twitter:image["\\']',
-            r'<meta[^>]+itemprop=["\\']image["\\'][^>]+content=["\\']([^"\\']+)',
-            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+itemprop=["\\']image["\\']',
-            r'<link[^>]+rel=["\\'][^"\\']*image_src[^"\\']*["\\'][^>]+href=["\\']([^"\\']+)',
+            r"<meta[^>]+property=[\"']og:image:secure_url[\"'][^>]+content=[\"']([^\"']+)",
+            r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:image:secure_url[\"']",
+            r"<meta[^>]+property=[\"']og:image[\"'][^>]+content=[\"']([^\"']+)",
+            r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:image[\"']",
+            r"<meta[^>]+name=[\"']twitter:image:src[\"'][^>]+content=[\"']([^\"']+)",
+            r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+name=[\"']twitter:image:src[\"']",
+            r"<meta[^>]+name=[\"']twitter:image[\"'][^>]+content=[\"']([^\"']+)",
+            r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+name=[\"']twitter:image[\"']",
+            r"<meta[^>]+itemprop=[\"']image[\"'][^>]+content=[\"']([^\"']+)",
+            r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+itemprop=[\"']image[\"']",
+            r"<link[^>]+rel=[\"'][^\"']*image_src[^\"']*[\"'][^>]+href=[\"']([^\"']+)",
         )
         candidates = []
         seen = set()
