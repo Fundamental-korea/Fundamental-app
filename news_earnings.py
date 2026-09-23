@@ -608,7 +608,7 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
     kr_queries=("한국은행 기준금리 원화 환율 코스피 한국 경제 수출 반도체 증시",)
     us=[]; kr=[]
     for q in us_queries:
-        batch=search_marketaux_news(query=q,language="en",display=3,today_only=True,must_have_entities=False,group_similar=False); us.extend(batch); print(f"[LIVE NEWS DEBUG] Marketaux US batch={len(batch)} total={len(us)}")
+        batch=search_marketaux_news(query=q,language="en",display=3,today_only=True,must_have_entities=False); us.extend(batch); print(f"[LIVE NEWS DEBUG] Marketaux US batch={len(batch)} total={len(us)}")
     for q in kr_queries:
         batch=search_marketaux_news(query=q,language="ko",countries="kr",display=3,today_only=True,must_have_entities=False,group_similar=False); kr.extend(batch); print(f"[LIVE NEWS DEBUG] Marketaux KR batch={len(batch)} total={len(kr)}")
     def dedupe_today(items):
