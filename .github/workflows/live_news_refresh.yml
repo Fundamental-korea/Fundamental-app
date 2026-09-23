@@ -7,9 +7,16 @@ on:
       - "collect_live_news.py"
       - ".github/workflows/live_news_refresh.yml"
   schedule:
-    # Every 2 hours, UTC.
-    - cron: "0 */2 * * *"
+    # Hourly watchdog. collect_live_news.py enforces the ~2h minimum interval.
+    - cron: "0 * * * *"
   workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: live-news-refresh
+  cancel-in-progress: false
 
 jobs:
   collect:
@@ -36,6 +43,8 @@ jobs:
           SUPABASE_URL: https://cnweggechipghcivruie.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          NAVER_CLIENT_ID: ${{ secrets.NAVER_CLIENT_ID }}
+          NAVER_CLIENT_SECRET: ${{ secrets.NAVER_CLIENT_SECRET }}
         run: python -c "from news_earnings import fetch_stock_news; import sys; kr=fetch_stock_news('삼성전자','005930',3); us=fetch_stock_news('NVIDIA','NVDA',3); print('[STOCK SMOKE] KR 삼성전자={} US NVIDIA={}'.format(len(kr),len(us))); sys.exit(1 if not kr or not us else 0)"
 
       - name: Collect today's Live News into Supabase
