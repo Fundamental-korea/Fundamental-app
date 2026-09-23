@@ -618,9 +618,9 @@ st.markdown(
         line-height: 1;
     }
     .live-news-image-fallback small {
-        color: #92400E !important;
+        color: #6B7280 !important;
         font-size: 10px;
-        font-weight: 800;
+        font-weight: 700;
         max-width: 85%;
         overflow: hidden;
         text-overflow: ellipsis;
@@ -4264,10 +4264,12 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 f'</div>'
             )
         else:
+            # 원문 대표 이미지가 없을 때 분류명을 이미지처럼 보여주지 않는다.
+            # 실제 이미지가 없다는 사실만 중립적으로 표시해 신뢰도 저하를 방지한다.
             media_html = (
-                f'<div class="live-news-image-wrap live-news-image-fallback">'
-                f'<span>📰</span><small>{_escape_html(category_display)}</small>'
-                f'</div>'
+                '<div class="live-news-image-wrap live-news-image-fallback">'
+                '<span>📰</span><small>원문 이미지 없음</small>'
+                '</div>'
             )
 
         cards.append(
