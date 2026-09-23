@@ -3534,12 +3534,14 @@ body .stApp [style*="#F1F5F9"] {
 # +알파: 홈 화면 Live News / Earnings Calendar preview
 # ---------------------------------------------------------------------------
 def _format_news_time(value):
+    """뉴스 발행시각을 한국시간(KST)으로 통일해 표시한다."""
     if not value:
         return ""
     try:
-        ts = pd.to_datetime(value)
+        ts = pd.to_datetime(value, utc=True)
         if pd.isna(ts):
             return ""
+        ts = ts.tz_convert("Asia/Seoul")
         return ts.strftime("%Y.%m.%d %H:%M")
     except Exception:
         return str(value)[:16]
@@ -4342,7 +4344,7 @@ def _get_stock_news_cached(
     stock_name,
     stock_code,
     limit=3,
-    cache_version="stock-news-v11",
+    cache_version="stock-news-v12",
 ):
     return fetch_stock_news(
         stock_name,
@@ -6622,6 +6624,13 @@ else:
                             else:
                                 st.caption("비교할 기준 기간 데이터가 부족해 급변 여부를 판단할 수 없습니다.")
 
+        # 한국/미국 상세 리포트 모두 동일한 위치와 동일한 카드 형태로
+        # 점수 영역 바로 아래에 최신 개별종목 뉴스 3건을 표시한다.
+        render_home_stock_news(
+            data.get("stock_name", selected_code),
+            selected_code,
+            limit=3,
+        )
 
     with right_ad:
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
