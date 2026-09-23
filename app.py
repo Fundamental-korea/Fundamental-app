@@ -5057,24 +5057,81 @@ def render_home_earnings_calendar(limit=12):
 
 
 
+def _format_market_overview_value(row):
+    label = str(row.get("label") or "")
+    value = row.get("value")
+    if value is None:
+        return "—"
+    if label == "US 10Y":
+        return f"{float(value):.2f}%"
+    if label == "USD/KRW":
+        return f"{float(value):,.1f}"
+    if label in {"Gold", "WTI Oil"}:
+        return f"{float(value):,.2f}"
+    return f"{float(value):,.2f}"
+
+
+def _format_market_overview_delta(row):
+    label = str(row.get("label") or "")
+    change_pct = row.get("change_pct")
+    change_abs = row.get("change_abs")
+    if change_pct is None:
+        return None
+    if label == "US 10Y" and change_abs is not None:
+        return f"{float(change_abs):+.2f}%p"
+    if label == "VIX" and change_abs is not None:
+        return f"{float(change_abs):+.2f}"
+    return f"{float(change_pct):+.2f}%"
+
+
 def render_home_market_overview(market):
+    market = str(market).upper()
     title = "🇺🇸 US Market Overview" if market == "US" else "🇰🇷 Korea Market Overview"
-    subtitle = "주요 지수의 최신 일봉 기준 시세 흐름입니다." if market == "US" else "국내 주요 지수의 최신 일봉 기준 시세 흐름입니다."
+    subtitle = (
+        "주요 지수와 시장 환경 지표의 최신 일봉 기준 시세 흐름입니다."
+        if market == "US"
+        else "국내 주요 지수와 주요 시장 환경 지표의 최신 일봉 기준 시세 흐름입니다."
+    )
     st.markdown(
         f"<div class='live-news-section'><div class='live-news-section-title'>{title}</div>"
         f"<div class='live-news-section-subtitle'>{subtitle}</div></div>",
         unsafe_allow_html=True,
     )
-    rows = _get_home_market_indices(market)
-    if not rows:
-        st.info("시장 지수 데이터를 불러오지 못했습니다.")
-        return
-    cols = st.columns(len(rows))
-    for col, row in zip(cols, rows):
-        with col:
-            st.metric(row["label"], f"{row['value']:,.2f}", f"{row['change_pct']:+.2f}%")
-    st.caption("시장 데이터: yfinance · 최신 확인 가능 일봉 기준")
 
+    rows = _get_home_market_overview(market)
+    if not rows:
+        st.info("시장 스냅샷 데이터를 불러오지 못했습니다.")
+        return
+
+    group_titles = {"market": "주요 지수", "conditions": "시장 환경"}
+    for group in ("market", "conditions"):
+        group_rows = [row for row in rows if row.get("metric_group") == group]
+        if not group_rows:
+            continue
+        if group == "conditions":
+            st.markdown(
+                f"<div class='overview-group-title'>{group_titles[group]}</div>",
+                unsafe_allow_html=True,
+            )
+        cols = st.columns(min(4, len(group_rows)))
+        for idx, row in enumerate(group_rows):
+            with cols[idx % len(cols)]:
+                delta = _format_market_overview_delta(row)
+                kwargs = {}
+                if row.get("label") == "VIX":
+                    kwargs["delta_color"] = "inverse"
+                st.metric(
+                    row.get("label") or row.get("symbol") or "Market",
+                    _format_market_overview_value(row),
+                    delta,
+                    **kwargs,
+                )
+
+    latest_dates = sorted({str(row.get("asof_date")) for row in rows if row.get("asof_date")})
+    source_names = sorted({str(row.get("source")) for row in rows if row.get("source")})
+    asof_text = latest_dates[-1] if latest_dates else "—"
+    source_text = " · ".join(source_names) if source_names else "market snapshot"
+    st.caption(f"시장 데이터: {source_text} · 최신 확인 가능 일봉 · 최근 기준일 {asof_text}")
 
 
 
