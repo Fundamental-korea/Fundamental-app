@@ -149,9 +149,9 @@ def fetch_market_overview(market: str) -> list[dict[str, Any]]:
         row = None
         if spec.get("fdr_symbol"):
             # Korea core indices: KRX/FDR first, Yahoo fallback.
-            row = _fetch_fdr(market, spec)
+            row = _fetch_yfinance(market, spec)
             if row is None:
-                row = _fetch_yfinance(market, spec)
+                row = _fetch_fdr(market, spec)
         else:
             row = _fetch_yfinance(market, spec)
 
