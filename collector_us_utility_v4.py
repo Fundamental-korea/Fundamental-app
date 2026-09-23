@@ -65,15 +65,22 @@ def growth(cur,base,years):
 
 def period_metrics(ticker,facts,latest_year,period):
     base_year=latest_year-period
-    revenue_now=value(facts,pick_flow,latest_year,REVENUE_TAGS);revenue_base=value(facts,pick_flow,base_year,REVENUE_TAGS)
-    if revenue_now is None or revenue_base is None:return None,None
-    eps_now=value(facts,pick_eps,latest_year);eps_base=value(facts,pick_eps,base_year)
+    revenue_now=value(facts,pick_flow,latest_year,REVENUE_TAGS)
+    revenue_base=value(facts,pick_flow,base_year,REVENUE_TAGS)
+    # Same SEC fiscal-year gap handling as the canonical US collector:
+    # a 1Y score may use the latest annual snapshot alone, while growth stays
+    # unavailable rather than stretching a multi-year gap into a 1Y growth rate.
+    latest_only = period == 1 and revenue_now is not None and revenue_base is None
+    if revenue_now is None or (revenue_base is None and not latest_only):
+        return None,None
+    eps_now=value(facts,pick_eps,latest_year)
+    eps_base=value(facts,pick_eps,base_year)
     op_now=value(facts,pick_flow,latest_year,OPERATING_INCOME_TAGS);ni_now=value(facts,pick_flow,latest_year,NET_INCOME_TAGS)
     assets_now=value(facts,pick_instant,latest_year,ASSETS_TAGS);equity_now=value(facts,pick_equity,latest_year)
     debt_row=pick_debt(facts,latest_year);debt_now=debt_row["val"] if debt_row else None
     ocf_now=value(facts,pick_ocf,latest_year);capex_now=capex_value(ticker,facts,latest_year);div_now=value(facts,pick_dividend,latest_year)
     interest_row=pick_interest(facts,latest_year);interest_now=interest_row["val"] if interest_row else None
-    return {"revenue_growth":growth(revenue_now,revenue_base,period),"eps_growth":growth(eps_now,eps_base,period),"opm":op_now/revenue_now*100.0 if op_now is not None and revenue_now else None,"roa":ni_now/assets_now*100.0 if ni_now is not None and assets_now else None,"debt_capital":debt_now/(debt_now+equity_now)*100.0 if debt_now is not None and equity_now not in (None,0) and debt_now+equity_now>0 else None,"ocf_debt":ocf_now/debt_now*100.0 if ocf_now is not None and debt_now not in (None,0) else None,"fcf_debt":(ocf_now-abs(capex_now))/debt_now*100.0 if ocf_now is not None and capex_now is not None and debt_now not in (None,0) else None,"dividend_coverage":ocf_now/abs(div_now) if ocf_now is not None and div_now not in (None,0) else None,"dividend_payout":abs(div_now)/ni_now*100.0 if div_now not in (None,0) and ni_now is not None and ni_now>0 else None,"interest_coverage":op_now/abs(interest_now) if op_now is not None and interest_now not in (None,0) else None},base_year
+    return {"revenue_growth":None if latest_only else growth(revenue_now,revenue_base,period),"eps_growth":None if latest_only else growth(eps_now,eps_base,period),"opm":op_now/revenue_now*100.0 if op_now is not None and revenue_now else None,"roa":ni_now/assets_now*100.0 if ni_now is not None and assets_now else None,"debt_capital":debt_now/(debt_now+equity_now)*100.0 if debt_now is not None and equity_now not in (None,0) and debt_now+equity_now>0 else None,"ocf_debt":ocf_now/debt_now*100.0 if ocf_now is not None and debt_now not in (None,0) else None,"fcf_debt":(ocf_now-abs(capex_now))/debt_now*100.0 if ocf_now is not None and capex_now is not None and debt_now not in (None,0) else None,"dividend_coverage":ocf_now/abs(div_now) if ocf_now is not None and div_now not in (None,0) else None,"dividend_payout":abs(div_now)/ni_now*100.0 if div_now not in (None,0) and ni_now is not None and ni_now>0 else None,"interest_coverage":op_now/abs(interest_now) if op_now is not None and interest_now not in (None,0) else None},base_year
 
 def _suspicious(facts,latest):
     debt=pick_debt(facts,latest);equity=pick_equity(facts,latest);eps=pick_eps(facts,latest);div=pick_dividend(facts,latest)
