@@ -3542,7 +3542,7 @@ def _format_news_time(value):
         if pd.isna(ts):
             return ""
         ts = ts.tz_convert("Asia/Seoul")
-        return ts.strftime("%Y.%m.%d %H:%M")
+        return f"{ts.month}/{ts.day} {ts.strftime('%H:%M')}"
     except Exception:
         return str(value)[:16]
 
