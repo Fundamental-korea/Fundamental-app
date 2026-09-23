@@ -4553,7 +4553,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             query,
             source_hint,
         )
-        static_topic_image = _get_news_topic_image_data_uri(news_topic)
+        static_topic_image = _get_news_topic_image_url(news_topic)
 
         # 기존 공급원 이미지가 있으면 사용하고, 브라우저에서 실패하는 경우
         # onerror가 동일 카드의 안정적인 주제 이미지로 즉시 교체한다.
