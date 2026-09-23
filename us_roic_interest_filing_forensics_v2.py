@@ -115,7 +115,7 @@ def analyze_result(rec, mapped):
     cash = roic_inputs.get("cash")
     opinc = roic_inputs.get("operating_income")
 
-    roic_ready = bool(equity and cash and opinc and debt)
+    roic_ready = all(x is not None for x in (equity, cash, opinc, debt))
     roic_reason = "CALCULABLE_FROM_FILING" if roic_ready else "UNRESOLVED"
 
     invested_capital = None
@@ -125,10 +125,10 @@ def analyze_result(rec, mapped):
             roic_ready = False
             roic_reason = "NON_POSITIVE_INVESTED_CAPITAL"
 
-    interest_ready = bool(opinc and interest)
+    interest_ready = all(x is not None for x in (opinc, interest))
     interest_reason = "CALCULABLE_FROM_FILING" if interest_ready else "UNRESOLVED"
     interest_coverage = None
-    if interest_ready and interest["value"] != 0:
+    if interest_ready and interest["value"] not in (None, 0):
         interest_coverage = opinc["value"] / interest["value"]
 
     profile = meta.get("scoring_profile")
