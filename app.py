@@ -4657,14 +4657,6 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 '<span>📰</span><small>이미지 준비 중</small>'
                 '</div>'
             )
-        else:
-            # 원문 대표 이미지가 없을 때 분류명을 이미지처럼 보여주지 않는다.
-            # 실제 이미지가 없다는 사실만 중립적으로 표시해 신뢰도 저하를 방지한다.
-            media_html = (
-                '<div class="live-news-image-wrap live-news-image-fallback">'
-                '<span>📰</span><small>원문 이미지 없음</small>'
-                '</div>'
-            )
 
         cards.append(
             f'<a class="live-news-card-link" href="{_escape_html(reader_url)}" target="_self" rel="noopener">'
