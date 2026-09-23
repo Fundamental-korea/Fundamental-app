@@ -1,1 +1,1 @@
-2026-09-23 score-gap recovery rerun after standard fallback import fix
+2026-09-23 20:50 KST - rerun after latest-year-only 1Y score recovery
