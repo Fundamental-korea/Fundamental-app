@@ -876,6 +876,7 @@ def persist_live_news_snapshot(
                 "article_url": item.link,
                 "original_url": item.original_link,
                 "published_at": published_at,
+                "collected_at": datetime.now(timezone.utc).isoformat(),
                 "is_macro": True,
                 "is_investor_relevant": True,
                 "event_type": None,

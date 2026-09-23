@@ -3567,18 +3567,13 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v9"):
 
     if supabase is not None:
         try:
-            kst = ZoneInfo("Asia/Seoul")
-            now_kst = datetime.now(kst)
-            start_kst = now_kst.replace(hour=0, minute=0, second=0, microsecond=0)
-            next_kst = start_kst + timedelta(days=1)
-            start_utc = start_kst.astimezone(timezone.utc).isoformat()
-            next_utc = next_kst.astimezone(timezone.utc).isoformat()
+            # 자동수집 스냅샷은 collected_at으로 판별하고, 실제 발행시각으로 최신순 정렬한다.
+            snapshot_cutoff = (datetime.now(timezone.utc) - timedelta(hours=6)).isoformat()
             result = (
                 supabase.table("news_items")
-                .select("source,source_id,title,description,article_url,original_url,published_at,metadata")
+                .select("source,source_id,title,description,article_url,original_url,published_at,collected_at,metadata")
                 .eq("is_macro", True)
-                .gte("published_at", start_utc)
-                .lt("published_at", next_utc)
+                .gte("collected_at", snapshot_cutoff)
                 .order("published_at", desc=True)
                 .limit(target)
                 .execute()
@@ -3590,7 +3585,7 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v9"):
                     description=str(row.get("description") or ""),
                     link=str(row.get("article_url") or row.get("original_url") or ""),
                     original_link=str(row.get("original_url") or row.get("article_url") or ""),
-                    pub_date=str(row.get("published_at") or ""),
+                    pub_date=str(row.get("published_at") or row.get("collected_at") or ""),
                     query=str(meta.get("query") or "시장 뉴스"),
                     source=str(meta.get("source_label") or row.get("source") or "News"),
                     image_url=str(meta.get("image_url") or ""),

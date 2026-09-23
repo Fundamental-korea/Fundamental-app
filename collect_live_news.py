@@ -16,31 +16,28 @@ def main() -> None:
         "is_macro", True
     ).lt("published_at", cutoff.isoformat()).execute()
 
-    # 수집 성공 메시지만으로는 잘못된 Supabase URL을 잡아낼 수 없으므로,
-    # 동일 client로 오늘 KST 스냅샷을 다시 읽어 실제 DB 저장을 검증한다.
-    start_kst = datetime.now(KST).replace(hour=0, minute=0, second=0, microsecond=0)
-    next_kst = start_kst + timedelta(days=1)
+    # 수집 시각을 기준으로 같은 실행의 스냅샷이 실제 DB에 존재하는지 검증한다.
+    snapshot_cutoff = datetime.now(timezone.utc) - timedelta(hours=1)
     verify = (
         client.table("news_items")
-        .select("source,source_id,title,published_at")
+        .select("source,source_id,title,published_at,collected_at")
         .eq("is_macro", True)
-        .gte("published_at", start_kst.astimezone(timezone.utc).isoformat())
-        .lt("published_at", next_kst.astimezone(timezone.utc).isoformat())
+        .gte("collected_at", snapshot_cutoff.isoformat())
         .order("published_at", desc=True)
         .limit(50)
         .execute()
     )
     db_rows = verify.data or []
+    unique_ids = {str(row.get("source_id") or "") for row in db_rows if row.get("source_id")}
     now_kst = datetime.now(KST).strftime("%Y-%m-%d %H:%M KST")
     print(
         f"[LIVE NEWS] {now_kst} collected={len(items)} persisted={saved} "
-        f"verified_db_rows={len(db_rows)}"
+        f"verified_snapshot_rows={len(db_rows)} unique_source_ids={len(unique_ids)}"
     )
-    if len(db_rows) < min(len(items), 10):
+    if len(unique_ids) < min(len(items), 10):
         raise RuntimeError(
             f"Live News DB verification failed: collected={len(items)} "
-            f"but today's KST snapshot has only {len(db_rows)} rows"
+            f"but latest snapshot has only {len(unique_ids)} unique rows"
         )
-
 if __name__ == "__main__":
     main()
