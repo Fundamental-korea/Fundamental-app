@@ -3712,7 +3712,7 @@ def _news_source_label(url: str, fallback: str = "뉴스") -> str:
 def _translate_news_cards(
     items: tuple[tuple[str, str], ...],
 ) -> dict:
-    """Translate visible main Live News cards into Korean with one structured Gemini call."""
+    """Translate the visible Live News cards with one plain Gemini request."""
     clean_items = tuple(
         (
             str(title or "").replace("\n", " ").strip(),
@@ -3725,25 +3725,30 @@ def _translate_news_cards(
 
     api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
     if not api_key:
+        print("[Gemini Live News] GEMINI_API_KEY is not configured.")
         return {}
 
     model = str(st.secrets.get("GEMINI_NEWS_MODEL", "gemini-3.5-flash-lite")).strip()
     source_lines = "\n".join(
-        f"{idx}. 원문 제목: {title}\n   원문 설명: {description}"
+        f"{idx}. 원문 제목: {title}\n원문 설명: {description}"
         for idx, (title, description) in enumerate(clean_items, start=1)
     )
     prompt = f"""
 너는 한국의 금융 뉴스 편집자다.
-아래 미국·한국 시장 뉴스 카드들을 한국어로 정확하게 현지화하라.
+아래 Live News 카드의 영문 제목과 설명을 한국어로 정확하게 현지화하라.
 
 {source_lines}
 
-작업:
-- 영어 제목은 금융 기사 제목처럼 자연스러운 한국어 제목으로 번역한다.
-- 영어 설명도 한국어로 자연스럽게 번역한다.
-- 이미 한국어인 경우 의미를 바꾸지 말고 그대로 다듬는다.
-- 원문에 없는 사실, 숫자, 인용, 전망, 투자 의견을 추가하지 않는다.
-- 각 번호는 반드시 입력 뉴스와 1:1로 대응한다.
+규칙:
+- 영어 제목은 자연스러운 한국어 금융 뉴스 제목으로 번역한다.
+- 영어 설명도 자연스러운 한국어로 번역한다.
+- 이미 한국어이면 의미를 바꾸지 않는다.
+- 원문에 없는 사실, 숫자, 인용, 전망, 투자 의견은 추가하지 않는다.
+- 반드시 입력된 번호를 모두 유지한다.
+- 한 뉴스는 반드시 한 줄로 출력한다.
+- 각 줄은 반드시 "번호|||한국어 제목|||한국어 설명" 형식으로 출력한다.
+- 설명 안에 "|" 문자가 필요하면 하나의 "|"만 사용할 수 있지만 "|||"는 절대 사용하지 않는다.
+- 마크다운, 코드블록, 추가 설명은 출력하지 않는다.
 """
 
     try:
@@ -3757,25 +3762,17 @@ def _translate_news_cards(
                 "contents": [{"parts": [{"text": prompt}]}],
                 "generationConfig": {
                     "maxOutputTokens": 1600,
-                    "temperature": 0.15,
-                    "response_mime_type": "application/json",
-                    "response_schema": {
-                        "type": "array",
-                        "items": {
-                            "type": "object",
-                            "properties": {
-                                "id": {"type": "integer"},
-                                "title": {"type": "string"},
-                                "description": {"type": "string"},
-                            },
-                            "required": ["id", "title", "description"],
-                        },
-                    },
                 },
             },
             timeout=30,
         )
-        response.raise_for_status()
+        if not response.ok:
+            print(
+                f"[Gemini Live News] HTTP {response.status_code}: "
+                f"{response.text[:500]}"
+            )
+            return {}
+
         payload = response.json()
         parts = (
             payload.get("candidates", [{}])[0]
@@ -3787,29 +3784,38 @@ def _translate_news_cards(
             for part in parts
             if part.get("text")
         ).strip()
-
-        parsed = json.loads(result)
-        if not isinstance(parsed, list):
+        if not result:
+            print("[Gemini Live News] Empty Gemini response.")
             return {}
 
         localized = {}
-        for row in parsed:
-            if not isinstance(row, dict):
+        for raw_line in result.splitlines():
+            line = raw_line.strip()
+            if not line or "|||" not in line:
                 continue
-            try:
-                idx = int(row.get("id"))
-            except (TypeError, ValueError):
+            fields = [field.strip() for field in line.split("|||")]
+            if len(fields) < 3:
                 continue
-            if 1 <= idx <= len(clean_items):
-                translated_title = str(row.get("title") or "").strip()
-                translated_description = str(row.get("description") or "").strip()
-                if translated_title:
-                    localized[idx - 1] = {
-                        "title": translated_title,
-                        "description": translated_description,
-                    }
+            match = re.search(r"\d+", fields[0])
+            if not match:
+                continue
+            idx = int(match.group(0))
+            translated_title = fields[1].strip()
+            translated_description = fields[2].strip()
+            if 1 <= idx <= len(clean_items) and translated_title:
+                localized[idx - 1] = {
+                    "title": translated_title,
+                    "description": translated_description,
+                }
+
+        if not localized:
+            print(
+                "[Gemini Live News] Could not parse translation response. "
+                f"Raw response: {result[:800]}"
+            )
         return localized
-    except Exception:
+    except Exception as exc:
+        print(f"[Gemini Live News] Request failed: {type(exc).__name__}: {exc}")
         return {}
 
 @st.cache_data(ttl=86400, show_spinner=False)
