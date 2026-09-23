@@ -3711,6 +3711,7 @@ def _news_source_label(url: str, fallback: str = "뉴스") -> str:
 @st.cache_data(ttl=86400, show_spinner=False)
 def _translate_news_cards(
     items: tuple[tuple[str, str], ...],
+    cache_version: str = "live-news-korean-v3",
 ) -> dict:
     """Translate the visible Live News cards with one plain Gemini request."""
     clean_items = tuple(
@@ -3760,9 +3761,6 @@ def _translate_news_cards(
             },
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {
-                    "maxOutputTokens": 1600,
-                },
             },
             timeout=30,
         )
@@ -3790,7 +3788,7 @@ def _translate_news_cards(
 
         localized = {}
         for raw_line in result.splitlines():
-            line = raw_line.strip()
+            line = raw_line.strip().strip("`")
             if not line or "|||" not in line:
                 continue
             fields = [field.strip() for field in line.split("|||")]
@@ -4169,7 +4167,10 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             )
             for item in selected_items
         )
-        localized_cards = _translate_news_cards(translation_input)
+        localized_cards = _translate_news_cards(
+            translation_input,
+            cache_version="live-news-korean-v3",
+        )
 
     cards = []
     for idx, item in enumerate(selected_items):
