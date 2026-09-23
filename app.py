@@ -4087,41 +4087,157 @@ def render_news_reader():
 
 
 @st.cache_data(ttl=1800, show_spinner=False)
+def _news_image_dimensions(image_url: str):
+    """이미지 헤더만 확인해 대표 이미지의 대략적인 픽셀 크기를 반환한다."""
+    url = str(image_url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return (0, 0)
+    try:
+        response = requests.get(
+            url,
+            timeout=4,
+            headers={
+                "User-Agent": "Mozilla/5.0 (compatible; FundamentalNews/1.0)",
+                "Range": "bytes=0-131071",
+            },
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+        data = response.content
+        content_type = str(response.headers.get("Content-Type", "")).lower()
+
+        # PNG: IHDR width/height
+        if data.startswith(b"\\x89PNG\\r\\n\\x1a\\n") and len(data) >= 24:
+            return (int.from_bytes(data[16:20], "big"), int.from_bytes(data[20:24], "big"))
+
+        # WEBP: VP8X / VP8 / VP8L
+        if data.startswith(b"RIFF") and data[8:12] == b"WEBP":
+            if data[12:16] == b"VP8X" and len(data) >= 30:
+                width = 1 + int.from_bytes(data[24:27], "little")
+                height = 1 + int.from_bytes(data[27:30], "little")
+                return (width, height)
+            if data[12:16] == b"VP8L" and len(data) >= 25:
+                if data[20] == 0x2F:
+                    b0, b1, b2, b3 = data[21:25]
+                    width = 1 + (b0 | ((b1 & 0x3F) << 8))
+                    height = 1 + (((b1 >> 6) | (b2 << 2) | ((b3 & 0x0F) << 10)))
+                    return (width, height)
+
+        # JPEG: SOF marker까지 스캔하여 width/height 확인
+        if data.startswith(b"\\xff\\xd8"):
+            i = 2
+            sof_markers = {
+                0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7,
+                0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF,
+            }
+            while i + 9 < len(data):
+                if data[i] != 0xFF:
+                    i += 1
+                    continue
+                while i < len(data) and data[i] == 0xFF:
+                    i += 1
+                if i >= len(data):
+                    break
+                marker = data[i]
+                i += 1
+                if marker in (0xD8, 0xD9):
+                    continue
+                if i + 2 > len(data):
+                    break
+                segment_len = int.from_bytes(data[i:i + 2], "big")
+                if marker in sof_markers and i + 7 < len(data):
+                    height = int.from_bytes(data[i + 3:i + 5], "big")
+                    width = int.from_bytes(data[i + 5:i + 7], "big")
+                    return (width, height)
+                if segment_len < 2:
+                    break
+                i += segment_len
+    except Exception:
+        pass
+    return (0, 0)
+
+
+def _news_image_quality_ok(image_url: str) -> bool:
+    """뉴스 카드에서 흐릿하게 보일 가능성이 높은 저해상도 썸네일을 차단한다."""
+    url = str(image_url or "").strip().lower()
+    if not url:
+        return False
+
+    # URL 자체가 명백한 썸네일/작은 변환본인 경우 우선 제외한다.
+    lowres_hints = (
+        "thumbnail", "thumb", "small", "tiny", "lowres",
+        "150x", "180x", "200x", "240x", "300x", "320x", "400x",
+        "width=150", "width=180", "width=200", "width=240",
+        "width=300", "width=320", "width=400",
+        "w_150", "w_180", "w_200", "w_240", "w_300", "w_320", "w_400",
+    )
+    if any(hint in url for hint in lowres_hints):
+        return False
+
+    width, height = _news_image_dimensions(image_url)
+    if width and height:
+        # 카드 표시 크기를 고려해 최소 640x360 수준은 확보한다.
+        return width >= 640 and height >= 300
+    # 치수 확인이 안 되는 경우에는 정상 URL 후보를 허용하되,
+    # 브라우저에서 실패하면 최종 AI fallback이 동작한다.
+    return True
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
 def _get_news_image_url(article_url: str) -> str:
-    """기사 원문에서 대표 이미지 후보를 추출한다. 원문 이미지만 사용하고 실패하면 빈 문자열."""
+    """기사 원문에서 고해상도 대표 이미지 후보를 추출한다."""
     url = str(article_url or "").strip()
     if not url or not url.startswith(("http://", "https://")):
         return ""
     try:
         response = requests.get(
-            url, timeout=5,
+            url,
+            timeout=5,
             headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNews/1.0)"},
             allow_redirects=True,
         )
         response.raise_for_status()
         html = response.text[:800_000]
         patterns = (
-            r'<meta[^>]+property=["\']og:image:secure_url["\'][^>]+content=["\']([^"\']+)',
-            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image:secure_url["\']',
-            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
-            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
-            r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
-            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
-            r'<meta[^>]+itemprop=["\']image["\'][^>]+content=["\']([^"\']+)',
-            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+itemprop=["\']image["\']',
-            r'<link[^>]+rel=["\'][^"\']*image_src[^"\']*["\'][^>]+href=["\']([^"\']+)',
+            r'<meta[^>]+property=["\\']og:image:secure_url["\\'][^>]+content=["\\']([^"\\']+)',
+            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+property=["\\']og:image:secure_url["\\']',
+            r'<meta[^>]+property=["\\']og:image["\\'][^>]+content=["\\']([^"\\']+)',
+            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+property=["\\']og:image["\\']',
+            r'<meta[^>]+name=["\\']twitter:image:src["\\'][^>]+content=["\\']([^"\\']+)',
+            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+name=["\\']twitter:image:src["\\']',
+            r'<meta[^>]+name=["\\']twitter:image["\\'][^>]+content=["\\']([^"\\']+)',
+            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+name=["\\']twitter:image["\\']',
+            r'<meta[^>]+itemprop=["\\']image["\\'][^>]+content=["\\']([^"\\']+)',
+            r'<meta[^>]+content=["\\']([^"\\']+)["\\'][^>]+itemprop=["\\']image["\\']',
+            r'<link[^>]+rel=["\\'][^"\\']*image_src[^"\\']*["\\'][^>]+href=["\\']([^"\\']+)',
         )
+        candidates = []
+        seen = set()
+        from urllib.parse import urljoin
+
         for pattern in patterns:
-            match = re.search(pattern, html, flags=re.IGNORECASE)
-            if not match:
-                continue
-            image_url = unescape(match.group(1)).strip()
-            if image_url.startswith("//"):
-                image_url = "https:" + image_url
-            elif image_url.startswith("/"):
-                from urllib.parse import urljoin
-                image_url = urljoin(response.url or url, image_url)
-            if image_url.startswith(("http://", "https://")):
+            for match in re.finditer(pattern, html, flags=re.IGNORECASE):
+                image_url = unescape(match.group(1)).strip()
+                if image_url.startswith("//"):
+                    image_url = "https:" + image_url
+                elif image_url.startswith("/"):
+                    image_url = urljoin(response.url or url, image_url)
+                if not image_url.startswith(("http://", "https://")):
+                    continue
+                key = image_url.strip().lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                candidates.append(image_url)
+                if len(candidates) >= 8:
+                    break
+            if len(candidates) >= 8:
+                break
+
+        # 정상 크기 후보를 우선 반환한다. 대표 이미지 후보가 하나뿐이고
+        # 치수 확인이 안 되는 경우에도 URL은 유지한다.
+        for image_url in candidates:
+            if _news_image_quality_ok(image_url):
                 return image_url
     except Exception:
         pass
