@@ -5994,4 +5994,955 @@ elif not selected_code:
                         <div class='card-item-row'>
                             <a href='/?code=005930&theme={THEME_MODE}' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
                             <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ HOT</span>
+                        </div>                        <div class='card-item-row'>
+                            <a href='/?code=000660&theme={THEME_MODE}' target='_blank' class='stock-link'>2. SK하이닉스 (000660)</a>
+                            <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ 1</span>
                         </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=005380&theme={THEME_MODE}' target='_blank' class='stock-link'>3. 현대차 (005380)</a>
+                            <span style='font-size: 11px; color: {THEME["text_muted"]}; font-weight: 700;'>-</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=035420&theme={THEME_MODE}' target='_blank' class='stock-link'>4. NAVER (035420)</a>
+                            <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ 3</span>
+                        </div>
+                        <div class='card-item-row'>
+                            <a href='/?code=035720&theme={THEME_MODE}' target='_blank' class='stock-link'>5. 카카오 (035720)</a>
+                            <span style='font-size: 11px; color: {THEME["positive"]}; font-weight: 700;'>▼ 2</span>
+                        </div>
+                    </div>
+                </div>
+            """,
+                unsafe_allow_html=True,
+            )
+        st.markdown("</div>", unsafe_allow_html=True)
+
+    with right_ad:
+        st.markdown(
+            "<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True
+        )
+
+else:
+    # ==========================================
+    # [스케치 기반] 펀더멘탈 상세 분석 리포트 페이지
+    # ==========================================
+    data = get_stock_data(selected_code)
+
+    if selected_code and not str(selected_code).isdigit():
+        render_us_fundamental_report(selected_code, data)
+        st.stop()
+
+    col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
+
+    with col_logo:
+        st.markdown(
+            "<div class='logo-box'>📈 Fundamental</div>",
+            unsafe_allow_html=True,
+        )
+
+    with col_quote:
+        render_quote_box()
+
+    with col_login:
+        st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
+        if st.button("⬅️ 메인으로", use_container_width=True):
+            st.query_params.clear()
+            st.rerun()
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    left_ad, main_content, right_ad = st.columns([0.6, 6.8, 0.6])
+
+    with left_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
+
+    with main_content:
+        st.markdown(f"## 📊 [{data.get('stock_name', selected_code)}] 펀더멘탈 방어력 분석")
+        # 뉴스는 점수 로직 최하단으로 이동
+
+        st.markdown("#### 📈 시세 스냅샷")
+        st.caption(
+            "📌 아래 가격은 체결 틱이 아니라 **최신으로 확인 가능한 일봉** 기준입니다. 가격 기준일·출처와 재무 기준일은 서로 분리해서 표시합니다."
+        )
+
+        @st.cache_data(ttl=300, show_spinner=False)
+        def _get_recent_ohlcv_for_overview(code):
+            """시세 스냅샷용 일봉 OHLCV.
+            
+            미국은 yfinance 원가격(auto_adjust=False)을 사용하고, 국내는
+            FinanceDataReader를 사용한다. 반환값의 Date 컬럼이 가격 기준일이다.
+            이는 '실시간 틱'이 아니라 최신으로 확인 가능한 일봉이라는 점을 명확히 한다.
+            """
+            is_kr = str(code).isdigit()
+            try:
+                if is_kr:
+                    df = fdr.DataReader(code)
+                    source = "FinanceDataReader"
+                else:
+                    df = yf.Ticker(code).history(
+                        period="1y",
+                        interval="1d",
+                        auto_adjust=False,
+                    )
+                    source = "yfinance"
+                if df is None or df.empty:
+                    return pd.DataFrame()
+                df = df.tail(400).reset_index()
+                if "Date" not in df.columns and "Datetime" in df.columns:
+                    df = df.rename(columns={"Datetime": "Date"})
+                df.attrs["market_data_source"] = source
+                df.attrs["bar_type"] = "1d"
+                return df
+            except Exception:
+                return pd.DataFrame()
+
+        @st.cache_data(ttl=6 * 3600, show_spinner=False)
+        def _get_us_sec_share_snapshot(cik):
+            """SEC DEI의 최신 보통주 발행주식수 관측치를 반환한다."""
+            if not cik:
+                return {}
+            try:
+                cik10 = str(cik).strip().zfill(10)
+                url = "https://data.sec.gov/api/xbrl/companyfacts/CIK" + cik10 + ".json"
+                response = requests.get(
+                    url,
+                    headers={"User-Agent": "Fundamental Korea research contact@example.com"},
+                    timeout=20,
+                )
+                response.raise_for_status()
+                facts = response.json().get("facts", {}).get("dei", {})
+                fact = facts.get("EntityCommonStockSharesOutstanding") or {}
+                rows = []
+                for unit, values in (fact.get("units") or {}).items():
+                    if unit.lower() not in {"shares", "share"}:
+                        continue
+                    for row in values or []:
+                        value = row.get("val")
+                        end = row.get("end")
+                        filed = row.get("filed")
+                        if value is None or not end:
+                            continue
+                        try:
+                            value = float(value)
+                        except (TypeError, ValueError):
+                            continue
+                        rows.append({
+                            "value": value,
+                            "asof": str(end),
+                            "filed": str(filed or ""),
+                            "form": row.get("form") or "",
+                        })
+                if not rows:
+                    return {}
+                rows.sort(key=lambda x: (x["asof"], x["filed"], x["form"]))
+                return rows[-1]
+            except Exception:
+                return {}
+
+        def _format_usd_compact(value):
+            if value is None:
+                return "N/A"
+            value = float(value)
+            sign = "-" if value < 0 else ""
+            value = abs(value)
+            if value >= 1_000_000_000_000:
+                return f"{sign}${value/1_000_000_000_000:.2f}T"
+            if value >= 1_000_000_000:
+                return f"{sign}${value/1_000_000_000:.2f}B"
+            if value >= 1_000_000:
+                return f"{sign}${value/1_000_000:.2f}M"
+            return f"{sign}${value:,.0f}"
+
+        def _tone(value, ref):
+            if value is None or ref is None:
+                return "neutral"
+            if value > ref:
+                return "up"
+            if value < ref:
+                return "down"
+            return "neutral"
+
+        def _format_krw_compact(value):
+            """1억 미만은 원 단위 그대로, 그 이상은 조/억 단위로 축약 표시 (예: 2조 5,875억원)."""
+            if value is None:
+                return "N/A"
+            sign = "-" if value < 0 else ""
+            v = abs(value)
+            JO = 1_0000_0000_0000   # 1조
+            EOK = 1_0000_0000       # 1억
+            if v >= JO:
+                jo_part = int(v // JO)
+                eok_part = int((v % JO) // EOK)
+                return f"{sign}{jo_part:,}조 {eok_part:,}억원" if eok_part else f"{sign}{jo_part:,}조원"
+            elif v >= EOK:
+                eok_part = int(v // EOK)
+                return f"{sign}{eok_part:,}억원"
+            return f"{sign}{v:,.0f}원"
+
+        ohlcv_overview_df = _get_recent_ohlcv_for_overview(selected_code)
+        is_kr_stock = str(selected_code).isdigit()
+        won = "원" if is_kr_stock else "$"
+
+        overview = {}  # label -> (value_str, tone)
+        live_price = None
+        price_asof = None
+        price_age_days = None
+        price_source = None
+        price_bar_type = None
+
+        if not ohlcv_overview_df.empty and len(ohlcv_overview_df) >= 2:
+            last_row = ohlcv_overview_df.iloc[-1]
+            prev_row = ohlcv_overview_df.iloc[-2]
+            recent_52w = ohlcv_overview_df.tail(252)
+            if "Date" in ohlcv_overview_df.columns:
+                parsed_price_date = pd.to_datetime(last_row["Date"], errors="coerce")
+                if not pd.isna(parsed_price_date):
+                    price_asof = parsed_price_date.date()
+                    try:
+                        market_tz = "Asia/Seoul" if is_kr_stock else "America/New_York"
+                        price_age_days = (pd.Timestamp.now(tz=market_tz).date() - price_asof).days
+                    except Exception:
+                        price_age_days = None
+            price_source = ohlcv_overview_df.attrs.get(
+                "market_data_source",
+                "FinanceDataReader" if is_kr_stock else "yfinance",
+            )
+            price_bar_type = ohlcv_overview_df.attrs.get("bar_type", "1d")
+            prev_close = float(prev_row["Close"])
+            live_price = float(last_row["Close"])
+            today_volume = float(last_row["Volume"])
+
+            overview["전일"] = (f"{prev_close:,.0f}{won}", "neutral")
+            overview["시가"] = (f"{last_row['Open']:,.0f}{won}", _tone(last_row["Open"], prev_close))
+            overview["고가"] = (f"{last_row['High']:,.0f}{won}", _tone(last_row["High"], prev_close))
+            overview["저가"] = (f"{last_row['Low']:,.0f}{won}", _tone(last_row["Low"], prev_close))
+
+            # 거래량 옆에 '평소보다 많은 거래인지'를 보여주기 위해 최근 20거래일(오늘 제외)
+            # 평균 거래량 대비 비율을 함께 표시.
+            volume_value_html = f"{today_volume:,.0f}"
+            prior_20d = ohlcv_overview_df["Volume"].iloc[:-1].tail(20)
+            if len(prior_20d) >= 5:  # 데이터가 너무 적으면(신규상장 등) 비교 자체를 생략
+                avg_volume_20d = float(prior_20d.mean())
+                if avg_volume_20d > 0:
+                    vol_ratio = today_volume / avg_volume_20d * 100
+                    vol_badge_cls = "vol-high" if vol_ratio >= 100 else "vol-low"
+                    vol_desc = "평소보다 많음" if vol_ratio >= 100 else "평소보다 적음"
+                    volume_value_html += (
+                        f"<div class='overview-subvalue {vol_badge_cls}'>"
+                        f"20일 평균 대비 {vol_ratio:.0f}% · {vol_desc}</div>"
+                    )
+            overview["거래량"] = (volume_value_html, "neutral")
+            w52_high = float(recent_52w["High"].max())
+            w52_low = float(recent_52w["Low"].min())
+            overview["52주 최고"] = (f"{w52_high:,.0f}{won}", "neutral")
+            overview["52주 최저"] = (f"{w52_low:,.0f}{won}", "neutral")
+
+            # '하락장 방어력'이라는 사이트 성격에 맞게, 오늘 등락률 대신 "52주 고점 대비
+            # 지금 얼마나 빠져있는지"를 기본 정보로 보여줌 (0% 이상이면 52주 신고가 갱신).
+            if w52_high > 0:
+                pct_from_high = (live_price - w52_high) / w52_high * 100
+                overview["52주 고점 대비"] = (
+                    f"{pct_from_high:+.1f}%",
+                    "up" if pct_from_high >= 0 else "down",
+                )
+
+        # collector.py가 이미 DART 공시 기준 EPS/BPS/주당배당금을 원시값으로 저장해두고 있어서
+        # (PER/PBR을 거꾸로 나눠서 추정할 필요 없이) 그 원시값을 그대로 쓰고, PER/PBR/배당수익률은
+        # '오늘 주가 ÷ 원시값'으로 매일 갱신되는 라이브 값을 계산한다. 아직 CFS 재수집 전이라
+        # eps/bps 원시값이 없는 종목만 예전 방식(저장된 per/pbr에서 역산)으로 폴백한다.
+        overview_supabase_data = data.get("supabase_data") or {}
+        ov_per_stored = overview_supabase_data.get("per")
+        ov_pbr_stored = overview_supabase_data.get("pbr")
+        ov_eps = overview_supabase_data.get("eps")
+        ov_bps = overview_supabase_data.get("bps")
+        ov_dps = overview_supabase_data.get("dividend_per_share")
+        ov_dividend_yield_stored = overview_supabase_data.get("dividend_yield")
+        ov_net_income = overview_supabase_data.get("net_income")
+
+        if live_price is None:
+            live_price = overview_supabase_data.get("stock_price")
+            if live_price is not None:
+                price_source = price_source or "Supabase 저장 시세"
+                stored_market_date = overview_supabase_data.get("market_snapshot_date")
+                if stored_market_date:
+                    try:
+                        parsed_stored_date = pd.to_datetime(
+                            stored_market_date, errors="coerce"
+                        )
+                        if not pd.isna(parsed_stored_date):
+                            price_asof = parsed_stored_date.date()
+                            try:
+                                market_tz = "Asia/Seoul" if is_kr_stock else "America/New_York"
+                                price_age_days = (
+                                    pd.Timestamp.now(tz=market_tz).date() - price_asof
+                                ).days
+                            except Exception:
+                                price_age_days = None
+                    except Exception:
+                        pass
+
+        # 시가총액: 국내는 Fundamental에 저장된 직접값을 우선 사용하고,
+        # 미국은 SEC DEI의 보통주 발행주식수 × 최신 가격으로 계산한다.
+        if is_kr_stock:
+            kr_market_cap = overview_supabase_data.get("market_cap")
+            if kr_market_cap is not None:
+                overview["시가총액"] = (_format_krw_compact(kr_market_cap), "neutral")
+        else:
+            sec_shares = _get_us_sec_share_snapshot((data.get("us_company_data") or {}).get("cik"))
+            if sec_shares.get("value") and live_price:
+                market_cap_usd = float(sec_shares["value"]) * float(live_price)
+                overview["시가총액"] = (_format_usd_compact(market_cap_usd), "neutral")
+                shares_basis = sec_shares.get("asof")
+                if shares_basis:
+                    overview["시가총액 기준"] = (
+                        f"SEC 주식수 {float(sec_shares['value']):,.0f}주 · {shares_basis}",
+                        "neutral",
+                    )
+            elif (data.get("info") or {}).get("sharesOutstanding") and live_price:
+                shares = float((data.get("info") or {}).get("sharesOutstanding"))
+                overview["시가총액(보조추정)"] = (
+                    _format_usd_compact(shares * float(live_price)),
+                    "neutral",
+                )
+
+        if ov_eps is not None:
+            overview["EPS"] = (f"{ov_eps:,.0f}{won}", "neutral")
+            if live_price and ov_eps != 0:
+                overview["PER"] = (f"{live_price / ov_eps:.2f}", "neutral")
+        elif ov_per_stored is not None and ov_per_stored > 0 and live_price:
+            # 폴백: 아직 재수집 전이라 eps 원시값이 없는 종목만 예전처럼 역산 + '(추정)' 라벨
+            eps_est = live_price / ov_per_stored
+            overview["EPS(추정)"] = (f"{eps_est:,.0f}{won}", "neutral")
+            overview["PER"] = (f"{ov_per_stored}", "neutral")
+
+        if ov_bps is not None:
+            overview["BPS"] = (f"{ov_bps:,.0f}{won}", "neutral")
+            if live_price and ov_bps > 0:
+                overview["PBR"] = (f"{live_price / ov_bps:.2f}", "neutral")
+        elif ov_pbr_stored is not None and ov_pbr_stored > 0 and live_price:
+            bps_est = live_price / ov_pbr_stored
+            overview["BPS(추정)"] = (f"{bps_est:,.0f}{won}", "neutral")
+            overview["PBR"] = (f"{ov_pbr_stored}", "neutral")
+
+        if ov_dps is not None:
+            overview["주당배당금"] = (f"{ov_dps:,.0f}{won}", "neutral")
+            if live_price:
+                overview["배당수익률"] = (f"{ov_dps / live_price * 100:.2f}%", "neutral")
+        elif ov_dividend_yield_stored is not None:
+            overview["배당수익률"] = (f"{ov_dividend_yield_stored}%", "neutral")
+            if live_price:
+                dps_est = ov_dividend_yield_stored / 100 * live_price
+                overview["주당배당금(추정)"] = (f"{dps_est:,.0f}{won}", "neutral")
+
+        # 아직 소스가 없는 항목은 값 대신 "준비 중"으로 명시 (없는 척 숨기지 않고 투명하게 표시)
+        overview["외인소진율"] = ("준비 중", "neutral")
+        overview["추정PER / 추정EPS"] = ("준비 중", "neutral")
+
+        if overview:
+            tone_class_map = {"up": "value-up", "down": "value-down", "neutral": ""}
+            overview_cells_html = "".join(
+                f"<div class='overview-cell'><div class='overview-label'>{label}</div>"
+                f"<div class='overview-value {tone_class_map.get(tone, '')}'>{value}</div></div>"
+                for label, (value, tone) in overview.items()
+            )
+            st.markdown(f"<div class='overview-grid'>{overview_cells_html}</div>", unsafe_allow_html=True)
+
+            data_basis_label = overview_supabase_data.get("data_basis_label")
+            if data_basis_label:
+                st.caption(f"📅 재무 수치 기준: **{data_basis_label}** (최신 공시가 나오면 자동 갱신됩니다)")
+
+            price_meta = []
+            if price_asof:
+                price_meta.append(f"가격 기준일 {price_asof}")
+            if price_age_days is not None:
+                price_meta.append(f"기준일로부터 {max(price_age_days, 0)}일")
+            if price_source:
+                price_meta.append(f"출처 {price_source}")
+            if price_bar_type:
+                price_meta.append(f"봉 {price_bar_type}")
+            if price_meta:
+                st.caption("📈 시장 데이터: " + " · ".join(price_meta))
+            if price_age_days is not None and price_age_days > 3:
+                st.warning(
+                    "⚠️ 현재 표시된 시장가격이 시장 기준일보다 3일 이상 경과했습니다. "
+                    "주말·휴장일 또는 외부 시세 제공 지연일 수 있으므로 가격 기반 지표를 확인할 때 기준일을 함께 보세요."
+                )
+        else:
+            st.info("시세 스냅샷 데이터를 불러올 수 없습니다.")
+
+        st.caption(
+            "ℹ️ 가격·거래량은 최신 일봉, PER/PBR/배당은 화면에 표시된 가격과 최근 확정 재무 데이터를 조합해 계산합니다. "
+            "미국 시가총액은 가능한 경우 SEC 보통주 발행주식수와 최신 가격으로 계산하며, 주식수 기준일과 가격 기준일이 다를 수 있습니다. "
+            "컨센서스 PER/EPS와 외인소진율은 별도 소스를 연결하기 전까지 표시하지 않습니다."
+        )
+
+        st.markdown("<br>", unsafe_allow_html=True)
+
+        # 10개 지표별 표시용 메타데이터 (scoring.py의 METRIC_KEYS와 정확히 일치)
+        # 초보자 친화적 구조: title(한글 우선) / english / summary(한 줄 요약, 쉬운 말) /
+        # why(왜 중요한지, 비유 포함) / rule_of_thumb(이 정도면 좋다는 감 잡는 기준선)
+        METRIC_DISPLAY = {
+            "revenue_growth": {
+                "title": "1. 매출 성장률",
+                "english": "Revenue Growth",
+                "summary": "회사가 파는 물건·서비스가 작년보다 얼마나 더 팔렸는지 보여줘요.",
+                "why": "매출이 꾸준히 늘어난다는 건 소비자들이 이 회사 제품·서비스를 계속 더 많이 찾는다는 뜻이에요. 특히 경기가 안 좋을 때도 매출을 지켜내는 회사는 그만큼 시장에서 입지가 탄탄하다고 볼 수 있어요.",
+                "rule_of_thumb": "연 8% 이상이면 준수, 25% 이상이면 매우 우수한 성장세예요.",
+            },
+            "eps_growth": {
+                "title": "2. 순이익 성장률 (EPS)",
+                "english": "EPS Growth",
+                "summary": "주식 1주당 회사가 벌어들인 돈이 작년보다 얼마나 늘었는지 보여줘요.",
+                "why": "매출이 늘어도 비용이 더 늘면 실속이 없겠죠. 이 지표는 '진짜로 주주 몫이 얼마나 커졌는지'를 보여주는 핵심 숫자예요. 결국 주가는 이 순이익 성장을 뒤따라가는 경향이 있어요.",
+                "rule_of_thumb": "연 6% 이상이면 양호, 20% 이상이면 매우 우수해요.",
+            },
+            "opm": {
+                "title": "3. 영업이익률",
+                "english": "OPM (Operating Profit Margin)",
+                "summary": "물건을 팔아서 남긴 매출 중, 본업으로 실제 남긴 이익이 몇 %인지 보여줘요.",
+                "why": "매출이 크더라도 남는 게 없으면 소용없죠. 영업이익률이 높다는 건 회사가 원가·비용을 잘 통제하며 돈을 벌고 있다는 뜻이에요. 금리가 오르거나 원자재값이 뛰어도 버틸 체력이 있다는 신호이기도 해요.",
+                "rule_of_thumb": "10% 이상이면 양호, 20% 이상이면 매우 우수한 수익성이에요.",
+            },
+            "roic": {
+                "title": "4. 투하자본이익률",
+                "english": "ROIC (Return on Invested Capital)",
+                "summary": "회사가 사업에 투입한 돈 대비 얼마나 효율적으로 이익을 냈는지 보여줘요.",
+                "why": "빚을 잔뜩 내서 이익을 낸 회사와, 자기 돈으로 효율적으로 이익을 낸 회사는 질이 달라요. ROIC는 '빌린 돈 효과'를 걷어내고 진짜 사업 실력만 보여주는 지표라, 장기투자자들이 특히 중요하게 보는 숫자예요.",
+                "rule_of_thumb": "7% 이상이면 양호, 15% 이상이면 매우 우수해요.",
+            },
+            "debt_rate": {
+                "title": "5. 부채비율",
+                "english": "Debt Rate",
+                "summary": "회사가 자기 돈(자본) 대비 빚(부채)을 얼마나 지고 있는지 보여줘요.",
+                "why": "빚이 너무 많으면 경기가 나빠지거나 금리가 오를 때 이자 갚기도 벅차서 회사가 휘청일 수 있어요. 하락장에서 살아남는 회사와 무너지는 회사를 가르는 대표적인 지표예요.",
+                "rule_of_thumb": "낮을수록 좋아요. 100% 이하면 안전한 편, 40% 이하면 매우 우수해요.",
+            },
+            "quick_ratio": {
+                "title": "6. 당좌비율",
+                "english": "Quick Ratio",
+                "summary": "당장 팔기 어려운 재고를 빼고도, 단기 빚을 갚을 현금성 자산이 충분한지 보여줘요.",
+                "why": "재고자산은 급하게 현금화하기 어려울 수 있어요. 이 지표가 높을수록 갑자기 돈이 필요한 위기 상황에서도 회사가 버틸 체력이 있다는 뜻이에요.",
+                "rule_of_thumb": "100% 이상이면 안전, 150% 이상이면 매우 우수해요.",
+            },
+            "interest_coverage": {
+                "title": "7. 이자보상배율",
+                "english": "Interest Coverage",
+                "summary": "회사가 벌어들인 영업이익으로 이자를 몇 배나 감당할 수 있는지 보여줘요.",
+                "why": "이 숫자가 1보다 작으면 번 돈으로 이자도 못 갚는다는 뜻이라 위험 신호예요. 숫자가 클수록 빚 부담에서 여유롭고 안전하다는 의미예요.",
+                "rule_of_thumb": "5배 이상이면 양호, 15배 이상이면 매우 안전한 수준이에요.",
+            },
+            "ocf_ratio": {
+                "title": "8. 영업현금흐름 비율",
+                "english": "OCF Ratio",
+                "summary": "장부상 이익이 아니라, 실제로 통장에 들어온 현금이 순이익 대비 얼마나 되는지 보여줘요.",
+                "why": "회계상 이익은 있는데 실제 현금은 잘 안 들어오는 '이익의 질'이 낮은 회사들이 있어요. 이 비율이 100% 이상이면 장부상 이익만큼(또는 그 이상) 실제 현금도 잘 들어오고 있다는 뜻이라 신뢰도가 높아요.",
+                "rule_of_thumb": "1.0(100%) 이상이면 양호, 1.3 이상이면 매우 우수해요.",
+            },
+            "sga_ratio": {
+                "title": "9. 판관비율",
+                "english": "SG&A Ratio",
+                "summary": "매출 대비 광고비·인건비 등 판매관리비를 얼마나 쓰고 있는지 보여줘요.",
+                "why": "비용을 효율적으로 관리하는 회사는 같은 매출로도 더 많은 이익을 남길 수 있어요. 이 비율이 낮을수록 비용 통제를 잘하고 있다는 뜻이에요.",
+                "rule_of_thumb": "낮을수록 좋아요. 20% 이하면 양호, 12% 이하면 매우 우수해요.",
+            },
+            "downturn_defense": {
+                "title": "10. 하락장 방어력",
+                "english": "Downturn Defense",
+                "summary": "코로나 폭락, 2022년 긴축장 같은 실제 하락장에서 이 종목이 코스피보다 덜 떨어졌는지 실측으로 보여줘요.",
+                "why": "재무제표 숫자와 별개로 '진짜 위기 때 이 주식이 얼마나 안 흔들렸는지'를 과거 데이터로 직접 확인하는 지표예요. 하락장 방어라는 이 앱의 핵심 컨셉과 가장 직결된 지표예요.",
+                "rule_of_thumb": "0%p 이상이면 코스피보다 덜 빠진 것(양호), 10%p 이상이면 매우 방어적이에요.",
+            },
+            "roa": {
+                "title": "4-B. 총자산이익률 (금융업 전용)",
+                "english": "ROA",
+                "summary": "은행·보험 등 금융회사가 가진 전체 자산 대비 얼마나 효율적으로 이익을 냈는지 보여줘요.",
+                "why": "금융회사는 예금·대출 구조가 일반 기업과 달라서, 이 앱은 ROIC 대신 이 지표로 금융업의 수익성을 평가해요.",
+                "rule_of_thumb": "0.6% 이상이면 양호, 1.2% 이상이면 매우 우수해요.",
+            },
+        }
+        METRIC_ORDER = list(METRIC_DISPLAY.keys())
+
+        supabase_data = data.get("supabase_data")
+        period_scores = (supabase_data or {}).get("period_scores") or {}
+
+        if not period_scores:
+            st.warning(
+                "⚠️ 아직 이 종목의 펀더멘탈 스코어 데이터가 없습니다. "
+                "collector.py로 이 종목을 먼저 수집해야 점수가 표시됩니다. "
+                "(국내(KR) 종목만 DART 기반 스코어링을 지원합니다)"
+            )
+        else:
+            # --- 종목 레벨(row) 상태 배지: 데이터 신뢰도 / 자본잠식 / 결측 지표 수 ---
+            row_reliability = supabase_data.get("data_reliability")
+            row_capital_impairment = supabase_data.get("capital_impairment")
+            row_missing_count = supabase_data.get("missing_metric_count")
+            row_wics_sector = supabase_data.get("wics_sector")
+            # sector_percentile은 8개(기간x기준) 조합 전체가 아니라 "1년-평균" 기준으로만
+            # 대표값 1개가 계산되는 설계(rescore_final_grades.py 참고)이므로,
+            # 기간 탭 안이 아니라 여기 종목 레벨 배지 줄에서 한 번만 보여준다.
+            row_sector_percentile = (
+                (period_scores.get("1y") or {}).get("avg") or {}
+            ).get("sector_percentile")
+            row_per = supabase_data.get("per")
+            row_pbr = supabase_data.get("pbr")
+            row_per_tier = supabase_data.get("per_tier")
+            row_pbr_tier = supabase_data.get("pbr_tier")
+
+            status_pills_html = ""
+            if row_reliability:
+                rel_cls = {
+                    "높음": "reliability-good", "양호": "reliability-good",
+                    "보통": "reliability-mid",
+                    "낮음": "reliability-low", "주의": "reliability-low",
+                }.get(row_reliability, "reliability-mid")
+                status_pills_html += f'<span class="status-pill {rel_cls}">📋 데이터 신뢰도: {row_reliability}</span>'
+            if row_capital_impairment:
+                status_pills_html += '<span class="status-pill impairment-warn">⚠️ 자본잠식 상태</span>'
+            if row_wics_sector:
+                status_pills_html += f'<span class="status-pill neutral">🏷️ 업종(WICS): {row_wics_sector}</span>'
+            if row_sector_percentile is not None:
+                status_pills_html += (
+                    f'<span class="status-pill neutral">📊 업종 내 상위 '
+                    f'{100 - row_sector_percentile:.1f}% (1년 평균 기준)</span>'
+                )
+            # PER/PBR 업종 내 상대적 저평가(A)/적정(B)/고평가(C) 배지 - rescore_valuation_tiers.py가 계산.
+            # 저평가=A라고 해서 매수 신호는 아님(밸류 트랩 가능성 등) - 어디까지나 업종 내 상대적 위치일 뿐.
+            # 음수(적자) PER은 크기 비교가 직관과 반대로 움직여서(적자가 클수록 PER 절댓값이
+            # 작아짐) 업종 순위 계산에서 아예 제외됨 - 대신 실측값 그대로 "적자"로 표시.
+            tier_cls_map = {"A": "tier-a", "B": "tier-b", "C": "tier-c"}
+            tier_label_map = {"A": "저평가", "B": "적정", "C": "고평가"}
+            per_is_negative = row_per is not None and row_per < 0
+            pbr_is_negative = row_pbr is not None and row_pbr < 0
+
+            if row_per is not None:
+                if per_is_negative:
+                    status_pills_html += (
+                        f'<span class="status-pill tier-c" '
+                        f'title="적자 상태입니다. PER은 업종 순위 비교에서 제외됩니다.">'
+                        f'💰 PER {row_per} (적자)</span>'
+                    )
+                elif row_per_tier:
+                    status_pills_html += (
+                        f'<span class="status-pill {tier_cls_map.get(row_per_tier, "neutral")}">'
+                        f'💰 PER {row_per} · 업종 내 {tier_label_map.get(row_per_tier, row_per_tier)}(Tier {row_per_tier})</span>'
+                    )
+                else:
+                    status_pills_html += f'<span class="status-pill neutral">💰 PER {row_per}</span>'
+
+            if row_pbr is not None:
+                if pbr_is_negative:
+                    status_pills_html += (
+                        f'<span class="status-pill tier-c" '
+                        f'title="자본잠식 상태입니다. PBR은 업종 순위 비교에서 제외됩니다.">'
+                        f'🏦 PBR {row_pbr} (자본잠식)</span>'
+                    )
+                elif row_pbr_tier:
+                    status_pills_html += (
+                        f'<span class="status-pill {tier_cls_map.get(row_pbr_tier, "neutral")}">'
+                        f'🏦 PBR {row_pbr} · 업종 내 {tier_label_map.get(row_pbr_tier, row_pbr_tier)}(Tier {row_pbr_tier})</span>'
+                    )
+                else:
+                    status_pills_html += f'<span class="status-pill neutral">🏦 PBR {row_pbr}</span>'
+
+            row_dividend_yield = supabase_data.get("dividend_yield")
+            row_dividend_payout = supabase_data.get("dividend_payout_ratio")
+            if row_dividend_yield is not None:
+                payout_part = f" · 배당성향 {row_dividend_payout}%" if row_dividend_payout is not None else ""
+                status_pills_html += (
+                    f'<span class="status-pill neutral" '
+                    f'title="하락장에서는 배당이 꾸준한 기업이 상대적으로 방어적인 경향이 있습니다.">'
+                    f'💵 배당수익률 {row_dividend_yield}%{payout_part}</span>'
+                )
+
+            if row_missing_count is not None:
+                status_pills_html += f'<span class="status-pill neutral">🧩 결측 지표: {row_missing_count}개</span>'
+
+            if status_pills_html:
+                st.markdown(f'<div class="row-status-bar">{status_pills_html}</div>', unsafe_allow_html=True)
+                if row_per_tier or row_pbr_tier:
+                    st.caption(
+                        "ℹ️ PER/PBR Tier는 같은 업종(WICS) 내 상대적 위치일 뿐이며, "
+                        "저평가(A)가 반드시 좋은 투자를 의미하지 않습니다 (실적 악화로 인한 "
+                        "'밸류 트랩'일 수도 있음). 참고 정보로만 활용해주세요."
+                    )
+                if per_is_negative or pbr_is_negative:
+                    st.caption(
+                        "ℹ️ 적자/자본잠식 상태에서는 PER·PBR 값이 커도 작아도 크기 비교가 "
+                        "직관과 반대로 움직여서(적자가 클수록 오히려 절댓값이 작아짐), "
+                        "업종 내 순위(Tier) 계산에서 제외했습니다. 실측값 자체는 참고용으로 표시합니다."
+                    )
+
+            # 1/3/5/10년 기간 탭
+            available_periods = [p for p in ["1y", "3y", "5y", "10y"] if p in period_scores]
+            period_labels = {"1y": "📅 1년 (단기)", "3y": "📆 3년 (중기)", "5y": "🗓️ 5년 (중장기)", "10y": "📈 10년 (장기)"}
+
+            period_tabs = st.tabs([period_labels[p] for p in available_periods])
+
+            for period_key, tab in zip(available_periods, period_tabs):
+                with tab:
+                    pdata = period_scores[period_key]
+                    years_used = pdata.get("years_used", [])
+                    if len(years_used) == 1:
+                        st.caption(f"기준 데이터: {years_used[0]}")
+                    elif years_used:
+                        st.caption(f"사용된 회계연도: {years_used[0]} ~ {years_used[-1]}")
+
+                    view_mode = st.radio(
+                        "채점 기준",
+                        options=["avg", "worst"],
+                        format_func=lambda v: "📊 평균 기준 (꾸준함)" if v == "avg" else "🛡️ 최악 기준 (위기 대응력)",
+                        horizontal=True,
+                        key=f"view_mode_{period_key}",
+                        help=(
+                            "**평균 기준**: 선택한 기간(예: 3년) 동안 각 지표의 연도별 값을 평균 내서 "
+                            "채점합니다 - 꾸준한 실적을 잘 반영합니다.\n\n"
+                            "**최악 기준**: 같은 기간 동안 각 지표가 가장 나빴던 해의 값으로 채점합니다 - "
+                            "위기 상황에서 얼마나 잘 버티는지(하방 방어력)를 보여줍니다. 평균보다 항상 "
+                            "같거나 낮은 점수가 나옵니다."
+                        ),
+                    )
+
+                    view_data = pdata.get(view_mode) or {}
+                    total_score = view_data.get("total_score")
+                    grade = view_data.get("grade", "N/A")
+                    metric_scores = view_data.get("metric_scores", {})
+                    sub_scores = view_data.get("sub_scores") or {}
+                    financial_adjusted = view_data.get("financial_adjusted")
+                    period_missing_count = view_data.get("missing_metric_count")
+
+                    sub_badges = ""
+                    if sub_scores:
+                        growth_v = sub_scores.get("growth")
+                        defense_v = sub_scores.get("defense")
+                        if growth_v is not None:
+                            growth_tip = (
+                                "매출액 성장률 + EPS 성장률, 두 지표의 가중점수 합산 "
+                                "(전체 100점 중 성장성에 배정된 배점)"
+                            )
+                            sub_badges += (
+                                f'<span class="mini-stat-badge" title="{growth_tip}">'
+                                f'🌱 성장 서브스코어 {growth_v}</span>'
+                            )
+                        if defense_v is not None:
+                            defense_tip = (
+                                "성장성 2개 지표를 제외한 나머지 8개 지표(수익성/재무건전성/현금흐름/"
+                                "하락장 방어력)의 가중점수 합산"
+                            )
+                            sub_badges += (
+                                f'<span class="mini-stat-badge" title="{defense_tip}">'
+                                f'🛡️ 방어 서브스코어 {defense_v}</span>'
+                            )
+
+                    if financial_adjusted:
+                        sub_badges += (
+                            '<span class="mini-stat-badge" title="금융업(은행/보험/증권)은 매출액/영업이익 '
+                            '개념이 일반기업과 달라 OPM/ROIC/SG&A비율 3개 지표를 제외하고, 대신 ROA(총자산이익률)로 '
+                            '대체 채점한 뒤 100점 만점으로 환산했습니다.">🏦 금융업 보정 적용</span>'
+                        )
+
+                    growth_excluded_keys = [
+                        k for k in ("revenue_growth", "eps_growth")
+                        if (metric_scores.get(k) or {}).get("excluded_from_total")
+                    ]
+
+                    if growth_excluded_keys:
+                        if len(growth_excluded_keys) == 2:
+                            growth_note = (
+                                "매출·EPS 성장률 수치가 급변하여 전년 대비 비교가 불가능해 두 지표를 "
+                                "제외하고, 나머지 8개 지표 기준으로 재환산한 점수입니다."
+                            )
+                        else:
+                            label = "매출" if growth_excluded_keys[0] == "revenue_growth" else "EPS"
+                            growth_note = (
+                                f"{label} 성장률 수치가 급변하여 전년 대비 비교가 불가능해 이 지표를 "
+                                f"제외하고, 나머지 9개 지표 기준으로 재환산한 점수입니다."
+                            )
+                        sub_badges += (
+                            f'<span class="mini-stat-badge" title="{growth_note}">⚡ 급변 보정 적용</span>'
+                        )
+
+                    if period_missing_count is not None:
+                        sub_badges += (
+                            f'<span class="mini-stat-badge" title="DART 공시 데이터에서 값을 찾지 못해 '
+                            f'0점 처리된 지표 수입니다.">🧩 결측 {period_missing_count}개</span>'
+                        )
+
+                    st.markdown(
+                        f"""
+                        <div class="grade-hero-box">
+                            <div>
+                                <div style="font-size:14px; color:#92400E; font-weight:700;">
+                                    {period_labels[period_key]} · {'평균' if view_mode == 'avg' else '최악(위기)'} 기준 종합 점수
+                                </div>
+                                <div class="grade-hero-score">{total_score if total_score is not None else 'N/A'} / 100</div>
+                            </div>
+                            <div class="grade-hero-badge">{grade}</div>
+                            <div class="grade-hero-sub">{sub_badges}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    st.caption(
+                        "※ 지표마다 총점에서 차지하는 배점이 달라요 — 하락장 방어력 20점, "
+                        "매출·EPS 성장률 각 5점, 나머지 7개 지표는 각 10점. 아래 각 지표의 "
+                        "'총점 기여'가 그 지표의 실제 배점 대비 획득 점수예요."
+                    )
+
+                    # 지표별 표시 단위 (차트 y축 라벨용)
+                    METRIC_UNITS = {
+                        "interest_coverage": "배", "ocf_ratio": "배", "downturn_defense": "%p",
+                    }
+
+                    # 분기 라벨('2025 3분기보고서' 등)에서 (연도, 분기순번)과 'N분기' 표기를 추출.
+                    # jsonb는 딕셔너리 키 삽입 순서를 보장 안 하므로, 저장 순서에 의존하지 않고
+                    # 여기서 직접 정렬한다. 사업보고서(연간)는 4분기로 통일 표기.
+                    _QUARTER_RANK = {"1분기": 1, "반기": 2, "3분기": 3, "사업보고서": 4}
+
+                    def _parse_quarter_label(label):
+                        parts = label.split(" ", 1)
+                        if len(parts) != 2:
+                            return (0, 0), label
+                        year_str, report_part = parts
+                        try:
+                            year = int(year_str)
+                        except ValueError:
+                            return (0, 0), label
+                        for key, rank in _QUARTER_RANK.items():
+                            if key in report_part:
+                                return (year, rank), f"{year} {rank}분기"
+                        return (year, 0), label
+
+                    def _metric_within_period(metric_key_inner):
+                        """현재 보고 있는 기간 탭(period_key) 안에서 이 지표의 세부 추이를 반환.
+                        3/5/10년 탭 -> 연도별(예: 2023,2024,2025), 1년 탭 -> 최근 4분기별.
+                        jsonb 키 순서가 보장 안 되므로 여기서 명시적으로 시간순 정렬한다."""
+                        breakdown = (period_scores.get(period_key, {}) or {}).get("yearly_breakdown", {}) or {}
+                        metric_breakdown = breakdown.get(metric_key_inner, {})
+                        items = [(label, value) for label, value in metric_breakdown.items() if value is not None]
+
+                        if period_key == "1y":
+                            parsed = [(_parse_quarter_label(label), value) for label, value in items]
+                            parsed.sort(key=lambda x: x[0][0])
+                            return [(x[1], value) for x, value in parsed]
+                        else:
+                            # 3/5/10y는 연도 문자열 키 -> 숫자로 정렬
+                            items.sort(key=lambda x: int(x[0]))
+                            return items
+
+                    # collector.py의 leverage_exempt 판정(금융/지주회사/유틸리티는 부채비율 등
+                    # 3개 지표 자동 만점)을 저장된 필드로 재구성 - app.py는 DART/WICS 원본 로직에
+                    # 접근 못 하므로 supabase에 저장된 값 기준으로 근사
+                    leverage_exempt = (
+                        row_wics_sector == "금융"
+                        or bool(supabase_data.get("holding_company"))
+                        or row_wics_sector == "유틸리티"
+                    )
+
+
+                    for metric_key in METRIC_ORDER:
+                        entry = metric_scores.get(metric_key)
+                        if entry is None:
+                            # roa는 금융업이 아닌 경우 metric_scores에 아예 없으므로 스킵
+                            continue
+
+                        meta = METRIC_DISPLAY[metric_key]
+                        title = meta["title"]
+                        value = entry.get("value")
+                        score = entry.get("score")
+                        excluded = entry.get("excluded_from_total", False)
+
+                        # 값 포맷팅 조정 (성장률이나 비율 지표는 뒤에 % 또는 %p 추가)
+                        if value is not None:
+                            if metric_key in ["revenue_growth", "eps_growth", "opm", "roic", "roa", "debt_rate", "quick_ratio", "sga_ratio"]:
+                                value_display = f"{value}%"
+                            elif metric_key == "downturn_defense":
+                                value_display = f"{value}%p"
+                            else:
+                                value_display = f"{value}"
+                        elif metric_key in ("revenue_growth", "eps_growth") and entry.get("raw_value") is not None:
+                            # 채점용 value는 가드에 걸려 None이지만, 실제 계산된 원본값(raw_value)은
+                            # 항상 보여준다 - "N/A"로 감추지 않는 게 최우선 요구사항
+                            raw_v = entry["raw_value"]
+                            value_display = f"{raw_v:+.2f}% (실측)"
+                        else:
+                            value_display = "N/A"
+
+                        # revenue_growth/eps_growth가 raw_value로 표시된 경우, 왜 점수 계산에선
+                        # 제외됐는지 안내 (구버전 데이터 - sanitize_growth가 값을 null 처리하던
+                        # 시절의 잔여 케이스). 새로 재수집된 종목은 이제 값이 null 처리되지 않고
+                        # 그대로 채점되며, 대신 아래 is_extreme 플래그로 "이례적 수치" 안내만 붙는다.
+                        growth_guard_note = ""
+                        if metric_key in ("revenue_growth", "eps_growth") and value is None and entry.get("raw_value") is not None:
+                            growth_guard_note = (
+                                "<br><span style='font-size:12px; color:#92400E;'>"
+                                "ℹ️ 위 실측값은 전년 동기 대비 실제 계산된 증가율입니다. 다만 전년 "
+                                "기저값이 너무 작아(또는 흑자전환 등) 왜곡 가능성이 높아 점수 계산에는 "
+                                "반영하지 않았습니다 (점수 0점 처리).</span>"
+                            )
+                        elif value is None and metric_key in ("revenue_growth", "eps_growth"):
+                            growth_guard_note = (
+                                "<br><span style='font-size:12px; color:#92400E;'>"
+                                "ℹ️ 전년 동기 데이터 자체가 없어 증가율을 계산할 수 없습니다."
+                                "</span>"
+                            )
+                        elif metric_key in ("revenue_growth", "eps_growth") and entry.get("is_extreme"):
+                            # 500% 초과 등 이례적으로 큰(혹은 작은) 수치 - 점수 자체는 정상적으로
+                            # 반영됨(구간표가 이미 상/하한을 캡 처리), 참고용 안내만 표시
+                            growth_guard_note = (
+                                "<br><span style='font-size:12px; color:#92400E;'>"
+                                "ℹ️ 전년 동기 대비 변동폭이 매우 커서(기저효과 등) 수치가 이례적으로 "
+                                "크게 나왔습니다. 점수에는 정상 반영되었습니다.</span>"
+                            )
+                        # 이자비용을 못 찾아 금융비용(포괄 비용)으로 근사 계산된 경우 안내
+                        if metric_key == "interest_coverage" and entry.get("is_approximate"):
+                            growth_guard_note = (
+                                "<br><span style='font-size:12px; color:#92400E;'>"
+                                "ℹ️ 순수 이자비용 계정을 찾지 못해 금융비용(환차손 등 포함) 기준 "
+                                "근사치로 계산된 값입니다. 실제보다 다소 보수적으로 잡혔을 수 있습니다."
+                                "</span>"
+                            )
+                        elif metric_key == "quick_ratio" and entry.get("is_extreme"):
+                            growth_guard_note = (
+                                "<br><span style='font-size:12px; color:#92400E;'>"
+                                "ℹ️ Quick Ratio가 20배 이상인 경우, 유동부채가 극히 작거나 0에 가까운 "
+                                "기업에서는 실제 계산값 자체가 매우 커질 수 있습니다. "
+                                "분모 규모를 함께 확인해 해석하세요."
+                                "</span>"
+                            )
+
+                        if excluded:
+                            if metric_key in ("revenue_growth", "eps_growth"):
+                                 score_display = "기저효과로 제외"
+                            else:
+                                 score_display = "업종 특성상 제외"
+                            score_emoji = "⚪"
+                        elif score is not None:
+                            score_display = f"{score}/10"
+                            score_emoji = "🟢" if score >= 8 else ("🟡" if score >= 5 else "🔴")
+                        else:
+                            score_display = "N/A"
+                            score_emoji = "⚪"
+
+                        # 지표별 배점(가중치)이 서로 달라서(하락장 방어력 20점, 성장률 2개 각 5점,
+                        # 나머지 각 10점) 원점수(X/10)만 보면 총점 기여도를 오해하기 쉬움 - 그래서
+                        # "총점 기여 N.N/배점" 형태로 실제 100점 만점 중 얼마를 받았는지 같이 표시
+                        metric_weight = ROA_WEIGHT if metric_key == "roa" else METRIC_WEIGHTS.get(metric_key, 10)
+                        weighted_score_val = entry.get("weighted_score")
+                        if excluded:
+                            contribution_display = "총점 제외"
+                        elif weighted_score_val is not None:
+                            contribution_display = f"총점 기여 {weighted_score_val:.1f}/{metric_weight}점"
+                        else:
+                            contribution_display = f"총점 기여 -/{metric_weight}점"
+
+                        expander_label = f"{title}   |   실측값 {value_display}   |   {score_emoji} {score_display}   |   {contribution_display}"
+
+                        with st.expander(expander_label):
+                            st.caption(meta["english"])
+                            st.markdown(f"**{meta['summary']}**")
+                            st.markdown(
+                                f"💡 **왜 중요할까요?**<br>{meta['why']}{growth_guard_note}",
+                                unsafe_allow_html=True,
+                            )
+                            st.markdown(f"📊 **기준선**: {meta['rule_of_thumb']}")
+                            st.markdown("---")
+
+
+                            # 정확한 채점 구간표는 비공개(경쟁 우위 보호) - 대신 업종 내 상대적
+                            # 우위 백분위만 표시. rescore_metric_percentiles.py가 미리 계산해둔
+                            # metric_scores[key]["sector_percentile"] (1년 평균 기준 대표값)을 사용.
+                            metric_sector_entry = (
+                                (period_scores.get("1y", {}).get("avg") or {})
+                                .get("metric_scores", {})
+                                .get(metric_key, {})
+                            )
+                            metric_sector_pct = metric_sector_entry.get("sector_percentile")
+                            if metric_sector_pct is not None:
+                                st.markdown(
+                                    f"**업종 내 상대적 위치**: 이 지표에서 같은 업종({row_wics_sector or '미상'}) "
+                                    f"내 상위 **{100 - metric_sector_pct:.1f}%** 입니다. (1년 평균 기준)"
+                                )
+                                st.progress(metric_sector_pct / 100.0)
+                                if metric_sector_entry.get("sector_percentile_basis") == "raw_value":
+                                    st.caption(
+                                        "ℹ️ 점수 계산에는 제외된 실측값(위 안내 참고) 기준으로 "
+                                        "순위만 참고용으로 매긴 것입니다."
+                                    )
+                            else:
+                                st.caption("업종 내 비교 데이터가 아직 계산되지 않았습니다.")
+                            if leverage_exempt and metric_key in ("debt_rate", "quick_ratio", "interest_coverage"):
+                                st.caption("ℹ️ 이 종목은 레버리지 예외 업종이라 이 지표는 자동 만점(10점) 처리됩니다.")
+
+                            history = _metric_within_period(metric_key)
+                            if len(history) >= 2:
+                                period_chart_title = {
+                                    "1y": "**최근 4분기 추이**", "3y": "**연도별 추이 (3년)**",
+                                    "5y": "**연도별 추이 (5년)**", "10y": "**연도별 추이 (10년)**",
+                                }.get(period_key, "**기간별 추이**")
+                                st.markdown(period_chart_title)
+                                unit_label = METRIC_UNITS.get(metric_key, "%")
+                                x_labels = [h[0] for h in history]
+                                trend_df = pd.DataFrame({"기간": x_labels, "실측값": [h[1] for h in history]})
+                                chart_type = st.radio(
+                                    "차트 유형",
+                                    ["선", "막대"],
+                                    horizontal=True,
+                                    key=f"charttype_{period_key}_{view_mode}_{metric_key}",
+                                    label_visibility="collapsed",
+                                )
+                                base = alt.Chart(trend_df).encode(
+                                    x=alt.X("기간:N", sort=x_labels, title="기간",
+                                            axis=alt.Axis(labelAngle=0)),
+                                    y=alt.Y(
+                                        "실측값:Q", title=f"실측값 ({unit_label})",
+                                        scale=alt.Scale(nice=True, zero=True),  # 0을 항상 눈금에 포함
+                                        axis=alt.Axis(titleAngle=0, titleAlign="left", titleY=-10, titleX=0),
+                                    ),
+                                    tooltip=["기간", "실측값"],
+                                )
+                                # 막대그래프는 양수/음수 색을 다르게 (양수=주황, 음수=빨강)
+                                sign_color = alt.condition(
+                                    alt.datum.실측값 >= 0, alt.value(THEME["positive"]), alt.value(THEME["negative"])
+                                )
+                                if chart_type == "선":
+                                    chart = base.mark_line(point=True, color=THEME["accent_strong"])
+                                else:
+                                    chart = base.mark_bar().encode(color=sign_color)
+                                chart = chart.properties(height=150)
+                                st.altair_chart(chart, use_container_width=True)
+                            else:
+                                st.caption("추이를 그리기엔 사용 가능한 기간 데이터가 부족합니다.")
+
+                            # 급변 감지: 1y 점수가 3y(없으면 5y/10y) 평균 점수 대비 3점 이상 벌어지면 플래그
+                            st.markdown("**급변 감지**")
+                            one_y_entry = (period_scores.get("1y", {}).get(view_mode) or {}).get("metric_scores", {}).get(metric_key)
+                            baseline_period = next((p for p in ("3y", "5y", "10y") if period_scores.get(p)), None)
+                            baseline_entry = None
+                            if baseline_period:
+                                baseline_entry = (period_scores.get(baseline_period, {}).get(view_mode) or {}).get("metric_scores", {}).get(metric_key)
+
+                            if one_y_entry and baseline_entry and one_y_entry.get("score") is not None and baseline_entry.get("score") is not None:
+                                score_gap = one_y_entry["score"] - baseline_entry["score"]
+                                if abs(score_gap) >= 3:
+                                    direction = "개선" if score_gap > 0 else "악화"
+                                    st.warning(
+                                        f"⚡ 최근 1년 점수({one_y_entry['score']}/10)가 {baseline_period} 평균"
+                                        f"({baseline_entry['score']}/10) 대비 급격히 {direction}됐습니다 "
+                                        f"(점수차 {abs(score_gap)}점). 일시적 요인인지 추세 전환인지 다른 지표와 "
+                                        f"함께 확인해보세요."
+                                    )
+                                else:
+                                    st.caption(f"✅ {baseline_period} 평균 대비 특이 변동 없음 (점수차 {abs(score_gap)}점)")
+                            else:
+                                st.caption("비교할 기준 기간 데이터가 부족해 급변 여부를 판단할 수 없습니다.")
+
+        # 한국/미국 상세 리포트 모두 동일한 위치와 동일한 카드 형태로
+        # 점수 영역 바로 아래에 최신 개별종목 뉴스 3건을 표시한다.
+        render_home_stock_news(
+            data.get("stock_name", selected_code),
+            selected_code,
+            limit=3,
+        )
+
+    with right_ad:
+        st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
