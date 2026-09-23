@@ -73,7 +73,10 @@ jobs:
           for e in at.exception[:10]:
               print("APP_EXCEPTION", e.value)
           texts = [getattr(x, "value", "") for x in at.markdown]
-          texts += [getattr(x, "body", "") for x in at.html]
+          print("MARKDOWN_COUNT", len(texts))
+          for x in texts:
+              if "뉴스" in str(x) or "삼성전자" in str(x):
+                  print("MARKDOWN_NEWS", repr(x)[:1200])
           print("HAS_STOCK_NEWS_HEADING", any("삼성전자 관련 뉴스" in str(x) for x in texts))
           if at.exception:
               raise SystemExit(1)
