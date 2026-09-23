@@ -66,7 +66,6 @@ CORE_OTHER_NONOPERATING = {
 }
 
 STANDARD_DEBT_TOTAL = {
-    "LongTermDebt",
     "LongTermDebtCurrentAndNoncurrent",
     "Debt",
     "TotalDebt",
@@ -96,6 +95,7 @@ STANDARD_DEBT_CURRENT = {
     "RevolvingCreditFacilityCurrent",
 }
 STANDARD_DEBT_NONCURRENT = {
+    "LongTermDebt",
     "LongTermDebtNoncurrent",
     "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
     "LongTermDebtAndFinanceLeaseObligationsNoncurrent",
@@ -110,6 +110,20 @@ STANDARD_DEBT_NONCURRENT = {
     "LongTermNotesPayable",
     "NotesAndLoansPayable",
     "ConvertibleDebtNoncurrent",
+    "ConvertibleNotes",
+    "ConvertibleNotesPayable",
+    "SeniorNotes",
+    "SeniorNotesPayable",
+    "SeniorSecuredNotes",
+    "SeniorUnsecuredNotes",
+    "SubordinatedNotes",
+    "DebtObligations",
+    "DebtLiabilities",
+    "OtherDebt",
+    "OtherDebtNoncurrent",
+    "OtherDebtCurrent",
+    "OtherBorrowings",
+    "LoansPayableCurrent",
     "UnsecuredDebt",
     "UnsecuredLongTermDebt",
     "SecuredDebt",
@@ -176,6 +190,7 @@ STANDARD_INTEREST_GROSS = {
     "InterestExpenseNonoperatingNetOfTax",
     "InterestAndDebtExpense",
     "InterestExpenseNonoperatingAndOther",
+    "InterestExpenseRelatedParties",
     "InterestExpenseNonOperatingAndOther",
     "InterestExpenseDebtExcludingAmortization",
     "FinanceCosts",
@@ -195,6 +210,8 @@ INTEREST_EXCLUSIONS = (
     "pension",
     "capitalizedinterest",
     "interestcostscapitalized",
+    "financeleaseinterestexpense",
+    "interestexpenseonleaseliabilities",
 )
 ACTIVITY_EXCLUSIONS = (
     "proceeds",
@@ -290,6 +307,8 @@ def classify_debt_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
 
     if namespace in {"us-gaap", "ifrs-full"} and any(k in compact for k in (
         "debt", "borrowings", "borrowing", "loanspayable", "notespayable",
+        "seniornotes", "subordinatednotes", "convertnotepayable", "convertiblenotes",
+        "debtobligations", "debtliabilities", "otherdebt", "otherborrowings",
         "creditfacility", "revolvingcreditfacility", "termloan",
     )):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
@@ -322,7 +341,8 @@ def classify_interest_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
         return "net_interest_expense", "medium", "canonical net interest expense fallback"
 
     if namespace in {"us-gaap", "ifrs-full"} and any(_compact(k) in compact for k in (
-        "interest expense", "interest cost", "finance costs", "financing costs", "debt expense"
+        "interest expense", "interest cost", "finance cost", "finance costs", "financing cost",
+        "financing costs", "borrowing costs", "debt expense"
     )):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
             return None, "exclude", "interest activity/metadata fact"
@@ -464,17 +484,62 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
     rows = list(rows)
     debt: list[FinancialFact] = []
     interest: list[FinancialFact] = []
+    unclassified_debt_like: list[dict[str, Any]] = []
+    unclassified_interest_like: list[dict[str, Any]] = []
     for row in rows:
+        concept = _local(row.get("concept"))
+        label = row.get("label") or ""
+        compact = _compact(concept + " " + label)
         category, confidence, reason = classify_debt_fact(row)
         if category and _instant_row(row, target_year) and not row.get("dimensioned") and _is_currency(row.get("unit")):
             fact = _to_fact(row, category, confidence, reason)
             if fact:
                 debt.append(fact)
+        elif (
+            _instant_row(row, target_year)
+            and not row.get("dimensioned")
+            and _is_currency(row.get("unit"))
+            and any(k in compact for k in (
+                "debt", "borrow", "borrowing", "loan", "notespayable",
+                "seniornotes", "subordinatednotes", "convertiblenotes",
+                "creditfacility", "revolvingcreditfacility", "termloan",
+            ))
+            and not _is_bad_debt(concept, label)
+        ):
+            unclassified_debt_like.append({
+                "namespace": row.get("namespace") or "",
+                "concept": concept,
+                "label": label,
+                "value": row.get("value"),
+                "unit": row.get("unit"),
+                "end": row.get("end"),
+                "contextRef": row.get("contextRef"),
+            })
         category, confidence, reason = classify_interest_fact(row)
         if category and _annual_duration_row(row, target_year) and not row.get("dimensioned") and _is_currency(row.get("unit")):
             fact = _to_fact(row, category, confidence, reason)
             if fact:
                 interest.append(fact)
+        elif (
+            _annual_duration_row(row, target_year)
+            and not row.get("dimensioned")
+            and _is_currency(row.get("unit"))
+            and any(k in compact for k in (
+                "interestexpense", "interestcost", "financecost",
+                "financingcost", "borrowingcost", "debtexpense",
+            ))
+            and not any(token in compact for token in INTEREST_EXCLUSIONS)
+        ):
+            unclassified_interest_like.append({
+                "namespace": row.get("namespace") or "",
+                "concept": concept,
+                "label": label,
+                "value": row.get("value"),
+                "unit": row.get("unit"),
+                "start": row.get("start"),
+                "end": row.get("end"),
+                "contextRef": row.get("contextRef"),
+            })
 
     total = [x for x in debt if x.category == "issuer_debt_total"]
     current = [x for x in debt if x.category == "issuer_debt_current"]
@@ -484,7 +549,7 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
 
     selected_debt = None
     if total:
-        chosen = sorted(total, key=lambda x: (0 if x.confidence == "high" else 1, x.concept != "LongTermDebt", x.filed or ""))[0]
+        chosen = sorted(total, key=lambda x: (0 if x.confidence == "high" else 1, x.filed or ""))[0]
         selected_debt = {
             "value": chosen.value, "basis": "reported_total", "category": chosen.category,
             "concept": chosen.concept, "namespace": chosen.namespace, "confidence": chosen.confidence,
@@ -591,6 +656,14 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
         "candidate_concept_counts": {
             "debt": dict(Counter(x.concept for x in debt)),
             "interest": dict(Counter(x.concept for x in interest)),
+        },
+        "unclassified_like_counts": {
+            "debt": dict(Counter(x["concept"] for x in unclassified_debt_like)),
+            "interest": dict(Counter(x["concept"] for x in unclassified_interest_like)),
+        },
+        "unclassified_like_examples": {
+            "debt": unclassified_debt_like[:50],
+            "interest": unclassified_interest_like[:50],
         },
     }
 
