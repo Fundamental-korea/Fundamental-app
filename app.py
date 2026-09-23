@@ -3991,16 +3991,16 @@ def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -
 
 
 NEWS_TOPIC_IMAGE_FILES = {
-    "global_markets": "assets/news_topics/global_markets.svg",
-    "interest_rates": "assets/news_topics/interest_rates.svg",
-    "bonds_yields": "assets/news_topics/bonds_yields.svg",
-    "dollar_fx": "assets/news_topics/dollar_fx.svg",
-    "energy_oil": "assets/news_topics/energy_oil.svg",
-    "ai_semiconductors": "assets/news_topics/ai_semiconductors.svg",
-    "trade_global": "assets/news_topics/trade_global.svg",
-    "korea_asia": "assets/news_topics/korea_asia.svg",
-    "economy_jobs": "assets/news_topics/economy_jobs.svg",
-    "crypto_assets": "assets/news_topics/crypto_assets.svg",
+    "global_markets": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/global_markets.svg",
+    "interest_rates": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/interest_rates.svg",
+    "bonds_yields": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/bonds_yields.svg",
+    "dollar_fx": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/dollar_fx.svg",
+    "energy_oil": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/energy_oil.svg",
+    "ai_semiconductors": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/ai_semiconductors.svg",
+    "trade_global": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/trade_global.svg",
+    "korea_asia": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/korea_asia.svg",
+    "economy_jobs": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/economy_jobs.svg",
+    "crypto_assets": "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/news_topics/crypto_assets.svg",
 }
 
 
@@ -4024,18 +4024,22 @@ def _get_news_topic_key(title: str = "", description: str = "", query: str = "",
     return "global_markets"
 
 
-@st.cache_data(ttl=86400, show_spinner=False)
-def _get_news_topic_image_data_uri(topic_key: str) -> str:
-    """로컬 SVG를 data URI로 읽어 브라우저의 외부 이미지 요청을 없앤다."""
+def _get_news_topic_image_url(topic_key: str) -> str:
+    """브라우저가 직접 로드할 안정적인 HTTPS 주제 이미지 URL을 반환한다."""
     key = str(topic_key or "global_markets")
-    relative_path = NEWS_TOPIC_IMAGE_FILES.get(key, NEWS_TOPIC_IMAGE_FILES["global_markets"])
-    path = Path(__file__).resolve().parent / relative_path
-    try:
-        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
-        return f"data:image/svg+xml;base64,{encoded}"
-    except Exception as exc:
-        print(f"[Live News Images] static asset load failed: {relative_path} | {type(exc).__name__}: {exc}")
+    return NEWS_TOPIC_IMAGE_FILES.get(key, NEWS_TOPIC_IMAGE_FILES["global_markets"])
+
+
+def _normalize_news_image_url(image_url: str) -> str:
+    """공급원 이미지 URL을 브라우저에서 로드할 수 있는 HTTPS URL로 정규화한다."""
+    url = str(image_url or "").strip()
+    if not url:
         return ""
+    if url.startswith("//"):
+        url = "https:" + url
+    elif url.startswith("http://"):
+        url = "https://" + url[7:]
+    return url if url.startswith("https://") else ""
 
 
 def _build_news_reader_url(
@@ -4109,7 +4113,7 @@ def render_news_reader():
 
     if not news_topic:
         news_topic = _get_news_topic_key(title, description, category, source)
-    static_reader_image = _get_news_topic_image_data_uri(news_topic)
+    static_reader_image = _get_news_topic_image_url(news_topic)
     # 뉴스 리더도 카드와 동일하게 외부 원문 이미지 대신 로컬 주제 이미지를 사용한다.
     image_url = static_reader_image or _get_news_image_url(original_url or article_url)
 
@@ -4501,9 +4505,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
         article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
         article_urls.append(original_url or article_url)
-    # 카드 표지는 로컬 주제 이미지 라이브러리만 사용한다.
-    # 공급원/원문 이미지 URL은 외부 서버 장애 시 깨질 수 있으므로 화면에서 사용하지 않는다.
-    image_urls = [""] * len(selected_items)
+    # 공급원이 이미 가진 대표 이미지 URL을 우선 복원한다.
+    # 원문 HTML 재조회는 하지 않아 기존 로딩 성능 개선은 유지한다.
+    image_urls = [getattr(item, "image_url", "") for item in selected_items]
 
     localized_cards = {}
     translation_input = tuple(
@@ -4552,9 +4556,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
         static_topic_image = _get_news_topic_image_data_uri(news_topic)
 
-        # 외부 이미지가 아니라 앱에 포함된 고정 주제 이미지를 항상 사용한다.
-        # 따라서 깨진 이미지/403/핫링크 차단/느린 외부 이미지 로딩이 카드에 영향을 주지 않는다.
-        image_url = static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL
+        # 기존 공급원 이미지가 있으면 사용하고, 브라우저에서 실패하는 경우
+        # onerror가 동일 카드의 안정적인 주제 이미지로 즉시 교체한다.
+        image_url = _normalize_news_image_url(provided_image_url) or static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL
 
         direct_url = original_url or article_url
         # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
