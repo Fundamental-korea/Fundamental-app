@@ -58,9 +58,8 @@ import streamlit as st
 
 # GitHub의 실제 Raw 이미지 URL
 RAW_LOGO_URL = "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/logo.png"
-# 원문 대표 이미지가 없을 때 사용하는 주제 중립적 금융 보조 이미지.
-# 카드에는 별도의 AI 라벨을 표시하지 않으며, 원문/공급원 이미지가 항상 우선한다.
-AI_NEWS_FALLBACK_IMAGE_URL = "https://raw.githubusercontent.com/Fundamental-korea/Fundamental-app/main/assets/ai_news_finance_fallback.jpg"
+# 원문 대표 이미지가 없을 때 기사별 고해상도 AI 편집 일러스트를 생성한다.
+# 정적 저해상도 fallback은 사용하지 않는다.
 
 # 이미지를 가져와 Base64로 변환하는 함수
 @st.cache_data
@@ -3562,18 +3561,18 @@ def _escape_html(value):
     )
 
 
-@st.cache_data(ttl=7200, show_spinner=False)
+@st.cache_data(ttl=900, show_spinner=False)
 def _get_home_macro_news_direct_fallback(
     display=20,
     day_key="",
-    cache_version="live-news-fetch-v12",
+    cache_version="live-news-fetch-v13",
 ):
     """Live News provider fallback. Cache version is bumped with feed logic changes."""
     return fetch_macro_news(display=min(max(display, 1), 20))
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def _get_home_macro_news(display=20, cache_version="supabase-live-news-v11"):
+@st.cache_data(ttl=60, show_spinner=False)
+def _get_home_macro_news(display=20, cache_version="supabase-live-news-v13"):
     """자동 수집 DB를 우선하고, 부족하면 실시간 공급원으로 즉시 20개까지 보충한다."""
     target = min(max(display, 1), 20)
     db_rows: list[NaverNewsItem] = []
@@ -3931,23 +3930,85 @@ def _generate_ai_news_article(
     except Exception:
         return {}
 
-def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -> str:
-    """대표 이미지가 없을 때 기사 내용에 맞춘 AI 편집 일러스트 URL을 만든다.
-    브라우저에서 직접 이미지를 요청하므로 서버에 이미지 파일을 저장하지 않는다."""
-    key = f"{title}|{description}|{query}"
-    seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:8], 16)
-    topic = (description or title or query or "financial markets")[:260]
+def _get_ai_news_image_url(
+    title: str,
+    description: str = "",
+    query: str = "",
+    article_url: str = "",
+) -> str:
+    """대표 이미지가 없을 때 기사별 고해상도 AI 금융 일러스트 URL을 만든다.
+
+    기사마다 seed와 시각 스타일을 달리해 같은 이미지가 반복되지 않도록 한다.
+    Pollinations의 현재 image endpoint에서 16:9 고해상도 FLUX 렌더링을 요청한다.
+    """
+    key = f"{article_url}|{title}|{description}|{query}"
+    digest = hashlib.sha256(key.encode("utf-8")).hexdigest()
+    seed = int(digest[:8], 16)
+
+    text = f"{title} {description} {query}".lower()
+    if any(term in text for term in (
+        "fed", "federal reserve", "interest rate", "inflation", "cpi",
+        "pce", "treasury", "bond", "yield", "central bank", "연준",
+        "금리", "물가", "채권",
+    )):
+        visual_theme = (
+            "a modern central-bank and Treasury-market editorial scene, "
+            "government financial district architecture, bond yield curves, "
+            "subtle economic data displays"
+        )
+    elif any(term in text for term in (
+        "ai", "artificial intelligence", "semiconductor", "chip", "nvidia",
+        "data center", "software", "technology", "인공지능", "반도체", "테크",
+    )):
+        visual_theme = (
+            "a premium technology finance editorial scene, advanced semiconductor "
+            "wafer, data-center racks, luminous network connections and market charts"
+        )
+    elif any(term in text for term in (
+        "oil", "crude", "brent", "energy", "opec", "gas", "원유", "석유", "에너지",
+    )):
+        visual_theme = (
+            "a sophisticated energy-market editorial scene, oil refinery and storage "
+            "tanks at dusk, commodity price visualization, restrained newsroom aesthetic"
+        )
+    elif any(term in text for term in (
+        "gold", "silver", "copper", "commodity", "금값", "금", "은", "구리", "원자재",
+    )):
+        visual_theme = (
+            "a premium commodities-market editorial scene, realistic gold bars and "
+            "metal textures with a subtle trading-floor background and price charts"
+        )
+    elif any(term in text for term in (
+        "tariff", "trade", "export", "import", "shipping", "port", "manufacturing",
+        "관세", "무역", "수출", "수입", "제조", "물류",
+    )):
+        visual_theme = (
+            "a global trade and manufacturing editorial scene, container port, cargo "
+            "ships and industrial facilities, subtle financial market overlays"
+        )
+    else:
+        style_variants = (
+            "a global trading floor with multiple market monitors and an editorial news-desk atmosphere",
+            "a polished financial-district cityscape with market charts reflected in glass architecture",
+            "a sophisticated newsroom scene with analysts, screens and abstract market data, no identifiable people",
+            "a global markets visualization with index charts, currency symbols and a premium business-news aesthetic",
+        )
+        visual_theme = style_variants[seed % len(style_variants)]
+
+    topic = (description or title or query or "global financial markets").strip()[:420]
     prompt = (
-        "Editorial financial news illustration for a professional stock-market website. "
-        "No readable text, no logos, no recognizable real people. "
-        "Landscape 16:9 composition, realistic newsroom/editorial photography aesthetic. "
-        f"Visualize this news topic: {topic}. "
-        f"Search category: {query or 'financial markets'}."
+        "High-end editorial illustration for a professional financial-news website. "
+        "Landscape 16:9, photorealistic but polished newsroom aesthetic, crisp details, "
+        "natural lighting, realistic materials, depth and clean composition. "
+        "No readable text, no headlines, no logos, no brand marks, no watermarks, "
+        "no recognizable real people, no duplicated objects. "
+        f"Visual theme: {visual_theme}. "
+        f"News context: {topic}."
     )
     return (
         "https://image.pollinations.ai/prompt/"
         + quote(prompt, safe="")
-        + f"?width=960&height=540&seed={seed}&nologo=true"
+        + f"?model=flux&width=1536&height=864&seed={seed}&nologo=true"
     )
 
 
@@ -4150,12 +4211,12 @@ def _news_image_dimensions(image_url: str):
 
 
 def _news_image_quality_ok(image_url: str) -> bool:
-    """뉴스 카드에서 흐릿하게 보일 가능성이 높은 저해상도 썸네일을 차단한다."""
+    """뉴스 카드에서 명백한 검색 썸네일/저해상도 이미지만 차단한다."""
     url = str(image_url or "").strip().lower()
     if not url:
         return False
 
-    # 검색 공급원에서 제공하는 Bing News 썸네일은 원본 기사가 아니므로 사용하지 않는다.
+    # Bing News 검색 썸네일은 기사 원본이 아니므로 제외한다.
     try:
         parsed_url = urlparse(url)
         if (
@@ -4166,9 +4227,9 @@ def _news_image_quality_ok(image_url: str) -> bool:
     except Exception:
         pass
 
-    # URL 자체가 명백한 썸네일/작은 변환본인 경우 우선 제외한다.
+    # 실제 원문 CDN 경로에 'small/thumb' 같은 단어가 포함되는 경우가 있어
+    # 의미가 확실한 픽셀 크기 힌트만 차단한다.
     lowres_hints = (
-        "thumbnail", "thumb", "small", "tiny", "lowres",
         "150x", "180x", "200x", "240x", "300x", "320x", "400x",
         "width=150", "width=180", "width=200", "width=240",
         "width=300", "width=320", "width=400",
@@ -4179,12 +4240,11 @@ def _news_image_quality_ok(image_url: str) -> bool:
 
     width, height = _news_image_dimensions(image_url)
     if width and height:
-        # 카드 표시 크기를 고려해 최소 640x360 수준은 확보한다.
-        return width >= 640 and height >= 300
-    # 치수 확인이 안 되는 경우에는 정상 URL 후보를 허용하되,
-    # 브라우저에서 실패하면 최종 AI fallback이 동작한다.
-    return True
+        # 카드가 약 148px 높이이므로 480x270부터는 실제 원문 이미지로 허용한다.
+        return width >= 480 and height >= 270
 
+    # 치수 확인이 안 되는 정상 URL은 허용한다.
+    return True
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def _get_news_image_url(article_url: str) -> str:
@@ -4412,8 +4472,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         entities_text = getattr(item, "entities", "")
         provided_image_url = getattr(item, "image_url", "")
 
-        # 이미지 우선순위: 검증된 원문 대표 이미지 → 검증된 공급원 이미지 → AI 금융 보조 이미지.
-        # 원문/공급원 이미지 모두 동일한 해상도 검사를 통과해야 사용한다.
+        # 이미지 우선순위: 검증된 원문 대표 이미지 → 검증된 공급원 이미지 → 기사별 AI 이미지.
+        # AI fallback은 실제 원문 이미지가 없는 경우에만 생성한다.
+        direct_url = original_url or article_url
         image_candidates = [
             image_urls[idx] if idx < len(image_urls) else "",
             provided_image_url,
@@ -4423,38 +4484,23 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             if candidate_image and _news_image_quality_ok(candidate_image):
                 image_url = candidate_image
                 break
-        if not image_url:
-            image_url = AI_NEWS_FALLBACK_IMAGE_URL
 
-        direct_url = original_url or article_url
-        # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
-        source_label = _news_source_label(direct_url, source_hint or "뉴스")
-        category_display = (
-            "한국 경제·증시"
-            if title == "📰 Live News" and re.search(r"[가-힣]", str(query or ""))
-            else ("미국 경제·금융" if title == "📰 Live News" else (query or "시장 뉴스"))
-        )
-        reader_url = _build_news_reader_url(
-            title=title_text,
-            description=desc_text,
-            article_url=article_url,
-            original_url=original_url,
-            pub_date=pub_date,
-            image_url=image_url,
-            source=source_label,
-            category=query,
-            back_url=back_url,
-            snippet=snippet_text,
-            keywords=keywords_text,
-            entities=entities_text,
-        )
+        if not image_url:
+            image_url = _get_ai_news_image_url(
+                title=title_text,
+                description=desc_text,
+                query=query,
+                article_url=direct_url,
+            )
+
         # 메인 카드에는 AI 이미지 여부를 별도 배지로 표시하지 않는다.
+
 
         if image_url:
             media_html = (
                 f'<div class="live-news-image-wrap">'
                 f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" '
-                f'alt="{_escape_html(display_title)}" onerror="this.onerror=null;this.src=\'{_escape_html(AI_NEWS_FALLBACK_IMAGE_URL)}\';">'
+                f'alt="{_escape_html(display_title)}" onerror="this.onerror=null;this.style.display=\'none\';this.parentElement.classList.add(\'live-news-image-broken\');">'
                 f'</div>'
             )
         else:
@@ -4953,6 +4999,12 @@ def _render_earnings_detail(selected_date, events, market_filter="전체"):
             """,
             unsafe_allow_html=True,
         )
+
+
+@st.fragment(run_every="5m")
+def render_home_live_news_auto(limit=20):
+    """열린 브라우저 세션에서 Live News 영역만 5분마다 재조회한다."""
+    render_home_live_news(limit=limit)
 
 
 def render_home_earnings_calendar(limit=12):
@@ -5846,7 +5898,7 @@ elif not selected_code:
 
         # 메인 Live News는 검색창 바로 아래가 기본 화면이다.
         if home_nav == "Live News":
-            render_home_live_news(limit=20)
+            render_home_live_news_auto(limit=20)
         elif home_nav == "US Market Overview":
             render_home_market_overview("US")
         elif home_nav == "Korea Market Overview":
