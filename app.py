@@ -15,6 +15,7 @@ from html import unescape
 from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
 import hashlib
+from pathlib import Path
 
 from search_aliases import aliases_for
 
@@ -3989,6 +3990,54 @@ def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -
     )
 
 
+NEWS_TOPIC_IMAGE_FILES = {
+    "global_markets": "assets/news_topics/global_markets.svg",
+    "interest_rates": "assets/news_topics/interest_rates.svg",
+    "bonds_yields": "assets/news_topics/bonds_yields.svg",
+    "dollar_fx": "assets/news_topics/dollar_fx.svg",
+    "energy_oil": "assets/news_topics/energy_oil.svg",
+    "ai_semiconductors": "assets/news_topics/ai_semiconductors.svg",
+    "trade_global": "assets/news_topics/trade_global.svg",
+    "korea_asia": "assets/news_topics/korea_asia.svg",
+    "economy_jobs": "assets/news_topics/economy_jobs.svg",
+    "crypto_assets": "assets/news_topics/crypto_assets.svg",
+}
+
+
+def _get_news_topic_key(title: str = "", description: str = "", query: str = "", source: str = "") -> str:
+    """뉴스 텍스트에서 고정 이미지 라이브러리의 주제 하나를 선택한다."""
+    text = " ".join(str(value or "") for value in (title, description, query, source)).lower()
+    topic_keywords = (
+        ("crypto_assets", ("bitcoin", "btc", "ethereum", "crypto", "암호화폐", "가상자산", "코인", "블록체인")),
+        ("energy_oil", ("oil", "crude", "brent", "wti", "energy", "gas", "석유", "유가", "원유", "에너지", "천연가스")),
+        ("ai_semiconductors", ("nvidia", "semiconductor", "chip", "chips", "artificial intelligence", "openai", "amd", "tsmc", "반도체", "인공지능", " ai", "ai ")),
+        ("interest_rates", ("federal reserve", "fed", "fomc", "interest rate", "rates", "inflation", "cpi", "pce", "central bank", "연준", "금리", "물가", "인플레이션", "한국은행")),
+        ("bonds_yields", ("bond", "bonds", "treasury", "yield", "yields", "채권", "국채", "수익률")),
+        ("dollar_fx", ("dollar", "usd", "currency", "forex", "fx", "exchange rate", "yuan", "won", "달러", "환율", "원화", "위안")),
+        ("trade_global", ("tariff", "tariffs", "trade", "import", "export", "shipping", "manufacturing", "무역", "관세", "수입", "수출", "해운", "제조")),
+        ("korea_asia", ("korea", "south korea", "kospi", "kosdaq", "seoul", "japan", "asia", "한국", "코스피", "코스닥", "서울", "아시아", "일본")),
+        ("economy_jobs", ("jobs", "job", "payroll", "employment", "wage", "consumer", "retail", "spending", "sales", "gdp", "경제", "고용", "임금", "소비", "소매", "판매", "성장")),
+    )
+    for topic, keywords in topic_keywords:
+        if any(keyword in text for keyword in keywords):
+            return topic
+    return "global_markets"
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _get_news_topic_image_data_uri(topic_key: str) -> str:
+    """로컬 SVG를 data URI로 읽어 브라우저의 외부 이미지 요청을 없앤다."""
+    key = str(topic_key or "global_markets")
+    relative_path = NEWS_TOPIC_IMAGE_FILES.get(key, NEWS_TOPIC_IMAGE_FILES["global_markets"])
+    path = Path(__file__).resolve().parent / relative_path
+    try:
+        encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+        return f"data:image/svg+xml;base64,{encoded}"
+    except Exception as exc:
+        print(f"[Live News Images] static asset load failed: {relative_path} | {type(exc).__name__}: {exc}")
+        return ""
+
+
 def _build_news_reader_url(
     *,
     title: str,
@@ -4003,6 +4052,7 @@ def _build_news_reader_url(
     snippet: str = "",
     keywords: str = "",
     entities: str = "",
+    news_topic: str = "",
 ) -> str:
     payload = {
         "news_view": "reader",
@@ -4017,6 +4067,7 @@ def _build_news_reader_url(
         "news_snippet": snippet,
         "news_keywords": keywords,
         "news_entities": entities,
+        "news_topic": news_topic,
         "news_back": back_url,
         "theme": THEME_MODE,
     }
@@ -4037,6 +4088,7 @@ def render_news_reader():
     snippet = str(qp.get("news_snippet", "")).strip()
     keywords = str(qp.get("news_keywords", "")).strip()
     entities = str(qp.get("news_entities", "")).strip()
+    news_topic = str(qp.get("news_topic", "")).strip()
     image_url = str(qp.get("news_image", "")).strip()
     ai_result = _generate_ai_news_article(
         title=title,
@@ -4055,8 +4107,11 @@ def render_news_reader():
         st.info("표시할 뉴스가 없습니다.")
         st.stop()
 
+    if not news_topic:
+        news_topic = _get_news_topic_key(title, description, category, source)
+    static_reader_image = _get_news_topic_image_data_uri(news_topic)
     if not image_url:
-        image_url = _get_news_image_url(original_url or article_url)
+        image_url = static_reader_image or _get_news_image_url(original_url or article_url)
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     with col_logo:
@@ -4075,8 +4130,8 @@ def render_news_reader():
 
     with article_main:
         image_html = (
-            f'<img class="news-reader-image" src="{_escape_html(image_url)}" alt="{_escape_html(title)}" '
-            f'loading="eager" onerror="this.style.display=\'none\';">'
+            f'<img class="news-reader-image" src="{_escape_html(image_url)}" alt="" loading="eager" decoding="async" '
+            f'onerror="this.onerror=null;this.src=\'{_escape_html(static_reader_image)}\';">'
             if image_url else ""
         )
         st.html(
@@ -4447,7 +4502,8 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
         article_urls.append(original_url or article_url)
     provided_image_urls = [getattr(item, "image_url", "") for item in selected_items]
-    image_urls = _get_news_images(article_urls, provided_image_urls)
+    # 원문 HTML 재조회는 제거하고 공급원이 이미 준 이미지 URL만 사용한다.
+    image_urls = provided_image_urls
 
     localized_cards = {}
     translation_input = tuple(
@@ -4488,9 +4544,15 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         keywords_text = getattr(item, "keywords", "")
         entities_text = getattr(item, "entities", "")
         provided_image_url = getattr(item, "image_url", "")
+        news_topic = _get_news_topic_key(
+            title_text,
+            desc_text,
+            query,
+            source_hint,
+        )
+        static_topic_image = _get_news_topic_image_data_uri(news_topic)
 
-        # 이미지 우선순위: 검증된 원문 대표 이미지 → 검증된 공급원 이미지 → AI 금융 보조 이미지.
-        # 원문/공급원 이미지 모두 동일한 해상도 검사를 통과해야 사용한다.
+        # 공급원 이미지가 있으면 우선 사용하고, 누락/실패 시 고정 주제 이미지로 대체한다.
         image_candidates = [
             image_urls[idx] if idx < len(image_urls) else "",
             provided_image_url,
@@ -4500,12 +4562,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             if candidate_image and _news_image_url_hint_ok(candidate_image):
                 image_url = candidate_image
                 break
-        if not image_url:
-            image_url = _get_ai_news_image_url(
-                display_title,
-                display_desc,
-                query or source_hint or "financial markets",
-            ) or AI_NEWS_FALLBACK_IMAGE_URL
+        image_url = image_url or static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL
 
         direct_url = original_url or article_url
         # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
@@ -4528,18 +4585,15 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             snippet=snippet_text,
             keywords=keywords_text,
             entities=entities_text,
+            news_topic=news_topic,
         )
         # 메인 카드에는 AI 이미지 여부를 별도 배지로 표시하지 않는다.
 
         if image_url:
             media_html = (
                 f"<div class='live-news-image-wrap'>"
-                f"<img class='live-news-image' src='{_escape_html(image_url)}' loading='lazy' decoding='async' "
-                f"alt='{_escape_html(display_title)}' "
-                f"onerror=\"this.style.display='none';this.nextElementSibling.style.display='flex';\">"
-                f"<div class='live-news-image-error' style=\"display:none;background-image:url('{_escape_html(AI_NEWS_FALLBACK_IMAGE_URL)}');\">"
-                f"📰<small>이미지를 불러오지 못해 기본 이미지를 표시합니다.</small>"
-                f"</div>"
+                f"<img class='live-news-image' src='{_escape_html(image_url)}' alt='' loading='lazy' decoding='async' "
+                f"onerror=\"this.onerror=null;this.src='{_escape_html(static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL)}';\">"
                 f"</div>"
             )
         else:
