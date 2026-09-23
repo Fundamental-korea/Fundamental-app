@@ -56,5 +56,29 @@ jobs:
               except Exception as e:
                   print("STOCK",name,code,"ERROR",type(e).__name__,e)
           PY
+      - name: Diagnose Korean stock news in Streamlit route
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
+        run: |
+          mkdir -p .streamlit
+          printf 'SUPABASE_URL="%s"\nSUPABASE_KEY="%s"\nMARKETAUX_API_TOKEN="%s"\n' "$SUPABASE_URL" "$SUPABASE_KEY" "$MARKETAUX_API_TOKEN" > .streamlit/secrets.toml
+          python - <<'PY'
+          from streamlit.testing.v1 import AppTest
+          at = AppTest.from_file("app.py", default_timeout=120)
+          at.query_params["code"] = "005930"
+          at.run()
+          print("APP_EXCEPTION_COUNT", len(at.exception))
+          for e in at.exception[:10]:
+              print("APP_EXCEPTION", e.value)
+          texts = [getattr(x, "value", "") for x in at.markdown]
+          texts += [getattr(x, "body", "") for x in at.html]
+          print("HAS_STOCK_NEWS_HEADING", any("삼성전자 관련 뉴스" in str(x) for x in texts))
+          if at.exception:
+              raise SystemExit(1)
+          if not any("관련 뉴스" in str(x) for x in texts):
+              raise SystemExit(2)
+          PY
       - name: Compile
         run: python -m py_compile app.py news_earnings.py collect_live_news.py
