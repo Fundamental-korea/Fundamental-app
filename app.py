@@ -4078,11 +4078,12 @@ def _get_news_image_url(article_url: str) -> str:
     try:
         response = requests.get(
             url,
-            timeout=4,
+            timeout=5,
             headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNews/1.0)"},
+            allow_redirects=True,
         )
         response.raise_for_status()
-        html = response.text[:500_000]
+        html = response.text[:800_000]
         patterns = (
             r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
             r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
