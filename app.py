@@ -3762,7 +3762,7 @@ def _translate_news_cards(
 
     try:
         response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent",
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
             headers={
                 "x-goog-api-key": api_key,
                 "Content-Type": "application/json",
@@ -3879,7 +3879,7 @@ def _generate_ai_news_article(
 """
     try:
         response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent",
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
             headers={
                 "x-goog-api-key": api_key,
                 "Content-Type": "application/json",
@@ -4175,26 +4175,18 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         for item in selected_items
     )
     needs_localization = any(
-        bool(re.search(r"[A-Za-z]", str(title_value or "") + " " + str(desc_value or "")))
+        bool(
+            re.search(
+                r"[A-Za-z]",
+                str(title_value or "") + " " + str(desc_value or ""),
+            )
+        )
         for title_value, desc_value in translation_input
     )
     if needs_localization:
         localized_cards = _translate_news_cards(
             translation_input,
             cache_version="live-news-korean-v5",
-        )
-
-
-        translation_input = tuple(
-            (
-                item.title if hasattr(item, "title") else item.get("title", ""),
-                item.description if hasattr(item, "description") else item.get("description", ""),
-            )
-            for item in selected_items
-        )
-        localized_cards = _translate_news_cards(
-            translation_input,
-            cache_version="live-news-korean-v4",
         )
 
     cards = []
