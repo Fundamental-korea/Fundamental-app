@@ -69,7 +69,6 @@ STANDARD_DEBT_TOTAL = {
     "LongTermDebtCurrentAndNoncurrent",
     "Debt",
     "TotalDebt",
-    "DebtAndCapitalLeaseObligations",
     "DebtAndFinanceLeaseLiabilities",
     "LongTermDebtAndCapitalLeaseObligations",
     "LongTermDebtAndFinanceLeaseObligations",
@@ -121,9 +120,7 @@ STANDARD_DEBT_NONCURRENT = {
     "DebtLiabilities",
     "OtherDebt",
     "OtherDebtNoncurrent",
-    "OtherDebtCurrent",
     "OtherBorrowings",
-    "LoansPayableCurrent",
     "UnsecuredDebt",
     "UnsecuredLongTermDebt",
     "SecuredDebt",
@@ -145,8 +142,6 @@ FINANCE_LEASE_CONCEPTS = {
     "CapitalLeaseObligation",
     "CapitalLeaseObligationsCurrent",
     "CapitalLeaseObligationsNoncurrent",
-    "LongTermDebtAndCapitalLeaseObligationsCurrent",
-    "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
     "DebtAndCapitalLeaseObligations",
 }
 OPERATING_LEASE_CONCEPTS = {
@@ -317,6 +312,8 @@ def classify_debt_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
 
     if namespace not in KNOWN_TAXONOMIES and any(k in compact for k in (
         "debt", "borrowings", "borrowing", "loanspayable", "notespayable",
+        "seniornotes", "subordinatednotes", "convertnotepayable", "convertiblenotes",
+        "debtobligations", "debtliabilities", "otherdebt", "otherborrowings",
         "creditfacility", "revolvingcreditfacility", "termloan",
     )):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
