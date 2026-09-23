@@ -3553,14 +3553,14 @@ def _escape_html(value):
 def _get_home_macro_news_direct_fallback(
     display=20,
     day_key="",
-    cache_version="live-news-fetch-v9",
+    cache_version="live-news-fetch-v10",
 ):
     """Live News provider fallback. Cache version is bumped with feed logic changes."""
     return fetch_macro_news(display=min(max(display, 1), 20))
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_home_macro_news(display=20, cache_version="supabase-live-news-v9"):
+def _get_home_macro_news(display=20, cache_version="supabase-live-news-v10"):
     """자동 수집 DB를 우선하고, 부족하면 실시간 공급원으로 즉시 20개까지 보충한다."""
     target = min(max(display, 1), 20)
     db_rows: list[NaverNewsItem] = []
@@ -3598,11 +3598,11 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v9"):
             print(f"[HOME LIVE NEWS] Supabase read failed: {type(exc).__name__}: {exc}")
 
     if len(db_rows) >= target:
-        return db_rows[:target]
+        return _sort_news_latest_first(db_rows)[:target]
 
     day_key = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
     fallback = _get_home_macro_news_direct_fallback(
-        display=target, day_key=day_key, cache_version="live-news-fetch-v9"
+        display=target, day_key=day_key, cache_version="live-news-fetch-v10"
     )
     merged = []
     seen = set()
