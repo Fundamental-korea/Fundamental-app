@@ -1,0 +1,78 @@
+"""Unit tests for filing-first ROIC/interest classification."""
+from sec_filing_financial_map import (
+    classify_debt_fact,
+    classify_interest_fact,
+    classify_filing_rows,
+)
+
+def row(concept, namespace="us-gaap", value=100.0, unit="iso4217:USD",
+        instant=True, start=None, end="2025-12-31", dimensioned=False):
+    return {
+        "concept": concept, "namespace": namespace, "label": "",
+        "value": value, "unit": unit, "instant": instant,
+        "start": start, "end": end, "filed": "2026-02-01",
+        "form": "10-K", "dimensioned": dimensioned, "contextRef": "ctx1",
+    }
+
+def test_debt_lookalikes_are_excluded():
+    assert classify_debt_fact(row("AvailableForSaleSecuritiesDebtSecurities"))[0] is None
+    assert classify_debt_fact(row("DebtInstrumentInterestRateStatedPercentage"))[0] is None
+    assert classify_debt_fact(row("LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo"))[0] is None
+
+def test_real_debt_concepts_are_recognized():
+    assert classify_debt_fact(row("LongTermLoansPayable"))[0] == "issuer_debt_noncurrent"
+    assert classify_debt_fact(row("NotesAndLoansPayable"))[0] == "issuer_debt_noncurrent"
+    assert classify_debt_fact(row("UnsecuredDebt"))[0] == "issuer_debt_noncurrent"
+    assert classify_debt_fact(row("LongTermDebt"))[0] == "issuer_debt_total"
+
+def test_custom_debt_concept_is_recognized_only_when_economic_shape_matches():
+    assert classify_debt_fact(row("SeniorBorrowings", namespace="acme"))[0] == "custom_issuer_debt"
+    assert classify_debt_fact(row("ProceedsFromIssuanceOfDebt", namespace="acme", instant=False, start="2025-01-01"))[0] is None
+
+def test_interest_lookalikes_are_excluded():
+    assert classify_interest_fact(row("DebtInstrumentInterestRateStatedPercentage", instant=False, start="2025-01-01"))[0] is None
+    assert classify_interest_fact(row("InterestPaidNet", instant=False, start="2025-01-01"))[0] is None
+    assert classify_interest_fact(row("DefinedBenefitPlanInterestCost", instant=False, start="2025-01-01"))[0] is None
+    assert classify_interest_fact(row("InterestIncome", instant=False, start="2025-01-01"))[0] is None
+
+def test_real_interest_is_recognized():
+    r = row("InterestExpenseNonoperating", instant=False, start="2025-01-01")
+    assert classify_interest_fact(r)[0] == "gross_interest_expense"
+    r = row("InterestIncomeExpenseNonoperatingNet", instant=False, start="2025-01-01")
+    assert classify_interest_fact(r)[0] == "net_interest_expense"
+
+def test_direct_total_wins_over_components():
+    rows = [
+        row("LongTermDebtCurrent", value=20),
+        row("LongTermDebtNoncurrent", value=80),
+        row("LongTermDebt", value=100),
+    ]
+    result = classify_filing_rows(rows, target_year=2025)
+    assert result["selected_debt"]["basis"] == "reported_total"
+    assert result["selected_debt"]["value"] == 100
+
+def test_components_sum_when_total_absent():
+    rows = [
+        row("LongTermDebtCurrent", value=20),
+        row("LongTermDebtNoncurrent", value=80),
+    ]
+    result = classify_filing_rows(rows, target_year=2025)
+    assert result["selected_debt"]["basis"] == "current_plus_noncurrent"
+    assert result["selected_debt"]["value"] == 100
+
+def test_explicit_zero_interest_is_confirmed_zero():
+    r = row("InterestExpenseNonoperating", value=0, instant=False, start="2025-01-01")
+    result = classify_filing_rows([r], target_year=2025)
+    assert result["interest_status"] == "ZERO_CONFIRMED"
+
+def test_roic_core_inputs_come_from_filing():
+    rows = [
+        row("StockholdersEquity", value=500),
+        row("CashAndCashEquivalentsAtCarryingValue", value=100),
+        row("LongTermDebt", value=200),
+        row("OperatingIncomeLoss", value=150, instant=False, start="2025-01-01"),
+    ]
+    result = classify_filing_rows(rows, target_year=2025)
+    assert result["roic_inputs"]["equity"]["value"] == 500
+    assert result["roic_inputs"]["cash"]["value"] == 100
+    assert result["roic_inputs"]["operating_income"]["value"] == 150
