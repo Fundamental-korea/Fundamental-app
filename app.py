@@ -3728,7 +3728,6 @@ def _news_source_label(url: str, fallback: str = "뉴스") -> str:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-@st.cache_data(ttl=86400, show_spinner=False)
 def _translate_text_fallback_en_ko(text: str) -> str:
     """Translate one English news field to Korean when the primary Gemini path is unavailable."""
     value = str(text or "").strip()
@@ -3756,6 +3755,7 @@ def _translate_text_fallback_en_ko(text: str) -> str:
     return ""
 
 
+@st.cache_data(ttl=86400, show_spinner=False)
 def _translate_news_cards(
     items: tuple[tuple[str, str], ...],
     cache_version: str = "live-news-korean-v4",
@@ -4436,7 +4436,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
     if needs_localization:
         localized_cards = _translate_news_cards(
             translation_input,
-            cache_version="live-news-korean-v6",
+            cache_version="live-news-korean-v7",
         )
 
     cards = []
