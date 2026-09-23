@@ -785,6 +785,44 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
             add_unique(selected_kr,search_google_news_rss(q,language="ko",display=30,recent_days=1),kr_target)
             if len(selected_kr)>=kr_target: break
 
+    # Marketaux가 먼저 채우더라도 RSS 최신 결과를 반드시 한 번 더 섞는다.
+    # 공급원별 인덱싱 지연 때문에 Marketaux 1개 소스만 쓰면 오래된 기사가
+    # 최신 20개를 막아버릴 수 있으므로, Bing/Google의 최근 1일 결과를
+    # 항상 최신순 경쟁 풀에 포함시킨다.
+    fresh_us = []
+    fresh_kr = []
+    fresh_us_queries = (
+        "US stocks markets finance economy today",
+        "Federal Reserve Treasury yields stocks oil markets",
+    )
+    fresh_kr_queries = (
+        "한국 증시 경제 금리 환율 오늘",
+        "코스피 코스닥 수출 반도체 금융시장",
+    )
+
+    for q in fresh_us_queries:
+        fresh_us.extend(search_bing_news_rss(q, language="en", display=20, recent_days=1))
+        fresh_us.extend(search_google_news_rss(q, language="en", display=20, recent_days=1))
+
+    for q in fresh_kr_queries:
+        fresh_kr.extend(search_bing_news_rss(q, language="ko", display=20, recent_days=1))
+        fresh_kr.extend(search_google_news_rss(q, language="ko", display=20, recent_days=1))
+
+    def _dedupe_latest(candidates):
+        out = []
+        seen = set()
+        for item in _sort_news_latest_first(candidates):
+            key = _canonical_news_key(item)
+            if key and key in seen:
+                continue
+            if key:
+                seen.add(key)
+            out.append(item)
+        return out
+
+    selected_us = _dedupe_latest(selected_us + fresh_us)[:us_target]
+    selected_kr = _dedupe_latest(selected_kr + fresh_kr)[:kr_target]
+
     final=_sort_news_latest_first(selected_us+selected_kr)[:target]
     print(f"[LIVE NEWS DEBUG] END total={len(final)} US={len(selected_us)}/{us_target} KR={len(selected_kr)}/{kr_target}")
     return final
