@@ -3550,13 +3550,17 @@ def _escape_html(value):
 
 
 @st.cache_data(ttl=7200, show_spinner=False)
-def _get_home_macro_news_direct_fallback(display=20, day_key=""):
-    """Safe two-hour fallback when the scheduled Supabase snapshot is incomplete."""
+def _get_home_macro_news_direct_fallback(
+    display=20,
+    day_key="",
+    cache_version="live-news-fetch-v5",
+):
+    """Live News provider fallback. The version key intentionally busts stale 2h results."""
     return fetch_macro_news(display=min(max(display, 1), 20))
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_home_macro_news(display=20, cache_version="supabase-live-news-v2"):
+def _get_home_macro_news(display=20, cache_version="supabase-live-news-v5"):
     """Read today's automated Live News snapshot; recover safely if incomplete."""
     target = min(max(display, 1), 20)
     if supabase is not None:
@@ -3607,7 +3611,11 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v2"):
             pass
 
     day_key = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
-    return _get_home_macro_news_direct_fallback(display=target, day_key=day_key)
+    return _get_home_macro_news_direct_fallback(
+        display=target,
+        day_key=day_key,
+        cache_version="live-news-fetch-v5",
+    )
 
 
 def _get_earnings_events_db(days_back=90, days_forward=120):
@@ -4159,7 +4167,24 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
     image_urls = _get_news_images(article_urls)
 
     localized_cards = {}
-    if title == "📰 Live News":
+    translation_input = tuple(
+        (
+            item.title if hasattr(item, "title") else item.get("title", ""),
+            item.description if hasattr(item, "description") else item.get("description", ""),
+        )
+        for item in selected_items
+    )
+    needs_localization = any(
+        bool(re.search(r"[A-Za-z]", str(title_value or "") + " " + str(desc_value or "")))
+        for title_value, desc_value in translation_input
+    )
+    if needs_localization:
+        localized_cards = _translate_news_cards(
+            translation_input,
+            cache_version="live-news-korean-v5",
+        )
+
+
         translation_input = tuple(
             (
                 item.title if hasattr(item, "title") else item.get("title", ""),
@@ -4277,7 +4302,7 @@ def render_home_live_news(limit=20):
         page_items,
         limit=page_size,
         title="📰 Live News",
-        subtitle="미국 경제·금융 중심의 주요 뉴스 20개 · 카드 제목과 설명은 한국어로 AI 현지화 · 10개씩 표시 · News Engine v2026.09.23-KR-v4",
+        subtitle="미국 경제·금융 중심의 주요 뉴스 20개 · 카드 제목과 설명은 한국어로 AI 현지화 · 10개씩 표시",
         back_url=f"?theme={THEME_MODE}",
     )
 
@@ -4301,14 +4326,28 @@ def render_home_live_news(limit=20):
 
 
 @st.cache_data(ttl=21600, show_spinner=False)
-def _get_stock_news_cached(stock_name, stock_code, limit=3):
-    return fetch_stock_news(stock_name, stock_code, display=min(max(limit, 1), 3))
+def _get_stock_news_cached(
+    stock_name,
+    stock_code,
+    limit=3,
+    cache_version="stock-news-v5",
+):
+    return fetch_stock_news(
+        stock_name,
+        stock_code,
+        display=min(max(limit, 1), 3),
+    )
 
 
 def render_home_stock_news(stock_name, stock_code, limit=3):
     """종목 상세 페이지의 종목별 뉴스."""
     try:
-        items = _get_stock_news_cached(stock_name, stock_code, limit)
+        items = _get_stock_news_cached(
+            stock_name,
+            stock_code,
+            limit,
+            cache_version="stock-news-v5",
+        )
     except Exception:
         items = []
     if not items:
