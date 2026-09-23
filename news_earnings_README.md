@@ -30,7 +30,11 @@ Streamlit Secrets 또는 환경변수로 다음 값을 설정한다.
 
 ## 자동화
 
-Live News 자동 수집은 아래의 GitHub Actions workflow에서 관리한다.
+Live News 자동 수집과 Earnings Calendar 자동 수집은 GitHub Actions workflow에서 관리한다.
+
+- Live News: 2시간마다 최신 뉴스 스냅샷을 갱신한다.
+- Earnings Calendar: 한국시간 기준 매일 08:00 / 20:00에 갱신한다.
+- Earnings Calendar는 예정 실적의 컨센서스 EPS를 저장하고, 발표 후 Yahoo Finance가 제공하는 Reported EPS와 Surprise(%)가 확인되면 기존 컨센서스를 보존한 상태로 실제값을 추가한다.
 
 
 ## 뉴스 AI 브리핑
