@@ -15,7 +15,6 @@ from html import unescape
 from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
 import hashlib
-from pathlib import Path
 
 from search_aliases import aliases_for
 
