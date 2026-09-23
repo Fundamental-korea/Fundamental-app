@@ -3560,7 +3560,7 @@ def _escape_html(value):
 def _get_home_macro_news_direct_fallback(
     display=20,
     day_key="",
-    cache_version="live-news-fetch-v10",
+    cache_version="live-news-fetch-v11",
 ):
     """Live News provider fallback. Cache version is bumped with feed logic changes."""
     return fetch_macro_news(display=min(max(display, 1), 20))
@@ -3604,12 +3604,20 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v10"):
         except Exception as exc:
             print(f"[HOME LIVE NEWS] Supabase read failed: {type(exc).__name__}: {exc}")
 
-    if len(db_rows) >= target:
+    # 수집 시각이 최근이어도 발행시각이 24시간 이상 오래된 스냅샷이면 즉시 공급원을 재조회한다.
+    latest_published_ts = 0.0
+    for item in db_rows:
+        try:
+            latest_published_ts = max(latest_published_ts, float(pd.to_datetime(item.pub_date, utc=True).timestamp()))
+        except Exception:
+            continue
+    fresh_cutoff_ts = (datetime.now(timezone.utc) - timedelta(hours=24)).timestamp()
+    if len(db_rows) >= target and latest_published_ts >= fresh_cutoff_ts:
         return _sort_news_latest_first(db_rows)[:target]
 
     day_key = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
     fallback = _get_home_macro_news_direct_fallback(
-        display=target, day_key=day_key, cache_version="live-news-fetch-v10"
+        display=target, day_key=day_key, cache_version="live-news-fetch-v11"
     )
     merged = []
     seen = set()
@@ -4334,7 +4342,7 @@ def _get_stock_news_cached(
     stock_name,
     stock_code,
     limit=3,
-    cache_version="stock-news-v10",
+    cache_version="stock-news-v11",
 ):
     return fetch_stock_news(
         stock_name,
@@ -4350,7 +4358,7 @@ def render_home_stock_news(stock_name, stock_code, limit=3):
             stock_name,
             stock_code,
             limit,
-            cache_version="stock-news-v10",
+            cache_version="stock-news-v11",
         )
     except Exception:
         items = []
