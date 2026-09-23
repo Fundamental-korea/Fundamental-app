@@ -12,6 +12,7 @@ on:
       - "collector_us_fundamental.py"
       - "collector_us_utility_v4.py"
       - "collector_us_fundamental_v5.py"
+      - "sync_us_score_columns.py"
   workflow_dispatch:
 
 permissions:
@@ -46,6 +47,13 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: python collector_us_score_gap_recover.py
+
+      - name: Sync denormalized US score columns
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python sync_us_score_columns.py
 
       - name: Verify
         env:
