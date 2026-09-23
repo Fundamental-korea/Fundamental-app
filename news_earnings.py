@@ -27,7 +27,7 @@ from typing import Iterable, Optional
 import pandas as pd
 import requests
 import xml.etree.ElementTree as ET
-from urllib.parse import urlparse
+from urllib.parse import parse_qsl, urlencode, urlparse
 from zoneinfo import ZoneInfo
 
 
@@ -400,6 +400,49 @@ def _marketaux_source_label(article: dict) -> str:
     return domain.removeprefix("www.") or "News"
 
 
+def _canonical_news_key(item: NaverNewsItem) -> str:
+    """Build a stable dedupe key while ignoring common tracking parameters."""
+    raw = str(item.original_link or item.link or "").strip()
+    if raw:
+        try:
+            parsed = urlparse(raw)
+            tracking = {
+                "utm_source", "utm_medium", "utm_campaign", "utm_term",
+                "utm_content", "utm_id", "gclid", "fbclid"
+            }
+            kept = [
+                (key, value)
+                for key, value in parse_qsl(parsed.query, keep_blank_values=True)
+                if key.lower() not in tracking
+            ]
+            clean_query = urlencode(kept)
+            return parsed._replace(query=clean_query, fragment="").geturl().rstrip("/").lower()
+        except Exception:
+            return raw.lower()
+    title = re.sub(r"\s+", " ", str(item.title or "")).strip().lower()
+    return title
+
+
+def _is_today_kst(item: NaverNewsItem) -> bool:
+    try:
+        published = pd.to_datetime(item.pub_date, utc=True)
+        return published.tz_convert("Asia/Seoul").date() == datetime.now(
+            ZoneInfo("Asia/Seoul")
+        ).date()
+    except Exception:
+        return False
+
+
+def _marketaux_error_detail(response) -> str:
+    try:
+        payload = response.json()
+        error = payload.get("error") or payload.get("errors") or payload
+        text_value = str(error)
+    except Exception:
+        text_value = response.text
+    return re.sub(r"api_token[^,}]*", "api_token=***", text_value, flags=re.IGNORECASE)[:500]
+
+
 def search_marketaux_news(
     query: str = "",
     *,
@@ -410,33 +453,39 @@ def search_marketaux_news(
     display: int = 3,
     today_only: bool = False,
     must_have_entities: bool = True,
+    group_similar: bool = True,
 ) -> list[NaverNewsItem]:
-    """Fetch global financial news from Marketaux and normalize it to NaverNewsItem."""
+    """Fetch Marketaux news and normalize it to the shared news item model."""
     token = _marketaux_token()
     if not token:
         return []
 
+    limit = min(max(display, 1), 3)
     params = {
         "api_token": token,
         "language": language,
-        "limit": min(max(display, 1), 3),
-        "group_similar": "true",
+        "limit": limit,
+        "group_similar": "true" if group_similar else "false",
+        "must_have_entities": "true" if must_have_entities else "false",
         "sort": "published_at",
     }
-
-    # Marketaux timestamps are UTC. Live News "today" is defined by the
-    # Korea calendar day (Asia/Seoul), then converted to UTC for the API.
-    params["must_have_entities"] = "true" if must_have_entities else "false"
 
     if today_only:
         kst = ZoneInfo("Asia/Seoul")
         now_kst = datetime.now(kst)
         start_kst = now_kst.replace(hour=0, minute=0, second=0, microsecond=0)
         next_kst = start_kst + timedelta(days=1)
-        params["published_after"] = start_kst.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
-        params["published_before"] = next_kst.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M")
+        params["published_after"] = start_kst.astimezone(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
+        params["published_before"] = next_kst.astimezone(timezone.utc).strftime(
+            "%Y-%m-%dT%H:%M:%S"
+        )
     else:
-        params["published_after"] = (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M")
+        params["published_after"] = (
+            datetime.now(timezone.utc) - timedelta(days=2)
+        ).strftime("%Y-%m-%dT%H:%M:%S")
+
     if query.strip():
         params["search"] = query.strip()
     if symbols:
@@ -452,9 +501,15 @@ def search_marketaux_news(
             params=params,
             timeout=15,
         )
-        response.raise_for_status()
+        if not response.ok:
+            print(
+                f"[Marketaux] HTTP {response.status_code}: "
+                f"{_marketaux_error_detail(response)}"
+            )
+            return []
         payload = response.json()
-    except Exception:
+    except Exception as exc:
+        print(f"[Marketaux] request failed: {type(exc).__name__}: {exc}")
         return []
 
     items: list[NaverNewsItem] = []
@@ -463,10 +518,6 @@ def search_marketaux_news(
         title = str(article.get("title") or "").strip()
         if not url or not title:
             continue
-        description = str(article.get("description") or article.get("snippet") or "").strip()
-        image_url = str(article.get("image_url") or "").strip()
-        source = _marketaux_source_label(article)
-        published_at = str(article.get("published_at") or "").strip()
 
         entity_rows = []
         for entity in (article.get("entities") or [])[:8]:
@@ -474,10 +525,18 @@ def search_marketaux_news(
             symbol = str(entity.get("symbol") or "").strip()
             industry = str(entity.get("industry") or "").strip()
             if entity_name or symbol:
-                label = f"{entity_name} ({symbol})" if entity_name and symbol else (entity_name or symbol)
+                label = (
+                    f"{entity_name} ({symbol})"
+                    if entity_name and symbol
+                    else (entity_name or symbol)
+                )
                 if industry:
                     label += f" · {industry}"
                 entity_rows.append(label)
+
+        description = str(
+            article.get("description") or article.get("snippet") or ""
+        ).strip()
 
         items.append(
             NaverNewsItem(
@@ -485,16 +544,15 @@ def search_marketaux_news(
                 description=_clean_html(description),
                 link=url,
                 original_link=url,
-                pub_date=published_at,
-                query=query or "US market news",
-                source=source,
-                image_url=image_url,
+                pub_date=str(article.get("published_at") or "").strip(),
+                query=query or "시장 뉴스",
+                source=_marketaux_source_label(article),
+                image_url=str(article.get("image_url") or "").strip(),
                 snippet=_clean_html(str(article.get("snippet") or "")),
                 keywords=_clean_html(str(article.get("keywords") or "")),
                 entities=" | ".join(entity_rows),
             )
         )
-        # NaverNewsItem에는 이미지 필드가 없으므로 대표 이미지는 app.py에서 URL을 다시 확인한다.
     return items
 
 
@@ -522,58 +580,119 @@ def _rank_global_news(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
     preferred = {domain: idx for idx, domain in enumerate(PREFERRED_GLOBAL_NEWS_DOMAINS)}
 
     def rank(item: NaverNewsItem):
-        source_rank = preferred.get(_source_domain(item), 999)
         try:
             published_ts = datetime.fromisoformat(
-                (item.pub_date or "").replace("Z", "+00:00")
+                str(item.pub_date or "").replace("Z", "+00:00")
             ).timestamp()
         except Exception:
             published_ts = 0
-        return source_rank, -published_ts
+        source_rank = preferred.get(_source_domain(item), 999)
+        # 최신 기사 우선, 동일 시각대에서 선호 출처를 앞세운다.
+        return -published_ts, source_rank
 
     return sorted(items, key=rank)
 
 
-def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 3) -> list[NaverNewsItem]:
-    """Fetch company news with one Marketaux request, then NAVER fallback."""
+def fetch_stock_news(
+    stock_name: str,
+    stock_code: Optional[str] = None,
+    display: int = 3,
+) -> list[NaverNewsItem]:
+    """US: Marketaux first. KR: NAVER first. Both have provider fallback."""
     name = str(stock_name or "").strip()
     code = str(stock_code or "").strip()
     if not name and not code:
         return []
 
     target = min(max(display, 1), 3)
-    marketaux_items: list[NaverNewsItem] = []
 
-    if code and not code.isdigit():
-        marketaux_items = search_marketaux_news(
-            symbols=code,
-            language="en",
-            countries="us",
-            display=target,
-        )
-    elif name:
+    # 한국 개별종목은 한국어 회사명 검색 품질이 좋은 NAVER를 먼저 사용한다.
+    if code.isdigit():
+        naver_queries = [name, f"{name} {code}".strip()]
+        for query in naver_queries:
+            if not query:
+                continue
+            try:
+                items = search_naver_news(query, display=target, sort="date")
+            except Exception as exc:
+                print(f"[NAVER stock news] request failed: {type(exc).__name__}: {exc}")
+                items = []
+            if items:
+                unique = []
+                seen = set()
+                for item in items:
+                    key = _canonical_news_key(item)
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    unique.append(item)
+                    if len(unique) >= target:
+                        return _rank_global_news(unique)[:target]
+        # NAVER가 비어 있으면 Marketaux 한국어 검색을 보조로 시도한다.
         marketaux_items = search_marketaux_news(
             query=name,
             language="ko",
-            countries="kr",
             display=target,
+            today_only=False,
+            must_have_entities=False,
+            group_similar=False,
         )
+        if marketaux_items:
+            return _rank_global_news(marketaux_items)[:target]
+        return []
 
-    if marketaux_items:
-        return _rank_global_news(marketaux_items)[:target]
+    # 미국 개별종목은 ticker entity 검색을 우선하고, 회사명 검색으로 보조한다.
+    marketaux_items = search_marketaux_news(
+        symbols=code,
+        language="en",
+        display=target,
+        today_only=False,
+        must_have_entities=True,
+        group_similar=False,
+    )
+    if len(marketaux_items) < target and name:
+        extra = search_marketaux_news(
+            query=name,
+            language="en",
+            display=target,
+            today_only=False,
+            must_have_entities=False,
+            group_similar=False,
+        )
+        marketaux_items.extend(extra)
 
-    terms = [term for term in (name, code) if term and not (term == code and code.isdigit())]
-    query = " ".join(terms)
-    return search_naver_news(query, display=target, sort="date") if query else []
+    unique = []
+    seen = set()
+    for item in _rank_global_news(marketaux_items):
+        key = _canonical_news_key(item)
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(item)
+        if len(unique) >= target:
+            return unique[:target]
+
+    # Marketaux가 비어 있으면 NAVER의 글로벌 검색을 마지막 보조 경로로 사용한다.
+    if name:
+        try:
+            fallback = search_naver_news(name, display=target, sort="date")
+        except Exception:
+            fallback = []
+        if fallback:
+            return _rank_global_news(fallback)[:target]
+    return []
 
 
-def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20) -> list[NaverNewsItem]:
-    """Main Live News feed optimized for a richer 20-item mix: US 16 + KR 4.
+def fetch_macro_news(
+    queries: Optional[Iterable[str]] = None,
+    display: int = 20,
+) -> list[NaverNewsItem]:
+    """Main Live News: 16 US + 4 KR, strictly today's KST news.
 
-    Scheduled refreshes use exactly 6 US + 1 KR Marketaux requests per run.
-    With a 2-hour schedule, that is at most 84 Marketaux requests/day.
-    NAVER is used only as a gap filler when today's Marketaux candidates are
-    insufficient, preserving the Free plan's daily API budget.
+    Marketaux budget for the scheduled collector is fixed at 6 US + 1 KR
+    requests per run (7 requests = 21 max returned articles). We deliberately
+    disable Marketaux grouping for the macro feed so one popular story cannot
+    collapse each query down to a single result.
     """
     target = min(max(display, 1), 20)
 
@@ -581,21 +700,34 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
         merged: list[NaverNewsItem] = []
         seen: set[str] = set()
         for query in list(queries):
-            items = search_marketaux_news(query=query, language="en", display=3, today_only=True)
+            items = search_marketaux_news(
+                query=query,
+                language="en",
+                display=3,
+                today_only=True,
+                must_have_entities=False,
+                group_similar=False,
+            )
             if not items:
-                items = search_naver_news(query, display=min(target, 3), sort="date")
+                try:
+                    items = [
+                        item for item in search_naver_news(
+                            query, display=min(target, 3), sort="date"
+                        )
+                        if _is_today_kst(item)
+                    ]
+                except Exception:
+                    items = []
             for item in items:
-                key = item.original_link or item.link
-                if key and key not in seen:
-                    seen.add(key)
-                    merged.append(item)
+                key = _canonical_news_key(item)
+                if not key or key in seen:
+                    continue
+                seen.add(key)
+                merged.append(item)
                 if len(merged) >= target:
-                    break
-            if len(merged) >= target:
-                break
+                    return _rank_global_news(merged)[:target]
         return _rank_global_news(merged)[:target]
 
-    # 주제를 넓혀 비슷한 뉴스가 반복되는 것을 줄이고, 미국 경제 중심 구성을 유지한다.
     us_queries = (
         "Federal Reserve interest rates inflation CPI PCE Treasury yields dollar",
         "US economy jobs payrolls GDP consumer spending retail sales wages",
@@ -617,6 +749,7 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
                 display=3,
                 today_only=True,
                 must_have_entities=False,
+                group_similar=False,
             )
         )
 
@@ -630,74 +763,92 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
                 display=3,
                 today_only=True,
                 must_have_entities=False,
+                group_similar=False,
             )
         )
 
-    def is_today_kst(item: NaverNewsItem) -> bool:
-        try:
-            published = pd.to_datetime(item.pub_date, utc=True)
-            return published.tz_convert("Asia/Seoul").date() == datetime.now(ZoneInfo("Asia/Seoul")).date()
-        except Exception:
-            return False
+    us_ranked = []
+    seen = set()
+    for item in _rank_global_news([x for x in us_candidates if _is_today_kst(x)]):
+        key = _canonical_news_key(item)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        us_ranked.append(item)
 
-    # Strict local-date guard: even fallback/provider quirks cannot leak an older date.
-    us_candidates = [item for item in us_candidates if is_today_kst(item)]
-    kr_candidates = [item for item in kr_candidates if is_today_kst(item)]
+    kr_ranked = []
+    seen = set()
+    for item in _rank_global_news([x for x in kr_candidates if _is_today_kst(x)]):
+        key = _canonical_news_key(item)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        kr_ranked.append(item)
 
-    def dedupe(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
-        out: list[NaverNewsItem] = []
-        seen: set[str] = set()
-        for item in _rank_global_news(items):
-            key = item.original_link or item.link
-            if key and key not in seen:
-                seen.add(key)
-                out.append(item)
-        return out
+    selected = us_ranked[: min(16, target)]
+    kr_target = min(4, max(0, target - len(selected)))
+    selected.extend(kr_ranked[:kr_target])
 
-    us_ranked = dedupe(us_candidates)
-    kr_ranked = dedupe(kr_candidates)
-
-    us_needed = min(16, target)
-    kr_needed = min(4, max(0, target - us_needed))
-
-    selected = us_ranked[:us_needed]
-    selected.extend(kr_ranked[:kr_needed])
-
-    # Marketaux Free는 1회 요청당 최대 3건이므로 7회(run)만으로도
-    # 18 US + 3 KR 후보를 확보할 수 있다. 부족한 4번째 KR/20번째 전체 자리는
-    # Marketaux 추가 호출 대신 NAVER를 사용해 하루 API 예산을 보존한다.
+    # Marketaux 7회 예산을 절대로 넘기지 않고 NAVER로 부족분을 채운다.
     if len(selected) < target:
-        fallback_us = search_naver_news(
-            "미국 경제 연준 금리 물가 고용 증시 실적 채권 달러",
-            display=6,
-            sort="date",
-        )
-        fallback_kr = search_naver_news(
-            "한국은행 기준금리 원화 환율 수출 반도체 코스피 경제",
-            display=4,
-            sort="date",
-        )
-        seen = {item.original_link or item.link for item in selected}
+        try:
+            fallback_us = [
+                item for item in search_naver_news(
+                    "미국 경제 연준 금리 물가 고용 증시 실적 채권 달러",
+                    display=20,
+                    sort="date",
+                )
+                if _is_today_kst(item)
+            ]
+        except Exception:
+            fallback_us = []
+
+        try:
+            fallback_kr = [
+                item for item in search_naver_news(
+                    "한국은행 기준금리 원화 환율 수출 반도체 코스피 경제",
+                    display=10,
+                    sort="date",
+                )
+                if _is_today_kst(item)
+            ]
+        except Exception:
+            fallback_kr = []
+
+        selected_keys = {_canonical_news_key(item) for item in selected}
+
+        # 먼저 US 부족분을 16개까지 채우고,
+        # 이어 KR 부족분을 4개까지 채운다.
+        current_us = len(selected[: min(16, target)])
+        current_kr = max(0, len(selected) - current_us)
 
         for item in fallback_us:
-            if len(selected) >= target:
+            if len(selected) >= target or current_us >= min(16, target):
                 break
-            if not is_today_kst(item):
-                continue
-            key = item.original_link or item.link
-            if key and key not in seen:
-                seen.add(key)
+            key = _canonical_news_key(item)
+            if key and key not in selected_keys:
+                selected_keys.add(key)
                 selected.append(item)
+                current_us += 1
 
         for item in fallback_kr:
-            if len(selected) >= target:
+            if len(selected) >= target or current_kr >= min(4, target):
                 break
-            if not is_today_kst(item):
-                continue
-            key = item.original_link or item.link
-            if key and key not in seen:
-                seen.add(key)
+            key = _canonical_news_key(item)
+            if key and key not in selected_keys:
+                selected_keys.add(key)
                 selected.append(item)
+                current_kr += 1
+
+        # 그래도 부족하면 남은 오늘 뉴스로 마지막 빈자리를 채운다.
+        if len(selected) < target:
+            for item in fallback_us + fallback_kr:
+                if len(selected) >= target:
+                    break
+                key = _canonical_news_key(item)
+                if key and key not in selected_keys:
+                    selected_keys.add(key)
+                    selected.append(item)
 
     return selected[:target]
 
