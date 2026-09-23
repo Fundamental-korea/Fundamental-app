@@ -626,14 +626,17 @@ def search_bing_news_rss(query: str, *, language: str = "en", display: int = 20)
         return []
 
     out = []
-    ns = {"news": "https://www.bing.com/news/search"}
     for node in root.findall(".//item")[:max(1, min(display, 50))]:
         title = _clean_html(node.findtext("title") or "")
         raw_link = (node.findtext("link") or "").strip()
         pub = (node.findtext("pubDate") or "").strip()
         desc = _clean_html(node.findtext("description") or "")
-        image_node = node.find("news:image", ns)
-        image_url = _clean_html(image_node.text or "") if image_node is not None else ""
+        image_url = ""
+        for child in node.iter():
+            if str(child.tag).lower().endswith("image"):
+                image_url = _clean_html(child.text or "")
+                if image_url:
+                    break
         link = raw_link
         try:
             parsed = urlparse(raw_link)
