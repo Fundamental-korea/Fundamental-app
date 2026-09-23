@@ -3728,6 +3728,34 @@ def _news_source_label(url: str, fallback: str = "뉴스") -> str:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
+@st.cache_data(ttl=86400, show_spinner=False)
+def _translate_text_fallback_en_ko(text: str) -> str:
+    """Translate one English news field to Korean when the primary Gemini path is unavailable."""
+    value = str(text or "").strip()
+    if not value or not re.search(r"[A-Za-z]", value):
+        return value
+    try:
+        response = requests.get(
+            "https://api.mymemory.translated.net/get",
+            params={
+                "q": value[:1200],
+                "langpair": "en|ko",
+            },
+            timeout=12,
+        )
+        if not response.ok:
+            return ""
+        payload = response.json()
+        translated = str(
+            (payload.get("responseData") or {}).get("translatedText") or ""
+        ).strip()
+        if translated and re.search(r"[가-힣]", translated):
+            return translated
+    except Exception as exc:
+        print(f"[News Translation Fallback] Request failed: {type(exc).__name__}: {exc}")
+    return ""
+
+
 def _translate_news_cards(
     items: tuple[tuple[str, str], ...],
     cache_version: str = "live-news-korean-v4",
@@ -3773,7 +3801,7 @@ def _translate_news_cards(
 
     try:
         response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent",
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
             headers={
                 "x-goog-api-key": api_key,
                 "Content-Type": "application/json",
@@ -3834,6 +3862,22 @@ def _translate_news_cards(
                 "[Gemini Live News] Could not parse translation response. "
                 f"Raw response: {result[:800]}"
             )
+        # Gemini가 비활성화되었거나 일부 항목을 번역하지 못한 경우에만
+        # 남은 영문 필드를 보조 번역한다. 기존 Gemini 경로와 카드 구조는 그대로 유지한다.
+        if len(localized) < len(clean_items):
+            for idx, (original_title, original_description) in enumerate(clean_items):
+                current = localized.get(idx, {})
+                translated_title = str(current.get("title") or "").strip()
+                translated_description = str(current.get("description") or "").strip()
+                if not translated_title and re.search(r"[A-Za-z]", original_title):
+                    translated_title = _translate_text_fallback_en_ko(original_title)
+                if not translated_description and re.search(r"[A-Za-z]", original_description):
+                    translated_description = _translate_text_fallback_en_ko(original_description)
+                if translated_title:
+                    localized[idx] = {
+                        "title": translated_title,
+                        "description": translated_description,
+                    }
         return localized
     except Exception as exc:
         print(f"[Gemini Live News] Request failed: {type(exc).__name__}: {exc}")
@@ -4392,7 +4436,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
     if needs_localization:
         localized_cards = _translate_news_cards(
             translation_input,
-            cache_version="live-news-korean-v7",
+            cache_version="live-news-korean-v6",
         )
 
     cards = []
@@ -4540,7 +4584,7 @@ def _get_stock_news_cached(
     stock_name,
     stock_code,
     limit=3,
-    cache_version="stock-news-v13",
+    cache_version="stock-news-v14",
 ):
     return fetch_stock_news(
         stock_name,
@@ -4556,7 +4600,7 @@ def render_home_stock_news(stock_name, stock_code, limit=3):
             stock_name,
             stock_code,
             limit,
-            cache_version="stock-news-v13",
+            cache_version="stock-news-v14",
         )
     except Exception:
         items = []
