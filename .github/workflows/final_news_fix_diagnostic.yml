@@ -1,0 +1,77 @@
+name: Final news fix diagnostic
+
+on:
+  push:
+    branches:
+      - diag/final-news-fix
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: Test direct translation fallback
+        run: |
+          python - <<'PY'
+          import requests, re
+          text = "Federal Reserve keeps interest rates unchanged"
+          r = requests.get(
+              "https://api.mymemory.translated.net/get",
+              params={"q": text, "langpair": "en|ko"},
+              timeout=20,
+          )
+          data = r.json()
+          translated = str((data.get("responseData") or {}).get("translatedText") or "")
+          print("FALLBACK_STATUS", r.status_code)
+          print("FALLBACK_TEXT", translated)
+          assert r.status_code == 200
+          assert re.search(r"[가-힣]", translated)
+          PY
+      - name: Test Korean and US stock news through the real Streamlit route
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
+        run: |
+          python - <<'PY'
+          import re
+          from html import unescape
+          from streamlit.testing.v1 import AppTest
+
+          def inspect(code, expected_name):
+              at = AppTest.from_file("app.py", default_timeout=120)
+              if at.secrets is not None:
+                  at.secrets["SUPABASE_URL"] = __import__("os").environ.get("SUPABASE_URL", "")
+                  at.secrets["SUPABASE_KEY"] = __import__("os").environ.get("SUPABASE_KEY", "")
+                  at.secrets["MARKETAUX_API_TOKEN"] = __import__("os").environ.get("MARKETAUX_API_TOKEN", "")
+              at.query_params["code"] = code
+              at.run()
+              assert not at.exception, [e.value for e in at.exception]
+              html_nodes = at.get("html")
+              blobs = []
+              for node in html_nodes:
+                  body = str(getattr(node, "value", "") or getattr(node, "body", "") or "")
+                  if "live-news-card" in body:
+                      blobs.append(body)
+              html = "\n".join(blobs)
+              titles = re.findall(r'<div class="live-news-title">(.*?)</div>', html)
+              print("ROUTE", code, "NEWS_HTML_NODES", len(blobs), "TITLES", len(titles))
+              print("FIRST_TITLE", unescape(titles[0]) if titles else "")
+              assert len(titles) >= 3, (code, len(titles))
+              if not code.isdigit():
+                  assert any(re.search(r"[가-힣]", unescape(t)) for t in titles), titles
+              else:
+                  assert expected_name in html
+
+          inspect("005930", "삼성전자 관련 뉴스")
+          inspect("NVDA", "NVDA")
+          PY
+      - name: Compile
+        run: python -m py_compile app.py news_earnings.py collect_live_news.py
