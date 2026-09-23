@@ -1,18 +1,20 @@
-"""SEC filing-level financial map for ROIC / interest coverage.
+"""SEC filing-first financial map for US fundamental data.
 
-This module is deliberately economic-first:
-1. inspect the latest annual Inline XBRL filing;
-2. classify actual issuer liability/debt and interest concepts;
-3. exclude look-alikes such as debt securities held as assets, interest rates,
-   interest paid, pension interest cost, and debt maturity/activity facts;
-4. select one coherent debt basis and one coherent annual interest expense basis.
-
-No database writes. Raw filing rows stay in memory.
+Economic-first rules:
+- The latest annual filing's Inline XBRL is the primary source.
+- Standard concepts are preferred, but issuer custom concepts are eligible when
+  their economic meaning clearly represents issuer debt or interest expense.
+- Debt investment assets, interest rates, interest paid, interest income,
+  pension/defined-benefit interest cost, and debt activity/maturity facts are
+  explicitly excluded.
+- Instant balance-sheet facts and annual duration facts are handled separately.
+- No database writes and no synthetic values unless explicitly derived from
+  the same filing context.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass, asdict
-from datetime import date
+from collections import Counter
+from dataclasses import asdict, dataclass
 import math
 import re
 from typing import Any, Iterable
@@ -22,8 +24,47 @@ from sec_xbrl_search_v2_3_4 import _annual_duration, _date
 
 KNOWN_TAXONOMIES = {"us-gaap", "ifrs-full", "srt", "dei", "xbrli", "country", "currency"}
 
-# Explicit stock concepts that represent issuer borrowing/debt. These are
-# intentionally narrower than keyword search.
+CORE_EQUITY = {
+    "StockholdersEquity",
+    "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+    "Equity",
+    "EquityAttributableToOwnersOfParent",
+    "ProprietaryCapital",
+    "PartnersCapital",
+    "MembersEquity",
+}
+CORE_NCI = {
+    "MinorityInterest",
+    "NoncontrollingInterestInConsolidatedEntity",
+    "NoncontrollingInterestInConsolidatedEntityIncludingPortionAttributableToRedeemableNoncontrollingInterest",
+}
+CORE_CASH = {
+    "CashAndCashEquivalentsAtCarryingValue",
+    "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+    "CashAndCashEquivalents",
+    "CashAndRestrictedCash",
+}
+CORE_OPERATING_INCOME = {
+    "OperatingIncomeLoss",
+    "OperatingIncome",
+    "OperatingProfitLoss",
+    "IncomeFromOperations",
+    "ProfitLossFromOperatingActivities",
+}
+CORE_PRETAX = {
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+    "IncomeLossFromContinuingOperationsBeforeIncomeTaxes",
+    "ProfitLossBeforeTax",
+}
+CORE_OTHER_NONOPERATING = {
+    "OtherNonoperatingIncomeExpense",
+    "OtherNonoperatingIncome",
+    "OtherNonoperatingExpense",
+    "NonoperatingIncomeExpense",
+    "OtherIncomeExpenseNet",
+}
+
 STANDARD_DEBT_TOTAL = {
     "LongTermDebt",
     "LongTermDebtCurrentAndNoncurrent",
@@ -64,8 +105,10 @@ STANDARD_DEBT_NONCURRENT = {
     "LongtermBorrowings",
     "Borrowings",
     "LoansPayable",
+    "LongTermLoansPayable",
     "NotesPayableNoncurrent",
     "LongTermNotesPayable",
+    "NotesAndLoansPayable",
     "ConvertibleDebtNoncurrent",
     "UnsecuredDebt",
     "UnsecuredLongTermDebt",
@@ -91,14 +134,11 @@ FINANCE_LEASE_CONCEPTS = {
     "LongTermDebtAndCapitalLeaseObligationsCurrent",
     "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
     "DebtAndCapitalLeaseObligations",
-    "DebtAndCapitalLeaseObligationsCurrent",
-    "DebtAndCapitalLeaseObligationsNoncurrent",
 }
 OPERATING_LEASE_CONCEPTS = {
     "OperatingLeaseLiabilityCurrent",
     "OperatingLeaseLiabilityNoncurrent",
     "OperatingLeaseLiability",
-    "OperatingLeaseLiabilityMaturingInNextTwelveMonths",
 }
 
 DEBT_EXCLUSIONS = (
@@ -156,7 +196,6 @@ INTEREST_EXCLUSIONS = (
     "capitalizedinterest",
     "interestcostscapitalized",
 )
-
 ACTIVITY_EXCLUSIONS = (
     "proceeds",
     "repayment",
@@ -167,17 +206,7 @@ ACTIVITY_EXCLUSIONS = (
     "refinanced",
     "increase",
     "decrease",
-    "fairvalue",
 )
-
-DEBT_KEYWORDS = (
-    "debt", "borrow", "borrowing", "loan", "notes payable", "note payable",
-    "credit facility", "revolving", "revolver", "term loan",
-    "senior note", "convertible debt", "unsecured debt", "secured debt",
-)
-LEASE_KEYWORDS = ("finance lease", "capital lease", "lease liability", "lease liabilities")
-INTEREST_KEYWORDS = ("interest expense", "interest cost", "finance costs", "financing costs", "debt expense")
-
 
 @dataclass(frozen=True)
 class FinancialFact:
@@ -197,16 +226,13 @@ class FinancialFact:
     confidence: str
     reason: str
 
-
 def _local(concept: str | None) -> str:
     if not concept:
         return ""
     return str(concept).rsplit("}", 1)[-1].rsplit(":", 1)[-1]
 
-
 def _compact(value: str | None) -> str:
     return re.sub(r"[^a-z0-9]+", "", (value or "").lower())
-
 
 def _finite(value: Any) -> float | None:
     try:
@@ -215,37 +241,34 @@ def _finite(value: Any) -> float | None:
         return None
     return x if math.isfinite(x) else None
 
-
-def _looks_annual(row: dict[str, Any], target_year: int | None) -> bool:
+def _target_end(row: dict[str, Any], target_year: int | None) -> bool:
     end = _date(row.get("end"))
-    if target_year is not None and (not end or end.year != int(target_year)):
+    return bool(end) and (target_year is None or end.year == int(target_year))
+
+def _annual_duration_row(row: dict[str, Any], target_year: int | None) -> bool:
+    return _target_end(row, target_year) and bool(row.get("start")) and _annual_duration(row.get("start"), row.get("end"))
+
+def _instant_row(row: dict[str, Any], target_year: int | None) -> bool:
+    return _target_end(row, target_year) and bool(row.get("instant")) and not bool(row.get("start"))
+
+def _is_currency(unit: str | None) -> bool:
+    if not unit:
         return False
-    if not row.get("start"):
-        return False
-    return _annual_duration(row.get("start"), row.get("end"))
+    u = unit.lower()
+    return "iso4217:" in u or u in {"usd", "cny", "eur", "gbp", "jpy", "cad", "aud"}
 
-
-def _looks_instant(row: dict[str, Any], target_year: int | None) -> bool:
-    end = _date(row.get("end"))
-    return bool(row.get("instant")) and bool(end) and (
-        target_year is None or end.year == int(target_year)
-    )
-
-
-def _is_bad_debt_concept(concept: str, label: str) -> bool:
-    text = _compact(concept) + " " + _compact(label)
+def _is_bad_debt(concept: str, label: str) -> bool:
+    text = _compact(concept + " " + label)
     return any(token in text for token in DEBT_EXCLUSIONS)
 
-
 def classify_debt_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
-    """Return category, confidence, reason for a possible debt/lease fact."""
     concept = _local(row.get("concept"))
     label = row.get("label") or ""
     compact = _compact(concept + " " + label)
     namespace = row.get("namespace") or ""
 
-    if _is_bad_debt_concept(concept, label):
-        return None, "exclude", "debt/investment/activity/look-alike concept"
+    if _is_bad_debt(concept, label):
+        return None, "exclude", "debt investment, metadata, maturity/activity, interest, or other look-alike"
 
     if concept in OPERATING_LEASE_CONCEPTS or "operatingleaseliability" in compact:
         return "operating_lease_liability", "high", "explicit operating lease liability"
@@ -271,18 +294,17 @@ def classify_debt_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
     )):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
             return None, "exclude", "debt activity/maturity fact"
-        return "issuer_debt_other", "medium", "standard-taxonomy debt-like stock concept"
+        return "issuer_debt_other", "medium", "standard-taxonomy debt-like concept"
 
     if namespace not in KNOWN_TAXONOMIES and any(k in compact for k in (
         "debt", "borrowings", "borrowing", "loanspayable", "notespayable",
         "creditfacility", "revolvingcreditfacility", "termloan",
     )):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
-            return None, "exclude", "custom debt activity fact"
-        return "custom_issuer_debt", "medium", "custom taxonomy debt-like concept"
+            return None, "exclude", "custom debt activity/metadata fact"
+        return "custom_issuer_debt", "medium", "custom taxonomy issuer debt-like concept"
 
     return None, "none", ""
-
 
 def classify_interest_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
     concept = _local(row.get("concept"))
@@ -291,7 +313,7 @@ def classify_interest_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
     namespace = row.get("namespace") or ""
 
     if any(token in compact for token in INTEREST_EXCLUSIONS):
-        return None, "exclude", "interest look-alike (rate, paid, payable, income, pension, capitalized)"
+        return None, "exclude", "interest rate/paid/payable/income/pension/capitalized look-alike"
 
     if concept in STANDARD_INTEREST_GROSS:
         return "gross_interest_expense", "high", "canonical gross interest expense / finance cost"
@@ -299,22 +321,21 @@ def classify_interest_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
     if concept in STANDARD_INTEREST_NET:
         return "net_interest_expense", "medium", "canonical net interest expense fallback"
 
-    if namespace in {"us-gaap", "ifrs-full"} and any(
-        _compact(k) in compact for k in INTEREST_KEYWORDS
-    ):
+    if namespace in {"us-gaap", "ifrs-full"} and any(_compact(k) in compact for k in (
+        "interest expense", "interest cost", "finance costs", "financing costs", "debt expense"
+    )):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
-            return None, "exclude", "interest-related activity/metadata fact"
+            return None, "exclude", "interest activity/metadata fact"
         return "gross_interest_expense_other", "medium", "standard-taxonomy interest expense-like concept"
 
-    if namespace not in KNOWN_TAXONOMIES and any(
-        _compact(k) in compact for k in INTEREST_KEYWORDS
-    ):
+    if namespace not in KNOWN_TAXONOMIES and any(_compact(k) in compact for k in (
+        "interest expense", "interest cost", "finance costs", "financing costs", "debt expense"
+    )):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
             return None, "exclude", "custom interest activity/metadata fact"
         return "custom_interest_expense", "medium", "custom taxonomy interest expense-like concept"
 
     return None, "none", ""
-
 
 def _to_fact(row: dict[str, Any], category: str, confidence: str, reason: str) -> FinancialFact | None:
     value = _finite(row.get("value"))
@@ -339,178 +360,250 @@ def _to_fact(row: dict[str, Any], category: str, confidence: str, reason: str) -
         reason=reason,
     )
 
+def _core_fact(row: dict[str, Any], concepts: set[str], target_year: int | None) -> bool:
+    return (
+        _instant_row(row, target_year)
+        and not row.get("dimensioned")
+        and _local(row.get("concept")) in concepts
+        and _finite(row.get("value")) is not None
+        and _is_currency(row.get("unit"))
+    )
+
+def _select_core(rows: list[dict[str, Any]], concepts: set[str], target_year: int | None, prefer=("USD",)) -> FinancialFact | None:
+    candidates = [r for r in rows if _core_fact(r, concepts, target_year)]
+    if not candidates:
+        return None
+    pref = {x.lower() for x in prefer}
+    candidates.sort(key=lambda r: (
+        1 if (r.get("unit") or "").lower().endswith(":usd") or (r.get("unit") or "").lower() in pref else 0,
+        r.get("filed") or "",
+    ), reverse=True)
+    concept_rank = {name: i for i, name in enumerate(concepts)}
+    candidates.sort(key=lambda r: (concept_rank.get(_local(r.get("concept")), 999),), reverse=False)
+    return _to_fact(candidates[0], "core", "high", "canonical filing concept")
+
+def _same_context(rows: list[dict[str, Any]], concepts: set[str], target_year: int | None) -> list[dict[str, Any]]:
+    return [
+        r for r in rows
+        if _instant_row(r, target_year)
+        and not r.get("dimensioned")
+        and _local(r.get("concept")) in concepts
+        and _finite(r.get("value")) is not None
+    ]
+
+def _select_equity(rows: list[dict[str, Any]], target_year: int | None) -> FinancialFact | None:
+    candidates = _same_context(rows, CORE_EQUITY, target_year)
+    if not candidates:
+        return None
+    rank = {name: i for i, name in enumerate([
+        "EquityAttributableToOwnersOfParent", "StockholdersEquity",
+        "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
+        "Equity", "ProprietaryCapital", "PartnersCapital", "MembersEquity",
+    ])}
+    candidates.sort(key=lambda r: (rank.get(_local(r.get("concept")), 999), -(1 if _is_currency(r.get("unit")) else 0), -(1 if "USD" in str(r.get("unit")).upper() else 0)))
+    chosen = candidates[0]
+    fact = _to_fact(chosen, "core_equity", "high", "canonical filing equity concept")
+    if not fact:
+        return None
+    if "IncludingPortionAttributableToNoncontrollingInterest" in fact.concept:
+        nci = _select_core(rows, CORE_NCI, target_year)
+        if nci and nci.end == fact.end and nci.unit == fact.unit:
+            return FinancialFact(
+                **{**asdict(fact), "value": fact.value - nci.value,
+                   "confidence": "high",
+                   "reason": "parent-attributable equity: consolidated equity minus NCI"}
+            )
+    return fact
+
+def _select_cash(rows: list[dict[str, Any]], target_year: int | None) -> FinancialFact | None:
+    candidates = _same_context(rows, CORE_CASH, target_year)
+    if not candidates:
+        return None
+    rank = {name: i for i, name in enumerate([
+        "CashAndCashEquivalentsAtCarryingValue",
+        "CashAndCashEquivalents",
+        "CashAndRestrictedCash",
+        "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents",
+    ])}
+    candidates.sort(key=lambda r: (rank.get(_local(r.get("concept")), 999), -(1 if "USD" in str(r.get("unit")).upper() else 0)))
+    return _to_fact(candidates[0], "core_cash", "high" if rank.get(_local(candidates[0].get("concept")), 99) < 2 else "medium", "canonical filing cash concept")
+
+def _select_operating_income(rows: list[dict[str, Any]], target_year: int | None) -> FinancialFact | None:
+    candidates = [
+        r for r in rows
+        if _annual_duration_row(r, target_year)
+        and not r.get("dimensioned")
+        and _local(r.get("concept")) in CORE_OPERATING_INCOME
+        and _finite(r.get("value")) is not None
+        and _is_currency(r.get("unit"))
+    ]
+    if not candidates:
+        return None
+    rank = {name: i for i, name in enumerate([
+        "OperatingIncomeLoss", "OperatingIncome", "OperatingProfitLoss",
+        "IncomeFromOperations", "ProfitLossFromOperatingActivities",
+    ])}
+    candidates.sort(key=lambda r: (rank.get(_local(r.get("concept")), 999), -(1 if "USD" in str(r.get("unit")).upper() else 0), r.get("filed") or ""), reverse=False)
+    return _to_fact(candidates[0], "operating_income", "high", "canonical annual operating income concept")
+
+def _select_annual_flow(rows: list[dict[str, Any]], concepts: set[str], target_year: int | None) -> list[FinancialFact]:
+    out = []
+    for r in rows:
+        if not (_annual_duration_row(r, target_year) and not r.get("dimensioned")):
+            continue
+        if _local(r.get("concept")) not in concepts:
+            continue
+        if not _finite(r.get("value")) or not _is_currency(r.get("unit")):
+            continue
+        fact = _to_fact(r, "flow_support", "high", "same-filing annual support fact")
+        if fact:
+            out.append(fact)
+    return out
 
 def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None = None) -> dict[str, Any]:
-    """Classify annual filing rows and select coherent debt/interest bases."""
+    rows = list(rows)
     debt: list[FinancialFact] = []
     interest: list[FinancialFact] = []
-    excluded: list[dict[str, Any]] = []
-
     for row in rows:
         category, confidence, reason = classify_debt_fact(row)
-        if category and _looks_instant(row, target_year):
+        if category and _instant_row(row, target_year) and not row.get("dimensioned") and _is_currency(row.get("unit")):
             fact = _to_fact(row, category, confidence, reason)
             if fact:
                 debt.append(fact)
-        elif confidence == "exclude" and _local(row.get("concept")):
-            excluded.append({
-                "concept": _local(row.get("concept")),
-                "label": row.get("label") or "",
-                "value": row.get("value"),
-                "category": "debt_excluded",
-                "reason": reason,
-            })
-
         category, confidence, reason = classify_interest_fact(row)
-        if category and _looks_annual(row, target_year):
+        if category and _annual_duration_row(row, target_year) and not row.get("dimensioned") and _is_currency(row.get("unit")):
             fact = _to_fact(row, category, confidence, reason)
             if fact:
                 interest.append(fact)
 
-    # Prefer exact totals over components. Components are used only when both
-    # current and noncurrent pieces form a coherent balance-sheet pair.
     total = [x for x in debt if x.category == "issuer_debt_total"]
-    current = [x for x in debt if x.category in {"issuer_debt_current", "finance_lease_liability"}]
-    noncurrent = [x for x in debt if x.category in {"issuer_debt_noncurrent", "finance_lease_liability"}]
+    current = [x for x in debt if x.category == "issuer_debt_current"]
+    noncurrent = [x for x in debt if x.category == "issuer_debt_noncurrent"]
     other = [x for x in debt if x.category in {"issuer_debt_other", "custom_issuer_debt"}]
     carrying = [x for x in debt if x.category == "debt_carrying_amount_candidate"]
 
-    selected_debt: dict[str, Any] | None = None
+    selected_debt = None
     if total:
-        # Same-end direct total; choose the latest filed / highest confidence.
-        chosen = sorted(total, key=lambda x: (x.end, x.filed or ""), reverse=True)[0]
+        chosen = sorted(total, key=lambda x: (0 if x.confidence == "high" else 1, x.concept != "LongTermDebt", x.filed or ""))[0]
         selected_debt = {
-            "value": chosen.value,
-            "basis": "reported_total",
-            "category": chosen.category,
-            "concept": chosen.concept,
-            "namespace": chosen.namespace,
-            "confidence": chosen.confidence,
-            "components": [asdict(chosen)],
+            "value": chosen.value, "basis": "reported_total", "category": chosen.category,
+            "concept": chosen.concept, "namespace": chosen.namespace, "confidence": chosen.confidence,
+            "unit": chosen.unit, "components": [asdict(chosen)],
         }
     else:
-        # Require one current and one noncurrent component when both exist.
-        # A sole explicit borrowing remains usable but is marked partial.
-        cur = sorted(current, key=lambda x: (x.end, x.filed or ""), reverse=True)
-        ncur = sorted(noncurrent, key=lambda x: (x.end, x.filed or ""), reverse=True)
-        if cur and ncur:
-            c = cur[0]
-            n = ncur[0]
-            if c.end == n.end:
-                selected_debt = {
-                    "value": c.value + n.value,
-                    "basis": "current_plus_noncurrent",
-                    "category": "issuer_debt_components",
-                    "concept": f"{c.concept}+{n.concept}",
-                    "namespace": c.namespace if c.namespace == n.namespace else f"{c.namespace}+{n.namespace}",
-                    "confidence": "high" if c.confidence == n.confidence == "high" else "medium",
-                    "components": [asdict(c), asdict(n)],
-                }
-        if selected_debt is None and other:
-            chosen = sorted(other, key=lambda x: (x.confidence != "high", x.end, x.filed or ""), reverse=False)[0]
+        pairs = [(c, n) for c in current for n in noncurrent if c.end == n.end and c.unit == n.unit]
+        if pairs:
+            c, n = sorted(pairs, key=lambda pair: (pair[0].filed or "", pair[1].filed or ""), reverse=True)[0]
             selected_debt = {
-                "value": chosen.value,
-                "basis": "reported_other_debt",
-                "category": chosen.category,
-                "concept": chosen.concept,
-                "namespace": chosen.namespace,
-                "confidence": chosen.confidence,
-                "components": [asdict(chosen)],
+                "value": c.value + n.value, "basis": "current_plus_noncurrent",
+                "category": "issuer_debt_components",
+                "concept": f"{c.concept}+{n.concept}",
+                "namespace": c.namespace if c.namespace == n.namespace else f"{c.namespace}+{n.namespace}",
+                "confidence": "high" if c.confidence == n.confidence == "high" else "medium",
+                "unit": c.unit, "components": [asdict(c), asdict(n)],
             }
-        if selected_debt is None and len(carrying) == 1:
+        elif other:
+            chosen = sorted(other, key=lambda x: (x.confidence != "high", x.filed or ""))[0]
+            selected_debt = {
+                "value": chosen.value, "basis": "reported_other_debt",
+                "category": chosen.category, "concept": chosen.concept,
+                "namespace": chosen.namespace, "confidence": chosen.confidence,
+                "unit": chosen.unit, "components": [asdict(chosen)],
+            }
+        elif len(carrying) == 1:
             chosen = carrying[0]
             selected_debt = {
-                "value": chosen.value,
-                "basis": "carrying_amount_candidate",
-                "category": chosen.category,
-                "concept": chosen.concept,
-                "namespace": chosen.namespace,
-                "confidence": "medium",
-                "components": [asdict(chosen)],
+                "value": chosen.value, "basis": "carrying_amount_candidate",
+                "category": chosen.category, "concept": chosen.concept,
+                "namespace": chosen.namespace, "confidence": "medium",
+                "unit": chosen.unit, "components": [asdict(chosen)],
             }
 
-    # Interest: gross exact > gross other > net.
     gross = [x for x in interest if x.category == "gross_interest_expense"]
     gross_other = [x for x in interest if x.category in {"gross_interest_expense_other", "custom_interest_expense"}]
     net = [x for x in interest if x.category == "net_interest_expense"]
 
-    selected_interest: dict[str, Any] | None = None
+    selected_interest = None
     if gross:
-        chosen = sorted(gross, key=lambda x: (x.end, x.filed or ""), reverse=True)[0]
+        chosen = sorted(gross, key=lambda x: (x.concept not in {"InterestExpenseNonoperating", "InterestExpenseDebt", "InterestExpense", "FinanceCosts"}, x.filed or ""), reverse=False)[0]
         selected_interest = {
-            "value": abs(chosen.value),
-            "basis": "reported_gross_interest_expense",
-            "category": chosen.category,
-            "concept": chosen.concept,
-            "namespace": chosen.namespace,
-            "confidence": chosen.confidence,
-            "components": [asdict(chosen)],
+            "value": abs(chosen.value), "basis": "reported_gross_interest_expense",
+            "category": chosen.category, "concept": chosen.concept, "namespace": chosen.namespace,
+            "confidence": chosen.confidence, "unit": chosen.unit, "components": [asdict(chosen)],
         }
+        if chosen.value == 0:
+            selected_interest["zero_reported"] = True
     elif gross_other:
-        chosen = sorted(gross_other, key=lambda x: (x.confidence != "high", x.end, x.filed or ""))[0]
+        chosen = sorted(gross_other, key=lambda x: (x.confidence != "high", x.filed or ""))[0]
         selected_interest = {
-            "value": abs(chosen.value),
-            "basis": "other_interest_expense",
-            "category": chosen.category,
-            "concept": chosen.concept,
-            "namespace": chosen.namespace,
-            "confidence": chosen.confidence,
-            "components": [asdict(chosen)],
+            "value": abs(chosen.value), "basis": "other_interest_expense",
+            "category": chosen.category, "concept": chosen.concept, "namespace": chosen.namespace,
+            "confidence": chosen.confidence, "unit": chosen.unit, "components": [asdict(chosen)],
         }
     elif net:
         chosen = sorted(net, key=lambda x: (x.end, x.filed or ""), reverse=True)[0]
         selected_interest = {
-            "value": abs(chosen.value),
-            "basis": "reported_net_interest_expense",
-            "category": chosen.category,
-            "concept": chosen.concept,
-            "namespace": chosen.namespace,
-            "confidence": chosen.confidence,
-            "components": [asdict(chosen)],
+            "value": abs(chosen.value), "basis": "reported_net_interest_expense",
+            "category": chosen.category, "concept": chosen.concept, "namespace": chosen.namespace,
+            "confidence": chosen.confidence, "unit": chosen.unit, "components": [asdict(chosen)],
         }
 
     lease_only = bool(debt) and all(x.category in {"finance_lease_liability", "operating_lease_liability"} for x in debt)
     debt_status = (
-        "FOUND_STANDARD" if selected_debt and selected_debt["namespace"] in {"us-gaap", "ifrs-full"}
+        "FOUND_STANDARD" if selected_debt and any(c["namespace"] in {"us-gaap", "ifrs-full"} for c in selected_debt["components"])
         else "FOUND_CUSTOM" if selected_debt
         else "LEASE_ONLY" if lease_only
         else "UNRESOLVED"
     )
-
+    interest_status = "UNRESOLVED"
     if selected_interest:
-        interest_status = {
-            "gross_interest_expense": "FOUND_GROSS",
-            "gross_interest_expense_other": "FOUND_GROSS",
-            "custom_interest_expense": "FOUND_CUSTOM",
-            "net_interest_expense": "FOUND_NET_ONLY",
-        }.get(selected_interest["category"], "FOUND")
-    elif any(
-        _compact(x.label + " " + x.concept).find("interestincome") >= 0
-        for x in []
-    ):
-        interest_status = "INTEREST_INCOME_ONLY"
-    else:
-        interest_status = "UNRESOLVED"
+        if selected_interest.get("zero_reported"):
+            interest_status = "ZERO_CONFIRMED"
+        elif selected_interest["category"] == "net_interest_expense":
+            interest_status = "FOUND_NET_ONLY"
+        elif selected_interest["category"] == "custom_interest_expense":
+            interest_status = "FOUND_CUSTOM"
+        else:
+            interest_status = "FOUND_GROSS"
+
+    equity = _select_equity(rows, target_year)
+    cash = _select_cash(rows, target_year)
+    operating_income = _select_operating_income(rows, target_year)
+    pretax = _select_annual_flow(rows, CORE_PRETAX, target_year)
+    other_nonop = _select_annual_flow(rows, CORE_OTHER_NONOPERATING, target_year)
 
     return {
+        "roic_inputs": {
+            "equity": asdict(equity) if equity else None,
+            "cash": asdict(cash) if cash else None,
+            "operating_income": asdict(operating_income) if operating_income else None,
+        },
+        "support_flows": {
+            "pretax": [asdict(x) for x in pretax[:10]],
+            "other_nonoperating": [asdict(x) for x in other_nonop[:10]],
+        },
         "debt_status": debt_status,
         "interest_status": interest_status,
         "selected_debt": selected_debt,
         "selected_interest": selected_interest,
         "debt_candidates": [asdict(x) for x in debt],
         "interest_candidates": [asdict(x) for x in interest],
-        "excluded_count": len(excluded),
-        "excluded_examples": excluded[:100],
+        "candidate_concept_counts": {
+            "debt": dict(Counter(x.concept for x in debt)),
+            "interest": dict(Counter(x.concept for x in interest)),
+        },
     }
 
-
 def filing_map(cik: str | int, resolver: SECXBRLSearchV2_3_8, year: int | None = None) -> dict[str, Any]:
-    """Fetch latest annual filing Inline XBRL and return the financial map."""
     submissions = resolver.submissions(cik)
     rows, meta = resolver._inline_filing_rows(cik, submissions)
     if year is None:
-        end_dates = [_date(r.get("end")) for r in rows if r.get("end")]
-        year = max((d.year for d in end_dates), default=None)
+        annual_fy = resolver._latest_annual_fy(submissions)
+        if annual_fy is not None:
+            year = annual_fy
+        else:
+            dates = [_date(r.get("end")) for r in rows if r.get("end")]
+            year = max((d.year for d in dates), default=None)
     result = classify_filing_rows(rows, target_year=year)
     result["filing"] = {
         "accession": meta.get("accession"),
@@ -522,11 +615,4 @@ def filing_map(cik: str | int, resolver: SECXBRLSearchV2_3_8, year: int | None =
     }
     return result
 
-
-__all__ = [
-    "FinancialFact",
-    "classify_debt_fact",
-    "classify_interest_fact",
-    "classify_filing_rows",
-    "filing_map",
-]
+__all__ = ["FinancialFact","classify_debt_fact","classify_interest_fact","classify_filing_rows","filing_map"]
