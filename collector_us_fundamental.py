@@ -85,11 +85,13 @@ FACT_ALIASES = {
     "inventory": ["InventoryNet", "InventoryGross"],
     "cash": ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
     "receivables": ["AccountsReceivableNetCurrent", "AccountsReceivableNet", "AccountsAndNotesReceivableNetCurrent", "AccountsReceivableGrossCurrent"],
-    "interest_expense": ["InterestExpenseNonoperating", "InterestExpenseNonOperating", "InterestExpenseDebt", "InterestExpenseNonOperatingNet", "InterestExpenseNonOperatingAndOther", "InterestAndDebtExpense", "InterestExpense"],
-    "interest_expense_net": ["InterestIncomeExpenseNet"],
+    "interest_expense": ["InterestExpenseNonoperating", "InterestExpenseNonOperating", "InterestExpenseDebt", "InterestExpenseNonoperatingNet", "InterestExpenseNonOperatingNet", "InterestExpenseNonOperatingAndOther", "InterestAndDebtExpense", "InterestExpense"],
+    "interest_expense_net": ["InterestIncomeExpenseNet", "InterestIncomeExpenseNonoperatingNet"],
     "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
     "sga": ["SellingGeneralAndAdministrativeExpense", "SellingGeneralAndAdministrativeExpenseIncludingDepreciationAmortization", "GeneralAndAdministrativeExpense", "SellingExpense"],
     "eps": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
+    "pretax_income": ["IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments", "IncomeLossFromContinuingOperationsBeforeIncomeTaxes"],
+    "other_nonoperating": ["OtherNonoperatingIncomeExpense", "OtherNonoperatingIncome", "OtherNonoperatingExpense", "NonoperatingIncomeExpense", "OtherIncomeExpenseNet"],
 }
 
 IFRS_FACT_ALIASES = {
@@ -132,6 +134,8 @@ IFRS_FACT_ALIASES = {
     "operating_cash_flow": ["CashFlowsFromUsedInOperatingActivities"],
     "sga": ["SellingGeneralAndAdministrativeExpense"],
     "eps": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
+    "pretax_income": ["ProfitLossBeforeTax", "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest"],
+    "other_nonoperating": ["OtherNonoperatingIncomeExpense", "OtherNonoperatingIncome", "OtherNonoperatingExpense", "NonoperatingIncomeExpense", "OtherIncomeExpenseNet"],
 }
 
 FACT_NAMESPACE_ALIASES = {
@@ -494,6 +498,8 @@ def debt_rate(liabilities, equity):
 def annual_metrics(index, year):
     revenue = latest_annual_value(index, "revenue", year)
     opinc = latest_annual_value(index, "operating_income", year)
+    pretax_income = latest_annual_value(index, "pretax_income", year)
+    other_nonoperating = latest_annual_value(index, "other_nonoperating", year)
     consolidated_net_income = latest_annual_value(index, "net_income", year)
     parent_net_income = latest_annual_value(index, "net_income_parent", year)
     nci_net_income = latest_annual_value(index, "net_income_nci", year)
@@ -537,6 +543,14 @@ def annual_metrics(index, year):
         debt = debt_total
     else:
         debt = None
+
+    # Some issuers (for example Alcoa) do not tag an operating-income subtotal.
+    # When the filing provides pretax income, interest expense, and a signed
+    # non-operating income/expense line, operating income can be reconstructed
+    # from the same annual context without using a synthetic balance-sheet value.
+    if opinc is None and pretax_income is not None and interest is not None and other_nonoperating is not None:
+        opinc = pretax_income + interest + other_nonoperating
+
     # ROIC uses invested operating capital rather than total liabilities:
     # equity + interest-bearing debt - cash. This avoids counting payables,
     # deferred revenue, and other operating liabilities as invested capital.
