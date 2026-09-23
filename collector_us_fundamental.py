@@ -614,14 +614,29 @@ def period_metrics_pair(index, latest_year, period):
 
     base_year = latest_year - period
     if base_year not in all_years:
-        return None
-
-    window_years = [y for y in range(base_year, latest_year + 1) if y in all_years]
-    if len(window_years) < 2:
-        return None
-
-    oldest, newest = window_years[0], window_years[-1]
-    actual_span = newest - oldest
+        # A small but important SEC edge case: some issuers skip an annual
+        # fiscal year in Company Facts (restructuring, IPO, fiscal-year change,
+        # foreign filer transition, etc.). For the 1Y score, do not fabricate
+        # a growth period by stretching 2023 -> 2026 into "1Y". Instead build
+        # a latest-year-only score: ratio metrics remain valid, while
+        # revenue/eps growth stay unavailable and are transparently excluded.
+        if period == 1 and latest_year in all_years:
+            window_years = [latest_year]
+            oldest = newest = latest_year
+            actual_span = 0
+        else:
+            return None
+    else:
+        window_years = [y for y in range(base_year, latest_year + 1) if y in all_years]
+        if len(window_years) < 2:
+            if period == 1 and window_years:
+                oldest = newest = window_years[-1]
+                actual_span = 0
+            else:
+                return None
+        else:
+            oldest, newest = window_years[0], window_years[-1]
+            actual_span = newest - oldest
     yearly = {y: annual_metrics(index, y) for y in window_years}
 
     latest_metrics = dict(yearly[newest])
