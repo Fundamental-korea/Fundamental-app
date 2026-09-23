@@ -658,7 +658,15 @@ def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20)
         for q in ("Federal Reserve inflation interest rates US economy markets earnings","US stocks Treasury yields dollar tariffs technology energy"):
             rss_us.extend(search_google_news_rss(q,language="en",display=20))
         rss_kr.extend(search_google_news_rss("한국은행 금리 환율 코스피 경제 수출 반도체 증시",language="ko",display=20))
-                print(f"[LIVE NEWS DEBUG] RSS selected US={len(selected_us)}/{us_target} KR={len(selected_kr)}/{kr_target}")
+        for item in _rank_global_news(rss_us):
+            if len(selected_us)>=us_target: break
+            key=_canonical_news_key(item)
+            if key and key not in selected_keys: selected_keys.add(key); selected_us.append(item)
+        for item in _rank_global_news(rss_kr):
+            if len(selected_kr)>=kr_target: break
+            key=_canonical_news_key(item)
+            if key and key not in selected_keys: selected_keys.add(key); selected_kr.append(item)
+        print(f"[LIVE NEWS DEBUG] RSS selected US={len(selected_us)}/{us_target} KR={len(selected_kr)}/{kr_target}")
     final=(selected_us+selected_kr)[:target]
     print(f"[LIVE NEWS DEBUG] END total={len(final)} US={len(selected_us)} KR={len(selected_kr)}")
     return final
