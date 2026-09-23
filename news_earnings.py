@@ -539,445 +539,76 @@ def _rank_global_news(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
     return _sort_news_latest_first(items)
 
 def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 3) -> list[NaverNewsItem]:
-    """Fetch company news with one Marketaux request, then NAVER fallback."""
+    """종목 뉴스: 최신순 + 최근 7일만. KR 종목은 다중 검색어로 RSS fallback을 보강한다."""
     name = str(stock_name or "").strip()
     code = str(stock_code or "").strip()
+    target = min(max(display, 1), 3)
     if not name and not code:
         return []
 
-    target = min(max(display, 1), 3)
-    marketaux_items: list[NaverNewsItem] = []
+    def fresh(items):
+        return _sort_news_latest_first(_within_last_days(items, 7))
 
+    # US ticker
     if code and not code.isdigit():
-        marketaux_items = search_marketaux_news(
-            symbols=code,
-            language="en",
-            countries="us",
-            display=target,
-        )
-    elif name:
-        marketaux_items = search_marketaux_news(
+        items = fresh(search_marketaux_news(symbols=code, language="en", countries="us", display=max(target, 10)))
+        if items:
+            return items[:target]
+
+    # KR Marketaux
+    if name:
+        items = fresh(search_marketaux_news(
             query=name,
             language="ko",
             countries="kr",
-            display=target,
-        )
+            display=max(target, 10),
+        ))
+        if items:
+            return items[:target]
 
-    marketaux_items = _within_last_days(marketaux_items, 7)
-    if marketaux_items:
-        return _sort_news_latest_first(marketaux_items)[:target]
+    terms = [x for x in (name, code) if x]
+    queries = []
+    if code.isdigit():
+        queries = [
+            f'"{name}" "{code}"',
+            f'"{name}"',
+            code,
+        ]
+    else:
+        queries = [
+            f'"{name}" {code}'.strip(),
+            f'"{name}"',
+            code,
+        ]
 
-    terms = [term for term in (name, code) if term and not (term == code and code.isdigit())]
-    query = " ".join(terms)
-    if not query:
-        return []
-
+    # NAVER if configured
     if _env_optional("NAVER_CLIENT_ID") and _env_optional("NAVER_CLIENT_SECRET"):
-        try:
-            naver_items = search_naver_news(query, display=target, sort="date")
-            naver_items = _within_last_days(naver_items, 7)
-            if naver_items:
-                return _sort_news_latest_first(naver_items)[:target]
-        except Exception as exc:
-            print(f"[STOCK NEWS] NAVER fallback failed | {name} | {type(exc).__name__}: {exc}")
-
-    stock_query = f'"{name}" {code}' if code.isdigit() else query
-    bing_items = _within_last_days(
-        search_bing_news_rss(stock_query, language="ko", display=max(target * 6, 18)),
-        7,
-    )
-    if bing_items:
-        return _sort_news_latest_first(bing_items)[:target]
-
-    rss_items = search_google_news_rss(
-        stock_query,
-        language="ko",
-        display=max(target * 4, 12),
-    )
-    return _sort_news_latest_first(_within_last_days(rss_items, 7))[:target]
-
-
-
-BING_NEWS_RSS_URL = "https://www.bing.com/news/search"
-
-
-def search_bing_news_rss(query: str, *, language: str = "en", display: int = 20) -> list[NaverNewsItem]:
-    query = str(query or "").strip()
-    if not query:
-        return []
-    params = {
-        "q": query,
-        "format": "rss",
-        "count": max(10, min(display, 50)),
-        "setlang": "ko-KR" if language.startswith("ko") else "en-US",
-        "cc": "KR" if language.startswith("ko") else "US",
-    }
-    try:
-        response = requests.get(
-            BING_NEWS_RSS_URL,
-            params=params,
-            timeout=10,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNews/1.0)"},
-        )
-        response.raise_for_status()
-        root = ET.fromstring(response.content)
-    except Exception as exc:
-        print(f"[STOCK NEWS] Bing RSS failed | {query!r} | {type(exc).__name__}: {exc}")
-        return []
-
-    out = []
-    for node in root.findall(".//item")[:max(1, min(display, 50))]:
-        title = _clean_html(node.findtext("title") or "")
-        raw_link = (node.findtext("link") or "").strip()
-        pub = (node.findtext("pubDate") or "").strip()
-        desc = _clean_html(node.findtext("description") or "")
-        image_url = ""
-        for child in node.iter():
-            if str(child.tag).lower().endswith("image"):
-                image_url = _clean_html(child.text or "")
-                if image_url:
-                    break
-        link = raw_link
-        try:
-            parsed = urlparse(raw_link)
-            q = dict(parse_qsl(parsed.query))
-            if q.get("url"):
-                link = q["url"]
-        except Exception:
-            pass
-        source = "Bing News"
-        if title and link:
-            out.append(
-                NaverNewsItem(
-                    title=title,
-                    description=desc,
-                    link=link,
-                    original_link=link,
-                    pub_date=pub,
-                    query=query,
-                    source=source,
-                    image_url=image_url,
-                )
-            )
-    print(f"[STOCK NEWS] Bing RSS | {query!r} | items={len(out)}")
-    return out
-
-
-GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
-
-def search_google_news_rss(query: str, *, language: str = "en", display: int = 20) -> list[NaverNewsItem]:
-    query = str(query or "").strip()
-    if not query: return []
-    params = {"q": query, "hl": "ko", "gl": "KR", "ceid": "KR:ko"} if language.startswith("ko") else {"q": query, "hl": "en-US", "gl": "US", "ceid": "US:en"}
-    try:
-        response = requests.get(GOOGLE_NEWS_RSS_URL, params=params, timeout=10, headers={"User-Agent":"Mozilla/5.0 (compatible; FundamentalNews/1.0)"})
-        response.raise_for_status(); root = ET.fromstring(response.content)
-    except Exception as exc:
-        print(f"[LIVE NEWS DEBUG] RSS failed | {query!r} | {type(exc).__name__}: {exc}"); return []
-    out=[]
-    for node in root.findall(".//item")[:max(1,min(display,20))]:
-        title=_clean_html(node.findtext("title") or ""); link=(node.findtext("link") or "").strip(); pub=(node.findtext("pubDate") or "").strip(); desc=_clean_html(node.findtext("description") or "")
-        src=node.find("source"); source=_clean_html(src.text or "") if src is not None and src.text else "Google News"
-        if title and link: out.append(NaverNewsItem(title=title,description=desc,link=link,original_link=link,pub_date=pub,query=query,source=source))
-    print(f"[LIVE NEWS DEBUG] RSS response | {query!r} | items={len(out)}"); return out
-
-
-def _is_today_kst(item: NaverNewsItem) -> bool:
-    try:
-        published = pd.to_datetime(item.pub_date, utc=True)
-        return published.tz_convert("Asia/Seoul").date() == datetime.now(ZoneInfo("Asia/Seoul")).date()
-    except Exception:
-        return False
-
-
-def _canonical_news_key(item: NaverNewsItem) -> str:
-    raw = str(item.original_link or item.link or "").strip()
-    if raw:
-        try:
-            parsed=urlparse(raw)
-            tracking={"utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","gclid","fbclid"}
-            kept=[(k,v) for k,v in parse_qsl(parsed.query,keep_blank_values=True) if k.lower() not in tracking]
-            return parsed._replace(query=urlencode(kept),fragment="").geturl().rstrip("/").lower()
-        except Exception:
-            return raw.lower()
-    return re.sub(r"\s+"," ",str(item.title or "")).strip().lower()
-
-def fetch_macro_news(queries: Optional[Iterable[str]] = None, display: int = 20) -> list[NaverNewsItem]:
-    """Main Live News: 16 US + 4 KR, KST-today only; NAVER optional, RSS emergency."""
-    target=min(max(display,1),20)
-    naver_ok=bool(_env_optional("NAVER_CLIENT_ID")) and bool(_env_optional("NAVER_CLIENT_SECRET"))
-    print(f"[LIVE NEWS DEBUG] START target={target} Marketaux={bool(_marketaux_token())} NAVER={naver_ok} RSS=True")
-    if queries is not None:
-        merged=[]; seen=set()
-        for query in list(queries):
-            items=search_marketaux_news(query=query,language="en",display=3,today_only=True)
-            if not items and naver_ok:
-                try: items=[x for x in search_naver_news(query,display=min(target,3),sort="date") if _is_today_kst(x)]
-                except Exception as exc: print(f"[LIVE NEWS DEBUG] NAVER fallback failed | {type(exc).__name__}: {exc}"); items=[]
-            if not items: items=[x for x in search_google_news_rss(query,language="en",display=min(target,3)) if _is_today_kst(x)]
-            for item in items:
-                key=_canonical_news_key(item)
-                if key and key not in seen: seen.add(key); merged.append(item)
-                if len(merged)>=target: return _rank_global_news(merged)[:target]
-        return _rank_global_news(merged)[:target]
-    us_queries=("Federal Reserve interest rates inflation CPI PCE Treasury yields dollar","US economy jobs payrolls GDP consumer spending retail sales wages","S&P 500 Nasdaq Dow earnings corporate profits market outlook","US Treasury bonds yields dollar financial markets credit conditions","US tariffs trade policy manufacturing industrial activity business investment","AI semiconductors technology companies energy oil prices US markets")
-    kr_queries=("한국은행 기준금리 원화 환율 코스피 한국 경제 수출 반도체 증시",)
-    us=[]; kr=[]
-    for q in us_queries:
-        batch=search_marketaux_news(query=q,language="en",display=3,today_only=True,must_have_entities=False); us.extend(batch); print(f"[LIVE NEWS DEBUG] Marketaux US batch={len(batch)} total={len(us)}")
-    for q in kr_queries:
-        batch=search_marketaux_news(query=q,language="ko",countries="kr",display=3,today_only=True,must_have_entities=False); kr.extend(batch); print(f"[LIVE NEWS DEBUG] Marketaux KR batch={len(batch)} total={len(kr)}")
-    def dedupe_today(items):
-        out=[]; seen=set()
-        for item in _rank_global_news([x for x in items if _is_today_kst(x)]):
-            key=_canonical_news_key(item)
-            if key and key not in seen: seen.add(key); out.append(item)
-        return out
-    us_rank=dedupe_today(us); kr_rank=dedupe_today(kr)
-    us_target=min(16,target); kr_target=min(4,max(0,target-us_target))
-    selected_us=us_rank[:us_target]; selected_kr=kr_rank[:kr_target]; selected_keys={_canonical_news_key(x) for x in selected_us+selected_kr}
-    if naver_ok and (len(selected_us)<us_target or len(selected_kr)<kr_target):
-        for q,bucket,needed,label in (("미국 경제 연준 금리 물가 고용 증시 실적 채권 달러",selected_us,us_target,"US"),("한국은행 기준금리 원화 환율 수출 반도체 코스피 경제",selected_kr,kr_target,"KR")):
+        for q in queries[:2]:
             try:
-                candidates=[x for x in search_naver_news(q,display=20,sort="date") if _is_today_kst(x)]
-                for item in candidates:
-                    if len(bucket)>=needed: break
-                    key=_canonical_news_key(item)
-                    if key and key not in selected_keys: selected_keys.add(key); bucket.append(item)
-                print(f"[LIVE NEWS DEBUG] NAVER {label} candidates={len(candidates)} selected={len(bucket)}")
-            except Exception as exc: print(f"[LIVE NEWS DEBUG] NAVER {label} unavailable | {type(exc).__name__}: {exc}")
-    if len(selected_us)<us_target or len(selected_kr)<kr_target:
-        # Emergency mode: Google News is already sorted newest-first. Do not apply
-        # a calendar-day filter here; publisher-local timestamps can shift the KST date.
-        rss_us=[]; rss_kr=[]
-        # Bing RSS를 먼저 사용한다. Google RSS에는 thumbnail이 없지만
-        # Bing RSS는 기사별 News:Image를 제공하므로 실제 뉴스 썸네일을 확보할 수 있다.
-        for q in ("Federal Reserve inflation interest rates US economy markets earnings","US stocks Treasury yields dollar tariffs technology energy"):
-            rss_us.extend(search_bing_news_rss(q,language="en",display=20))
-        rss_kr.extend(search_bing_news_rss("한국은행 금리 환율 코스피 경제 수출 반도체 증시",language="ko",display=20))
-        # Bing에서 부족하면 Google News RSS로 보완한다.
-        if len(rss_us) < us_target:
-            for q in ("Federal Reserve inflation interest rates US economy markets earnings","US stocks Treasury yields dollar tariffs technology energy"):
-                rss_us.extend(search_google_news_rss(q,language="en",display=20))
-        if len(rss_kr) < kr_target:
-            rss_kr.extend(search_google_news_rss("한국은행 금리 환율 코스피 경제 수출 반도체 증시",language="ko",display=20))
-        today_rss_us = [x for x in rss_us if _is_today_kst(x)]
-        today_rss_kr = [x for x in rss_kr if _is_today_kst(x)]
-        recent_cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
-        def recent_24h(items):
-            return [x for x in items if _news_timestamp(x) >= recent_cutoff.timestamp()]
+                items = fresh(search_naver_news(q, display=30, sort="date"))
+                if items:
+                    return items[:target]
+            except Exception as exc:
+                print(f"[STOCK NEWS] NAVER failed | {q!r} | {type(exc).__name__}: {exc}")
 
-        for item in _sort_news_latest_first(today_rss_us):
-            if len(selected_us)>=us_target: break
-            key=_canonical_news_key(item)
-            if key and key not in selected_keys: selected_keys.add(key); selected_us.append(item)
-        for item in _sort_news_latest_first(today_rss_kr):
-            if len(selected_kr)>=kr_target: break
-            key=_canonical_news_key(item)
-            if key and key not in selected_keys: selected_keys.add(key); selected_kr.append(item)
+    # Bing RSS: try Korean first for KR stocks, then English because many
+    # Korean-company stories are syndicated with English titles.
+    bing_languages = ("ko", "en") if code.isdigit() else ("en", "ko")
+    for lang in bing_languages:
+        for q in queries:
+            items = fresh(search_bing_news_rss(q, language=lang, display=30))
+            if items:
+                return items[:target]
 
-        if len(selected_us)<us_target:
-            for item in _sort_news_latest_first(recent_24h(rss_us)):
-                if len(selected_us)>=us_target: break
-                key=_canonical_news_key(item)
-                if key and key not in selected_keys: selected_keys.add(key); selected_us.append(item)
-        if len(selected_kr)<kr_target:
-            for item in _sort_news_latest_first(recent_24h(rss_kr)):
-                if len(selected_kr)>=kr_target: break
-                key=_canonical_news_key(item)
-                if key and key not in selected_keys: selected_keys.add(key); selected_kr.append(item)
+    # Google RSS final fallback, with the same 7-day filter.
+    google_languages = ("ko", "en") if code.isdigit() else ("en", "ko")
+    for lang in google_languages:
+        for q in queries:
+            items = fresh(search_google_news_rss(q, language=lang, display=30))
+            if items:
+                return items[:target]
 
-        print(f"[LIVE NEWS DEBUG] RSS selected US={len(selected_us)}/{us_target} KR={len(selected_kr)}/{kr_target} today={len(today_rss_us)}/{len(today_rss_kr)}")
-    final=_sort_news_latest_first(selected_us+selected_kr)[:target]
-    print(f"[LIVE NEWS DEBUG] END total={len(final)} US={len(selected_us)} KR={len(selected_kr)}")
-    return final
+    return []
 
 
-def _get_supabase_client():
-    """Create a server-side Supabase client for ingestion.
 
-    This function is intentionally separate from the Streamlit/UI client path.
-    The key used here must never be exposed to the browser.
-    """
-    from supabase import create_client
-
-    url = os.getenv("SUPABASE_URL", "").strip()
-    key = os.getenv("SUPABASE_SERVICE_ROLE_KEY", "").strip() or os.getenv("SUPABASE_KEY", "").strip()
-    if not url or not key:
-        raise RuntimeError(
-            "Supabase ingestion 환경변수가 필요합니다: SUPABASE_URL + "
-            "SUPABASE_SERVICE_ROLE_KEY(권장) 또는 SUPABASE_KEY"
-        )
-    return create_client(url, key)
-
-
-def persist_earnings_events(events: Iterable[EarningsEvent], *, supabase_client=None) -> int:
-    """Persist Korean reported-earnings events idempotently.
-
-    The database unique key is (market, receipt_no), so re-running the same
-    manual collection does not create duplicate events.
-    """
-    rows = []
-    for event in events:
-        if not event.receipt_no or not event.corp_name or not event.event_date:
-            continue
-        rows.append(
-            {
-                "market": "KR",
-                "stock_code": event.stock_code,
-                "stock_name": event.corp_name,
-                "event_date": event.event_date,
-                "event_type": event.event_type,
-                "report_name": event.report_name,
-                "receipt_no": event.receipt_no,
-                "source_url": event.source_url,
-                "announced_at": None,
-                "is_primary_event": event.event_type == "preliminary_earnings",
-                "metadata": {"source": "DART"},
-            }
-        )
-
-    if not rows:
-        return 0
-
-    client = supabase_client or _get_supabase_client()
-    response = (
-        client.table("earnings_events")
-        .upsert(rows, on_conflict="market,receipt_no")
-        .execute()
-    )
-    return len(response.data or rows)
-
-
-def persist_live_news_snapshot(
-    items: Iterable[NaverNewsItem],
-    *,
-    supabase_client=None,
-) -> int:
-    """Persist the automated Marketaux macro feed into news_items."""
-    rows = []
-    for item in items:
-        source_id = item.original_link or item.link
-        if not item.title or not source_id:
-            continue
-        try:
-            published_at = pd.to_datetime(item.pub_date, utc=True).isoformat()
-        except Exception:
-            published_at = None
-
-        rows.append(
-            {
-                "source": ("NAVER" if str(item.source or "").strip().upper() == "NAVER" else ("RSS" if str(item.source or "").strip().upper() in {"GOOGLE NEWS", "RSS", "BING NEWS"} else "MARKETAUX")),
-                "source_id": source_id,
-                "market": "GLOBAL",
-                "stock_code": None,
-                "stock_name": None,
-                "category": "macro",
-                "title": item.title,
-                "description": item.description,
-                "article_url": item.link,
-                "original_url": item.original_link,
-                "published_at": published_at,
-                "is_macro": True,
-                "is_investor_relevant": True,
-                "event_type": None,
-                "filter_reason": None,
-                "metadata": {
-                    "query": item.query,
-                    "source_label": item.source,
-                    "image_url": item.image_url,
-                    "snippet": item.snippet,
-                    "keywords": item.keywords,
-                    "entities": item.entities,
-                },
-            }
-        )
-
-    if not rows:
-        return 0
-
-    client = supabase_client or _get_supabase_client()
-    response = (
-        client.table("news_items")
-        .upsert(rows, on_conflict="source,source_id")
-        .execute()
-    )
-    return len(response.data or [])
-
-
-def persist_naver_news(
-    items: Iterable[NaverNewsItem],
-    *,
-    market: str = "KR",
-    stock_code: Optional[str] = None,
-    stock_name: Optional[str] = None,
-    category: str = "macro",
-    supabase_client=None,
-) -> int:
-    """Persist filtered NAVER news for either macro or a specific stock."""
-    rows = []
-    for item in items:
-        source_id = item.original_link or item.link
-        if not item.title or not source_id:
-            continue
-        try:
-            published_at = datetime.strptime(
-                item.pub_date, "%a, %d %b %Y %H:%M:%S %z"
-            ).isoformat()
-        except ValueError:
-            published_at = None
-
-        rows.append(
-            {
-                "source": "NAVER",
-                "source_id": source_id,
-                "market": market,
-                "stock_code": stock_code,
-                "stock_name": stock_name,
-                "category": category,
-                "title": item.title,
-                "description": item.description,
-                "article_url": item.link,
-                "original_url": item.original_link,
-                "published_at": published_at,
-                "is_macro": category == "macro",
-                "is_investor_relevant": True,
-                "event_type": None,
-                "filter_reason": None,
-                "metadata": {"query": item.query},
-            }
-        )
-
-    if not rows:
-        return 0
-
-    client = supabase_client or _get_supabase_client()
-    response = (
-        client.table("news_items")
-        .upsert(rows, on_conflict="source,source_id")
-        .execute()
-    )
-    return len(response.data or rows)
-
-def to_records(items: Iterable[object]) -> list[dict]:
-    return [asdict(item) for item in items]
-
-
-__all__ = [
-    "DartDisclosure",
-    "NaverNewsItem",
-    "EarningsEvent",
-    "load_dart_corp_codes",
-    "get_corp_code",
-    "fetch_dart_disclosures",
-    "build_earnings_events",
-    "search_naver_news",
-    "search_marketaux_news",
-    "fetch_stock_news",
-    "fetch_macro_news",
-    "filter_investor_news",
-    "persist_earnings_events",
-    "persist_live_news_snapshot",
-    "persist_naver_news",
-    "to_records",
-]
