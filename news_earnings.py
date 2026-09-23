@@ -867,7 +867,7 @@ def persist_live_news_snapshot(
 
         rows.append(
             {
-                "source": ("NAVER" if str(item.source or "").strip().upper() == "NAVER" else ("RSS" if str(item.source or "").strip().upper() in {"GOOGLE NEWS", "RSS"} else "MARKETAUX")),
+                "source": ("NAVER" if str(item.source or "").strip().upper() == "NAVER" else ("RSS" if str(item.source or "").strip().upper() in {"GOOGLE NEWS", "RSS", "BING NEWS"} else "MARKETAUX")),
                 "source_id": source_id,
                 "market": "GLOBAL",
                 "stock_code": None,
