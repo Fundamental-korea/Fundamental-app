@@ -76,3 +76,9 @@ def test_roic_core_inputs_come_from_filing():
     assert result["roic_inputs"]["equity"]["value"] == 500
     assert result["roic_inputs"]["cash"]["value"] == 100
     assert result["roic_inputs"]["operating_income"]["value"] == 150
+
+def test_combined_debt_and_capital_lease_is_total_debt():
+    r = row("DebtAndCapitalLeaseObligations", value=123)
+    result = classify_filing_rows([r], target_year=2025)
+    assert result["selected_debt"]["basis"] == "reported_total"
+    assert result["selected_debt"]["value"] == 123
