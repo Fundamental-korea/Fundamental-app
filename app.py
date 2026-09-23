@@ -3553,16 +3553,18 @@ def _escape_html(value):
 def _get_home_macro_news_direct_fallback(
     display=20,
     day_key="",
-    cache_version="live-news-fetch-v8-rss",
+    cache_version="live-news-fetch-v9",
 ):
-    """Live News provider fallback. The version key intentionally busts stale 2h results."""
+    """Live News provider fallback. Cache version is bumped with feed logic changes."""
     return fetch_macro_news(display=min(max(display, 1), 20))
 
 
 @st.cache_data(ttl=300, show_spinner=False)
-def _get_home_macro_news(display=20, cache_version="supabase-live-news-v8-rss"):
-    """Read today's automated Live News snapshot; recover safely if incomplete."""
+def _get_home_macro_news(display=20, cache_version="supabase-live-news-v9"):
+    """자동 수집 DB를 우선하고, 부족하면 실시간 공급원으로 즉시 20개까지 보충한다."""
     target = min(max(display, 1), 20)
+    db_rows: list[NaverNewsItem] = []
+
     if supabase is not None:
         try:
             kst = ZoneInfo("Asia/Seoul")
@@ -3571,14 +3573,9 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v8-rss"):
             next_kst = start_kst + timedelta(days=1)
             start_utc = start_kst.astimezone(timezone.utc).isoformat()
             next_utc = next_kst.astimezone(timezone.utc).isoformat()
-
             result = (
                 supabase.table("news_items")
-                .select(
-                    "source,source_id,title,description,article_url,original_url,"
-                    "published_at,metadata"
-                )
-                .in_("source", ["MARKETAUX", "NAVER", "RSS", "BING NEWS"])
+                .select("source,source_id,title,description,article_url,original_url,published_at,metadata")
                 .eq("is_macro", True)
                 .gte("published_at", start_utc)
                 .lt("published_at", next_utc)
@@ -3586,37 +3583,44 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v8-rss"):
                 .limit(target)
                 .execute()
             )
-
-            rows = []
             for row in result.data or []:
                 meta = row.get("metadata") or {}
-                rows.append(
-                    NaverNewsItem(
-                        title=str(row.get("title") or ""),
-                        description=str(row.get("description") or ""),
-                        link=str(row.get("article_url") or row.get("original_url") or ""),
-                        original_link=str(row.get("original_url") or row.get("article_url") or ""),
-                        pub_date=str(row.get("published_at") or ""),
-                        query=str(meta.get("query") or "시장 뉴스"),
-                        source=str(meta.get("source_label") or "Marketaux"),
-                        image_url=str(meta.get("image_url") or ""),
-                        snippet=str(meta.get("snippet") or ""),
-                        keywords=str(meta.get("keywords") or ""),
-                        entities=str(meta.get("entities") or ""),
-                    )
-                )
-            if len(rows) >= min(10, target):
-                return rows
-        except Exception:
-            pass
+                db_rows.append(NaverNewsItem(
+                    title=str(row.get("title") or ""),
+                    description=str(row.get("description") or ""),
+                    link=str(row.get("article_url") or row.get("original_url") or ""),
+                    original_link=str(row.get("original_url") or row.get("article_url") or ""),
+                    pub_date=str(row.get("published_at") or ""),
+                    query=str(meta.get("query") or "시장 뉴스"),
+                    source=str(meta.get("source_label") or row.get("source") or "News"),
+                    image_url=str(meta.get("image_url") or ""),
+                    snippet=str(meta.get("snippet") or ""),
+                    keywords=str(meta.get("keywords") or ""),
+                    entities=str(meta.get("entities") or ""),
+                ))
+            print(f"[HOME LIVE NEWS] Supabase today rows={len(db_rows)}/{target}")
+        except Exception as exc:
+            print(f"[HOME LIVE NEWS] Supabase read failed: {type(exc).__name__}: {exc}")
+
+    if len(db_rows) >= target:
+        return db_rows[:target]
 
     day_key = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
-    return _get_home_macro_news_direct_fallback(
-        display=target,
-        day_key=day_key,
-        cache_version="live-news-fetch-v8-rss",
+    fallback = _get_home_macro_news_direct_fallback(
+        display=target, day_key=day_key, cache_version="live-news-fetch-v9"
     )
-
+    merged = []
+    seen = set()
+    for item in _sort_news_latest_first(db_rows + list(fallback or [])):
+        key = _canonical_news_key(item)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        merged.append(item)
+        if len(merged) >= target:
+            break
+    print(f"[HOME LIVE NEWS] merged rows={len(merged)}/{target} db={len(db_rows)} fallback={len(fallback or [])}")
+    return merged
 
 def _get_earnings_events_db(days_back=90, days_forward=120):
     """Earnings UI는 외부 API를 직접 호출하지 않고 수집된 DB snapshot만 읽는다."""
@@ -4008,8 +4012,6 @@ def render_news_reader():
 
     if not image_url:
         image_url = _get_news_image_url(original_url or article_url)
-    if not image_url:
-        image_url = _get_ai_news_image_url(title, description, category)
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     with col_logo:
@@ -4071,48 +4073,51 @@ def render_news_reader():
 
 @st.cache_data(ttl=1800, show_spinner=False)
 def _get_news_image_url(article_url: str) -> str:
-    """기사 원문에서 대표 이미지(og:image)를 가볍게 가져온다. 실패하면 빈 문자열."""
+    """기사 원문에서 대표 이미지 후보를 추출한다. 원문 이미지만 사용하고 실패하면 빈 문자열."""
     url = str(article_url or "").strip()
     if not url or not url.startswith(("http://", "https://")):
         return ""
     try:
         response = requests.get(
-            url,
-            timeout=5,
+            url, timeout=5,
             headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNews/1.0)"},
             allow_redirects=True,
         )
         response.raise_for_status()
         html = response.text[:800_000]
         patterns = (
+            r'<meta[^>]+property=["\']og:image:secure_url["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image:secure_url["\']',
             r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
             r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
             r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
             r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
+            r'<meta[^>]+itemprop=["\']image["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+itemprop=["\']image["\']',
+            r'<link[^>]+rel=["\'][^"\']*image_src[^"\']*["\'][^>]+href=["\']([^"\']+)',
         )
         for pattern in patterns:
             match = re.search(pattern, html, flags=re.IGNORECASE)
-            if match:
-                image_url = unescape(match.group(1)).strip()
-                if image_url.startswith("//"):
-                    image_url = "https:" + image_url
-                elif image_url.startswith("/"):
-                    from urllib.parse import urljoin
-                    image_url = urljoin(url, image_url)
-                if image_url.startswith(("http://", "https://")):
-                    return image_url
+            if not match:
+                continue
+            image_url = unescape(match.group(1)).strip()
+            if image_url.startswith("//"):
+                image_url = "https:" + image_url
+            elif image_url.startswith("/"):
+                from urllib.parse import urljoin
+                image_url = urljoin(response.url or url, image_url)
+            if image_url.startswith(("http://", "https://")):
+                return image_url
     except Exception:
         pass
     return ""
-
 
 def _get_news_images(urls):
     urls = [str(u or "") for u in urls]
     if not urls:
         return []
-    # 20개 피드로 늘려도 이미지 OG 조회가 로딩을 끌어당기지 않도록
-    # 상위 10개만 서버에서 원문 대표 이미지를 확인한다. 나머지는 필요할 때
-    # 카드별 AI 이미지 fallback을 사용한다.
+    # 현재 화면에 표시할 카드 전체에 대해 원문 대표 이미지를 확인한다.
+    # 병렬 조회로 로딩 시간을 관리하고, 실패 시 공급원 썸네일을 사용한다.
     results = [""] * len(urls)
     lookup_count = len(urls)
     lookup_urls = [(idx, urls[idx]) for idx in range(lookup_count) if urls[idx]]
@@ -4210,7 +4215,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         keywords_text = getattr(item, "keywords", "")
         entities_text = getattr(item, "entities", "")
         provided_image_url = getattr(item, "image_url", "")
-        image_url = provided_image_url or (image_urls[idx] if idx < len(image_urls) else "")
+        # 원문 OG/Twitter 이미지를 최우선으로 사용하고, 실패할 때만 공급원 썸네일을 사용한다.\n        image_url = (image_urls[idx] if idx < len(image_urls) else "") or provided_image_url
 
         direct_url = original_url or article_url
         # 카드 표지는 원문 대표 이미지만 사용하며, AI 이미지는 생성하지 않는다.
@@ -4326,7 +4331,7 @@ def _get_stock_news_cached(
     stock_name,
     stock_code,
     limit=3,
-    cache_version="stock-news-v7-rss",
+    cache_version="stock-news-v9",
 ):
     return fetch_stock_news(
         stock_name,
@@ -4342,7 +4347,7 @@ def render_home_stock_news(stock_name, stock_code, limit=3):
             stock_name,
             stock_code,
             limit,
-            cache_version="stock-news-v6-rss",
+            cache_version="stock-news-v9",
         )
     except Exception:
         items = []

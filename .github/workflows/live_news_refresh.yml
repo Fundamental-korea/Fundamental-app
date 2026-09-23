@@ -27,10 +27,21 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Validate Python modules
+        run: python -m py_compile app.py news_earnings.py collect_live_news.py
+
+      - name: Smoke test Korean and US stock news
+        env:
+          MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
+          SUPABASE_URL: https://cnweggechipghcivruie.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python -c "from news_earnings import fetch_stock_news; kr=fetch_stock_news('삼성전자','005930',3); us=fetch_stock_news('NVIDIA','NVDA',3); print('[STOCK SMOKE] KR 삼성전자={} US NVIDIA={}'.format(len(kr),len(us))); raise SystemExit(1) if not kr or not us else None"
+
       - name: Collect today's Live News into Supabase
         env:
           MARKETAUX_API_TOKEN: ${{ secrets.MARKETAUX_API_TOKEN }}
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_URL: https://cnweggechipghcivruie.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python collect_live_news.py

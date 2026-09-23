@@ -8,8 +8,8 @@ planning document:
 - NAVER News Search API: Korean macro/company news.
 - Korean earnings calendar: separate preliminary earnings (잠정실적) from
   periodic reports (정기보고서).
-- US news/earnings are deliberately not implemented here yet; they are a later
-  roadmap item.
+- US macro and individual-stock news use Marketaux with NAVER/Bing/Google RSS fallbacks;
+  Korean individual-stock news uses the same multi-provider aggregation path.
 """
 
 from __future__ import annotations
@@ -539,37 +539,81 @@ def _rank_global_news(items: list[NaverNewsItem]) -> list[NaverNewsItem]:
     return _sort_news_latest_first(items)
 
 def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display: int = 3) -> list[NaverNewsItem]:
-    """Stock news: newest-first, last 7 days only, with multi-provider fallback."""
-    name,code=str(stock_name or "").strip(),str(stock_code or "").strip()
-    target=min(max(display,1),3)
-    if not name and not code: return []
-    def fresh(items): return _sort_news_latest_first(_within_last_days(items,7))
-    if code and not code.isdigit():
-        items=fresh(search_marketaux_news(symbols=code,language="en",countries="us",display=max(target,10)))
-        if items: return items[:target]
-    elif name:
-        items=fresh(search_marketaux_news(query=name,language="ko",countries="kr",display=max(target,10)))
-        if items: return items[:target]
-    queries=[f'"{name}" "{code}"',f'"{name}"',code] if code.isdigit() else [f'"{name}" {code}'.strip(),f'"{name}"',code]
+    """개별 종목 뉴스: 여러 공급원을 합쳐 최근 7일 내 최신 3건을 채운다."""
+    name = str(stock_name or "").strip()
+    raw_code = str(stock_code or "").strip()
+    target = min(max(display, 1), 3)
+    if not name and not raw_code:
+        print("[STOCK NEWS] empty stock identity")
+        return []
+
+    # 국내 종목코드는 6자리 숫자를 기준으로 판별한다.
+    digits = re.sub(r"[^0-9]", "", raw_code)
+    is_kr = len(digits) == 6 and digits == digits.zfill(6)
+    code = digits if is_kr else raw_code.upper()
+
+    def fresh(items: Iterable[NaverNewsItem]) -> list[NaverNewsItem]:
+        return _sort_news_latest_first(_within_last_days(items, 7))
+
+    collected: list[NaverNewsItem] = []
+    seen: set[str] = set()
+
+    def add_candidates(provider: str, items: Iterable[NaverNewsItem]) -> None:
+        fresh_items = fresh(items)
+        added = 0
+        for item in fresh_items:
+            key = _canonical_news_key(item)
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            collected.append(item)
+            added += 1
+        if added:
+            print(f"[STOCK NEWS] {provider} added={added} total={len(collected)}")
+
+    # 1) 구조화 금융뉴스
+    if is_kr and name:
+        add_candidates("MARKETAUX-KR", search_marketaux_news(query=name, language="ko", countries="kr", display=max(target, 10), must_have_entities=False))
+    elif code:
+        add_candidates("MARKETAUX-US", search_marketaux_news(symbols=code, language="en", countries="us", display=max(target, 10), must_have_entities=False))
+
+    # 2) 검색어를 여러 형태로 만들어 한 검색원이 부족해도 다음 검색원이 채우게 한다.
+    if is_kr:
+        queries = [q for q in (
+            f'"{name}" "{code}"' if name else "",
+            f'"{name}"' if name else "",
+            code,
+        ) if q]
+        languages = ("ko", "en")
+    else:
+        queries = [q for q in (
+            f'"{name}" {code}'.strip() if name or code else "",
+            f'"{name}"' if name else "",
+            code,
+        ) if q]
+        languages = ("en", "ko")
+
+    # 3) NAVER Search API
     if _env_optional("NAVER_CLIENT_ID") and _env_optional("NAVER_CLIENT_SECRET"):
         for q in queries:
             try:
-                items=fresh(search_naver_news(q,display=30,sort="date"))
-                if items: return items[:target]
-            except Exception as exc: print(f"[STOCK NEWS] NAVER failed | {q!r} | {type(exc).__name__}: {exc}")
-    languages=("ko","en") if code.isdigit() else ("en","ko")
+                add_candidates("NAVER", search_naver_news(q, display=30, sort="date"))
+            except Exception as exc:
+                print(f"[STOCK NEWS] NAVER failed | {q!r} | {type(exc).__name__}: {exc}")
+
+    # 4) Bing News RSS
     for lang in languages:
         for q in queries:
-            items=fresh(search_bing_news_rss(q,language=lang,display=30))
-            if items: return items[:target]
+            add_candidates(f"BING-{lang}", search_bing_news_rss(q, language=lang, display=30))
+
+    # 5) Google News RSS
     for lang in languages:
         for q in queries:
-            items=fresh(search_google_news_rss(q,language=lang,display=30))
-            if items: return items[:target]
-    return []
+            add_candidates(f"GOOGLE-{lang}", search_google_news_rss(q, language=lang, display=30))
 
-
-
+    result = _sort_news_latest_first(collected)[:target]
+    print(f"[STOCK NEWS] END name={name!r} code={code!r} market={'KR' if is_kr else 'US'} total={len(result)}/{target}")
+    return result
 
 BING_NEWS_RSS_URL = "https://www.bing.com/news/search"
 
@@ -813,7 +857,15 @@ def persist_live_news_snapshot(
 
         rows.append(
             {
-                "source": ("NAVER" if str(item.source or "").strip().upper() == "NAVER" else ("RSS" if str(item.source or "").strip().upper() in {"GOOGLE NEWS", "RSS"} else "MARKETAUX")),
+                "source": (
+                    "NAVER"
+                    if str(item.source or "").strip().upper() == "NAVER"
+                    else (
+                        "RSS"
+                        if str(item.source or "").strip().upper() in {"GOOGLE NEWS", "RSS", "BING NEWS"}
+                        else "MARKETAUX"
+                    )
+                ),
                 "source_id": source_id,
                 "market": "GLOBAL",
                 "stock_code": None,
