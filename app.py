@@ -4477,8 +4477,6 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         # AI fallback은 실제 원문 이미지가 없는 경우에만 생성한다.
         direct_url = original_url or article_url
         source_label = _news_source_label(direct_url, source_hint or "뉴스")
-        # 카드 클릭은 내부 뉴스 리더로 연결하고, 원문 URL을 안전한 fallback으로 사용한다.
-        reader_url = original_url or article_url
         image_candidates = [
             image_urls[idx] if idx < len(image_urls) else "",
             provided_image_url,
@@ -4489,13 +4487,29 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 image_url = candidate_image
                 break
 
+        ai_fallback_url = _get_ai_news_image_url(
+            title=title_text,
+            description=desc_text,
+            query=query,
+            article_url=direct_url,
+        )
         if not image_url:
-            image_url = _get_ai_news_image_url(
-                title=title_text,
-                description=desc_text,
-                query=query,
-                article_url=direct_url,
-            )
+            image_url = ai_fallback_url
+
+        reader_url = _build_news_reader_url(
+            title=title_text,
+            description=desc_text,
+            article_url=article_url,
+            original_url=original_url,
+            pub_date=pub_date,
+            image_url=image_url,
+            source=source_label,
+            category=query,
+            back_url=back_url,
+            snippet=snippet_text,
+            keywords=keywords_text,
+            entities=entities_text,
+        )
 
         # 메인 카드에는 AI 이미지 여부를 별도 배지로 표시하지 않는다.
 
@@ -4504,7 +4518,8 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             media_html = (
                 f'<div class="live-news-image-wrap">'
                 f'<img class="live-news-image" src="{_escape_html(image_url)}" loading="lazy" '
-                f'alt="{_escape_html(display_title)}" onerror="this.onerror=null;this.style.display=\'none\';this.parentElement.classList.add(\'live-news-image-broken\');">'
+                f'alt="{_escape_html(display_title)}" data-fallback="{_escape_html(ai_fallback_url)}" '
+                f'onerror="this.onerror=null;this.src=this.dataset.fallback;">'
                 f'</div>'
             )
         else:
