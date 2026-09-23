@@ -581,13 +581,83 @@ def fetch_stock_news(stock_name: str, stock_code: Optional[str] = None, display:
         except Exception as exc:
             print(f"[STOCK NEWS] NAVER fallback failed | {name} | {type(exc).__name__}: {exc}")
 
+    stock_query = f'"{name}" {code}' if code.isdigit() else query
+    bing_items = _within_last_days(
+        search_bing_news_rss(stock_query, language="ko", display=max(target * 6, 18)),
+        7,
+    )
+    if bing_items:
+        return _sort_news_latest_first(bing_items)[:target]
+
     rss_items = search_google_news_rss(
-        f'"{name}" {code}' if code.isdigit() else query,
+        stock_query,
         language="ko",
         display=max(target * 4, 12),
     )
     return _sort_news_latest_first(_within_last_days(rss_items, 7))[:target]
 
+
+
+BING_NEWS_RSS_URL = "https://www.bing.com/news/search"
+
+
+def search_bing_news_rss(query: str, *, language: str = "en", display: int = 20) -> list[NaverNewsItem]:
+    query = str(query or "").strip()
+    if not query:
+        return []
+    params = {
+        "q": query,
+        "format": "rss",
+        "count": max(10, min(display, 50)),
+        "setlang": "ko-KR" if language.startswith("ko") else "en-US",
+        "cc": "KR" if language.startswith("ko") else "US",
+    }
+    try:
+        response = requests.get(
+            BING_NEWS_RSS_URL,
+            params=params,
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNews/1.0)"},
+        )
+        response.raise_for_status()
+        root = ET.fromstring(response.content)
+    except Exception as exc:
+        print(f"[STOCK NEWS] Bing RSS failed | {query!r} | {type(exc).__name__}: {exc}")
+        return []
+
+    out = []
+    ns = {"news": "https://www.bing.com/news/search"}
+    for node in root.findall(".//item")[:max(1, min(display, 50))]:
+        title = _clean_html(node.findtext("title") or "")
+        raw_link = (node.findtext("link") or "").strip()
+        pub = (node.findtext("pubDate") or "").strip()
+        desc = _clean_html(node.findtext("description") or "")
+        image_node = node.find("news:image", ns)
+        image_url = _clean_html(image_node.text or "") if image_node is not None else ""
+        link = raw_link
+        try:
+            parsed = urlparse(raw_link)
+            q = dict(parse_qsl(parsed.query))
+            if q.get("url"):
+                link = q["url"]
+        except Exception:
+            pass
+        source = "Bing News"
+        if title and link:
+            out.append(
+                NaverNewsItem(
+                    title=title,
+                    description=desc,
+                    link=link,
+                    original_link=link,
+                    pub_date=pub,
+                    query=query,
+                    source=source,
+                    image_url=image_url,
+                )
+            )
+    print(f"[STOCK NEWS] Bing RSS | {query!r} | items={len(out)}")
+    return out
 
 
 GOOGLE_NEWS_RSS_URL = "https://news.google.com/rss/search"
