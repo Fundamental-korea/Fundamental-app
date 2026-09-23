@@ -17,6 +17,7 @@ from collector_us_fundamental import (
 )
 from supabase import create_client
 from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8
+from us_scoring import data_reliability_from_periods
 
 STANDARD_SECTORS = (
     "technology", "healthcare", "consumer", "industrials",
