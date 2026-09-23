@@ -3957,24 +3957,36 @@ def _generate_ai_news_article(
         return {}
 
 def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -> str:
-    """대표 이미지가 없을 때 기사 내용에 맞춘 AI 편집 일러스트 URL을 만든다.
+    """대표 이미지가 없을 때 기사 주제에 맞는 고해상도 AI 편집 일러스트 URL을 만든다.
     브라우저에서 직접 이미지를 요청하므로 서버에 이미지 파일을 저장하지 않는다."""
     key = f"{title}|{description}|{query}"
     seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:8], 16)
-    topic = (description or title or query or "financial markets")[:260]
+
+    visual_styles = (
+        "cinematic financial newsroom photography with trading screens and market data atmosphere",
+        "editorial macroeconomics illustration with bonds, currency, rates and global market imagery",
+        "high-end business magazine photography focused on the companies or industries in the story",
+        "realistic geopolitical economy editorial scene with trade, industry and global markets context",
+        "modern technology and semiconductor financial editorial photography with realistic depth and lighting",
+        "energy and commodities market editorial photography with realistic materials, infrastructure and dramatic light",
+    )
+    visual_style = visual_styles[seed % len(visual_styles)]
+    topic = (description or title or query or "financial markets").strip()[:420]
+
     prompt = (
-        "Editorial financial news illustration for a professional stock-market website. "
-        "No readable text, no logos, no recognizable real people. "
-        "Landscape 16:9 composition, realistic newsroom/editorial photography aesthetic. "
-        f"Visualize this news topic: {topic}. "
-        f"Search category: {query or 'financial markets'}."
+        "Create a premium high-resolution 16:9 editorial image for a professional financial news website. "
+        "Photorealistic, crisp fine details, realistic lighting, natural depth, clean composition, "
+        "journalistic visual storytelling. No readable text, no watermarks, no logos, no charts with fake text, "
+        "and no recognizable real people. Avoid generic repeated stock-photo layouts. "
+        f"Visual style: {visual_style}. "
+        f"News topic to visualize: {topic}. "
+        f"Category/context: {query or 'financial markets'}."
     )
     return (
         "https://image.pollinations.ai/prompt/"
         + quote(prompt, safe="")
-        + f"?width=960&height=540&seed={seed}&nologo=true"
+        + f"?width=1536&height=864&seed={seed}&nologo=true"
     )
-
 
 def _build_news_reader_url(
     *,
@@ -4449,7 +4461,11 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 image_url = candidate_image
                 break
         if not image_url:
-            image_url = AI_NEWS_FALLBACK_IMAGE_URL
+            image_url = _get_ai_news_image_url(
+                display_title,
+                display_desc,
+                query or source_hint or "financial markets",
+            ) or AI_NEWS_FALLBACK_IMAGE_URL
 
         direct_url = original_url or article_url
         # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
