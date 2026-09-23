@@ -4256,7 +4256,7 @@ def render_home_live_news(limit=20):
 
     page_size = 10
     total_pages = max(1, (len(items) + page_size - 1) // page_size)
-    day_key = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
+    day_key = date.today().isoformat()
     if st.session_state.get("live_news_day_key") != day_key:
         st.session_state["live_news_day_key"] = day_key
         st.session_state["live_news_page"] = 0
@@ -4271,7 +4271,7 @@ def render_home_live_news(limit=20):
         page_items,
         limit=page_size,
         title="📰 Live News",
-        subtitle="미국 경제·금융 중심의 주요 뉴스 20개 · 카드 제목과 설명은 한국어로 AI 현지화 · 10개씩 표시하며 화살표로 다음 묶음을 볼 수 있습니다.",
+        subtitle="미국 경제·금융 중심의 주요 뉴스 20개 · 카드 제목과 설명은 한국어로 AI 현지화 · 10개씩 표시 · News Engine v2026.09.23",
         back_url=f"?theme={THEME_MODE}",
     )
 
