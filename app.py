@@ -997,7 +997,8 @@ st.markdown(
         background: #FFF7ED;
         color: #9A3412 !important;
     }
-    .earnings-detail-compare {        margin-top: 9px;
+    .earnings-detail-compare {
+        margin-top: 9px;
         padding-top: 9px;
         border-top: 1px dashed #E5E7EB;
         color: #374151 !important;
@@ -1996,7 +1997,8 @@ def get_combined_stock_db():
         us_stocks = [row for row in us_stocks if row["ticker"]]
         if not us_stocks:
             raise ValueError("US_Companies에서 검색 가능한 종목이 없습니다.")
-    except Exception:        us_stocks = [
+    except Exception:
+        us_stocks = [
             {"ticker": "AAPL", "name": "Apple Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
             {"ticker": "NVDA", "name": "NVIDIA Corporation", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
             {"ticker": "TSLA", "name": "Tesla Inc.", "exch": "Equities - NASDAQ", "flag": "🇺🇸"},
@@ -2995,7 +2997,8 @@ def render_unified_search_box(stock_db, target_view=None):
                 justify-content: space-between;
                 padding: 10px 16px;
                 cursor: pointer;
-                transition: background 0.15s;                text-decoration: none !important;
+                transition: background 0.15s;
+                text-decoration: none !important;
                 color: inherit !important;
             }}
             .stock-row:hover, .stock-row.active {{
@@ -3994,7 +3997,8 @@ def _get_ai_news_image_url(
 
     topic = (description or title or query or "global financial markets").strip()[:420]
     prompt = (
-        "High-end editorial illustration for a professional financial-news website. "        "Landscape 16:9, photorealistic but polished newsroom aesthetic, crisp details, "
+        "High-end editorial illustration for a professional financial-news website. "
+        "Landscape 16:9, photorealistic but polished newsroom aesthetic, crisp details, "
         "natural lighting, realistic materials, depth and clean composition. "
         "No readable text, no headlines, no logos, no brand marks, no watermarks, "
         "no recognizable real people, no duplicated objects. "
@@ -4995,7 +4999,8 @@ def _render_earnings_detail(selected_date, events, market_filter="전체"):
               {compare}
             </div>
             """,
-            unsafe_allow_html=True,        )
+            unsafe_allow_html=True,
+        )
 
 
 @st.fragment(run_every="5m")
@@ -5994,7 +5999,8 @@ elif not selected_code:
                         <div class='card-item-row'>
                             <a href='/?code=005930&theme={THEME_MODE}' target='_blank' class='stock-link'>1. 삼성전자 (005930)</a>
                             <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ HOT</span>
-                        </div>                        <div class='card-item-row'>
+                        </div>
+                        <div class='card-item-row'>
                             <a href='/?code=000660&theme={THEME_MODE}' target='_blank' class='stock-link'>2. SK하이닉스 (000660)</a>
                             <span style='font-size: 11px; color: {THEME["success"]}; font-weight: 700;'>▲ 1</span>
                         </div>
