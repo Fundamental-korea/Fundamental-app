@@ -1,1 +1,1 @@
-2026-09-23 20:50 KST - rerun after latest-year-only 1Y score recovery
+2026-09-23 21:00 KST - canonical score column sync and final US quality verification
