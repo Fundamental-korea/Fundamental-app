@@ -3728,7 +3728,6 @@ def _news_source_label(url: str, fallback: str = "뉴스") -> str:
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
-@st.cache_data(ttl=86400, show_spinner=False)
 def _translate_text_fallback_en_ko(text: str) -> str:
     """Translate one English news field to Korean when Gemini is unavailable."""
     value = str(text or "").strip()
@@ -3753,6 +3752,7 @@ def _translate_text_fallback_en_ko(text: str) -> str:
         print(f"[News Translation Fallback] Request failed: {type(exc).__name__}: {exc}")
     return ""
 
+@st.cache_data(ttl=86400, show_spinner=False)
 def _translate_news_cards(
     items: tuple[tuple[str, str], ...],
     cache_version: str = "live-news-korean-v7",
@@ -3847,6 +3847,7 @@ def _translate_news_cards(
     else:
         print("[Gemini Live News] GEMINI_API_KEY is not configured; using fallback translation.")
 
+    # Gemini가 없거나 일부 카드만 번역된 경우에만 보조 번역을 사용한다.
     for idx, (original_title, original_description) in enumerate(clean_items):
         current = localized.get(idx, {})
         translated_title = str(current.get("title") or "").strip()
