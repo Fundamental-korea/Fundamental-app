@@ -4226,23 +4226,85 @@ def _get_news_image_url(article_url: str) -> str:
         seen = set()
         from urllib.parse import urljoin
 
+        def add_candidate(raw_url):
+            image_url = unescape(str(raw_url or "")).strip()
+            if image_url.startswith("//"):
+                image_url = "https:" + image_url
+            elif image_url.startswith("/"):
+                image_url = urljoin(response.url or url, image_url)
+            if not image_url.startswith(("http://", "https://")):
+                return
+            key = image_url.strip().lower()
+            if key in seen:
+                return
+            seen.add(key)
+            candidates.append(image_url)
+
+        # 1) srcset / data-srcset: 브라우저가 선택하는 가장 큰 원본 후보를 우선한다.
+        srcset_values = re.findall(
+            r'(?:srcset|data-srcset)=["\\']([^"\\']+)["\\']',
+            html,
+            flags=re.IGNORECASE,
+        )
+        srcset_candidates = []
+        for srcset in srcset_values:
+            for entry in re.split(r"\\s*,\\s*", srcset):
+                parts = entry.strip().split()
+                if not parts:
+                    continue
+                raw_url = parts[0]
+                width = 0
+                if len(parts) > 1:
+                    match_width = re.match(r"(\\d+)w$", parts[1])
+                    if match_width:
+                        width = int(match_width.group(1))
+                srcset_candidates.append((width, raw_url))
+        for _, raw_url in sorted(srcset_candidates, key=lambda x: x[0], reverse=True)[:12]:
+            add_candidate(raw_url)
+
+        # 2) JSON-LD 구조화 데이터의 image / primaryImageOfPage 후보.
+        for match in re.finditer(
+            r'"(?:image|contentUrl|thumbnailUrl)"\\s*:\\s*"([^"]+)"',
+            html,
+            flags=re.IGNORECASE,
+        ):
+            add_candidate(match.group(1))
+            if len(candidates) >= 24:
+                break
+
+        # 3) 주요 메타 태그.
+        patterns = (
+            r"<meta[^>]+property=[\"']og:image:secure_url[\"'][^>]+content=[\"']([^\"']+)",
+            r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:image:secure_url[\"']",
+            r"<meta[^>]+property=[\"']og:image[\"'][^>]+content=[\"']([^\"']+)",
+            r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+property=[\"']og:image[\"']",
+            r"<meta[^>]+name=[\"']twitter:image:src[\"'][^>]+content=[\"']([^\"']+)",
+            r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+name=[\"']twitter:image:src[\"']",
+            r"<meta[^>]+name=[\"']twitter:image[\"'][^>]+content=[\"']([^\"']+)",
+            r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+name=[\"']twitter:image[\"']",
+            r"<meta[^>]+itemprop=[\"']image[\"'][^>]+content=[\"']([^\"']+)",
+            r"<meta[^>]+content=[\"']([^\"']+)[\"'][^>]+itemprop=[\"']image[\"']",
+            r"<link[^>]+rel=[\"'][^\"']*image_src[^\"']*[\"'][^>]+href=[\"']([^\"']+)",
+        )
         for pattern in patterns:
             for match in re.finditer(pattern, html, flags=re.IGNORECASE):
-                image_url = unescape(match.group(1)).strip()
-                if image_url.startswith("//"):
-                    image_url = "https:" + image_url
-                elif image_url.startswith("/"):
-                    image_url = urljoin(response.url or url, image_url)
-                if not image_url.startswith(("http://", "https://")):
-                    continue
-                key = image_url.strip().lower()
-                if key in seen:
-                    continue
-                seen.add(key)
-                candidates.append(image_url)
-                if len(candidates) >= 8:
+                add_candidate(match.group(1))
+                if len(candidates) >= 24:
                     break
-            if len(candidates) >= 8:
+            if len(candidates) >= 24:
+                break
+
+        # 4) 흔한 lazy-load 원본 속성.
+        for attr in ("data-original", "data-src", "data-lazy-src"):
+            for match in re.finditer(
+                rf'{attr}=["\\']([^"\\']+)["\\']',
+                html,
+                flags=re.IGNORECASE,
+            ):
+                add_candidate(match.group(1))
+                if len(candidates) >= 24:
+                    break
+            if len(candidates) >= 24:
                 break
 
         # 정상 크기 후보를 우선 반환한다. 대표 이미지 후보가 하나뿐이고
