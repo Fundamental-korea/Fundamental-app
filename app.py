@@ -3711,7 +3711,7 @@ def _news_source_label(url: str, fallback: str = "뉴스") -> str:
 @st.cache_data(ttl=86400, show_spinner=False)
 def _translate_news_cards(
     items: tuple[tuple[str, str], ...],
-    cache_version: str = "live-news-korean-v3",
+    cache_version: str = "live-news-korean-v4",
 ) -> dict:
     """Translate the visible Live News cards with one plain Gemini request."""
     clean_items = tuple(
@@ -3754,7 +3754,7 @@ def _translate_news_cards(
 
     try:
         response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent",
             headers={
                 "x-goog-api-key": api_key,
                 "Content-Type": "application/json",
@@ -3871,7 +3871,7 @@ def _generate_ai_news_article(
 """
     try:
         response = requests.post(
-            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            f"https://generativelanguage.googleapis.com/v1/models/{model}:generateContent",
             headers={
                 "x-goog-api-key": api_key,
                 "Content-Type": "application/json",
@@ -4169,7 +4169,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
         localized_cards = _translate_news_cards(
             translation_input,
-            cache_version="live-news-korean-v3",
+            cache_version="live-news-korean-v4",
         )
 
     cards = []
@@ -4262,7 +4262,7 @@ def render_home_live_news(limit=20):
 
     page_size = 10
     total_pages = max(1, (len(items) + page_size - 1) // page_size)
-    day_key = date.today().isoformat()
+    day_key = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
     if st.session_state.get("live_news_day_key") != day_key:
         st.session_state["live_news_day_key"] = day_key
         st.session_state["live_news_page"] = 0
@@ -4277,7 +4277,7 @@ def render_home_live_news(limit=20):
         page_items,
         limit=page_size,
         title="📰 Live News",
-        subtitle="미국 경제·금융 중심의 주요 뉴스 20개 · 카드 제목과 설명은 한국어로 AI 현지화 · 10개씩 표시 · News Engine v2026.09.23",
+        subtitle="미국 경제·금융 중심의 주요 뉴스 20개 · 카드 제목과 설명은 한국어로 AI 현지화 · 10개씩 표시 · News Engine v2026.09.23-KR-v4",
         back_url=f"?theme={THEME_MODE}",
     )
 
