@@ -7,9 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       limit:
-        description: "Optional maximum number of valuation rows"
+        description: "Maximum number of valuation rows for this batch"
         required: false
-        default: "0"
+        default: "1000"
+        type: string
+      start_after:
+        description: "Resume after this ticker (exclusive)"
+        required: false
+        default: ""
         type: string
 
 permissions:
@@ -48,12 +53,13 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
-          LIMIT="${{ inputs.limit || '0' }}"
-          if [ "$LIMIT" = "0" ]; then
-            python collector_us_valuation_all.py
-          else
-            python collector_us_valuation_all.py --limit "$LIMIT"
+          LIMIT="${{ inputs.limit || '1000' }}"
+          START_AFTER="${{ inputs.start_after || '' }}"
+          ARGS=(collector_us_valuation_all.py --limit "$LIMIT")
+          if [ -n "$START_AFTER" ]; then
+            ARGS+=(--start-after "$START_AFTER")
           fi
+          python "${ARGS[@]}"
 
       - name: Verify
         env:
@@ -66,4 +72,5 @@ jobs:
           sb=create_client(os.environ["SUPABASE_URL"],os.environ["SUPABASE_KEY"])
           q=sb.table("US_Fundamental").select("ticker",count="exact",head=True).eq("data_unavailable",False).not_.is_("snapshot","null").execute()
           print(f"usable_snapshot_rows={q.count}")
+          print("valuation backfill target gate: core inputs only (price, EPS, BPS, current shares, period-end shares)")
           PY
