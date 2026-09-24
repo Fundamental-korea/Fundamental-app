@@ -72,7 +72,7 @@ def _extract_best_source_image(article_url: str) -> str:
 
         # JSON-LD image/contentUrl/thumbnailUrl.
         for match in re.finditer(
-            r'"(?:image|contentUrl|thumbnailUrl)"s*:s*"([^"]+)"',
+            r'"(?:image|contentUrl|thumbnailUrl)"\\s*:\\s*"([^"]+)"',
             html,
             flags=re.IGNORECASE,
         ):
@@ -80,18 +80,19 @@ def _extract_best_source_image(article_url: str) -> str:
 
         # OpenGraph / Twitter image metadata.
         patterns = (
-            r"<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)",
-            r"<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image:secure_url["']",
-            r"<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)",
-            r"<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']",
-            r"<meta[^>]+name=["']twitter:image:src["'][^>]+content=["']([^"']+)",
-            r"<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image:src["']",
-            r"<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)",
-            r"<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']",
+            r'<meta[^>]+property=["\\\']og:image:secure_url["\\\'][^>]+content=["\\\']([^"\\\']+)',
+            r'<meta[^>]+content=["\\\']([^"\\\']+)["\\\'][^>]+property=["\\\']og:image:secure_url["\\\']',
+            r'<meta[^>]+property=["\\\']og:image["\\\'][^>]+content=["\\\']([^"\\\']+)',
+            r'<meta[^>]+content=["\\\']([^"\\\']+)["\\\'][^>]+property=["\\\']og:image["\\\']',
+            r'<meta[^>]+name=["\\\']twitter:image:src["\\\'][^>]+content=["\\\']([^"\\\']+)',
+            r'<meta[^>]+content=["\\\']([^"\\\']+)["\\\'][^>]+name=["\\\']twitter:image:src["\\\']',
+            r'<meta[^>]+name=["\\\']twitter:image["\\\'][^>]+content=["\\\']([^"\\\']+)',
+            r'<meta[^>]+content=["\\\']([^"\\\']+)["\\\'][^>]+name=["\\\']twitter:image["\\\']',
         )
         for pattern in patterns:
             for match in re.finditer(pattern, html, flags=re.IGNORECASE):
                 candidates.append((0, 2, unescape(match.group(1)).strip()))
+
 
         normalized = []
         seen = set()
