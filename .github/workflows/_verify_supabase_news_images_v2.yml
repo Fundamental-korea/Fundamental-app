@@ -40,9 +40,11 @@ jobs:
               print(at.exception[0])
               sys.exit(1)
 
-          html = "\n".join(getattr(x, "value", "") for x in at.html)
+          html_nodes = at.get("html")
+          html = "\n".join(getattr(x, "value", "") for x in html_nodes)
           topic = "storage/v1/object/public/news-topic-images/"
           source = "storage/v1/object/public/news-source-images/"
+          print("HTML_NODE_COUNT", len(html_nodes))
           print("LIVE_GRID_COUNT", html.count("live-news-grid"))
           print("TOPIC_STORAGE_COUNT", html.count(topic))
           print("SOURCE_STORAGE_COUNT", html.count(source))
