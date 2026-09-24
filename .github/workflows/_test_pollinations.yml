@@ -1,0 +1,18 @@
+name: Test Pollinations image endpoint
+
+on:
+  push:
+    paths:
+      - ".github/workflows/_test_pollinations.yml"
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - run: |
+          set -e
+          url='https://gen.pollinations.ai/image/financial%20news%20banner%20about%20global%20markets?model=klein&width=1600&height=480&seed=1&nologo=true&enhance=true'
+          code="$(curl -L -sS -o /tmp/test.jpg -w '%{http_code}' --max-time 90 "$url")"
+          echo "HTTP=$code SIZE=$(stat -c%s /tmp/test.jpg)"
+          file /tmp/test.jpg
+          test "$code" = "200"
