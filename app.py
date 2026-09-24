@@ -4844,20 +4844,24 @@ def _get_news_topic_key(title: str = "", description: str = "", query: str = "",
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _get_news_topic_image_map() -> dict:
-    """Supabase Storage에 저장된 고정 뉴스 이미지를 topic_key별로 가져온다."""
-    mapping = {
-        key: (
-            f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
-            f"news-topic-images/{key}.jpg"
-        )
-        for key in NEWS_TOPIC_KEYS
-    }
+    """Supabase Storage에 저장된 섹터별 다중 이미지 pool을 가져온다."""
+    mapping = {key: [] for key in NEWS_TOPIC_KEYS}
     try:
         if supabase is None:
-            return mapping
+            return {
+                key: [
+                    (
+                        f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
+                        f"news-topic-images/{key}.jpg"
+                    )
+                ]
+                for key in NEWS_TOPIC_KEYS
+            }
         rows = (
             supabase.table("news_topic_images")
-            .select("topic_key, public_url")
+            .select("topic_key, public_url, storage_path")
+            .order("topic_key")
+            .order("storage_path")
             .execute()
             .data
             or []
@@ -4865,19 +4869,37 @@ def _get_news_topic_image_map() -> dict:
         for row in rows:
             key = str(row.get("topic_key") or "").strip()
             url = str(row.get("public_url") or "").strip()
-            if key in mapping and url.startswith(("http://", "https://")):
-                mapping[key] = url
+            if key not in mapping or not url.startswith(("http://", "https://")):
+                continue
+            if url not in mapping[key]:
+                mapping[key].append(url)
     except Exception as exc:
         print(
             f"[Live News Images] Supabase mapping lookup failed: "
             f"{type(exc).__name__}: {exc}"
         )
-    return mapping
 
-def _get_news_topic_image_url(topic_key: str) -> str:
-    """Supabase Storage의 고정 주제 이미지 public URL을 반환한다."""
+    for key in NEWS_TOPIC_KEYS:
+        if not mapping[key]:
+            mapping[key] = [
+                (
+                    f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
+                    f"news-topic-images/{key}.jpg"
+                )
+            ]
+    return {key: tuple(urls) for key, urls in mapping.items()}
+
+
+def _get_news_topic_image_url(topic_key: str, used_urls=None) -> str:
+    """섹터 pool에서 무작위 이미지를 선택한다. 같은 화면에서는 중복을 피할 수 있다."""
     key = str(topic_key or "global_markets").strip()
-    return _get_news_topic_image_map().get(key, "")
+    candidates = list(_get_news_topic_image_map().get(key, ()))
+    if not candidates:
+        return ""
+
+    blocked = set(str(url or "") for url in (used_urls or set()) if url)
+    available = [url for url in candidates if url not in blocked] or candidates
+    return random.choice(available)
 
 
 def _normalize_news_image_url(image_url: str) -> str:
@@ -5458,6 +5480,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
 
     cards = []
+    used_topic_image_urls = set()
     for idx, item in enumerate(selected_items):
         title_text = item.title if hasattr(item, "title") else item.get("title", "")
         desc_text = item.description if hasattr(item, "description") else item.get("description", "")
@@ -5479,7 +5502,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             query,
             source_hint,
         )
-        static_topic_image = _get_news_topic_image_url(news_topic)
+        static_topic_image = _get_news_topic_image_url(news_topic, used_topic_image_urls)
+        if static_topic_image:
+            used_topic_image_urls.add(static_topic_image)
         static_topic_svg = _get_news_topic_svg_markup(news_topic)
         # 위에서 번역 전에 확정한 이미지를 그대로 사용한다.
         image_url = resolved_image_urls[idx] if idx < len(resolved_image_urls) else ""
