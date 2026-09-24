@@ -4066,9 +4066,16 @@ def _get_news_topic_key(title: str = "", description: str = "", query: str = "",
 @st.cache_data(ttl=3600, show_spinner=False)
 def _get_news_topic_image_map() -> dict:
     """Supabase Storage에 저장된 고정 뉴스 이미지를 topic_key별로 가져온다."""
-    if not supabase:
-        return {}
+    mapping = {
+        key: (
+            f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
+            f"news-topic-images/{key}.jpg"
+        )
+        for key in NEWS_TOPIC_KEYS
+    }
     try:
+        if supabase is None:
+            return mapping
         rows = (
             supabase.table("news_topic_images")
             .select("topic_key, public_url")
@@ -4076,16 +4083,17 @@ def _get_news_topic_image_map() -> dict:
             .data
             or []
         )
-        return {
-            str(row.get("topic_key") or "").strip(): str(row.get("public_url") or "").strip()
-            for row in rows
-            if str(row.get("topic_key") or "").strip()
-            and str(row.get("public_url") or "").startswith("https://")
-        }
+        for row in rows:
+            key = str(row.get("topic_key") or "").strip()
+            url = str(row.get("public_url") or "").strip()
+            if key in mapping and url.startswith(("http://", "https://")):
+                mapping[key] = url
     except Exception as exc:
-        print(f"[Live News Images] Supabase mapping lookup failed: {type(exc).__name__}: {exc}")
-        return {}
-
+        print(
+            f"[Live News Images] Supabase mapping lookup failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+    return mapping
 
 def _get_news_topic_image_url(topic_key: str) -> str:
     """Supabase Storage의 고정 주제 이미지 public URL을 반환한다."""
@@ -4191,7 +4199,7 @@ def render_news_reader():
     if not news_topic:
         news_topic = _get_news_topic_key(title, description, category, source)
     static_reader_image = _get_news_topic_image_url(news_topic)
-    image_url = _normalize_news_image_url(str(qp.get("news_image", "")).strip()) or static_reader_image
+    image_url = static_reader_image
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     with col_logo:
@@ -4634,10 +4642,10 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
         static_topic_image = _get_news_topic_image_url(news_topic)
 
-        # 최고 해상도의 원문/공급원 이미지를 우선하고,
+        # 수집기가 원문에서 확보해 Supabase Storage에 캐시한 최고해상도 이미지를 우선한다.
         # 없으면 Supabase의 고정 주제 이미지를 사용한다.
         image_url = image_urls[idx] if idx < len(image_urls) else ""
-        image_url = image_url or static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL
+        image_url = image_url or static_topic_image
 
         direct_url = original_url or article_url
         # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
@@ -4668,7 +4676,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             media_html = (
                 f"<div class='live-news-image-wrap'>"
                 f"<img class='live-news-image' src='{_escape_html(image_url)}' alt='' loading='lazy' decoding='async' "
-                f"onerror=\"this.onerror=null;this.src='{_escape_html(static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL)}';\">"
+                f"onerror=\"this.onerror=null;this.src='{_escape_html(static_topic_image)}';\">"
                 f"</div>"
             )
         else:
