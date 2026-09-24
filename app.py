@@ -4191,7 +4191,7 @@ def render_news_reader():
     if not news_topic:
         news_topic = _get_news_topic_key(title, description, category, source)
     static_reader_image = _get_news_topic_image_url(news_topic)
-    image_url = static_reader_image
+    image_url = _normalize_news_image_url(str(qp.get("news_image", "")).strip()) or static_reader_image
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     with col_logo:
@@ -4653,7 +4653,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             article_url=article_url,
             original_url=original_url,
             pub_date=pub_date,
-            image_url="",
+            image_url=image_url,
             source=source_label,
             category=query,
             back_url=back_url,
