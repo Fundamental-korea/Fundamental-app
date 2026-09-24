@@ -13,9 +13,8 @@ from datetime import datetime, date, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
 from html.parser import HTMLParser
-from urllib.parse import quote, urlencode, urlparse, parse_qsl
+from urllib.parse import urlencode, urlparse, parse_qsl
 from zoneinfo import ZoneInfo
-import hashlib
 from pathlib import Path
 from difflib import SequenceMatcher
 
@@ -510,18 +509,18 @@ st.markdown(
         line-height: 1.5;
         margin-bottom: 18px;
     }
-    .news-reader-image-layer {
+    .news-reader-image {
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
+        max-height: none;
+        object-fit: cover;
         border-radius: 16px;
         border: 1px solid #E5E7EB;
+        display: block;
         z-index: 2;
-        background-repeat: no-repeat;
-        background-position: center, center;
-        background-size: cover, cover;
-        background-color: #F3F4F6;
+        background: transparent;
     }
     .news-reader-static-image > svg {
         display: block !important;
@@ -659,16 +658,15 @@ st.markdown(
         height: 100%;
         background: #F3F4F6;
     }
-    .live-news-image-layer {
+    .live-news-image {
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
+        display: block;
+        object-fit: cover;
         z-index: 2;
-        background-repeat: no-repeat;
-        background-position: center, center;
-        background-size: cover, cover;
-        background-color: #F3F4F6;
+        background: transparent;
     }
     .live-news-image-fallback {
         display: flex;
@@ -701,9 +699,6 @@ st.markdown(
     .live-news-image-wrap.image-failed::after {
         content: "📰";
         font-size: 28px;
-    }
-    .live-news-image-wrap.image-failed img {
-        display: none;
     }
     .live-news-card-body {
         padding: 12px 14px 13px;
@@ -4558,39 +4553,6 @@ def _generate_ai_news_article(
         print(f"[Gemini Live News Article] Request failed: {type(exc).__name__}: {exc}")
         return {}
 
-def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -> str:
-    """대표 이미지가 없을 때 기사 주제에 맞는 고해상도 AI 편집 일러스트 URL을 만든다.
-    브라우저에서 직접 이미지를 요청하므로 서버에 이미지 파일을 저장하지 않는다."""
-    key = f"{title}|{description}|{query}"
-    seed = int(hashlib.sha256(key.encode("utf-8")).hexdigest()[:8], 16)
-
-    visual_styles = (
-        "cinematic financial newsroom photography with trading screens and market data atmosphere",
-        "editorial macroeconomics illustration with bonds, currency, rates and global market imagery",
-        "high-end business magazine photography focused on the companies or industries in the story",
-        "realistic geopolitical economy editorial scene with trade, industry and global markets context",
-        "modern technology and semiconductor financial editorial photography with realistic depth and lighting",
-        "energy and commodities market editorial photography with realistic materials, infrastructure and dramatic light",
-    )
-    visual_style = visual_styles[seed % len(visual_styles)]
-    topic = (description or title or query or "financial markets").strip()[:420]
-
-    prompt = (
-        "Create a premium high-resolution 16:9 editorial image for a professional financial news website. "
-        "Photorealistic, crisp fine details, realistic lighting, natural depth, clean composition, "
-        "journalistic visual storytelling. No readable text, no watermarks, no logos, no charts with fake text, "
-        "and no recognizable real people. Avoid generic repeated stock-photo layouts. "
-        f"Visual style: {visual_style}. "
-        f"News topic to visualize: {topic}. "
-        f"Category/context: {query or 'financial markets'}."
-    )
-    return (
-        "https://image.pollinations.ai/prompt/"
-        + quote(prompt, safe="")
-        + f"?model=flux-2-klein-4b&width=1536&height=864&seed={seed}&nologo=true&enhance=true"
-    )
-
-
 NEWS_TOPIC_KEYS = (
     "global_markets",
     "interest_rates",
@@ -4605,60 +4567,18 @@ NEWS_TOPIC_KEYS = (
 )
 
 
-NEWS_AI_IMAGE_VARIANTS = (
-    "cinematic wide establishing shot, premium financial magazine photography",
-    "close-up still life with realistic materials, depth of field and editorial lighting",
-    "modern city and infrastructure scene, clean composition, premium newsroom aesthetic",
-    "high-tech macro detail with realistic reflections and subtle data atmosphere",
-    "global aerial perspective with infrastructure, trade or market context",
-    "dramatic but natural evening light, sophisticated business editorial look",
-    "bright daylight documentary-style business scene, crisp fine details",
-    "minimal premium composition with one strong visual subject and generous negative space",
-    "dynamic motion-inspired financial editorial scene, realistic textures and depth",
-    "nighttime institutional or industrial scene with subtle cinematic highlights",
-)
-
-NEWS_TOPIC_VISUAL_DIRECTIONS = {
-    "global_markets": "global financial markets, trading screens, world finance, city skyline, currency and investment atmosphere",
-    "interest_rates": "central banking, interest rates, inflation and monetary policy, institutional finance, rate-setting atmosphere",
-    "bonds_yields": "government bonds, treasury market, bond yields, fixed income trading, institutional debt market atmosphere",
-    "dollar_fx": "US dollar, foreign exchange markets, currency trading, exchange-rate movements, international finance",
-    "energy_oil": "oil, natural gas, energy markets, refineries, pipelines, tankers, pumpjacks and commodity infrastructure",
-    "ai_semiconductors": "AI computing, semiconductors, advanced chips, data centers, wafers, processors and technology finance",
-    "trade_global": "global trade, cargo ships, shipping containers, cranes, ports, manufacturing and supply chains",
-    "korea_asia": "Korea and Asia finance, Seoul skyline, Asian markets, semiconductor industry, ports and regional trade",
-    "economy_jobs": "economic activity, employment, wages, consumer spending, factories, offices and real-world business activity",
-    "crypto_assets": "digital assets, blockchain network, secure digital finance, cryptocurrency market infrastructure and technology",
-}
-
-
 @st.cache_data(ttl=86400, show_spinner=False)
 def _get_news_topic_ai_image_pool(topic_key: str) -> tuple[str, ...]:
-    """Supabase에 미리 생성해 둔 섹터별 AI 이미지 3장만 AI fallback pool로 사용한다."""
+    """Supabase Storage에 미리 저장된 섹터별 AI 이미지 3장만 사용한다."""
     key = str(topic_key or "global_markets").strip()
-    pool = []
-    try:
-        if supabase is not None:
-            rows = (
-                supabase.table("news_topic_images")
-                .select("topic_key,public_url,storage_path")
-                .eq("topic_key", key)
-                .like("storage_path", "generated/%")
-                .order("storage_path")
-                .execute()
-                .data
-                or []
-            )
-            for row in rows:
-                url = str(row.get("public_url") or "").strip()
-                if url.startswith(("http://", "https://")) and url not in pool:
-                    pool.append(url)
-    except Exception as exc:
-        print(
-            f"[Live News AI Images] Supabase AI pool lookup failed: "
-            f"{type(exc).__name__}: {exc}"
-        )
-    return tuple(pool)
+    base = (
+        f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
+        f"news-topic-images/generated/"
+    )
+    return tuple(
+        f"{base}{key}_{idx:02d}.jpg"
+        for idx in range(1, 4)
+    )
 
 
 def _get_news_topic_ai_image_url(
@@ -4668,119 +4588,13 @@ def _get_news_topic_ai_image_url(
     query: str = "",
     used_urls=None,
 ) -> str:
-    """기사에 원문 이미지가 없을 때 Supabase에 저장된 섹터 AI 이미지 중 하나를 무작위 선택한다."""
+    """기사에 원문 이미지가 없을 때 해당 섹터의 AI 이미지 3장 중 하나를 랜덤 선택한다."""
     pool = list(_get_news_topic_ai_image_pool(topic_key))
     if not pool:
         return ""
     blocked = set(str(url or "") for url in (used_urls or set()) if url)
     available = [url for url in pool if url not in blocked] or pool
     return random.choice(available)
-
-
-def _public_news_ai_image_url(ai_url: str) -> str:
-    """AI 원본 URL을 결정론적인 Supabase Storage public URL로 매핑한다."""
-    raw = str(ai_url or "").strip()
-    if not raw:
-        return ""
-    cache_key = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:40]
-    return (
-        f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
-        f"news-source-images/ai/{cache_key}"
-    )
-
-
-def _cache_ai_news_image(ai_url: str) -> str:
-    """Pollinations AI 이미지를 서버에서 받아 Supabase Storage에 저장하고 public URL을 반환한다.
-
-    브라우저는 더 이상 Pollinations를 직접 호출하지 않는다. 저장된 파일만 표시하므로
-    이미지 생성 서비스의 일시적인 4xx/5xx/timeout이 화면의 broken image로 전파되지 않는다.
-    """
-    raw = str(ai_url or "").strip()
-    if not raw.startswith("https://image.pollinations.ai/"):
-        return ""
-    public_url = _public_news_ai_image_url(raw)
-
-    # 이미 저장된 파일이면 외부 AI 서비스에 다시 접근하지 않는다.
-    try:
-        head = requests.head(
-            public_url,
-            timeout=3,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNewsAIImage/1.0)"},
-            allow_redirects=True,
-        )
-        if head.ok:
-            return public_url
-    except Exception:
-        pass
-
-    if supabase is None:
-        return ""
-
-    try:
-        response = requests.get(
-            raw,
-            timeout=20,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNewsAIImage/1.0)"},
-            allow_redirects=True,
-        )
-        response.raise_for_status()
-        content_type = (
-            str(response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-        )
-        if content_type not in {"image/jpeg", "image/png", "image/webp"}:
-            return ""
-
-        data = response.content
-        if not data or len(data) > 8 * 1024 * 1024:
-            return ""
-
-        upload = (
-            supabase.storage
-            .from_("news-source-images")
-            .upload(
-                f"ai/{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:40]}",
-                data,
-                {
-                    "content-type": content_type,
-                    "cache-control": "31536000",
-                    "upsert": "false",
-                },
-            )
-        )
-        error = getattr(upload, "error", None)
-        if error and "exist" not in str(error).lower():
-            print(f"[Live News AI Image] Storage upload failed: {error}")
-            return ""
-        return public_url
-    except Exception as exc:
-        # Concurrent Streamlit reruns can race for the same deterministic path.
-        # An "already exists" condition still means the public file is usable.
-        if "exist" in str(exc).lower():
-            return public_url
-        print(
-            f"[Live News AI Image] cache failed: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        return ""
-
-
-
-    """기사별로 섹터 AI 이미지 풀에서 하나를 고르며, 같은 화면에서는 중복을 피한다."""
-    pool = list(_get_news_topic_ai_image_pool(topic_key))
-    if not pool:
-        return ""
-    fingerprint = "|".join(
-        str(value or "").strip()
-        for value in (topic_key, title, description, query)
-    )
-    start = int(hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:8], 16) % len(pool)
-    blocked = set(str(url or "") for url in (used_urls or set()) if url)
-    for offset in range(len(pool)):
-        candidate = pool[(start + offset) % len(pool)]
-        if candidate not in blocked:
-            return candidate
-    return pool[start]
-
 
 NEWS_TOPIC_IMAGE_FILES = {
     "global_markets": "assets/news_topics/global_markets.svg",
@@ -4837,63 +4651,20 @@ def _get_news_topic_key(title: str = "", description: str = "", query: str = "",
 
 @st.cache_data(ttl=3600, show_spinner=False)
 def _get_news_topic_image_map() -> dict:
-    """Supabase Storage에 저장된 섹터별 다중 이미지 pool을 가져온다."""
-    mapping = {key: [] for key in NEWS_TOPIC_KEYS}
-    try:
-        if supabase is None:
-            return {
-                key: [
-                    (
-                        f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
-                        f"news-topic-images/{key}.jpg"
-                    )
-                ]
-                for key in NEWS_TOPIC_KEYS
-            }
-        rows = (
-            supabase.table("news_topic_images")
-            .select("topic_key, public_url, storage_path")
-            .order("topic_key")
-            .order("storage_path")
-            .execute()
-            .data
-            or []
+    """Supabase Storage의 고정 뉴스 이미지를 topic_key별로 반환한다."""
+    return {
+        key: (
+            f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
+            f"news-topic-images/{key}.jpg"
         )
-        for row in rows:
-            key = str(row.get("topic_key") or "").strip()
-            url = str(row.get("public_url") or "").strip()
-            if key not in mapping or not url.startswith(("http://", "https://")):
-                continue
-            if url not in mapping[key]:
-                mapping[key].append(url)
-    except Exception as exc:
-        print(
-            f"[Live News Images] Supabase mapping lookup failed: "
-            f"{type(exc).__name__}: {exc}"
-        )
-
-    for key in NEWS_TOPIC_KEYS:
-        if not mapping[key]:
-            mapping[key] = [
-                (
-                    f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
-                    f"news-topic-images/{key}.jpg"
-                )
-            ]
-    return {key: tuple(urls) for key, urls in mapping.items()}
+        for key in NEWS_TOPIC_KEYS
+    }
 
 
-def _get_news_topic_image_url(topic_key: str, used_urls=None) -> str:
-    """섹터 pool에서 무작위 이미지를 선택한다. 같은 화면에서는 중복을 피할 수 있다."""
+def _get_news_topic_image_url(topic_key: str) -> str:
+    """Supabase Storage의 고정 주제 이미지 public URL을 반환한다."""
     key = str(topic_key or "global_markets").strip()
-    candidates = list(_get_news_topic_image_map().get(key, ()))
-    if not candidates:
-        return ""
-
-    blocked = set(str(url or "") for url in (used_urls or set()) if url)
-    available = [url for url in candidates if url not in blocked] or candidates
-    return random.choice(available)
-
+    return _get_news_topic_image_map().get(key, "")
 
 def _normalize_news_image_url(image_url: str) -> str:
     """브라우저에서 바로 사용할 이미지 URL만 허용한다.
@@ -4911,9 +4682,6 @@ def _normalize_news_image_url(image_url: str) -> str:
     if "/storage/v1/object/public/news-source-images/" in lowered:
         return url
     if "/storage/v1/object/public/news-topic-images/" in lowered:
-        return url
-    # AI 이미지는 아래에서 서버 검증 후 선택한다.
-    if "image.pollinations.ai/" in lowered:
         return url
     # Bing News 썸네일 등 명백한 공급원 썸네일은 차단한다.
     if "bing.com" in lowered and ("th?id=" in lowered or "pid=news" in lowered or "/th" in lowered):
@@ -5048,7 +4816,8 @@ def render_news_reader():
             image_html = (
                 f"""<div class="news-reader-image-shell">
                 <div class="news-reader-static-image">{static_reader_svg}</div>
-                <div class="news-reader-image-layer" style="background-image:url('{_escape_html(image_url)}'),url('{_escape_html(static_reader_image)}');"></div>
+                <img class="news-reader-image" src="{_escape_html(image_url)}"
+                     alt="" loading="eager" decoding="async">
                 </div>"""
             )
         elif static_reader_svg:
@@ -5473,7 +5242,6 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
 
     cards = []
-    used_topic_image_urls = set()
     for idx, item in enumerate(selected_items):
         title_text = item.title if hasattr(item, "title") else item.get("title", "")
         desc_text = item.description if hasattr(item, "description") else item.get("description", "")
@@ -5495,9 +5263,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             query,
             source_hint,
         )
-        static_topic_image = _get_news_topic_image_url(news_topic, used_topic_image_urls)
-        if static_topic_image:
-            used_topic_image_urls.add(static_topic_image)
+        static_topic_image = _get_news_topic_image_url(news_topic)
         static_topic_svg = _get_news_topic_svg_markup(news_topic)
         # 위에서 번역 전에 확정한 이미지를 그대로 사용한다.
         image_url = resolved_image_urls[idx] if idx < len(resolved_image_urls) else ""
@@ -5537,7 +5303,8 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             media_html = (
                 f"""<div class="live-news-image-wrap">
                 <div class="live-news-static-fallback">{fallback_html}</div>
-                <div class="live-news-image-layer" style="background-image:url('{_escape_html(image_url)}'),url('{_escape_html(static_topic_image)}');"></div>
+                <img class="live-news-image" src="{_escape_html(image_url)}"
+                     alt="" loading="lazy" decoding="async">
                 </div>"""
             )
         elif static_topic_svg:
