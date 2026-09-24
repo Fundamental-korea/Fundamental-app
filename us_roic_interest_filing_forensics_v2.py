@@ -217,7 +217,7 @@ def run():
     for i, rec in enumerate(targets, 1):
         meta = rec["_meta"]
         try:
-            mapped = filing_map(meta["cik"], resolver)
+            mapped = filing_map(meta["cik"], resolver, year=rec.get("base_year_db"))
             result = analyze_result(rec, mapped)
             company_results.append(result)
 

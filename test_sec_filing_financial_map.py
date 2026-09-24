@@ -18,6 +18,10 @@ def test_debt_lookalikes_are_excluded():
     assert classify_debt_fact(row("AvailableForSaleSecuritiesDebtSecurities"))[0] is None
     assert classify_debt_fact(row("DebtInstrumentInterestRateStatedPercentage"))[0] is None
     assert classify_debt_fact(row("LongTermDebtMaturitiesRepaymentsOfPrincipalInYearTwo"))[0] is None
+    assert classify_debt_fact(row("DebtInstrumentFaceAmount"))[0] is None
+    assert classify_debt_fact(row("LineOfCreditFacilityMaximumBorrowingCapacity"))[0] is None
+    assert classify_debt_fact(row("DebtInstrumentsHeldAtAmortisedCost"))[0] is None
+    assert classify_debt_fact(row("NetDebt"))[0] is None
 
 def test_real_debt_concepts_are_recognized():
     assert classify_debt_fact(row("LongTermLoansPayable"))[0] == "issuer_debt_noncurrent"
@@ -34,6 +38,9 @@ def test_interest_lookalikes_are_excluded():
     assert classify_interest_fact(row("InterestPaidNet", instant=False, start="2025-01-01"))[0] is None
     assert classify_interest_fact(row("DefinedBenefitPlanInterestCost", instant=False, start="2025-01-01"))[0] is None
     assert classify_interest_fact(row("InterestIncome", instant=False, start="2025-01-01"))[0] is None
+    assert classify_interest_fact(row("AmortizationOfFinancingCosts", instant=False, start="2025-01-01"))[0] is None
+    assert classify_interest_fact(row("UnrecognizedTaxBenefitsIncomeTaxPenaltiesAndInterestExpense", instant=False, start="2025-01-01"))[0] is None
+    assert classify_interest_fact(row("OperatingLeaseInterestExpense", instant=False, start="2025-01-01"))[0] is None
 
 def test_real_interest_is_recognized():
     r = row("InterestExpenseNonoperating", instant=False, start="2025-01-01")
@@ -45,7 +52,7 @@ def test_direct_total_wins_over_components():
     rows = [
         row("LongTermDebtCurrent", value=20),
         row("LongTermDebtNoncurrent", value=80),
-        row("LongTermDebt", value=100),
+        row("DebtAndCapitalLeaseObligations", value=100),
     ]
     result = classify_filing_rows(rows, target_year=2025)
     assert result["selected_debt"]["basis"] == "reported_total"
@@ -82,3 +89,24 @@ def test_combined_debt_and_capital_lease_is_total_debt():
     result = classify_filing_rows([r], target_year=2025)
     assert result["selected_debt"]["basis"] == "reported_total"
     assert result["selected_debt"]["value"] == 123
+
+def test_debt_must_match_equity_basis():
+    rows = [
+        row("StockholdersEquity", value=500, end="2025-12-31"),
+        row("CashAndCashEquivalentsAtCarryingValue", value=100, end="2025-12-31"),
+        row("OperatingIncomeLoss", value=150, instant=False, start="2025-01-01", end="2025-12-31"),
+        row("LongTermDebt", value=200, end="2025-09-30"),
+    ]
+    result = classify_filing_rows(rows, target_year=2025)
+    assert result["selected_debt"] is None
+
+def test_interest_must_match_operating_income_basis():
+    rows = [
+        row("StockholdersEquity", value=500),
+        row("CashAndCashEquivalentsAtCarryingValue", value=100),
+        row("LongTermDebt", value=200),
+        row("OperatingIncomeLoss", value=150, instant=False, start="2025-01-01", end="2025-12-31"),
+        row("InterestExpense", value=20, instant=False, start="2025-01-01", end="2025-09-30"),
+    ]
+    result = classify_filing_rows(rows, target_year=2025)
+    assert result["selected_interest"] is None

@@ -93,6 +93,7 @@ STANDARD_DEBT_CURRENT = {
     "DebtCurrent",
     "LineOfCreditCurrent",
     "RevolvingCreditFacilityCurrent",
+    "FederalHomeLoanBankAdvancesShortTerm",
 }
 STANDARD_DEBT_NONCURRENT = {
     "LongTermDebt",
@@ -126,6 +127,9 @@ STANDARD_DEBT_NONCURRENT = {
     "UnsecuredLongTermDebt",
     "SecuredDebt",
     "OtherLongTermDebt",
+    "FederalHomeLoanBankAdvancesLongTerm",
+    "FederalHomeLoanBankAdvances",
+    "LongTermNotesAndLoans",
     "DebtNoncurrent",
     "LineOfCreditNoncurrent",
     "RevolvingCreditFacility",
@@ -175,6 +179,19 @@ DEBT_EXCLUSIONS = (
     "interestincome",
     "interestcostscapitalized",
     "definedbenefitplan",
+    "faceamount",
+    "maximumborrowingcapacity",
+    "remainingborrowingcapacity",
+    "availablecredit",
+    "undrawnborrowing",
+    "debtinstrumentheld",
+    "debtinstrumentsheld",
+    "securitiesheld",
+    "netdebt",
+    "capitalization",
+    "conversionprice",
+    "conversionratio",
+    "conversionfeature",
 )
 
 STANDARD_INTEREST_GROSS = {
@@ -182,7 +199,6 @@ STANDARD_INTEREST_GROSS = {
     "InterestExpenseNonoperating",
     "InterestExpenseNonOperating",
     "InterestExpenseDebt",
-    "InterestExpenseNonoperatingNetOfTax",
     "InterestAndDebtExpense",
     "InterestExpenseNonoperatingAndOther",
     "InterestExpenseRelatedParties",
@@ -207,6 +223,16 @@ INTEREST_EXCLUSIONS = (
     "interestcostscapitalized",
     "financeleaseinterestexpense",
     "interestexpenseonleaseliabilities",
+    "operatingleaseinterestexpense",
+    "amortizationoffinancingcosts",
+    "financingfees",
+    "debtissuancecosts",
+    "unrecognizedtaxbenefits",
+    "taxpenalty",
+    "taxinterest",
+    "interestontax",
+    "noninterestexpense",
+    "netoftax",
 )
 ACTIVITY_EXCLUSIONS = (
     "proceeds",
@@ -216,6 +242,7 @@ ACTIVITY_EXCLUSIONS = (
     "redemption",
     "extinguishment",
     "refinanced",
+    "payments",
     "increase",
     "decrease",
 )
@@ -305,6 +332,8 @@ def classify_debt_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
         "seniornotes", "subordinatednotes", "convertnotepayable", "convertiblenotes",
         "debtobligations", "debtliabilities", "otherdebt", "otherborrowings",
         "creditfacility", "revolvingcreditfacility", "termloan",
+        "bankloans", "loansreceived", "loanpayable", "longtermnotesandloans",
+        "federalhomeloanbankadvances",
     )):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
             return None, "exclude", "debt activity/maturity fact"
@@ -315,6 +344,8 @@ def classify_debt_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
         "seniornotes", "subordinatednotes", "convertnotepayable", "convertiblenotes",
         "debtobligations", "debtliabilities", "otherdebt", "otherborrowings",
         "creditfacility", "revolvingcreditfacility", "termloan",
+        "bankloans", "loansreceived", "loanpayable", "longtermnotesandloans",
+        "federalhomeloanbankadvances",
     )):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
             return None, "exclude", "custom debt activity/metadata fact"
@@ -477,6 +508,23 @@ def _select_annual_flow(rows: list[dict[str, Any]], concepts: set[str], target_y
             out.append(fact)
     return out
 
+def _compatible_instant(fact: FinancialFact | None, anchor: FinancialFact | None) -> bool:
+    if fact is None or anchor is None:
+        return True
+    return fact.end == anchor.end and fact.unit == anchor.unit
+
+
+def _compatible_flow(fact: FinancialFact | None, anchor: FinancialFact | None) -> bool:
+    if fact is None or anchor is None:
+        return True
+    if fact.end != anchor.end or fact.unit != anchor.unit:
+        return False
+    # Same fiscal-period end and currency is required.  Start dates can differ
+    # by a few days for 52/53-week fiscal calendars, so they are not required
+    # to be byte-for-byte identical here.
+    return True
+
+
 def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None = None) -> dict[str, Any]:
     rows = list(rows)
     debt: list[FinancialFact] = []
@@ -538,11 +586,21 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
                 "contextRef": row.get("contextRef"),
             })
 
-    total = [x for x in debt if x.category == "issuer_debt_total"]
-    current = [x for x in debt if x.category == "issuer_debt_current"]
-    noncurrent = [x for x in debt if x.category == "issuer_debt_noncurrent"]
-    other = [x for x in debt if x.category in {"issuer_debt_other", "custom_issuer_debt"}]
-    carrying = [x for x in debt if x.category == "debt_carrying_amount_candidate"]
+    equity = _select_equity(rows, target_year)
+    cash = _select_cash(rows, target_year)
+    operating_income = _select_operating_income(rows, target_year)
+
+    # ROIC capital components must be measured on the same balance-sheet date
+    # and in the same reporting currency.
+    if equity and cash and not _compatible_instant(cash, equity):
+        cash = None
+
+    debt_eligible = [x for x in debt if _compatible_instant(x, equity)]
+    total = [x for x in debt_eligible if x.category == "issuer_debt_total"]
+    current = [x for x in debt_eligible if x.category == "issuer_debt_current"]
+    noncurrent = [x for x in debt_eligible if x.category == "issuer_debt_noncurrent"]
+    other = [x for x in debt_eligible if x.category in {"issuer_debt_other", "custom_issuer_debt"}]
+    carrying = [x for x in debt_eligible if x.category == "debt_carrying_amount_candidate"]
 
     selected_debt = None
     if total:
@@ -581,9 +639,10 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
                 "unit": chosen.unit, "components": [asdict(chosen)],
             }
 
-    gross = [x for x in interest if x.category == "gross_interest_expense"]
-    gross_other = [x for x in interest if x.category in {"gross_interest_expense_other", "custom_interest_expense"}]
-    net = [x for x in interest if x.category == "net_interest_expense"]
+    interest_eligible = [x for x in interest if _compatible_flow(x, operating_income)]
+    gross = [x for x in interest_eligible if x.category == "gross_interest_expense"]
+    gross_other = [x for x in interest_eligible if x.category in {"gross_interest_expense_other", "custom_interest_expense"}]
+    net = [x for x in interest_eligible if x.category == "net_interest_expense"]
 
     selected_interest = None
     if gross:
@@ -610,7 +669,7 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
             "confidence": chosen.confidence, "unit": chosen.unit, "components": [asdict(chosen)],
         }
 
-    lease_only = bool(debt) and all(x.category in {"finance_lease_liability", "operating_lease_liability"} for x in debt)
+    lease_only = bool(debt) and not selected_debt and all(x.category in {"finance_lease_liability", "operating_lease_liability"} for x in debt)
     debt_status = (
         "FOUND_STANDARD" if selected_debt and any(c["namespace"] in {"us-gaap", "ifrs-full"} for c in selected_debt["components"])
         else "FOUND_CUSTOM" if selected_debt
@@ -628,9 +687,6 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
         else:
             interest_status = "FOUND_GROSS"
 
-    equity = _select_equity(rows, target_year)
-    cash = _select_cash(rows, target_year)
-    operating_income = _select_operating_income(rows, target_year)
     pretax = _select_annual_flow(rows, CORE_PRETAX, target_year)
     other_nonop = _select_annual_flow(rows, CORE_OTHER_NONOPERATING, target_year)
 
