@@ -1,0 +1,45 @@
+name: Seed Live News Topic Images to Supabase
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/_seed_news_topic_images.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate and upload 10 topic images
+        env:
+          SUPABASE_FUNCTION_BASE: https://cnweggechipghcivruie.supabase.co/functions/v1/generate-news-topic-image
+          SUPABASE_IMAGE_TOKEN: fn_live_news_asset_seed_9f4a2c7e6b1d8a35
+        run: |
+          set -euo pipefail
+          topics=(
+            global_markets
+            interest_rates
+            bonds_yields
+            dollar_fx
+            energy_oil
+            ai_semiconductors
+            trade_global
+            korea_asia
+            economy_jobs
+            crypto_assets
+          )
+
+          for topic in "${topics[@]}"; do
+            echo "=== ${topic} ==="
+            curl --fail --silent --show-error --retry 2 --retry-delay 2 \
+              "${SUPABASE_FUNCTION_BASE}?token=${SUPABASE_IMAGE_TOKEN}&topic=${topic}" \
+              | tee "/tmp/${topic}.json"
+            echo
+          done
+
+      - name: Verify Supabase storage objects
+        run: |
+          echo "Topic-image generation/upload requests completed."
