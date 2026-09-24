@@ -13,7 +13,7 @@ from datetime import datetime, date, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
 from html.parser import HTMLParser
-from urllib.parse import quote, urlencode, urlparse
+from urllib.parse import quote, urlencode, urlparse, parse_qsl
 from zoneinfo import ZoneInfo
 import hashlib
 from pathlib import Path
@@ -3585,6 +3585,105 @@ def _escape_html(value):
     )
 
 
+def _news_item_field(item, field: str) -> str:
+    if hasattr(item, field):
+        return str(getattr(item, field) or "").strip()
+    if isinstance(item, dict):
+        return str(item.get(field) or "").strip()
+    return ""
+
+
+def _canonical_news_url_key(url: str) -> str:
+    raw = str(url or "").strip()
+    if not raw.startswith(("http://", "https://")):
+        return ""
+    try:
+        parsed = urlparse(raw)
+        host = parsed.netloc.lower().split(":")[0]
+        path = parsed.path.rstrip("/") or "/"
+        if host.startswith("www."):
+            host = host[4:]
+        tracking_keys = {
+            "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
+            "utm_id", "gclid", "fbclid", "mc_cid", "mc_eid", "ref", "ref_"
+        }
+        filtered_query = []
+        for key, value in parse_qsl(parsed.query, keep_blank_values=True):
+            if key.lower() in tracking_keys or key.lower().startswith("utm_"):
+                continue
+            filtered_query.append((key.lower(), value))
+        query = urlencode(sorted(filtered_query))
+        return f"{host}{path.lower()}" + (f"?{query}" if query else "")
+    except Exception:
+        return raw.lower().split("#", 1)[0].rstrip("/")
+
+
+def _normalized_news_title_key(title: str) -> str:
+    value = str(title or "").lower()
+    value = re.sub(r"\[[^\]]+\]\s*", " ", value)
+    value = re.sub(r"\s*[|｜]\s*[^|｜]+$", "", value)
+    value = re.sub(r"\s+", " ", value).strip()
+    return re.sub(r"[^a-z0-9가-힣]+", "", value)
+
+
+def _news_url_host(url: str) -> str:
+    try:
+        host = urlparse(str(url or "")).netloc.lower().split(":")[0]
+        return host[4:] if host.startswith("www.") else host
+    except Exception:
+        return ""
+
+
+def _news_items_are_duplicates(left, right) -> bool:
+    left_title = _news_item_field(left, "title")
+    right_title = _news_item_field(right, "title")
+    left_urls = [
+        _news_item_field(left, "original_link"),
+        _news_item_field(left, "link"),
+        _news_item_field(left, "original_url"),
+        _news_item_field(left, "article_url"),
+    ]
+    right_urls = [
+        _news_item_field(right, "original_link"),
+        _news_item_field(right, "link"),
+        _news_item_field(right, "original_url"),
+        _news_item_field(right, "article_url"),
+    ]
+    left_url_keys = {key for key in (_canonical_news_url_key(url) for url in left_urls) if key}
+    right_url_keys = {key for key in (_canonical_news_url_key(url) for url in right_urls) if key}
+    if left_url_keys & right_url_keys:
+        return True
+
+    left_key = _normalized_news_title_key(left_title)
+    right_key = _normalized_news_title_key(right_title)
+    if left_key and left_key == right_key:
+        return True
+    if not left_title or not right_title:
+        return False
+
+    similarity = _article_title_similarity(left_title, right_title)
+    if similarity >= 0.94:
+        return True
+
+    left_host = next((_news_url_host(url) for url in left_urls if _news_url_host(url)), "")
+    right_host = next((_news_url_host(url) for url in right_urls if _news_url_host(url)), "")
+    # 같은 발행사에서 제목 표현만 살짝 달라진 동일 기사는 0.88 이상이면 합친다.
+    if similarity >= 0.88 and left_host and right_host and left_host == right_host:
+        return True
+    return False
+
+
+def _dedupe_news_items(items, limit=None) -> list:
+    unique = []
+    for item in list(items or []):
+        if any(_news_items_are_duplicates(item, existing) for existing in unique):
+            continue
+        unique.append(item)
+        if limit is not None and len(unique) >= limit:
+            break
+    return unique
+
+
 @st.cache_data(ttl=7200, show_spinner=False)
 def _get_home_macro_news_direct_fallback(
     display=20,
@@ -3611,7 +3710,9 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v11"):
                 .eq("is_macro", True)
                 .in_("source", ["MARKETAUX", "NAVER", "RSS"])
                 .order("published_at", desc=True)
-                .limit(target)
+                # 서로 다른 공급원에서 같은 기사가 겹칠 수 있으므로 화면 목표 수보다 여유 있게 읽고
+                # 아래 공통 dedupe 단계에서 20개를 채운다.
+                .limit(min(max(target * 2, target + 10), 50))
                 .execute()
             )
             for row in result.data or []:
@@ -3640,25 +3741,23 @@ def _get_home_macro_news(display=20, cache_version="supabase-live-news-v11"):
             latest_published_ts = max(latest_published_ts, float(pd.to_datetime(item.pub_date, utc=True).timestamp()))
         except Exception:
             continue
+    deduped_db_rows = _dedupe_news_items(_sort_news_latest_first(db_rows), limit=target)
     fresh_cutoff_ts = (datetime.now(timezone.utc) - timedelta(hours=24)).timestamp()
-    if len(db_rows) >= target and latest_published_ts >= fresh_cutoff_ts:
-        return _sort_news_latest_first(db_rows)[:target]
+    if len(deduped_db_rows) >= target and latest_published_ts >= fresh_cutoff_ts:
+        return deduped_db_rows[:target]
 
     day_key = datetime.now(ZoneInfo("Asia/Seoul")).date().isoformat()
     fallback = _get_home_macro_news_direct_fallback(
         display=target, day_key=day_key, cache_version="live-news-fetch-v12"
     )
-    merged = []
-    seen = set()
-    for item in _sort_news_latest_first(db_rows + list(fallback or [])):
-        key = _canonical_news_key(item)
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        merged.append(item)
-        if len(merged) >= target:
-            break
-    print(f"[HOME LIVE NEWS] merged rows={len(merged)}/{target} db={len(db_rows)} fallback={len(fallback or [])}")
+    merged = _dedupe_news_items(
+        _sort_news_latest_first(deduped_db_rows + list(fallback or [])),
+        limit=target,
+    )
+    print(
+        f"[HOME LIVE NEWS] merged rows={len(merged)}/{target} "
+        f"db={len(db_rows)} db_deduped={len(deduped_db_rows)} fallback={len(fallback or [])}"
+    )
     return merged
 
 def _get_earnings_events_db(days_back=90, days_forward=120):
@@ -4433,6 +4532,85 @@ NEWS_TOPIC_KEYS = (
 )
 
 
+NEWS_AI_IMAGE_VARIANTS = (
+    "cinematic wide establishing shot, premium financial magazine photography",
+    "close-up still life with realistic materials, depth of field and editorial lighting",
+    "modern city and infrastructure scene, clean composition, premium newsroom aesthetic",
+    "high-tech macro detail with realistic reflections and subtle data atmosphere",
+    "global aerial perspective with infrastructure, trade or market context",
+    "dramatic but natural evening light, sophisticated business editorial look",
+    "bright daylight documentary-style business scene, crisp fine details",
+    "minimal premium composition with one strong visual subject and generous negative space",
+    "dynamic motion-inspired financial editorial scene, realistic textures and depth",
+    "nighttime institutional or industrial scene with subtle cinematic highlights",
+)
+
+NEWS_TOPIC_VISUAL_DIRECTIONS = {
+    "global_markets": "global financial markets, trading screens, world finance, city skyline, currency and investment atmosphere",
+    "interest_rates": "central banking, interest rates, inflation and monetary policy, institutional finance, rate-setting atmosphere",
+    "bonds_yields": "government bonds, treasury market, bond yields, fixed income trading, institutional debt market atmosphere",
+    "dollar_fx": "US dollar, foreign exchange markets, currency trading, exchange-rate movements, international finance",
+    "energy_oil": "oil, natural gas, energy markets, refineries, pipelines, tankers, pumpjacks and commodity infrastructure",
+    "ai_semiconductors": "AI computing, semiconductors, advanced chips, data centers, wafers, processors and technology finance",
+    "trade_global": "global trade, cargo ships, shipping containers, cranes, ports, manufacturing and supply chains",
+    "korea_asia": "Korea and Asia finance, Seoul skyline, Asian markets, semiconductor industry, ports and regional trade",
+    "economy_jobs": "economic activity, employment, wages, consumer spending, factories, offices and real-world business activity",
+    "crypto_assets": "digital assets, blockchain network, secure digital finance, cryptocurrency market infrastructure and technology",
+}
+
+
+@st.cache_data(ttl=86400, show_spinner=False)
+def _get_news_topic_ai_image_pool(topic_key: str) -> tuple[str, ...]:
+    """섹터별 10개 AI 이미지 풀. 모두 현재 카드 비율과 동일한 1536x864로 생성한다."""
+    key = str(topic_key or "global_markets").strip()
+    visual_direction = NEWS_TOPIC_VISUAL_DIRECTIONS.get(
+        key,
+        NEWS_TOPIC_VISUAL_DIRECTIONS["global_markets"],
+    )
+    pool = []
+    for idx, variant in enumerate(NEWS_AI_IMAGE_VARIANTS, start=1):
+        seed_source = f"fundamental-live-news|{key}|{idx}"
+        seed = int(hashlib.sha256(seed_source.encode("utf-8")).hexdigest()[:8], 16)
+        prompt = (
+            "Create a premium high-resolution 16:9 editorial image for a professional financial news website. "
+            "Photorealistic, crisp fine details, realistic lighting, natural depth, clean composition, "
+            "journalistic visual storytelling. No readable text, no watermarks, no logos, no fake charts, "
+            "no recognizable real people, and avoid generic repeated stock-photo layouts. "
+            f"Subject sector: {visual_direction}. "
+            f"Visual treatment: {variant}."
+        )
+        pool.append(
+            "https://gen.pollinations.ai/image/"
+            + quote(prompt, safe="")
+            + f"?model=flux-2-klein-4b&width=1536&height=864&seed={seed}&nologo=true&enhance=true"
+        )
+    return tuple(pool)
+
+
+def _get_news_topic_ai_image_url(
+    topic_key: str,
+    title: str = "",
+    description: str = "",
+    query: str = "",
+    used_urls=None,
+) -> str:
+    """기사별로 섹터 AI 이미지 풀에서 하나를 고르며, 같은 화면에서는 중복을 피한다."""
+    pool = list(_get_news_topic_ai_image_pool(topic_key))
+    if not pool:
+        return ""
+    fingerprint = "|".join(
+        str(value or "").strip()
+        for value in (topic_key, title, description, query)
+    )
+    start = int(hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:8], 16) % len(pool)
+    blocked = set(str(url or "") for url in (used_urls or set()) if url)
+    for offset in range(len(pool)):
+        candidate = pool[(start + offset) % len(pool)]
+        if candidate not in blocked:
+            return candidate
+    return pool[start]
+
+
 NEWS_TOPIC_IMAGE_FILES = {
     "global_markets": "assets/news_topics/global_markets.svg",
     "interest_rates": "assets/news_topics/interest_rates.svg",
@@ -4623,10 +4801,20 @@ def render_news_reader():
 
     if not news_topic:
         news_topic = _get_news_topic_key(title, description, category, source)
-    # 기사 리더는 카드의 원문 썸네일과 분리된 AI 편집 이미지를 사용한다.
-    # 카드에서는 기존 최고해상도 원문 이미지 로직을 그대로 유지한다.
+    # 기사 리더도 원본 고화질 이미지가 전달되어 있으면 그대로 사용한다.
+    # 원본이 없을 때만 섹터별 10장 AI 풀에서 기사별 이미지를 선택하고,
+    # 마지막에 기존 고정 주제 이미지를 안전한 fallback으로 사용한다.
+    source_reader_image = _normalize_news_image_url(image_url)
     static_reader_image = _get_news_topic_image_url(news_topic)
-    image_url = static_reader_image
+    if source_reader_image:
+        image_url = source_reader_image
+    else:
+        image_url = _get_news_topic_ai_image_url(
+            news_topic,
+            title=title,
+            description=description,
+            query=category,
+        ) or static_reader_image
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     with col_logo:
@@ -4988,28 +5176,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
         return
 
-    # Defensive dedupe: provider/fallback results can occasionally repeat the same
-    # article under slightly different metadata. Keep one card per canonical URL/title.
-    unique_items = []
-    seen_news_keys = set()
-    for item in list(items):
-        item_url = (
-            item.original_link if hasattr(item, "original_link")
-            else item.get("original_url", "")
-        ) or (
-            item.link if hasattr(item, "link")
-            else item.get("article_url", "")
-        )
-        item_title = item.title if hasattr(item, "title") else item.get("title", "")
-        news_key = str(item_url or item_title or "").strip().lower()
-        if news_key and news_key in seen_news_keys:
-            continue
-        if news_key:
-            seen_news_keys.add(news_key)
-        unique_items.append(item)
-        if len(unique_items) >= limit:
-            break
-    selected_items = unique_items
+    # Defensive dedupe: 여러 공급원이 같은 기사를 조금 다른 URL/제목으로 전달해도
+    # 화면에서는 동일 기사 1건만 남긴다.
+    selected_items = _dedupe_news_items(items, limit=limit)
     article_urls = []
     for item in selected_items:
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
@@ -5046,6 +5215,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
 
     cards = []
+    used_ai_image_urls = set()
     for idx, item in enumerate(selected_items):
         title_text = item.title if hasattr(item, "title") else item.get("title", "")
         desc_text = item.description if hasattr(item, "description") else item.get("description", "")
@@ -5069,9 +5239,20 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
         static_topic_image = _get_news_topic_image_url(news_topic)
 
-        # 수집기가 원문에서 확보해 Supabase Storage에 캐시한 최고해상도 이미지를 우선한다.
-        # 없으면 Supabase의 고정 주제 이미지를 사용한다.
+        # 수집기가 원문에서 확보해 Supabase Storage에 캐시한 최고해상도 이미지를 최우선으로 사용한다.
+        # 원본이 없으면 기사별 섹터 AI 이미지 풀(10장), 마지막으로 기존 고정 주제 이미지를 사용한다.
         image_url = image_urls[idx] if idx < len(image_urls) else ""
+        image_url = image_url or _normalize_news_image_url(provided_image_url)
+        if not image_url:
+            image_url = _get_news_topic_ai_image_url(
+                news_topic,
+                title=title_text,
+                description=desc_text,
+                query=query,
+                used_urls=used_ai_image_urls,
+            )
+        if image_url and image_url.startswith("https://gen.pollinations.ai/image/"):
+            used_ai_image_urls.add(image_url)
         image_url = image_url or static_topic_image
 
         direct_url = original_url or article_url
