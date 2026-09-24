@@ -17,6 +17,7 @@ from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
 import hashlib
 from pathlib import Path
+from difflib import SequenceMatcher
 
 from search_aliases import aliases_for
 
@@ -3887,7 +3888,7 @@ def _translate_news_cards(
     return localized
 
 class _NewsArticleTextParser(HTMLParser):
-    """뉴스 원문 HTML에서 본문 문단을 최대한 보수적으로 추출한다."""
+    """뉴스 원문 HTML에서 기사 본문 후보 문단을 추출한다."""
     def __init__(self):
         super().__init__(convert_charrefs=True)
         self.article_depth = 0
@@ -3902,7 +3903,7 @@ class _NewsArticleTextParser(HTMLParser):
 
     def handle_starttag(self, tag, attrs):
         tag = str(tag or "").lower()
-        if tag in {"script", "style", "noscript", "svg", "template"}:
+        if tag in {"script", "style", "noscript", "svg", "template", "iframe"}:
             self.skip_depth += 1
             return
 
@@ -3923,7 +3924,7 @@ class _NewsArticleTextParser(HTMLParser):
 
     def handle_endtag(self, tag):
         tag = str(tag or "").lower()
-        if tag in {"script", "style", "noscript", "svg", "template"}:
+        if tag in {"script", "style", "noscript", "svg", "template", "iframe"}:
             self.skip_depth = max(0, self.skip_depth - 1)
             return
 
@@ -3950,8 +3951,14 @@ class _NewsArticleTextParser(HTMLParser):
             self.current_parts.append(data)
 
 
+def _clean_extracted_article_text(value: str) -> str:
+    """본문 추출 과정에서 섞인 공백/메뉴성 문구를 정리한다."""
+    text = re.sub(r"\s+", " ", unescape(str(value or ""))).strip()
+    return text
+
+
 def _extract_jsonld_article_body(html: str) -> str:
-    """JSON-LD의 articleBody가 있으면 가장 충실한 원문 후보로 사용한다."""
+    """JSON-LD articleBody가 있으면 가장 충실한 원문 후보를 반환한다."""
     candidates = []
     pattern = re.compile(
         r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
@@ -3974,9 +3981,12 @@ def _extract_jsonld_article_body(html: str) -> str:
                 continue
             if not isinstance(node, dict):
                 continue
-            article_body = str(node.get("articleBody") or "").strip()
-            if article_body:
-                candidates.append(article_body)
+
+            for key in ("articleBody", "text"):
+                value = node.get(key)
+                if isinstance(value, str) and len(value.strip()) >= 500:
+                    candidates.append(value.strip())
+
             graph = node.get("@graph")
             if graph:
                 stack.append(graph)
@@ -3986,84 +3996,275 @@ def _extract_jsonld_article_body(html: str) -> str:
     return max(candidates, key=len)
 
 
+def _extract_named_html_blocks(html: str) -> list[str]:
+    """뉴스 사이트에서 흔히 쓰는 본문 컨테이너의 텍스트를 추출한다."""
+    blocks = []
+    selectors = (
+        r"article[-_]body",
+        r"article[-_]?content",
+        r"story[-_]body",
+        r"story[-_]?content",
+        r"entry[-_]content",
+        r"post[-_]content",
+        r"content[-_]body",
+        r"articlebody",
+        r"article__content",
+        r"story__content",
+        r"news[-_]body",
+        r"news[-_]content",
+        r"main[-_]content",
+    )
+    selector_pattern = "|".join(selectors)
+    element_re = re.compile(
+        rf'<(?P<tag>article|div|section)[^>]+(?:id|class)=["\'][^"\']*(?:{selector_pattern})[^"\']*["\'][^>]*>(?P<body>.*?)</(?P=tag)>',
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    for match in element_re.finditer(html or ""):
+        body = match.group("body") or ""
+        body = re.sub(r"<(script|style|noscript|svg|template|iframe)\b[^>]*>.*?</\1>", " ", body, flags=re.IGNORECASE | re.DOTALL)
+        paragraphs = re.findall(r"<p\b[^>]*>(.*?)</p>", body, flags=re.IGNORECASE | re.DOTALL)
+        cleaned = [
+            _clean_extracted_article_text(re.sub(r"<[^>]+>", " ", p))
+            for p in paragraphs
+        ]
+        cleaned = [p for p in cleaned if len(p) >= 30]
+        if cleaned:
+            blocks.append("\n\n".join(cleaned))
+        else:
+            plain = _clean_extracted_article_text(re.sub(r"<[^>]+>", " ", body))
+            if len(plain) >= 500:
+                blocks.append(plain)
+    return blocks
+
+
+def _filter_article_paragraphs(paragraphs) -> list[str]:
+    excluded_fragments = (
+        "privacy policy",
+        "terms of use",
+        "cookie policy",
+        "subscribe",
+        "sign up",
+        "newsletter",
+        "advertisement",
+        "advertising",
+        "all rights reserved",
+        "read more",
+        "follow us",
+        "share this",
+    )
+    out = []
+    seen = set()
+    for paragraph in paragraphs:
+        cleaned = _clean_extracted_article_text(paragraph)
+        if len(cleaned) < 35:
+            continue
+        lowered = cleaned.lower()
+        if any(fragment in lowered for fragment in excluded_fragments):
+            continue
+        key = re.sub(r"[^a-z0-9가-힣]+", "", lowered)
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(cleaned)
+    return out
+
+
+def _article_title_similarity(a: str, b: str) -> float:
+    left = re.sub(r"[^a-z0-9가-힣 ]+", " ", str(a or "").lower())
+    right = re.sub(r"[^a-z0-9가-힣 ]+", " ", str(b or "").lower())
+    left = re.sub(r"\s+", " ", left).strip()
+    right = re.sub(r"\s+", " ", right).strip()
+    if not left or not right:
+        return 0.0
+    return SequenceMatcher(None, left, right).ratio()
+
+
 @st.cache_data(ttl=1800, show_spinner=False)
-def _fetch_source_article_text(article_url: str) -> str:
-    """원문 기사 페이지를 읽어 AI 편집용 본문 문맥을 확보한다."""
+def _resolve_news_source_url(article_url: str, title: str = "", source: str = "") -> str:
+    """현재 Source URL을 우선 사용하고, Google/Bing 래퍼일 때만 실제 발행사 URL을 보강한다."""
     url = str(article_url or "").strip()
     if not url.startswith(("http://", "https://")):
         return ""
 
+    wrapper_hosts = {
+        "news.google.com",
+        "www.google.com",
+        "bing.com",
+        "www.bing.com",
+    }
+
+    def is_wrapper(value: str) -> bool:
+        try:
+            host = urlparse(value).netloc.lower().split(":")[0]
+            return host in wrapper_hosts or host.endswith(".news.google.com")
+        except Exception:
+            return True
+
+    if not is_wrapper(url):
+        try:
+            response = requests.get(
+                url,
+                timeout=8,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNewsReader/1.0)"},
+                allow_redirects=True,
+            )
+            if response.ok:
+                final_url = str(response.url or url).strip()
+                if final_url and not is_wrapper(final_url):
+                    return final_url
+        except Exception:
+            pass
+        return url
+
+    # 래퍼 URL은 기존 뉴스 Source 검색을 활용해 같은 제목의 직접 발행 URL을 찾는다.
     try:
-        response = requests.get(
-            url,
-            timeout=8,
-            headers={
-                "User-Agent": (
-                    "Mozilla/5.0 (compatible; FundamentalNewsReader/1.0; "
-                    "+https://github.com/Fundamental-korea/Fundamental-app)"
-                )
-            },
-            allow_redirects=True,
+        from news_earnings import search_bing_news_rss, search_google_news_rss
+        language = "ko" if re.search(r"[가-힣]", str(title or "")) else "en"
+        candidates = []
+
+        query = f'"{str(title or "").strip()}"'
+        if source:
+            source_term = re.sub(r"\s+", " ", str(source)).strip()
+            if source_term:
+                query = f"{query} {source_term}"
+
+        candidates.extend(
+            search_bing_news_rss(
+                query,
+                language=language,
+                display=10,
+                recent_days=7,
+            )
         )
-        response.raise_for_status()
-        html = response.text[:2_500_000]
+        candidates.extend(
+            search_google_news_rss(
+                query,
+                language=language,
+                display=10,
+                recent_days=7,
+            )
+        )
+
+        ranked = []
+        for item in candidates:
+            candidate_url = str(getattr(item, "original_link", "") or getattr(item, "link", "") or "").strip()
+            if not candidate_url or is_wrapper(candidate_url):
+                continue
+            similarity = _article_title_similarity(title, getattr(item, "title", ""))
+            source_match = 1.0 if source and str(source).lower() in candidate_url.lower() else 0.0
+            ranked.append((similarity, source_match, candidate_url))
+
+        ranked.sort(key=lambda row: (row[0], row[1]), reverse=True)
+        if ranked and ranked[0][0] >= 0.55:
+            return ranked[0][2]
     except Exception as exc:
-        print(
-            f"[News Reader] source article fetch failed: "
-            f"{type(exc).__name__}: {exc}"
-        )
+        print(f"[News Reader] source URL resolver failed: {type(exc).__name__}: {exc}")
+
+    # 래퍼를 그대로 반환하지 않고 최종적으로 원래 URL을 남긴다.
+    return url
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _fetch_source_article_text(article_url: str, title: str = "", source: str = "") -> str:
+    """현재 Source에서 실제 기사를 확보하고, 다양한 원문 구조에서 본문을 추출한다."""
+    url = str(article_url or "").strip()
+    if not url.startswith(("http://", "https://")):
         return ""
 
-    jsonld_body = _extract_jsonld_article_body(html)
-    if len(jsonld_body) >= 700:
-        return re.sub(r"\s+", " ", unescape(jsonld_body)).strip()[:28000]
+    resolved_url = _resolve_news_source_url(url, title=title, source=source)
+    urls_to_try = []
+    for candidate in (resolved_url, url):
+        if candidate and candidate not in urls_to_try:
+            urls_to_try.append(candidate)
 
-    try:
-        parser = _NewsArticleTextParser()
-        parser.feed(html)
-        parser.close()
-    except Exception as exc:
+    best_text = ""
+    best_score = -1.0
+
+    for target_url in urls_to_try:
+        try:
+            response = requests.get(
+                target_url,
+                timeout=10,
+                headers={
+                    "User-Agent": (
+                        "Mozilla/5.0 (compatible; FundamentalNewsReader/1.0; "
+                        "+https://github.com/Fundamental-korea/Fundamental-app)"
+                    )
+                },
+                allow_redirects=True,
+            )
+            if not response.ok:
+                continue
+            html = response.text[:4_000_000]
+        except Exception as exc:
+            print(
+                f"[News Reader] source article fetch failed: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            continue
+
+        candidates = []
+
+        jsonld_body = _extract_jsonld_article_body(html)
+        if jsonld_body:
+            candidates.append(("jsonld", _clean_extracted_article_text(jsonld_body)))
+
+        named_blocks = _extract_named_html_blocks(html)
+        for idx, block in enumerate(named_blocks):
+            candidates.append((f"named-{idx}", block))
+
+        try:
+            parser = _NewsArticleTextParser()
+            parser.feed(html)
+            parser.close()
+            article_paragraphs = _filter_article_paragraphs(parser.article_paragraphs)
+            main_paragraphs = _filter_article_paragraphs(parser.main_paragraphs)
+            body_paragraphs = _filter_article_paragraphs(parser.body_paragraphs)
+
+            if article_paragraphs:
+                candidates.append(("article-p", "\n\n".join(article_paragraphs)))
+            if main_paragraphs:
+                candidates.append(("main-p", "\n\n".join(main_paragraphs)))
+            if body_paragraphs:
+                candidates.append(("body-p", "\n\n".join(body_paragraphs)))
+        except Exception as exc:
+            print(f"[News Reader] source article parse failed: {type(exc).__name__}: {exc}")
+
+        for method, candidate in candidates:
+            candidate = str(candidate or "").strip()
+            if len(candidate) < 500:
+                continue
+
+            # 본문은 길이만 보지 않고 문단 수와 문장 수를 함께 평가해 메뉴/댓글 묶음을 억제한다.
+            paragraph_count = candidate.count("\n\n") + 1
+            sentence_count = len(re.findall(r"[.!?。！？](?:\s|$)", candidate))
+            digit_bonus = min(1.0, len(re.findall(r"\d", candidate)) / 40.0)
+            score = (
+                min(len(candidate), 24000) / 4000.0
+                + min(paragraph_count, 14) / 10.0
+                + min(sentence_count, 30) / 20.0
+                + digit_bonus
+            )
+
+            # 후보에 제목/메뉴 문구만 반복되는 경우는 제외한다.
+            if title and _article_title_similarity(title, candidate[:350]) > 0.92 and len(candidate) < 900:
+                continue
+
+            if score > best_score:
+                best_score = score
+                best_text = candidate[:28000]
+
+        if best_score >= 5.0:
+            break
+
+    if best_text:
         print(
-            f"[News Reader] source article parse failed: "
-            f"{type(exc).__name__}: {exc}"
+            f"[News Reader] source article resolved | url={resolved_url[:120]} "
+            f"| chars={len(best_text)}"
         )
-        return ""
-
-    def choose(paragraphs):
-        out = []
-        seen = set()
-        for paragraph in paragraphs:
-            cleaned = re.sub(r"\s+", " ", str(paragraph or "")).strip()
-            if len(cleaned) < 25:
-                continue
-            key = cleaned.lower()
-            if key in seen:
-                continue
-            seen.add(key)
-            out.append(cleaned)
-        return out
-
-    article_paragraphs = choose(parser.article_paragraphs)
-    main_paragraphs = choose(parser.main_paragraphs)
-    body_paragraphs = choose(parser.body_paragraphs)
-
-    if article_paragraphs:
-        paragraphs = article_paragraphs
-    elif main_paragraphs:
-        paragraphs = main_paragraphs
     else:
-        paragraphs = body_paragraphs
-
-    # 너무 짧은 단락만 모인 경우는 원문 본문으로 보기 어렵다.
-    paragraphs = [
-        p for p in paragraphs
-        if len(p) >= 45 or re.search(r"\d", p)
-    ]
-    if not paragraphs:
-        return ""
-
-    text = "\n\n".join(paragraphs)
-    return text[:28000]
+        print(f"[News Reader] source article body unavailable | url={url[:120]}")
+    return best_text
 
 
 @st.cache_data(ttl=86400, show_spinner=False)
@@ -4075,45 +4276,67 @@ def _generate_ai_news_article(
     entities: str = "",
     source: str = "",
     article_url: str = "",
+    cache_version: str = "live-news-article-v2",
 ) -> dict:
-    """원문 본문을 읽은 뒤, 사실관계를 유지하면서 한국어 기사로 재구성한다."""
+    """현재 Source를 원문으로 삼아 충분한 정보량의 한국어 기사로 재구성한다."""
     api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
     if not api_key:
         return {}
 
     model = str(st.secrets.get("GEMINI_NEWS_MODEL", "gemini-3.5-flash-lite")).strip()
-    resolved_article_url = str(article_url or "").strip()
-    source_article = _fetch_source_article_text(resolved_article_url)
+    source_article = _fetch_source_article_text(
+        article_url,
+        title=title,
+        source=source,
+    )
 
-    source_material = "\n".join([
+    metadata_material = "\n".join([
         f"원문 제목: {title}",
         f"출처: {source}",
         f"공급원 설명: {description}",
-        f"짧은 문맥: {snippet}",
+        f"공급원 짧은 문맥: {snippet}",
         f"핵심 키워드: {keywords}",
         f"관련 기업·자산: {entities}",
-        f"원문 기사 본문:\n{source_article or '(원문 본문을 직접 확보하지 못함 — 공급원 설명과 문맥만 사용)'}",
     ])
+
+    if source_article:
+        source_material = (
+            f"{metadata_material}\n\n"
+            f"=== 현재 Source에서 확보한 원문 본문 ===\n{source_article}"
+        )
+    else:
+        source_material = (
+            f"{metadata_material}\n\n"
+            "=== 원문 본문 확보 상태 ===\n"
+            "현재 Source가 제공한 메타데이터만 확보됨. "
+            "확인되지 않은 세부 사실을 추정해서 늘리지 말 것."
+        )
 
     prompt = f"""
 너는 한국의 금융·경제 뉴스 전문 편집자다.
-아래 자료 중 '원문 기사 본문'을 최우선 근거로 사용하고, 공급원 설명과 키워드는 보조 자료로 사용하라.
+
+아래 자료는 '현재 뉴스 Source'에서 가져온 자료다.
+반드시 이 자료를 기준으로 작성하고, 별도의 외부 지식으로 내용을 보충하지 마라.
 
 {source_material}
 
-요청:
-- 기사의 핵심 사실과 정보 범위를 원문 대비 약 80% 수준으로 충분히 유지한다.
-- 단순 요약문이 아니라 원문의 흐름과 핵심 정보를 충분히 담은 한국어 기사로 재구성한다.
-- 문장과 문단 표현은 원문과 다르게 새로 작성한다. 원문을 장문으로 그대로 복사하지 않는다.
-- 원문에 확인되는 주요 수치, 날짜, 회사명, 인물 발언, 정책 내용, 시장 반응, 배경 설명은 가능한 한 빠뜨리지 않는다.
-- 원문에서 확인할 수 없는 사실, 숫자, 인용, 전망, 원인, 의도는 절대로 추가하지 않는다.
-- 서술은 전부 자연스러운 한국어로 작성한다. 회사명·티커·고유명사처럼 원문 표기가 필요한 경우를 제외하고 영어 문장을 남기지 않는다.
-- 투자 추천, 매수·매도 지시, 과도한 평가를 추가하지 않는다.
-- 원문이 짧으면 억지로 내용을 늘리지 말고 확보된 사실만 충실하게 재구성한다.
-- 본문은 10~14개 문단, 총 2400~4500자 정도를 목표로 한다.
-- 첫 문단에서 핵심 사건을 바로 설명하고, 이후 세부 사실 → 배경 → 관련 발언/수치 → 시장·산업 맥락 → 향후 확인할 사안 순으로 자연스럽게 전개한다.
-- 출력은 아래 형식을 정확히 지킨다.
+작성 원칙:
+- 원문 본문이 있으면 그것을 가장 중요한 기준으로 사용한다.
+- 사용자가 실제 원문을 읽은 것처럼 핵심 정보가 충분히 남아 있어야 한다.
+- 원문에 있는 주요 사실, 수치, 날짜, 기업명, 인물, 발언, 정책, 시장 반응, 배경과 세부 설명을 가능한 한 빠짐없이 반영한다.
+- 정보량 기준으로 원문 전체에서 약 80% 수준의 핵심 내용을 유지하는 것을 목표로 한다.
+- 단순한 2~3문단 요약이나 짧은 브리핑으로 축약하지 않는다.
+- 문장과 문단은 원문을 그대로 복사하지 않고 새로운 한국어 문장으로 재구성한다.
+- 원문에 없는 숫자, 사실, 발언, 전망, 원인, 의도는 절대 추가하지 않는다.
+- 원문이 실제로 짧은 경우에만 짧게 작성한다. 근거 없이 길이를 부풀리지 않는다.
+- 영어 문장은 회사명·제품명·티커·고유명사 등 필요한 경우를 제외하고 한국어로 옮긴다.
+- 투자 추천이나 매수·매도 지시는 하지 않는다.
+- 본문은 최소 8문단 이상을 목표로 하고, 원문 분량에 따라 충분한 길이로 작성한다.
+- 원문이 충분히 긴 경우 본문은 대략 2500~4500자 수준을 목표로 한다.
+- 첫 문단은 핵심 사건부터 시작한다.
+- 이후 세부 사실 → 배경 → 관련 수치·발언 → 시장 및 산업 맥락 → 앞으로 확인할 부분 순으로 구성한다.
 
+출력 형식:
 제목:
 <한국어 제목>
 
@@ -4387,6 +4610,7 @@ def render_news_reader():
         entities=entities,
         source=source,
         article_url=original_url or article_url,
+        cache_version="live-news-article-v3",
     )
     ai_title = str(ai_result.get("title") or "").strip()
     ai_body = str(ai_result.get("body") or "").strip()
