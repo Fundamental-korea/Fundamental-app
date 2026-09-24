@@ -1,6 +1,13 @@
 import os
+import re
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from html import unescape
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
+
+import requests
 
 from news_earnings import (
     fetch_macro_news,
@@ -11,6 +18,180 @@ from news_earnings import (
 KST = ZoneInfo("Asia/Seoul")
 
 MIN_COLLECTION_INTERVAL = timedelta(minutes=110)
+
+_IMAGE_LOWRES_HINTS = (
+    "thumbnail", "thumb", "small", "tiny", "lowres",
+    "150x", "180x", "200x", "240x", "300x", "320x", "400x",
+    "width=150", "width=180", "width=200", "width=240",
+    "width=300", "width=320", "width=400",
+    "w_150", "w_180", "w_200", "w_240", "w_300", "w_320", "w_400",
+)
+
+
+def _usable_news_image_url(image_url: str) -> bool:
+    url = str(image_url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return False
+    lowered = url.lower()
+    if "bing.com" in lowered and (
+        "th?id=" in lowered or "pid=news" in lowered or "/th" in lowered
+    ):
+        return False
+    return not any(hint in lowered for hint in _IMAGE_LOWRES_HINTS)
+
+
+def _extract_best_source_image(article_url: str) -> str:
+    """원문 HTML에서 srcset/JSON-LD/OG 이미지 중 가장 고해상도 후보를 찾는다."""
+    url = str(article_url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return ""
+    try:
+        response = requests.get(
+            url,
+            timeout=8,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNewsImageBot/1.0)"},
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+        html = response.text[:1_000_000]
+        candidates = []
+
+        # srcset/data-srcset is the strongest signal: select the largest declared width.
+        for match in re.finditer(r"""(?:srcset|data-srcset)=["']([^"']+)["']""", html, flags=re.IGNORECASE):
+            for entry in re.split(r"s*,s*", match.group(1)):
+                parts = entry.strip().split()
+                if not parts:
+                    continue
+                raw = unescape(parts[0]).strip()
+                width = 0
+                if len(parts) > 1:
+                    m = re.match(r"(\d+)w$", parts[1])
+                    if m:
+                        width = int(m.group(1))
+                candidates.append((width, 4, raw))
+
+        # JSON-LD image/contentUrl/thumbnailUrl.
+        for match in re.finditer(
+            r'"(?:image|contentUrl|thumbnailUrl)"s*:s*"([^"]+)"',
+            html,
+            flags=re.IGNORECASE,
+        ):
+            candidates.append((0, 3, unescape(match.group(1)).strip()))
+
+        # OpenGraph / Twitter image metadata.
+        patterns = (
+            r"<meta[^>]+property=["']og:image:secure_url["'][^>]+content=["']([^"']+)",
+            r"<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image:secure_url["']",
+            r"<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)",
+            r"<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']",
+            r"<meta[^>]+name=["']twitter:image:src["'][^>]+content=["']([^"']+)",
+            r"<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image:src["']",
+            r"<meta[^>]+name=["']twitter:image["'][^>]+content=["']([^"']+)",
+            r"<meta[^>]+content=["']([^"']+)["'][^>]+name=["']twitter:image["']",
+        )
+        for pattern in patterns:
+            for match in re.finditer(pattern, html, flags=re.IGNORECASE):
+                candidates.append((0, 2, unescape(match.group(1)).strip()))
+
+        normalized = []
+        seen = set()
+        base_url = response.url or url
+        for width, priority, raw in candidates:
+            if raw.startswith("//"):
+                raw = "https:" + raw
+            elif raw.startswith("/"):
+                raw = urljoin(base_url, raw)
+            if not raw.startswith(("http://", "https://")):
+                continue
+            if not _usable_news_image_url(raw):
+                continue
+            key = raw.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append((width, priority, raw))
+
+        normalized.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return normalized[0][2] if normalized else ""
+    except Exception as exc:
+        print(
+            f"[LIVE NEWS] source image lookup failed | {url[:120]} | "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return ""
+
+
+def _enrich_news_items_with_source_images(items):
+    items = list(items)
+    if not items:
+        return items
+
+    targets = []
+    for idx, item in enumerate(items):
+        current = str(getattr(item, "image_url", "") or "").strip()
+        if _usable_news_image_url(current):
+            continue
+        source_url = str(getattr(item, "original_link", "") or getattr(item, "link", "") or "").strip()
+        if source_url:
+            targets.append((idx, source_url))
+
+    if not targets:
+        return items
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
+        fetched = executor.map(lambda pair: (pair[0], _extract_best_source_image(pair[1])), targets)
+        for idx, image_url in fetched:
+            if image_url:
+                results[idx] = image_url
+
+    enriched = []
+    for idx, item in enumerate(items):
+        image_url = results.get(idx) or getattr(item, "image_url", "")
+        enriched.append(replace(item, image_url=image_url))
+    print(f"[LIVE NEWS] source image enrichment: targets={len(targets)} resolved={len(results)}")
+    return enriched
+
+
+def _backfill_missing_db_images(client) -> int:
+    """기존 20개 피드 중 image_url이 비어 있는 행도 원문 대표 이미지로 보강한다."""
+    rows = (
+        client.table("news_items")
+        .select("id,article_url,original_url,metadata")
+        .eq("is_macro", True)
+        .in_("source", ["MARKETAUX", "NAVER", "RSS"])
+        .order("published_at", desc=True)
+        .limit(20)
+        .execute()
+        .data
+        or []
+    )
+    targets = []
+    for row in rows:
+        metadata = row.get("metadata") or {}
+        current = str(metadata.get("image_url") or "").strip() if isinstance(metadata, dict) else ""
+        if _usable_news_image_url(current):
+            continue
+        source_url = str(row.get("original_url") or row.get("article_url") or "").strip()
+        if source_url:
+            targets.append((row, source_url))
+
+    if not targets:
+        return 0
+
+    resolved = 0
+    with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
+        fetched = executor.map(lambda pair: _extract_best_source_image(pair[1]), targets)
+        for (row, _), image_url in zip(targets, fetched):
+            if not image_url:
+                continue
+            metadata = dict(row.get("metadata") or {})
+            metadata["image_url"] = image_url
+            client.table("news_items").update({"metadata": metadata}).eq("id", row["id"]).execute()
+            resolved += 1
+    print(f"[LIVE NEWS] DB image backfill: targets={len(targets)} resolved={resolved}")
+    return resolved
+
 
 
 def _latest_collection_at(client):
@@ -103,7 +284,12 @@ def main() -> None:
         seen_new.add(key)
         new_items.append(item)
 
+    # 신규 기사도 수집 시점에 원문 대표 이미지를 보강해 웹페이지가 외부 HTML을 다시 조회하지 않도록 한다.
+    new_items = _enrich_news_items_with_source_images(new_items)
     saved = persist_live_news_snapshot(new_items, supabase_client=client)
+
+    # 기존 최신 20개 중 image_url이 비어 있는 과거 기사도 이번 실행에서 한 번 보강한다.
+    _backfill_missing_db_images(client)
 
     # 새 기사는 기존 20개 앞쪽에 들어간다는 의미를 DB의 published_at 정렬로 보장한다.
     # 오래된 기사는 20개 한도를 넘는 순간 뒤쪽부터 제거한다.
