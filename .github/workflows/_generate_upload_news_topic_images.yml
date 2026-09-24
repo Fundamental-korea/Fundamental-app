@@ -30,16 +30,18 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
           test -n "$GEMINI_API_KEY" || { echo "GEMINI_API_KEY is missing"; exit 1; }
           test -n "$SUPABASE_URL" || { echo "SUPABASE_URL is missing"; exit 1; }
-          test -n "$SUPABASE_SERVICE_ROLE_KEY" || { echo "SUPABASE_SERVICE_ROLE_KEY is missing"; exit 1; }
+          test -n "${SUPABASE_SERVICE_ROLE_KEY:-$SUPABASE_KEY}" || { echo "No Supabase write key is configured"; exit 1; }
 
       - name: Generate Gemini 3.1 Flash images and upload to Supabase
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: |
           python - <<'PY'
           import base64, io, os, time
@@ -67,7 +69,8 @@ jobs:
             "crypto_assets": "Wide cinematic editorial financial-news banner for digital assets and cryptocurrency markets. Photorealistic Bitcoin coin, digital-asset market chart, glowing blockchain network and gold coins, premium institutional finance magazine style, deep navy and electric blue with warm gold highlights, crisp macro detail and realistic reflections, no people, no readable text, no logos, no border.",
           }
 
-          sb = create_client(os.environ["SUPABASE_URL"].rstrip("/"), os.environ["SUPABASE_SERVICE_ROLE_KEY"])
+          supabase_key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY") or os.environ.get("SUPABASE_KEY")
+          sb = create_client(os.environ["SUPABASE_URL"].rstrip("/"), supabase_key)
           bucket = "news-topic-images"
           session = requests.Session()
           headers = {"x-goog-api-key": os.environ["GEMINI_API_KEY"], "Content-Type": "application/json"}
