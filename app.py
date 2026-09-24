@@ -4658,7 +4658,7 @@ def _public_news_ai_image_url(ai_url: str) -> str:
     cache_key = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:40]
     return (
         f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
-        f"news-source-images/ai/{cache_key}.jpg"
+        f"news-source-images/ai/{cache_key}"
     )
 
 
@@ -4711,10 +4711,10 @@ def _cache_ai_news_image(ai_url: str) -> str:
             supabase.storage
             .from_("news-source-images")
             .upload(
-                f"ai/{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:40]}.jpg",
+                f"ai/{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:40]}",
                 data,
                 {
-                    "content-type": "image/jpeg",
+                    "content-type": content_type,
                     "cache-control": "31536000",
                     "upsert": "false",
                 },
