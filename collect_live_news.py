@@ -214,9 +214,9 @@ def _cache_source_image(client, source_image_url: str) -> str:
                 path,
                 data,
                 {
-                    "contentType": content_type,
-                    "cacheControl": "31536000",
-                    "upsert": True,
+                    "content-type": content_type,
+                    "cache-control": "31536000",
+                    "upsert": "true",
                 },
             )
         )
@@ -227,7 +227,15 @@ def _cache_source_image(client, source_image_url: str) -> str:
             )
             return ""
 
-        return client.storage.from_("news-source-images").get_public_url(path).get("publicUrl", "")
+        public_url = client.storage.from_("news-source-images").get_public_url(path)
+        if isinstance(public_url, str):
+            return public_url
+        data = getattr(public_url, "data", None)
+        if isinstance(data, dict):
+            return str(data.get("publicUrl") or "")
+        if isinstance(public_url, dict):
+            return str(public_url.get("publicUrl") or "")
+        return ""
     except Exception as exc:
         print(
             f"[LIVE NEWS] source image cache failed | {url[:120]} | "
