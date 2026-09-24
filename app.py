@@ -4650,6 +4650,111 @@ def _get_news_topic_ai_image_url(
     return pool[start]
 
 
+def _public_news_ai_image_url(ai_url: str) -> str:
+    """AI 원본 URL을 결정론적인 Supabase Storage public URL로 매핑한다."""
+    raw = str(ai_url or "").strip()
+    if not raw:
+        return ""
+    cache_key = hashlib.sha256(raw.encode("utf-8")).hexdigest()[:40]
+    return (
+        f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
+        f"news-source-images/ai/{cache_key}.jpg"
+    )
+
+
+def _cache_ai_news_image(ai_url: str) -> str:
+    """Pollinations AI 이미지를 서버에서 받아 Supabase Storage에 저장하고 public URL을 반환한다.
+
+    브라우저는 더 이상 Pollinations를 직접 호출하지 않는다. 저장된 파일만 표시하므로
+    이미지 생성 서비스의 일시적인 4xx/5xx/timeout이 화면의 broken image로 전파되지 않는다.
+    """
+    raw = str(ai_url or "").strip()
+    if not raw.startswith("https://image.pollinations.ai/"):
+        return ""
+    public_url = _public_news_ai_image_url(raw)
+
+    # 이미 저장된 파일이면 외부 AI 서비스에 다시 접근하지 않는다.
+    try:
+        head = requests.head(
+            public_url,
+            timeout=3,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNewsAIImage/1.0)"},
+            allow_redirects=True,
+        )
+        if head.ok:
+            return public_url
+    except Exception:
+        pass
+
+    if supabase is None:
+        return ""
+
+    try:
+        response = requests.get(
+            raw,
+            timeout=20,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNewsAIImage/1.0)"},
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+        content_type = (
+            str(response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+        )
+        if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+            return ""
+
+        data = response.content
+        if not data or len(data) > 8 * 1024 * 1024:
+            return ""
+
+        upload = (
+            supabase.storage
+            .from_("news-source-images")
+            .upload(
+                f"ai/{hashlib.sha256(raw.encode('utf-8')).hexdigest()[:40]}.jpg",
+                data,
+                {
+                    "content-type": "image/jpeg",
+                    "cache-control": "31536000",
+                    "upsert": "false",
+                },
+            )
+        )
+        error = getattr(upload, "error", None)
+        if error and "exist" not in str(error).lower():
+            print(f"[Live News AI Image] Storage upload failed: {error}")
+            return ""
+        return public_url
+    except Exception as exc:
+        # Concurrent Streamlit reruns can race for the same deterministic path.
+        # An "already exists" condition still means the public file is usable.
+        if "exist" in str(exc).lower():
+            return public_url
+        print(
+            f"[Live News AI Image] cache failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return ""
+
+
+
+    """기사별로 섹터 AI 이미지 풀에서 하나를 고르며, 같은 화면에서는 중복을 피한다."""
+    pool = list(_get_news_topic_ai_image_pool(topic_key))
+    if not pool:
+        return ""
+    fingerprint = "|".join(
+        str(value or "").strip()
+        for value in (topic_key, title, description, query)
+    )
+    start = int(hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:8], 16) % len(pool)
+    blocked = set(str(url or "") for url in (used_urls or set()) if url)
+    for offset in range(len(pool)):
+        candidate = pool[(start + offset) % len(pool)]
+        if candidate not in blocked:
+            return candidate
+    return pool[start]
+
+
 NEWS_TOPIC_IMAGE_FILES = {
     "global_markets": "assets/news_topics/global_markets.svg",
     "interest_rates": "assets/news_topics/interest_rates.svg",
@@ -4864,12 +4969,13 @@ def render_news_reader():
     if source_reader_image:
         image_url = source_reader_image
     else:
-        image_url = _get_news_topic_ai_image_url(
+        ai_reader_url = _get_news_topic_ai_image_url(
             news_topic,
             title=title,
             description=description,
             query=category,
-        ) or static_reader_image
+        )
+        image_url = _cache_ai_news_image(ai_reader_url) or static_reader_image
 
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
@@ -5279,15 +5385,16 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             if _is_supabase_news_image_url(provided):
                 image_url = provided
         if not image_url:
-            image_url = _get_news_topic_ai_image_url(
+            ai_image_url = _get_news_topic_ai_image_url(
                 news_topic,
                 title=original_title,
                 description=original_desc,
                 query=query,
                 used_urls=used_ai_image_urls,
             )
-        if image_url and image_url.startswith("https://image.pollinations.ai/prompt/"):
-            used_ai_image_urls.add(image_url)
+            if ai_image_url:
+                used_ai_image_urls.add(ai_image_url)
+                image_url = _cache_ai_news_image(ai_image_url)
         resolved_image_urls.append(image_url)
 
     localized_cards = {}
