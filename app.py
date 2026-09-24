@@ -4090,9 +4090,12 @@ class _NewsArticleTextParser(HTMLParser):
 
 
 def _clean_extracted_article_text(value: str) -> str:
-    """본문 추출 과정에서 섞인 공백/메뉴성 문구를 정리한다."""
-    text = re.sub(r"\s+", " ", unescape(str(value or ""))).strip()
-    return text
+    """본문 추출 과정의 불필요한 공백만 정리하고 문단 구분은 보존한다."""
+    text = unescape(str(value or "")).replace("\r\n", "\n").replace("\r", "\n").strip()
+    text = re.sub(r"[ \\t]+", " ", text)
+    text = re.sub(r" *\n *", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def _extract_jsonld_article_body(html: str) -> str:
@@ -4120,10 +4123,11 @@ def _extract_jsonld_article_body(html: str) -> str:
             if not isinstance(node, dict):
                 continue
 
-            for key in ("articleBody", "text"):
-                value = node.get(key)
-                if isinstance(value, str) and len(value.strip()) >= 500:
-                    candidates.append(value.strip())
+            # JSON-LD의 generic `text`는 페이지 설명/메뉴일 수도 있다.
+            # 실제 기사 본문인 articleBody만 사용한다.
+            value = node.get("articleBody")
+            if isinstance(value, str) and len(value.strip()) >= 500:
+                candidates.append(value.strip())
 
             graph = node.get("@graph")
             if graph:
@@ -4405,6 +4409,35 @@ def _fetch_source_article_text(article_url: str, title: str = "", source: str = 
     return best_text
 
 
+def _normalize_news_article_body(value: str) -> str:
+    """AI가 한 줄로 반환한 기사도 읽기 좋은 문단 구조로 정규화한다."""
+    text = str(value or "").replace("\r\n", "\n").replace("\r", "\n").strip()
+    if not text:
+        return ""
+    text = re.sub(r"[ \t]+\n", "\n", text)
+    text = re.sub(r"\n{3,}", "\n\n", text)
+
+    # 이미 문단 구분이 충분하면 Gemini가 만든 구조를 그대로 보존한다.
+    if text.count("\n\n") >= 2:
+        return text
+
+    # 한 줄 응답만 온 경우 2~3문장 단위로 문단을 재구성한다.
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?。！？])\s+", text) if part.strip()]
+    if len(sentences) < 5:
+        return text
+
+    paragraphs = []
+    group = []
+    for sentence in sentences:
+        group.append(sentence)
+        if len(group) >= 2:
+            paragraphs.append(" ".join(group))
+            group = []
+    if group:
+        paragraphs.append(" ".join(group))
+    return "\n\n".join(paragraphs)
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def _generate_ai_news_article(
     title: str,
@@ -4519,6 +4552,7 @@ def _generate_ai_news_article(
                 ai_title = ai_title.strip()
                 ai_body = ai_body.strip()
 
+        ai_body = _normalize_news_article_body(ai_body)
         return {"title": ai_title, "body": ai_body}
     except Exception as exc:
         print(f"[Gemini Live News Article] Request failed: {type(exc).__name__}: {exc}")
@@ -4947,7 +4981,7 @@ def render_news_reader():
         entities=entities,
         source=source,
         article_url=original_url or article_url,
-        cache_version="live-news-article-v3",
+        cache_version="live-news-article-v4",
     )
     ai_title = str(ai_result.get("title") or "").strip()
     ai_body = str(ai_result.get("body") or "").strip()
@@ -4975,7 +5009,8 @@ def render_news_reader():
             description=description,
             query=category,
         )
-        image_url = _cache_ai_news_image(ai_reader_url) or static_reader_image
+        # 기사 본문 생성과 이미지 생성을 서로 기다리게 만들지 않는다.
+        image_url = ai_reader_url or static_reader_image
 
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
@@ -5394,7 +5429,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             )
             if ai_image_url:
                 used_ai_image_urls.add(ai_image_url)
-                image_url = _cache_ai_news_image(ai_image_url)
+                # AI 이미지는 여기서 네트워크 요청을 하지 않는다.
+                # 페이지 렌더를 막지 않도록 URL만 선택하고 브라우저의 CSS background layer가 로드한다.
+                image_url = ai_image_url
         resolved_image_urls.append(image_url)
 
     localized_cards = {}
@@ -5417,7 +5454,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
     if needs_localization:
         localized_cards = _translate_news_cards(
             translation_input,
-            cache_version="live-news-korean-v7",
+            cache_version="live-news-korean-v11",
         )
 
     cards = []
