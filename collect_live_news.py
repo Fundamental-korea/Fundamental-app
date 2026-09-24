@@ -1,6 +1,13 @@
 import os
+import re
+from concurrent.futures import ThreadPoolExecutor
+from dataclasses import replace
+from html import unescape
 from datetime import datetime, timedelta, timezone
+from urllib.parse import urljoin, urlparse
 from zoneinfo import ZoneInfo
+
+import requests
 
 from news_earnings import (
     fetch_macro_news,
@@ -11,6 +18,241 @@ from news_earnings import (
 KST = ZoneInfo("Asia/Seoul")
 
 MIN_COLLECTION_INTERVAL = timedelta(minutes=110)
+
+_IMAGE_LOWRES_HINTS = (
+    "thumbnail", "thumb", "small", "tiny", "lowres", "resizefill",
+    "default-logo", "placeholder", "image-placeholder",
+    "150x", "180x", "200x", "240x", "300x", "320x", "400x",
+    "width=150", "width=180", "width=200", "width=240",
+    "width=300", "width=320", "width=400",
+    "w_150", "w_180", "w_200", "w_240", "w_300", "w_320", "w_400",
+)
+
+
+def _usable_news_image_url(image_url: str) -> bool:
+    url = str(image_url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return False
+    lowered = url.lower()
+    if "bing.com" in lowered and (
+        "th?id=" in lowered or "pid=news" in lowered or "/th" in lowered
+    ):
+        return False
+    if any(hint in lowered for hint in _IMAGE_LOWRES_HINTS):
+        return False
+
+    for pattern in (
+        r"(?:^|[^a-z0-9])w(?:idth)?[_=-]?(\d{2,5})(?:[^0-9]|$)",
+        r"(?:^|[^a-z0-9])h(?:eight)?[_=-]?(\d{2,5})(?:[^0-9]|$)",
+    ):
+        match = re.search(pattern, lowered)
+        if match and int(match.group(1)) <= 800:
+            return False
+
+    # CDN paths such as /resizefill_h48 or ;width=300 are almost always card thumbnails.
+    if re.search(r"(?:resizefill|resize|fit)[^/]{0,40}(?:[_-]h(?:eight)?\s*=?\s*\d{2,3}|[_-]w(?:idth)?\s*=?\s*\d{2,3})", lowered):
+        return False
+    return True
+
+
+def _extract_best_source_image(article_url: str) -> str:
+    """원문 HTML에서 srcset/JSON-LD/OG 이미지 중 가장 고해상도 후보를 찾는다.
+    Google News 래퍼이면 canonical/og:url을 따라 실제 발행사 페이지도 한 번 더 검사한다."""
+    url = str(article_url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return ""
+
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; FundamentalNewsImageBot/1.0)"}
+
+    def fetch_page(target_url):
+        response = requests.get(
+            target_url,
+            timeout=8,
+            headers=headers,
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+        return response
+
+    try:
+        response = fetch_page(url)
+        html = response.text[:1_000_000]
+
+        # Google News RSS links can resolve to a wrapper page. Follow canonical
+        # or og:url to the real publisher article when one is exposed.
+        if "news.google.com" in (response.url or "").lower():
+            publisher_url = ""
+            for pattern in (
+                r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)',
+                r'<meta[^>]+property=["\']og:url["\'][^>]+content=["\']([^"\']+)',
+            ):
+                match = re.search(pattern, html, flags=re.IGNORECASE)
+                if match:
+                    candidate = unescape(match.group(1)).strip()
+                    if candidate.startswith(("http://", "https://")) and "news.google.com" not in candidate.lower():
+                        publisher_url = candidate
+                        break
+            if publisher_url:
+                try:
+                    response = fetch_page(publisher_url)
+                    html = response.text[:1_000_000]
+                except Exception:
+                    pass
+
+        candidates = []
+
+        # srcset/data-srcset: largest declared width wins.
+        for match in re.finditer(
+            r"""(?:srcset|data-srcset)=["']([^"']+)["']""",
+            html,
+            flags=re.IGNORECASE,
+        ):
+            for entry in re.split(r"\s*,\s*", match.group(1)):
+                parts = entry.strip().split()
+                if not parts:
+                    continue
+                raw = unescape(parts[0]).strip()
+                width = 0
+                if len(parts) > 1:
+                    width_match = re.match(r"(\d+)w$", parts[1])
+                    if width_match:
+                        width = int(width_match.group(1))
+                candidates.append((width, 5, raw))
+
+        # JSON-LD.
+        for match in re.finditer(
+            r'"(?:image|contentUrl|thumbnailUrl)"\s*:\s*"([^"]+)"',
+            html,
+            flags=re.IGNORECASE,
+        ):
+            candidates.append((0, 4, unescape(match.group(1)).strip()))
+
+        # OpenGraph / Twitter.
+        patterns = (
+            r'<meta[^>]+property=["\']og:image:secure_url["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image:secure_url["\']',
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+            r'<meta[^>]+name=["\']twitter:image:src["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image:src["\']',
+            r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
+        )
+        for pattern in patterns:
+            for match in re.finditer(pattern, html, flags=re.IGNORECASE):
+                candidates.append((0, 3, unescape(match.group(1)).strip()))
+
+        normalized = []
+        seen = set()
+        base_url = response.url or url
+        for width, priority, raw in candidates:
+            if raw.startswith("//"):
+                raw = "https:" + raw
+            elif raw.startswith("/"):
+                raw = urljoin(base_url, raw)
+            if not raw.startswith(("http://", "https://")):
+                continue
+            if not _usable_news_image_url(raw):
+                continue
+            key = raw.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            normalized.append((width, priority, raw))
+
+        normalized.sort(key=lambda item: (item[0], item[1]), reverse=True)
+        return normalized[0][2] if normalized else ""
+    except Exception as exc:
+        print(
+            f"[LIVE NEWS] source image lookup failed | {url[:120]} | "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return ""
+
+
+def _enrich_news_items_with_source_images(items):
+    items = list(items)
+    if not items:
+        return items
+
+    targets = []
+    for idx, item in enumerate(items):
+        current = str(getattr(item, "image_url", "") or "").strip()
+        if _usable_news_image_url(current):
+            continue
+        source_url = str(getattr(item, "original_link", "") or getattr(item, "link", "") or "").strip()
+        if source_url:
+            targets.append((idx, source_url))
+
+    if not targets:
+        return items
+
+    results = {}
+    with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
+        fetched = executor.map(lambda pair: (pair[0], _extract_best_source_image(pair[1])), targets)
+        for idx, image_url in fetched:
+            if image_url:
+                results[idx] = image_url
+
+    enriched = []
+    cleared = 0
+    for idx, item in enumerate(items):
+        current = getattr(item, "image_url", "")
+        image_url = results.get(idx) or current
+        if not _usable_news_image_url(image_url):
+            image_url = ""
+            cleared += 1
+        enriched.append(replace(item, image_url=image_url))
+    print(
+        f"[LIVE NEWS] source image enrichment: targets={len(targets)} "
+        f"resolved={len(results)} cleared={cleared}"
+    )
+    return enriched
+
+
+def _backfill_missing_db_images(client) -> int:
+    """기존 20개 피드 중 image_url이 비어 있는 행도 원문 대표 이미지로 보강한다."""
+    rows = (
+        client.table("news_items")
+        .select("id,article_url,original_url,metadata")
+        .eq("is_macro", True)
+        .in_("source", ["MARKETAUX", "NAVER", "RSS"])
+        .order("published_at", desc=True)
+        .limit(20)
+        .execute()
+        .data
+        or []
+    )
+    targets = []
+    for row in rows:
+        metadata = row.get("metadata") or {}
+        current = str(metadata.get("image_url") or "").strip() if isinstance(metadata, dict) else ""
+        if _usable_news_image_url(current):
+            continue
+        source_url = str(row.get("original_url") or row.get("article_url") or "").strip()
+        if source_url:
+            targets.append((row, source_url))
+
+    if not targets:
+        return 0
+
+    resolved = 0
+    with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
+        fetched = executor.map(lambda pair: _extract_best_source_image(pair[1]), targets)
+        for (row, _), image_url in zip(targets, fetched):
+            if not image_url:
+                continue
+    with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
+        fetched = executor.map(lambda pair: _extract_best_source_image(pair[1]), targets)
+        for (row, _), image_url in zip(targets, fetched):
+            metadata = dict(row.get("metadata") or {})
+            metadata["image_url"] = image_url if _usable_news_image_url(image_url) else ""
+            client.table("news_items").update({"metadata": metadata}).eq("id", row["id"]).execute()
+            if image_url and _usable_news_image_url(image_url):
+                resolved += 1
+    print(f"[LIVE NEWS] DB image backfill: targets={len(targets)} resolved={resolved}")
+    return resolved
+
 
 
 def _latest_collection_at(client):
@@ -103,7 +345,12 @@ def main() -> None:
         seen_new.add(key)
         new_items.append(item)
 
+    # 신규 기사도 수집 시점에 원문 대표 이미지를 보강해 웹페이지가 외부 HTML을 다시 조회하지 않도록 한다.
+    new_items = _enrich_news_items_with_source_images(new_items)
     saved = persist_live_news_snapshot(new_items, supabase_client=client)
+
+    # 기존 최신 20개 중 image_url이 비어 있는 과거 기사도 이번 실행에서 한 번 보강한다.
+    _backfill_missing_db_images(client)
 
     # 새 기사는 기존 20개 앞쪽에 들어간다는 의미를 DB의 published_at 정렬로 보장한다.
     # 오래된 기사는 20개 한도를 넘는 순간 뒤쪽부터 제거한다.
