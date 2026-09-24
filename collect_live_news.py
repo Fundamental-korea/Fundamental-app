@@ -21,6 +21,7 @@ MIN_COLLECTION_INTERVAL = timedelta(minutes=110)
 
 _IMAGE_LOWRES_HINTS = (
     "thumbnail", "thumb", "small", "tiny", "lowres", "resizefill",
+    "default-logo", "placeholder", "image-placeholder",
     "150x", "180x", "200x", "240x", "300x", "320x", "400x",
     "width=150", "width=180", "width=200", "width=240",
     "width=300", "width=320", "width=400",
@@ -39,28 +40,19 @@ def _usable_news_image_url(image_url: str) -> bool:
         return False
     if any(hint in lowered for hint in _IMAGE_LOWRES_HINTS):
         return False
-    # Catch common CDN transform tokens that encode a small width/height
-    # without using the words "thumbnail"/"width".
+
     for pattern in (
-        r"(?:^|[^a-z0-9])w(?:idth)?[_=-]?(\\d{2,5})(?:[^0-9]|$)",
-        r"(?:^|[^a-z0-9])h(?:eight)?[_=-]?(\\d{2,5})(?:[^0-9]|$)",
+        r"(?:^|[^a-z0-9])w(?:idth)?[_=-]?(\d{2,5})(?:[^0-9]|$)",
+        r"(?:^|[^a-z0-9])h(?:eight)?[_=-]?(\d{2,5})(?:[^0-9]|$)",
     ):
         match = re.search(pattern, lowered)
-        if match:
-            size = int(match.group(1))
-            if size <= 800:
-                return False
+        if match and int(match.group(1)) <= 800:
+            return False
+
+    # CDN paths such as /resizefill_h48 or ;width=300 are almost always card thumbnails.
+    if re.search(r"(?:resizefill|resize|fit)[^/]{0,40}(?:[_-]h(?:eight)?\s*=?\s*\d{2,3}|[_-]w(?:idth)?\s*=?\s*\d{2,3})", lowered):
+        return False
     return True
-def _usable_news_image_url(image_url: str) -> bool:
-    url = str(image_url or "").strip()
-    if not url.startswith(("http://", "https://")):
-        return False
-    lowered = url.lower()
-    if "bing.com" in lowered and (
-        "th?id=" in lowered or "pid=news" in lowered or "/th" in lowered
-    ):
-        return False
-    return not any(hint in lowered for hint in _IMAGE_LOWRES_HINTS)
 
 
 def _extract_best_source_image(article_url: str) -> str:
@@ -203,10 +195,18 @@ def _enrich_news_items_with_source_images(items):
                 results[idx] = image_url
 
     enriched = []
+    cleared = 0
     for idx, item in enumerate(items):
-        image_url = results.get(idx) or getattr(item, "image_url", "")
+        current = getattr(item, "image_url", "")
+        image_url = results.get(idx) or current
+        if not _usable_news_image_url(image_url):
+            image_url = ""
+            cleared += 1
         enriched.append(replace(item, image_url=image_url))
-    print(f"[LIVE NEWS] source image enrichment: targets={len(targets)} resolved={len(results)}")
+    print(
+        f"[LIVE NEWS] source image enrichment: targets={len(targets)} "
+        f"resolved={len(results)} cleared={cleared}"
+    )
     return enriched
 
 
@@ -242,10 +242,14 @@ def _backfill_missing_db_images(client) -> int:
         for (row, _), image_url in zip(targets, fetched):
             if not image_url:
                 continue
+    with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
+        fetched = executor.map(lambda pair: _extract_best_source_image(pair[1]), targets)
+        for (row, _), image_url in zip(targets, fetched):
             metadata = dict(row.get("metadata") or {})
-            metadata["image_url"] = image_url
+            metadata["image_url"] = image_url if _usable_news_image_url(image_url) else ""
             client.table("news_items").update({"metadata": metadata}).eq("id", row["id"]).execute()
-            resolved += 1
+            if image_url and _usable_news_image_url(image_url):
+                resolved += 1
     print(f"[LIVE NEWS] DB image backfill: targets={len(targets)} resolved={resolved}")
     return resolved
 
