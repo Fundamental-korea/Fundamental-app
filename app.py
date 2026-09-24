@@ -4588,7 +4588,7 @@ def _get_news_topic_ai_image_url(
     query: str = "",
     used_urls=None,
 ) -> str:
-    """기사에 원문 이미지가 없을 때 해당 섹터의 AI 이미지 3장 중 하나를 랜덤 선택한다."""
+    """기사에 원문 이미지가 없을 때 해당 섹터의 AI 이미지 중 하나를 랜덤 선택한다."""
     pool = list(_get_news_topic_ai_image_pool(topic_key))
     if not pool:
         return ""
@@ -5183,6 +5183,10 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
     # 번역 결과가 바뀌거나 Gemini가 실패해도 이미지 선택/URL은 영향을 받지 않는다.
     resolved_image_urls = []
     used_ai_image_urls = set()
+    last_ai_image_by_topic = {}
+    shuffled_ai_pool_by_topic = {}
+    ai_index_by_topic = {}
+
     for item in selected_items:
         original_title = item.title if hasattr(item, "title") else item.get("title", "")
         original_desc = item.description if hasattr(item, "description") else item.get("description", "")
@@ -5204,17 +5208,41 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             if _is_supabase_news_image_url(provided):
                 image_url = provided
         if not image_url:
-            ai_image_url = _get_news_topic_ai_image_url(
-                news_topic,
-                title=original_title,
-                description=original_desc,
-                query=query,
-                used_urls=used_ai_image_urls,
-            )
-            if ai_image_url:
+            pool = list(_get_news_topic_ai_image_pool(news_topic))
+            if pool:
+                if news_topic not in shuffled_ai_pool_by_topic:
+                    shuffled = pool[:]
+                    random.shuffle(shuffled)
+                    shuffled_ai_pool_by_topic[news_topic] = shuffled
+                    ai_index_by_topic[news_topic] = 0
+
+                shuffled = shuffled_ai_pool_by_topic[news_topic]
+                index = ai_index_by_topic.get(news_topic, 0)
+                previous = last_ai_image_by_topic.get(news_topic, "")
+
+                if index >= len(shuffled):
+                    # 한 바퀴가 끝나면 다시 섞고, 직전 이미지와 같은 첫 이미지는 피한다.
+                    reshuffled = pool[:]
+                    random.shuffle(reshuffled)
+                    if len(reshuffled) > 1 and reshuffled[0] == previous:
+                        for swap_idx in range(1, len(reshuffled)):
+                            if reshuffled[swap_idx] != previous:
+                                reshuffled[0], reshuffled[swap_idx] = (
+                                    reshuffled[swap_idx],
+                                    reshuffled[0],
+                                )
+                                break
+                    shuffled_ai_pool_by_topic[news_topic] = reshuffled
+                    shuffled = reshuffled
+                    index = 0
+
+                ai_image_url = shuffled[index]
+                ai_index_by_topic[news_topic] = index + 1
+                last_ai_image_by_topic[news_topic] = ai_image_url
                 used_ai_image_urls.add(ai_image_url)
+
                 # AI 이미지는 여기서 네트워크 요청을 하지 않는다.
-                # 페이지 렌더를 막지 않도록 URL만 선택하고 브라우저의 CSS background layer가 로드한다.
+                # 페이지 렌더를 막지 않도록 URL만 선택하고 브라우저의 <img>가 로드한다.
                 image_url = ai_image_url
         resolved_image_urls.append(image_url)
 
