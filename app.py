@@ -4853,7 +4853,6 @@ def render_news_reader():
                 </div>"""
             )
         elif static_reader_svg:
-        elif static_reader_svg:
             image_html = f'<div class="news-reader-static-image">{static_reader_svg}</div>'
         else:
             image_html = ""
