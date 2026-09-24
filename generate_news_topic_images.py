@@ -48,33 +48,52 @@ def build_url(topic_key: str, variant_index: int) -> str:
         f"Visual treatment: {VARIANTS[variant_index - 1]}."
     )
     return (
+        "https://gen.pollinations.ai/image/"
+        + quote(prompt, safe="")
+        + f"?model={MODEL}&width={WIDTH}&height={HEIGHT}&seed={seed}&nologo=true&enhance=true"
+    )
+
+
+def build_legacy_url(topic_key: str, variant_index: int) -> str:
+    seed_source = f"fundamental-news-topic|{topic_key}|{variant_index}"
+    seed = int(hashlib.sha256(seed_source.encode("utf-8")).hexdigest()[:8], 16)
+    prompt = (
+        "Create a premium high-resolution 16:9 editorial photograph for a professional financial news website. "
+        "Photorealistic, realistic lighting, crisp fine detail, natural depth, strong but clean composition. "
+        "No readable text, no captions, no watermarks, no logos, no fake charts with text, no recognizable real people. "
+        "One coherent scene only, not a collage, not a split screen, not a poster. "
+        f"Sector subject: {TOPICS[topic_key]}. "
+        f"Visual treatment: {VARIANTS[variant_index - 1]}."
+    )
+    return (
         "https://image.pollinations.ai/prompt/"
         + quote(prompt, safe="")
         + f"?model={MODEL}&width={WIDTH}&height={HEIGHT}&seed={seed}&nologo=true&enhance=true"
     )
 
 
-def download_image(url: str):
+def download_image(candidates):
     last_error = None
-    for attempt in range(3):
-        try:
-            response = requests.get(
-                url,
-                timeout=90,
-                headers={"User-Agent": "FundamentalNewsTopicImageBot/1.0"},
-                allow_redirects=True,
-            )
-            response.raise_for_status()
-            content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
-            if content_type not in {"image/jpeg", "image/png", "image/webp"}:
-                raise RuntimeError(f"unexpected content type: {content_type}")
-            data = response.content
-            if not data or len(data) < 10_000 or len(data) > 8 * 1024 * 1024:
-                raise RuntimeError(f"unexpected image size: {len(data)}")
-            return data, content_type
-        except Exception as exc:
-            last_error = exc
-            time.sleep(2 + attempt)
+    for candidate in candidates:
+        for attempt in range(3):
+            try:
+                response = requests.get(
+                    candidate,
+                    timeout=90,
+                    headers={"User-Agent": "FundamentalNewsTopicImageBot/1.0"},
+                    allow_redirects=True,
+                )
+                response.raise_for_status()
+                content_type = (response.headers.get("Content-Type") or "").split(";")[0].strip().lower()
+                if content_type not in {"image/jpeg", "image/png", "image/webp"}:
+                    raise RuntimeError(f"unexpected content type: {content_type}")
+                data = response.content
+                if not data or len(data) < 10_000 or len(data) > 8 * 1024 * 1024:
+                    raise RuntimeError(f"unexpected image size: {len(data)}")
+                return data, content_type
+            except Exception as exc:
+                last_error = exc
+                time.sleep(2 + attempt)
     raise RuntimeError(f"image generation failed after retries: {last_error}")
 
 
@@ -93,8 +112,13 @@ def main():
 
     for topic_key in TOPICS:
         for variant_index in range(1, 4):
-            url = build_url(topic_key, variant_index)
-            data, content_type = download_image(url)
+            current_gen_url = build_url(topic_key, variant_index)
+            legacy_image_url = build_legacy_url(topic_key, variant_index)
+            candidates = [
+                current_gen_url,
+                legacy_image_url,
+            ]
+            data, content_type = download_image(candidates)
             suffix = ext_for(content_type)
             storage_path = f"generated/{topic_key}_{variant_index:02d}{suffix}"
             public_url = f"{SUPABASE_URL}/storage/v1/object/public/news-topic-images/{storage_path}"
