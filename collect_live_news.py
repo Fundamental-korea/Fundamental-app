@@ -20,7 +20,7 @@ KST = ZoneInfo("Asia/Seoul")
 MIN_COLLECTION_INTERVAL = timedelta(minutes=110)
 
 _IMAGE_LOWRES_HINTS = (
-    "thumbnail", "thumb", "small", "tiny", "lowres",
+    "thumbnail", "thumb", "small", "tiny", "lowres", "resizefill",
     "150x", "180x", "200x", "240x", "300x", "320x", "400x",
     "width=150", "width=180", "width=200", "width=240",
     "width=300", "width=320", "width=400",
@@ -37,62 +37,118 @@ def _usable_news_image_url(image_url: str) -> bool:
         "th?id=" in lowered or "pid=news" in lowered or "/th" in lowered
     ):
         return False
+    if any(hint in lowered for hint in _IMAGE_LOWRES_HINTS):
+        return False
+    # Catch common CDN transform tokens that encode a small width/height
+    # without using the words "thumbnail"/"width".
+    for pattern in (
+        r"(?:^|[^a-z0-9])w(?:idth)?[_=-]?(\\d{2,5})(?:[^0-9]|$)",
+        r"(?:^|[^a-z0-9])h(?:eight)?[_=-]?(\\d{2,5})(?:[^0-9]|$)",
+    ):
+        match = re.search(pattern, lowered)
+        if match:
+            size = int(match.group(1))
+            if size <= 800:
+                return False
+    return True
+def _usable_news_image_url(image_url: str) -> bool:
+    url = str(image_url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return False
+    lowered = url.lower()
+    if "bing.com" in lowered and (
+        "th?id=" in lowered or "pid=news" in lowered or "/th" in lowered
+    ):
+        return False
     return not any(hint in lowered for hint in _IMAGE_LOWRES_HINTS)
 
 
 def _extract_best_source_image(article_url: str) -> str:
-    """원문 HTML에서 srcset/JSON-LD/OG 이미지 중 가장 고해상도 후보를 찾는다."""
+    """원문 HTML에서 srcset/JSON-LD/OG 이미지 중 가장 고해상도 후보를 찾는다.
+    Google News 래퍼이면 canonical/og:url을 따라 실제 발행사 페이지도 한 번 더 검사한다."""
     url = str(article_url or "").strip()
     if not url.startswith(("http://", "https://")):
         return ""
-    try:
+
+    headers = {"User-Agent": "Mozilla/5.0 (compatible; FundamentalNewsImageBot/1.0)"}
+
+    def fetch_page(target_url):
         response = requests.get(
-            url,
+            target_url,
             timeout=8,
-            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNewsImageBot/1.0)"},
+            headers=headers,
             allow_redirects=True,
         )
         response.raise_for_status()
+        return response
+
+    try:
+        response = fetch_page(url)
         html = response.text[:1_000_000]
+
+        # Google News RSS links can resolve to a wrapper page. Follow canonical
+        # or og:url to the real publisher article when one is exposed.
+        if "news.google.com" in (response.url or "").lower():
+            publisher_url = ""
+            for pattern in (
+                r'<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)',
+                r'<meta[^>]+property=["\']og:url["\'][^>]+content=["\']([^"\']+)',
+            ):
+                match = re.search(pattern, html, flags=re.IGNORECASE)
+                if match:
+                    candidate = unescape(match.group(1)).strip()
+                    if candidate.startswith(("http://", "https://")) and "news.google.com" not in candidate.lower():
+                        publisher_url = candidate
+                        break
+            if publisher_url:
+                try:
+                    response = fetch_page(publisher_url)
+                    html = response.text[:1_000_000]
+                except Exception:
+                    pass
+
         candidates = []
 
-        # srcset/data-srcset is the strongest signal: select the largest declared width.
-        for match in re.finditer(r"""(?:srcset|data-srcset)=["']([^"']+)["']""", html, flags=re.IGNORECASE):
-            for entry in re.split(r"s*,s*", match.group(1)):
+        # srcset/data-srcset: largest declared width wins.
+        for match in re.finditer(
+            r"""(?:srcset|data-srcset)=["']([^"']+)["']""",
+            html,
+            flags=re.IGNORECASE,
+        ):
+            for entry in re.split(r"\s*,\s*", match.group(1)):
                 parts = entry.strip().split()
                 if not parts:
                     continue
                 raw = unescape(parts[0]).strip()
                 width = 0
                 if len(parts) > 1:
-                    m = re.match(r"(\d+)w$", parts[1])
-                    if m:
-                        width = int(m.group(1))
-                candidates.append((width, 4, raw))
+                    width_match = re.match(r"(\d+)w$", parts[1])
+                    if width_match:
+                        width = int(width_match.group(1))
+                candidates.append((width, 5, raw))
 
-        # JSON-LD image/contentUrl/thumbnailUrl.
+        # JSON-LD.
         for match in re.finditer(
-            r'"(?:image|contentUrl|thumbnailUrl)"\\s*:\\s*"([^"]+)"',
+            r'"(?:image|contentUrl|thumbnailUrl)"\s*:\s*"([^"]+)"',
             html,
             flags=re.IGNORECASE,
         ):
-            candidates.append((0, 3, unescape(match.group(1)).strip()))
+            candidates.append((0, 4, unescape(match.group(1)).strip()))
 
-        # OpenGraph / Twitter image metadata.
+        # OpenGraph / Twitter.
         patterns = (
-            r'<meta[^>]+property=["\\\']og:image:secure_url["\\\'][^>]+content=["\\\']([^"\\\']+)',
-            r'<meta[^>]+content=["\\\']([^"\\\']+)["\\\'][^>]+property=["\\\']og:image:secure_url["\\\']',
-            r'<meta[^>]+property=["\\\']og:image["\\\'][^>]+content=["\\\']([^"\\\']+)',
-            r'<meta[^>]+content=["\\\']([^"\\\']+)["\\\'][^>]+property=["\\\']og:image["\\\']',
-            r'<meta[^>]+name=["\\\']twitter:image:src["\\\'][^>]+content=["\\\']([^"\\\']+)',
-            r'<meta[^>]+content=["\\\']([^"\\\']+)["\\\'][^>]+name=["\\\']twitter:image:src["\\\']',
-            r'<meta[^>]+name=["\\\']twitter:image["\\\'][^>]+content=["\\\']([^"\\\']+)',
-            r'<meta[^>]+content=["\\\']([^"\\\']+)["\\\'][^>]+name=["\\\']twitter:image["\\\']',
+            r'<meta[^>]+property=["\']og:image:secure_url["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image:secure_url["\']',
+            r'<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']',
+            r'<meta[^>]+name=["\']twitter:image:src["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image:src["\']',
+            r'<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)',
+            r'<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']',
         )
         for pattern in patterns:
             for match in re.finditer(pattern, html, flags=re.IGNORECASE):
-                candidates.append((0, 2, unescape(match.group(1)).strip()))
-
+                candidates.append((0, 3, unescape(match.group(1)).strip()))
 
         normalized = []
         seen = set()
