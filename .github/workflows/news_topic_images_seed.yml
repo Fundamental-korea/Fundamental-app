@@ -29,4 +29,5 @@ jobs:
         env:
           SUPABASE_URL: https://cnweggechipghcivruie.supabase.co
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
         run: python generate_news_topic_images.py
