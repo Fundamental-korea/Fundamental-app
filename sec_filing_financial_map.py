@@ -74,6 +74,7 @@ STANDARD_DEBT_TOTAL = {
     "LongTermDebtAndCapitalLeaseObligations",
     "LongTermDebtAndFinanceLeaseObligations",
     "DebtLongtermAndShorttermCombinedAmount",
+    "Borrowings",
 }
 STANDARD_DEBT_CURRENT = {
     "LongTermDebtCurrent",
@@ -94,6 +95,8 @@ STANDARD_DEBT_CURRENT = {
     "LineOfCreditCurrent",
     "RevolvingCreditFacilityCurrent",
     "FederalHomeLoanBankAdvancesShortTerm",
+    "ShorttermBorrowings",
+    "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings",
 }
 STANDARD_DEBT_NONCURRENT = {
     "LongTermDebt",
@@ -104,7 +107,6 @@ STANDARD_DEBT_NONCURRENT = {
     "DebtAndFinanceLeaseLiabilitiesNoncurrent",
     "NoncurrentBorrowings",
     "LongtermBorrowings",
-    "Borrowings",
     "LoansPayable",
     "LongTermLoansPayable",
     "NotesPayableNoncurrent",
@@ -192,6 +194,18 @@ DEBT_EXCLUSIONS = (
     "conversionprice",
     "conversionratio",
     "conversionfeature",
+    "borrowingcapacity",
+    "borrowinglimit",
+    "borrowinglimits",
+    "shorttermborrowinglimit",
+    "maximumindebtedness",
+    "authorizedborrowings",
+    "authorizedshorttermborrowings",
+    "undrawnborrowingfacilities",
+    "unusedborrowingcapacity",
+    "unusedborrowingfacilities",
+    "availableborrowingcapacity",
+    "amountoftotalborrowingcapacity",
 )
 
 STANDARD_INTEREST_GROSS = {
@@ -210,6 +224,36 @@ STANDARD_INTEREST_NET = {
     "InterestIncomeExpenseNet",
     "InterestIncomeExpenseNonoperatingNet",
     "InterestExpenseNonOperatingNet",
+}
+
+STANDARD_INTEREST_COMPONENTS = {
+    "InterestExpenseOnDebtInstrumentsIssued",
+    "InterestExpenseOnBorrowings",
+    "InterestExpenseOnOtherFinancialLiabilities",
+    "InterestExpenseOnBankLoansAndOverdrafts",
+    "InterestExpenseOnBonds",
+    "InterestExpenseLongTermDebt",
+    "InterestExpenseShortTermBorrowings",
+    "InterestExpenseOtherLongTermDebt",
+    "InterestExpenseOtherShortTermBorrowings",
+    "InterestExpenseSubordinatedNotesAndDebentures",
+    "InterestExpenseFederalHomeLoanBankAndFederalReserveBankAdvancesLongTerm",
+    "InterestExpenseFederalHomeLoanBankAndFederalReserveBankAdvancesShortTerm",
+}
+
+INTEREST_COMPONENT_AGGREGATES = {
+    "InterestExpenseOnDebtInstrumentsIssued",
+    "InterestExpenseOnBorrowings",
+}
+
+INTEREST_ADDITIVE_BUCKETS = {
+    "InterestExpenseLongTermDebt": "long_term",
+    "InterestExpenseOtherLongTermDebt": "long_term",
+    "InterestExpenseFederalHomeLoanBankAndFederalReserveBankAdvancesLongTerm": "long_term",
+    "InterestExpenseOnBonds": "long_term",
+    "InterestExpenseShortTermBorrowings": "short_term",
+    "InterestExpenseOtherShortTermBorrowings": "short_term",
+    "InterestExpenseFederalHomeLoanBankAndFederalReserveBankAdvancesShortTerm": "short_term",
 }
 INTEREST_EXCLUSIONS = (
     "interestrate",
@@ -233,6 +277,8 @@ INTEREST_EXCLUSIONS = (
     "interestontax",
     "noninterestexpense",
     "netoftax",
+    "fairvalue",
+    "derivative",
 )
 ACTIVITY_EXCLUSIONS = (
     "proceeds",
@@ -309,12 +355,6 @@ def classify_debt_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
     if _is_bad_debt(concept, label):
         return None, "exclude", "debt investment, metadata, maturity/activity, interest, or other look-alike"
 
-    if concept in OPERATING_LEASE_CONCEPTS or "operatingleaseliability" in compact:
-        return "operating_lease_liability", "high", "explicit operating lease liability"
-
-    if concept in FINANCE_LEASE_CONCEPTS or "financeleaseliability" in compact or "capitalleaseobligation" in compact:
-        return "finance_lease_liability", "high", "explicit finance/capital lease liability"
-
     if concept in STANDARD_DEBT_TOTAL:
         return "issuer_debt_total", "high", "canonical issuer debt total"
 
@@ -324,31 +364,40 @@ def classify_debt_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
     if concept in STANDARD_DEBT_NONCURRENT:
         return "issuer_debt_noncurrent", "high", "canonical noncurrent issuer borrowing/debt"
 
+    if concept in OPERATING_LEASE_CONCEPTS or "operatingleaseliability" in compact:
+        return "operating_lease_liability", "high", "explicit operating lease liability"
+
+    if concept in FINANCE_LEASE_CONCEPTS or "financeleaseliability" in compact or "capitalleaseobligation" in compact:
+        return "finance_lease_liability", "high", "explicit finance/capital lease liability"
+
     if concept in STANDARD_DEBT_CARRYING:
         return "debt_carrying_amount_candidate", "medium", "debt instrument carrying amount; reconcile before use"
 
-    if namespace in {"us-gaap", "ifrs-full"} and any(k in compact for k in (
+    debt_terms = (
         "debt", "borrowings", "borrowing", "loanspayable", "notespayable",
         "seniornotes", "subordinatednotes", "convertnotepayable", "convertiblenotes",
         "debtobligations", "debtliabilities", "otherdebt", "otherborrowings",
         "creditfacility", "revolvingcreditfacility", "termloan",
         "bankloans", "loansreceived", "loanpayable", "longtermnotesandloans",
         "federalhomeloanbankadvances",
-    )):
+    )
+
+    if namespace in {"us-gaap", "ifrs-full"} and any(k in compact for k in debt_terms):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
             return None, "exclude", "debt activity/maturity fact"
+        if any(token in compact for token in ("current", "shortterm", "currentportion", "withinoneyear")):
+            return "issuer_debt_current", "medium", "standard-taxonomy current debt-like concept"
+        if any(token in compact for token in ("noncurrent", "longterm")):
+            return "issuer_debt_noncurrent", "medium", "standard-taxonomy noncurrent debt-like concept"
         return "issuer_debt_other", "medium", "standard-taxonomy debt-like concept"
 
-    if namespace not in KNOWN_TAXONOMIES and any(k in compact for k in (
-        "debt", "borrowings", "borrowing", "loanspayable", "notespayable",
-        "seniornotes", "subordinatednotes", "convertnotepayable", "convertiblenotes",
-        "debtobligations", "debtliabilities", "otherdebt", "otherborrowings",
-        "creditfacility", "revolvingcreditfacility", "termloan",
-        "bankloans", "loansreceived", "loanpayable", "longtermnotesandloans",
-        "federalhomeloanbankadvances",
-    )):
+    if namespace not in KNOWN_TAXONOMIES and any(k in compact for k in debt_terms):
         if any(token in compact for token in ACTIVITY_EXCLUSIONS):
             return None, "exclude", "custom debt activity/metadata fact"
+        if any(token in compact for token in ("current", "shortterm", "currentportion", "withinoneyear")):
+            return "custom_issuer_debt_current", "medium", "custom taxonomy current debt-like concept"
+        if any(token in compact for token in ("noncurrent", "longterm")):
+            return "custom_issuer_debt_noncurrent", "medium", "custom taxonomy noncurrent debt-like concept"
         return "custom_issuer_debt", "medium", "custom taxonomy issuer debt-like concept"
 
     return None, "none", ""
@@ -359,14 +408,17 @@ def classify_interest_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
     compact = _compact(concept + " " + label)
     namespace = row.get("namespace") or ""
 
-    if any(token in compact for token in INTEREST_EXCLUSIONS):
-        return None, "exclude", "interest rate/paid/payable/income/pension/capitalized look-alike"
-
     if concept in STANDARD_INTEREST_GROSS:
         return "gross_interest_expense", "high", "canonical gross interest expense / finance cost"
 
     if concept in STANDARD_INTEREST_NET:
         return "net_interest_expense", "medium", "canonical net interest expense fallback"
+
+    if concept in STANDARD_INTEREST_COMPONENTS:
+        return "interest_expense_component", "medium", "debt-linked interest expense component"
+
+    if any(token in compact for token in INTEREST_EXCLUSIONS):
+        return None, "exclude", "interest rate/paid/payable/income/pension/capitalized/look-alike"
 
     if namespace in {"us-gaap", "ifrs-full"} and any(_compact(k) in compact for k in (
         "interest expense", "interest cost", "finance cost", "finance costs", "financing cost",
@@ -376,12 +428,27 @@ def classify_interest_fact(row: dict[str, Any]) -> tuple[str | None, str, str]:
             return None, "exclude", "interest activity/metadata fact"
         return "gross_interest_expense_other", "medium", "standard-taxonomy interest expense-like concept"
 
-    if namespace not in KNOWN_TAXONOMIES and any(_compact(k) in compact for k in (
-        "interest expense", "interest cost", "finance costs", "financing costs", "debt expense"
-    )):
-        if any(token in compact for token in ACTIVITY_EXCLUSIONS):
-            return None, "exclude", "custom interest activity/metadata fact"
-        return "custom_interest_expense", "medium", "custom taxonomy interest expense-like concept"
+    if namespace not in KNOWN_TAXONOMIES:
+        custom_component = (
+            "interestexpenseon" in compact
+            or (
+                "intereston" in compact
+                and any(term in compact for term in (
+                    "loan", "loans", "borrow", "borrowing", "debt", "bond", "note"
+                ))
+            )
+        )
+        custom_expense = any(_compact(k) in compact for k in (
+            "interest expense", "interest cost", "finance costs", "financing costs", "debt expense"
+        ))
+        if custom_component:
+            if any(token in compact for token in ACTIVITY_EXCLUSIONS):
+                return None, "exclude", "custom interest activity/metadata fact"
+            return "custom_interest_expense_component", "medium", "custom borrowing-linked interest expense component"
+        if custom_expense:
+            if any(token in compact for token in ACTIVITY_EXCLUSIONS):
+                return None, "exclude", "custom interest activity/metadata fact"
+            return "custom_interest_expense", "medium", "custom taxonomy interest expense-like concept"
 
     return None, "none", ""
 
@@ -525,6 +592,94 @@ def _compatible_flow(fact: FinancialFact | None, anchor: FinancialFact | None) -
     return True
 
 
+def _select_component_interest(components: list[FinancialFact]) -> dict[str, Any] | None:
+    """Select a debt-linked interest component when no direct gross total exists."""
+    if not components:
+        return None
+    unique = {}
+    for fact in components:
+        key = (fact.concept, fact.value, fact.start, fact.end, fact.unit, fact.context_ref)
+        unique[key] = fact
+    items = list(unique.values())
+
+    aggregate = [x for x in items if x.concept in INTEREST_COMPONENT_AGGREGATES]
+    if aggregate:
+        priority = {
+            "InterestExpenseOnDebtInstrumentsIssued": 0,
+            "InterestExpenseOnBorrowings": 1,
+        }
+        chosen = sorted(aggregate, key=lambda x: (priority.get(x.concept, 99), x.filed or ""))[0]
+        return {
+            "value": abs(chosen.value),
+            "basis": "reported_component_aggregate",
+            "category": "interest_component_expense",
+            "concept": chosen.concept,
+            "namespace": chosen.namespace,
+            "confidence": "high",
+            "unit": chosen.unit,
+            "components": [asdict(chosen)],
+        }
+
+    if len(items) == 1:
+        chosen = items[0]
+        return {
+            "value": abs(chosen.value),
+            "basis": "reported_interest_component",
+            "category": "interest_component_expense",
+            "concept": chosen.concept,
+            "namespace": chosen.namespace,
+            "confidence": chosen.confidence,
+            "unit": chosen.unit,
+            "components": [asdict(chosen)],
+        }
+
+    groups: dict[tuple[Any, ...], list[FinancialFact]] = {}
+    for fact in items:
+        key = (fact.end, fact.unit, fact.start, fact.context_ref or "")
+        groups.setdefault(key, []).append(fact)
+
+    candidates = []
+    for group in groups.values():
+        bucketed = {}
+        for fact in group:
+            bucket = INTEREST_ADDITIVE_BUCKETS.get(fact.concept)
+            if bucket is None:
+                continue
+            previous = bucketed.get(bucket)
+            if previous is None or (fact.filed or "") > (previous.filed or ""):
+                bucketed[bucket] = fact
+        if {"long_term", "short_term"}.issubset(bucketed):
+            selected = [bucketed["long_term"], bucketed["short_term"]]
+            candidates.append({
+                "value": sum(abs(x.value) for x in selected),
+                "basis": "aggregated_interest_components",
+                "category": "interest_component_expense",
+                "concept": "+".join(x.concept for x in selected),
+                "namespace": (
+                    selected[0].namespace if selected[0].namespace == selected[1].namespace
+                    else f"{selected[0].namespace}+{selected[1].namespace}"
+                ),
+                "confidence": "high",
+                "unit": selected[0].unit,
+                "components": [asdict(x) for x in selected],
+            })
+
+    if candidates:
+        return candidates[0]
+
+    chosen = sorted(items, key=lambda x: (x.confidence != "high", x.filed or ""))[0]
+    return {
+        "value": abs(chosen.value),
+        "basis": "reported_interest_component",
+        "category": "interest_component_expense",
+        "concept": chosen.concept,
+        "namespace": chosen.namespace,
+        "confidence": chosen.confidence,
+        "unit": chosen.unit,
+        "components": [asdict(chosen)],
+    }
+
+
 def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None = None) -> dict[str, Any]:
     rows = list(rows)
     debt: list[FinancialFact] = []
@@ -646,29 +801,73 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
 
     selected_interest = None
     if gross:
-        chosen = sorted(gross, key=lambda x: (x.concept not in {"InterestExpenseNonoperating", "InterestExpenseDebt", "InterestExpense", "FinanceCosts"}, x.filed or ""), reverse=False)[0]
+        chosen = sorted(
+            gross,
+            key=lambda x: (
+                x.concept not in {
+                    "InterestExpenseNonoperating",
+                    "InterestExpenseDebt",
+                    "InterestExpense",
+                    "FinanceCosts",
+                },
+                x.filed or "",
+            ),
+        )[0]
         selected_interest = {
-            "value": abs(chosen.value), "basis": "reported_gross_interest_expense",
-            "category": chosen.category, "concept": chosen.concept, "namespace": chosen.namespace,
-            "confidence": chosen.confidence, "unit": chosen.unit, "components": [asdict(chosen)],
+            "value": abs(chosen.value),
+            "basis": "reported_gross_interest_expense",
+            "category": chosen.category,
+            "concept": chosen.concept,
+            "namespace": chosen.namespace,
+            "confidence": chosen.confidence,
+            "unit": chosen.unit,
+            "components": [asdict(chosen)],
         }
         if chosen.value == 0:
             selected_interest["zero_reported"] = True
     elif gross_other:
-        chosen = sorted(gross_other, key=lambda x: (x.confidence != "high", x.filed or ""))[0]
+        chosen = sorted(
+            gross_other,
+            key=lambda x: (x.confidence != "high", x.filed or ""),
+        )[0]
         selected_interest = {
-            "value": abs(chosen.value), "basis": "other_interest_expense",
-            "category": chosen.category, "concept": chosen.concept, "namespace": chosen.namespace,
-            "confidence": chosen.confidence, "unit": chosen.unit, "components": [asdict(chosen)],
+            "value": abs(chosen.value),
+            "basis": "other_interest_expense",
+            "category": chosen.category,
+            "concept": chosen.concept,
+            "namespace": chosen.namespace,
+            "confidence": chosen.confidence,
+            "unit": chosen.unit,
+            "components": [asdict(chosen)],
         }
-    elif net:
-        chosen = sorted(net, key=lambda x: (x.end, x.filed or ""), reverse=True)[0]
-        selected_interest = {
-            "value": abs(chosen.value), "basis": "reported_net_interest_expense",
-            "category": chosen.category, "concept": chosen.concept, "namespace": chosen.namespace,
-            "confidence": chosen.confidence, "unit": chosen.unit, "components": [asdict(chosen)],
-        }
-
+    else:
+        component_selected = _select_component_interest(
+            [
+                x for x in interest_eligible
+                if x.category in {
+                    "interest_expense_component",
+                    "custom_interest_expense_component",
+                }
+            ]
+        )
+        if component_selected is not None:
+            selected_interest = component_selected
+        elif net:
+            chosen = sorted(
+                net,
+                key=lambda x: (x.end, x.filed or ""),
+                reverse=True,
+            )[0]
+            selected_interest = {
+                "value": abs(chosen.value),
+                "basis": "reported_net_interest_expense",
+                "category": chosen.category,
+                "concept": chosen.concept,
+                "namespace": chosen.namespace,
+                "confidence": chosen.confidence,
+                "unit": chosen.unit,
+                "components": [asdict(chosen)],
+            }
     lease_only = bool(debt) and not selected_debt and all(x.category in {"finance_lease_liability", "operating_lease_liability"} for x in debt)
     debt_status = (
         "FOUND_STANDARD" if selected_debt and any(c["namespace"] in {"us-gaap", "ifrs-full"} for c in selected_debt["components"])
@@ -682,6 +881,8 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
             interest_status = "ZERO_CONFIRMED"
         elif selected_interest["category"] == "net_interest_expense":
             interest_status = "FOUND_NET_ONLY"
+        elif selected_interest["category"] in {"interest_component_expense", "custom_interest_expense_component"}:
+            interest_status = "FOUND_COMPONENTS"
         elif selected_interest["category"] == "custom_interest_expense":
             interest_status = "FOUND_CUSTOM"
         else:

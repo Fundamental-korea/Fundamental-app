@@ -54,38 +54,55 @@ FACT_ALIASES = {
         "CurrentBorrowings",
         "CurrentPortionOfLongtermBorrowings",
         "ShortTermBorrowings",
+        "ShorttermBorrowings",
         "FinanceLeaseLiabilityCurrent",
         "ConvertibleDebtCurrent",
-        "DebtCurrent", "NotesPayableCurrent", "NotesPayable", "NotesAndLoansPayableCurrent", "ShortTermBankLoansAndNotesPayable", "CommercialPaper",
+        "DebtCurrent", "NotesPayableCurrent", "NotesAndLoansPayableCurrent", "ShortTermBankLoansAndNotesPayable", "CommercialPaper",
         "LineOfCreditCurrent", "RevolvingCreditFacilityCurrent",
+        "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings",
     ],
     "debt_noncurrent": [
         "LongTermDebtNoncurrent",
+        "LongTermDebt",
         "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
         "LongTermDebtAndFinanceLeaseObligationsNoncurrent",
         "NoncurrentBorrowings",
         "LongtermBorrowings",
-        "Borrowings",
         "FinanceLeaseLiabilityNoncurrent",
         "ConvertibleDebtNoncurrent",
-        "DebtNoncurrent", "NotesPayableNoncurrent",
+        "DebtNoncurrent", "NotesPayableNoncurrent", "NotesPayable",
+        "LongTermNotesPayable", "LoansPayable", "LongTermLoansPayable",
+        "OtherBorrowings", "UnsecuredDebt", "SecuredDebt", "OtherLongTermDebt",
+        "FederalHomeLoanBankAdvances", "LongTermNotesAndLoans",
         "LineOfCreditNoncurrent", "RevolvingCreditFacilityNoncurrent",
     ],
     "debt_total": [
-        "LongTermDebt",
+        "Borrowings",
+        "DebtLongtermAndShorttermCombinedAmount",
         "DebtAndCapitalLeaseObligations",
         "LongTermDebtCurrentAndNoncurrent",
+        "LongTermDebtAndCapitalLeaseObligations",
         "LongTermDebtAndFinanceLeaseObligations",
-        "DebtInstrumentCarryingAmount",
-        "DebtAndFinanceLeaseLiabilities", "Debt", "LongTermNotesPayable",
-        "LineOfCredit", "RevolvingCreditFacility",
+        "DebtAndFinanceLeaseLiabilities",
+        "Debt",
     ],
     "current_assets": ["AssetsCurrent"],
     "current_liabilities": ["LiabilitiesCurrent"],
     "inventory": ["InventoryNet", "InventoryGross"],
     "cash": ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
     "receivables": ["AccountsReceivableNetCurrent", "AccountsReceivableNet", "AccountsAndNotesReceivableNetCurrent", "AccountsReceivableGrossCurrent"],
-    "interest_expense": ["InterestExpenseNonoperating", "InterestExpenseNonOperating", "InterestExpenseDebt", "InterestExpenseNonoperatingNet", "InterestExpenseNonOperatingNet", "InterestExpenseNonOperatingAndOther", "InterestAndDebtExpense", "InterestExpense"],
+    "interest_expense": [
+        "InterestExpenseNonoperating", "InterestExpenseNonOperating", "InterestExpenseDebt",
+        "InterestExpenseNonoperatingAndOther", "InterestAndDebtExpense", "InterestExpense",
+        "InterestExpenseOnDebtInstrumentsIssued", "InterestExpenseOnBorrowings",
+        "InterestExpenseOnOtherFinancialLiabilities", "InterestExpenseOnBankLoansAndOverdrafts",
+        "InterestExpenseOnBonds", "InterestExpenseLongTermDebt", "InterestExpenseShortTermBorrowings",
+        "InterestExpenseOtherLongTermDebt", "InterestExpenseOtherShortTermBorrowings",
+        "InterestExpenseSubordinatedNotesAndDebentures",
+        "InterestExpenseFederalHomeLoanBankAndFederalReserveBankAdvancesLongTerm",
+        "InterestExpenseFederalHomeLoanBankAndFederalReserveBankAdvancesShortTerm",
+        "InterestCostsIncurred", "FinancingInterestExpense",
+    ],
     "interest_expense_net": ["InterestIncomeExpenseNet", "InterestIncomeExpenseNonoperatingNet"],
     "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
     "sga": ["SellingGeneralAndAdministrativeExpense", "SellingGeneralAndAdministrativeExpenseIncludingDepreciationAmortization", "GeneralAndAdministrativeExpense", "SellingExpense"],
@@ -108,28 +125,38 @@ IFRS_FACT_ALIASES = {
         "CurrentBorrowings",
         "CurrentPortionOfLongtermBorrowings",
         "ShorttermBorrowings",
+        "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings",
         "LongTermDebtCurrent",
         "FinanceLeaseLiabilityCurrent",
     ],
     "debt_noncurrent": [
         "LongtermBorrowings",
         "NoncurrentBorrowings",
-        "Borrowings",
         "LongTermDebtNoncurrent",
+        "LongTermDebt",
+        "LongTermNotesPayable",
         "FinanceLeaseLiabilityNoncurrent",
     ],
     "debt_total": [
         "Borrowings",
         "LoansAndBorrowings",
-        "LongTermDebt",
+        "DebtLongtermAndShorttermCombinedAmount",
         "LongTermDebtAndFinanceLeaseObligations",
+        "LongTermDebtAndCapitalLeaseObligations",
     ],
     "current_assets": ["CurrentAssets"],
     "current_liabilities": ["CurrentLiabilities"],
     "inventory": ["Inventories"],
     "cash": ["CashAndCashEquivalents"],
     "receivables": ["TradeAndOtherReceivables", "TradeReceivables"],
-    "interest_expense": ["FinanceCosts", "InterestExpense"],
+    "interest_expense": [
+        "FinanceCosts", "InterestExpense",
+        "InterestExpenseOnBorrowings", "InterestExpenseOnDebtInstrumentsIssued",
+        "InterestExpenseOnOtherFinancialLiabilities", "InterestExpenseOnBankLoansAndOverdrafts",
+        "InterestExpenseOnBonds", "InterestExpenseLongTermDebt", "InterestExpenseShortTermBorrowings",
+        "InterestExpenseOtherLongTermDebt", "InterestExpenseOtherShortTermBorrowings",
+        "InterestCostsIncurred",
+    ],
     "interest_expense_net": ["InterestIncomeExpenseNet"],
     "operating_cash_flow": ["CashFlowsFromUsedInOperatingActivities"],
     "sga": ["SellingGeneralAndAdministrativeExpense"],
@@ -535,12 +562,11 @@ def annual_metrics(index, year):
     debt_current = latest_annual_value(index, "debt_current", year)
     debt_noncurrent = latest_annual_value(index, "debt_noncurrent", year)
     debt_total = latest_annual_value(index, "debt_total", year)
-    if debt_current is not None or debt_noncurrent is not None:
-        # A filing may disclose only one maturity bucket. Do not discard a
-        # valid reported component merely because the other bucket is absent.
-        debt = (debt_current or 0.0) + (debt_noncurrent or 0.0)
-    elif debt_total is not None:
+    if debt_total is not None:
+        # Prefer explicitly reported total debt over partial maturity buckets.
         debt = debt_total
+    elif debt_current is not None or debt_noncurrent is not None:
+        debt = (debt_current or 0.0) + (debt_noncurrent or 0.0)
     else:
         debt = None
 

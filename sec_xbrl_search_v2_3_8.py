@@ -30,28 +30,68 @@ EXACT_CONCEPTS_V238 = {
     "inventory": set(EXACT_CONCEPTS_V234.get("inventory", set()))
     | {"InventoryOtherThanOreStockpilesNetOfReserves"},
     "interest_expense": set(EXACT_CONCEPTS_V234.get("interest_expense", set()))
-    | {"InterestExpenseNonoperating", "InterestExpenseNonOperating", "InterestIncomeExpenseNonoperatingNet", "InterestIncomeExpenseNet"},
+    | {
+        "InterestExpenseNonoperating",
+        "InterestExpenseNonOperating",
+        "InterestIncomeExpenseNonoperatingNet",
+        "InterestIncomeExpenseNet",
+        "InterestExpenseOnDebtInstrumentsIssued",
+        "InterestExpenseOnBorrowings",
+    },
+
     "sga": set(EXACT_CONCEPTS_V234.get("sga", set()))
     | {"GeneralAndAdministrativeExpense"},
     # Keep filing-XBRL recovery aligned with collector_us_fundamental.py.
     # Some issuers expose debt only through these lease-inclusive
     # current/non-current concepts, so they must bypass the generic label gate.
-    "debt_current": set(EXACT_CONCEPTS_V234.get("debt_current", set()))
-    | {
-        "DebtAndFinanceLeaseLiabilitiesCurrent",
-        "LeaseLiabilitiesCurrent",
-        "LongTermDebtAndFinanceLeaseObligationsCurrent",
-        "LongTermDebtAndCapitalLeaseObligationsCurrent",
-    },
-    "debt_noncurrent": set(EXACT_CONCEPTS_V234.get("debt_noncurrent", set()))
-    | {
-        "DebtAndFinanceLeaseLiabilitiesNoncurrent",
-        "LeaseLiabilitiesNoncurrent",
-        "LongTermDebtAndFinanceLeaseObligationsNoncurrent",
-        "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
-    },
-    "debt_total": set(EXACT_CONCEPTS_V234.get("debt_total", set()))
-    | {"LongTermDebtAndCapitalLeaseObligations"},
+    "debt_current": (
+        set(EXACT_CONCEPTS_V234.get("debt_current", set()))
+        | {
+            "DebtAndFinanceLeaseLiabilitiesCurrent",
+            "LeaseLiabilitiesCurrent",
+            "LongTermDebtAndFinanceLeaseObligationsCurrent",
+            "LongTermDebtAndCapitalLeaseObligationsCurrent",
+            "ShorttermBorrowings",
+            "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings",
+        }
+    ),
+    "debt_noncurrent": (
+        set(EXACT_CONCEPTS_V234.get("debt_noncurrent", set()))
+        - {"Borrowings"}
+        | {
+            "DebtAndFinanceLeaseLiabilitiesNoncurrent",
+            "LeaseLiabilitiesNoncurrent",
+            "LongTermDebtAndFinanceLeaseObligationsNoncurrent",
+            "LongTermDebtAndCapitalLeaseObligationsNoncurrent",
+            "LongTermDebt",
+            "LongTermNotesPayable",
+            "NotesPayable",
+            "LoansPayable",
+            "LongTermLoansPayable",
+            "OtherBorrowings",
+            "UnsecuredDebt",
+            "SecuredDebt",
+            "OtherLongTermDebt",
+            "LongTermNotesAndLoans",
+            "FederalHomeLoanBankAdvances",
+        }
+    ),
+    "debt_total": (
+        set(EXACT_CONCEPTS_V234.get("debt_total", set()))
+        - {
+            "LongTermDebt",
+            "DebtInstrumentCarryingAmount",
+            "LongTermNotesPayable",
+            "LineOfCredit",
+            "RevolvingCreditFacility",
+        }
+        | {
+            "Borrowings",
+            "DebtAndCapitalLeaseObligations",
+            "LongTermDebtAndCapitalLeaseObligations",
+            "DebtLongtermAndShorttermCombinedAmount",
+        }
+    ),
 }
 
 

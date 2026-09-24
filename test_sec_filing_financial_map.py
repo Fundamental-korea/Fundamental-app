@@ -27,7 +27,9 @@ def test_real_debt_concepts_are_recognized():
     assert classify_debt_fact(row("LongTermLoansPayable"))[0] == "issuer_debt_noncurrent"
     assert classify_debt_fact(row("NotesAndLoansPayable"))[0] == "issuer_debt_noncurrent"
     assert classify_debt_fact(row("UnsecuredDebt"))[0] == "issuer_debt_noncurrent"
-    assert classify_debt_fact(row("LongTermDebt"))[0] == "issuer_debt_total"
+    assert classify_debt_fact(row("LongTermDebt"))[0] == "issuer_debt_noncurrent"
+    assert classify_debt_fact(row("Borrowings", namespace="ifrs-full"))[0] == "issuer_debt_total"
+    assert classify_debt_fact(row("ShorttermBorrowings", namespace="ifrs-full"))[0] == "issuer_debt_current"
 
 def test_custom_debt_concept_is_recognized_only_when_economic_shape_matches():
     assert classify_debt_fact(row("SeniorBorrowings", namespace="acme"))[0] == "custom_issuer_debt"
@@ -47,6 +49,8 @@ def test_real_interest_is_recognized():
     assert classify_interest_fact(r)[0] == "gross_interest_expense"
     r = row("InterestIncomeExpenseNonoperatingNet", instant=False, start="2025-01-01")
     assert classify_interest_fact(r)[0] == "net_interest_expense"
+    r = row("InterestExpenseOnBorrowings", namespace="ifrs-full", instant=False, start="2025-01-01")
+    assert classify_interest_fact(r)[0] == "interest_expense_component"
 
 def test_direct_total_wins_over_components():
     rows = [
@@ -110,3 +114,38 @@ def test_interest_must_match_operating_income_basis():
     ]
     result = classify_filing_rows(rows, target_year=2025)
     assert result["selected_interest"] is None
+
+
+def test_interest_components_aggregate_when_direct_total_is_absent():
+    rows = [
+        row("InterestExpenseLongTermDebt", value=100, instant=False, start="2025-01-01"),
+        row("InterestExpenseShortTermBorrowings", value=20, instant=False, start="2025-01-01"),
+    ]
+    result = classify_filing_rows(rows, target_year=2025)
+    assert result["selected_interest"]["basis"] == "aggregated_interest_components"
+    assert result["selected_interest"]["value"] == 120
+
+
+def test_direct_component_aggregate_wins_over_child_component():
+    rows = [
+        row("InterestExpenseOnDebtInstrumentsIssued", namespace="ifrs-full", value=100, instant=False, start="2025-01-01"),
+        row("InterestExpenseOnBonds", namespace="ifrs-full", value=80, instant=False, start="2025-01-01"),
+    ]
+    result = classify_filing_rows(rows, target_year=2025)
+    assert result["selected_interest"]["basis"] == "reported_component_aggregate"
+    assert result["selected_interest"]["value"] == 100
+
+
+def test_lease_inclusive_debt_totals_are_not_lease_only():
+    assert classify_debt_fact(row("DebtAndCapitalLeaseObligations"))[0] == "issuer_debt_total"
+    assert classify_debt_fact(row("LongTermDebtAndCapitalLeaseObligations"))[0] == "issuer_debt_total"
+
+
+def test_borrowing_capacity_is_not_debt():
+    assert classify_debt_fact(row("AuthorizedShortTermBorrowings"))[0] is None
+    assert classify_debt_fact(row("AmountOfTotalBorrowingCapacity"))[0] is None
+
+
+def test_custom_debt_bucket_is_inferred():
+    assert classify_debt_fact(row("ShortTermBorrowingsOutstanding", namespace="acme"))[0] == "custom_issuer_debt_current"
+    assert classify_debt_fact(row("LongTermBorrowingsOutstanding", namespace="acme"))[0] == "custom_issuer_debt_noncurrent"

@@ -17,6 +17,7 @@ from collector_us_fundamental import (
 )
 from supabase import create_client
 from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8
+from sec_filing_financial_map import classify_filing_rows
 from us_scoring import data_reliability_from_periods
 
 STANDARD_SECTORS = (
@@ -94,8 +95,116 @@ def _load_company_resilient(session, ticker, cik):
     return facts, submissions
 
 
+def _fact_to_index_row(fact):
+    if not fact:
+        return None
+    value = fact.get("value")
+    end = fact.get("end")
+    if value is None or not end:
+        return None
+    return {
+        "fy": fact.get("fy"),
+        "year": int(str(end)[:4]),
+        "end": end,
+        "filed": fact.get("filed") or "",
+        "val": float(value),
+        "form": fact.get("form"),
+        "frame": None,
+        "unit": fact.get("unit"),
+        "namespace": fact.get("namespace") or "filing-xbrl",
+        "tag": fact.get("concept") or "",
+    }
+
+
+def _apply_filing_map(index, mapped, year):
+    changed = 0
+
+    inputs = mapped.get("roic_inputs") or {}
+    for metric in ("equity", "cash", "operating_income"):
+        fact = _fact_to_index_row(inputs.get(metric))
+        if fact is not None and year not in index.setdefault(metric, {}):
+            index[metric][year] = fact
+            changed += 1
+
+    debt = mapped.get("selected_debt")
+    if debt:
+        components = debt.get("components") or []
+        if debt.get("basis") == "current_plus_noncurrent":
+            for component in components:
+                metric = (
+                    "debt_current" if component.get("category") == "issuer_debt_current"
+                    else "debt_noncurrent" if component.get("category") == "issuer_debt_noncurrent"
+                    else None
+                )
+                fact = _fact_to_index_row(component)
+                if metric and fact is not None and year not in index.setdefault(metric, {}):
+                    index[metric][year] = fact
+                    changed += 1
+        else:
+            first = components[0] if components else {}
+            fact = _fact_to_index_row({
+                "value": debt.get("value"),
+                "end": first.get("end"),
+                "filed": first.get("filed"),
+                "form": first.get("form"),
+                "unit": debt.get("unit"),
+                "namespace": debt.get("namespace"),
+                "concept": debt.get("concept"),
+                "fy": first.get("fy"),
+            })
+            if fact is not None and year not in index.setdefault("debt_total", {}):
+                index["debt_total"][year] = fact
+                changed += 1
+
+    interest = mapped.get("selected_interest")
+    if interest:
+        components = interest.get("components") or []
+        first = components[0] if components else {}
+        fact = _fact_to_index_row({
+            "value": interest.get("value"),
+            "end": first.get("end"),
+            "filed": first.get("filed"),
+            "form": first.get("form"),
+            "unit": interest.get("unit"),
+            "namespace": interest.get("namespace"),
+            "concept": interest.get("concept"),
+            "fy": first.get("fy"),
+        })
+        if fact is not None and year not in index.setdefault("interest_expense", {}):
+            index["interest_expense"][year] = fact
+            changed += 1
+
+    return changed
+
+
 def augment_index_with_v238(index, resolver, cik, latest_year, submissions=None, company_facts_available=True):
     target_years = {latest_year, *(latest_year - p for p in PERIODS)}
+
+    try:
+        filing_rows, filing_meta = resolver._inline_filing_rows(
+            cik,
+            submissions,
+        )
+        for target_year in sorted(target_years, reverse=True):
+            mapped = classify_filing_rows(
+                filing_rows,
+                target_year=target_year,
+            )
+            mapped_count = _apply_filing_map(
+                index,
+                mapped,
+                target_year,
+            )
+            if mapped_count:
+                print(
+                    f"[FILING-MAP] CIK={cik} year={target_year} "
+                    f"filled={mapped_count} filing={filing_meta.get('accession')}"
+                )
+    except Exception as exc:
+        print(
+            f"[FILING-MAP] CIK={cik} unavailable; generic resolver fallback: {exc}"
+        )
+
     for metric in STANDARD_METRICS:
         metric_rows = index.setdefault(metric, {})
         for year in sorted(target_years):
