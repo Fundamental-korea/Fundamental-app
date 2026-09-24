@@ -4580,27 +4580,12 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
         article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
         article_urls.append(original_url or article_url)
-    # 공급원 이미지가 없거나 명백한 썸네일이면 원문 기사에서
-    # srcset / JSON-LD / og:image 순으로 최고 해상도 후보를 찾아온다.
+    # 수집기에서 이미 원문 최고해상도 대표 이미지로 보강한 URL을 사용한다.
+    # 따라서 페이지 진입 시 외부 기사 HTML을 다시 조회하지 않아 로딩 지연을 막는다.
     image_urls = [
         _normalize_news_image_url(getattr(item, "image_url", ""))
         for item in selected_items
     ]
-    source_lookup = []
-    for idx, item in enumerate(selected_items):
-        if image_urls[idx]:
-            continue
-        original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
-        article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
-        source_lookup.append((idx, original_url or article_url))
-    if source_lookup:
-        with ThreadPoolExecutor(max_workers=min(5, len(source_lookup))) as executor:
-            fetched = executor.map(
-                lambda pair: (pair[0], _get_news_image_url(pair[1])),
-                source_lookup,
-            )
-            for idx, image_url_candidate in fetched:
-                image_urls[idx] = _normalize_news_image_url(image_url_candidate)
 
     localized_cards = {}
     translation_input = tuple(
