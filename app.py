@@ -511,13 +511,17 @@ st.markdown(
         margin-bottom: 18px;
     }
     .news-reader-image {
+        position: absolute;
+        inset: 0;
         width: 100%;
-        max-height: 520px;
+        height: 100%;
+        max-height: none;
         object-fit: cover;
         border-radius: 16px;
         display: block;
-        margin: 0 0 18px;
+        margin: 0;
         border: 1px solid #E5E7EB;
+        z-index: 2;
     }
     .news-reader-static-image > svg {
         display: block !important;
@@ -525,14 +529,23 @@ st.markdown(
         height: auto !important;
     }
     .news-reader-image-shell {
+        position: relative;
         width: 100%;
+        height: 520px;
         margin: 0 0 18px;
+        overflow: hidden;
+        border-radius: 16px;
     }
     .news-reader-static-image {
+        position: absolute;
+        inset: 0;
         width: 100%;
+        height: 100%;
         overflow: hidden;
         border-radius: 16px;
         border: 1px solid #E5E7EB;
+        z-index: 1;
+        background: #F3F4F6;
     }
     .news-reader-body {
         font-size: 15px;
@@ -635,11 +648,22 @@ st.markdown(
         min-width: 100% !important;
         object-fit: cover;
     }
+    .live-news-static-fallback {
+        position: absolute;
+        inset: 0;
+        z-index: 1;
+        width: 100%;
+        height: 100%;
+        background: #F3F4F6;
+    }
     .live-news-image {
+        position: absolute;
+        inset: 0;
         display: block;
         width: 100%;
         height: 100%;
         object-fit: cover;
+        z-index: 2;
     }
     .live-news-image-fallback {
         display: flex;
@@ -4713,7 +4737,8 @@ def _get_news_topic_image_url(topic_key: str) -> str:
 
 
 def _normalize_news_image_url(image_url: str) -> str:
-    """기존 공급원 이미지를 복원하되 명백한 썸네일/저해상도 URL은 제외한다."""
+    """브라우저에서 바로 사용할 이미지 URL만 허용한다.
+    뉴스 카드에서는 외부 원본 URL보다 Supabase Storage 캐시 URL을 우선 사용한다."""
     url = str(image_url or "").strip()
     if not url:
         return ""
@@ -4724,6 +4749,14 @@ def _normalize_news_image_url(image_url: str) -> str:
     if not url.startswith("https://"):
         return ""
     lowered = url.lower()
+    if "/storage/v1/object/public/news-source-images/" in lowered:
+        return url
+    if "/storage/v1/object/public/news-topic-images/" in lowered:
+        return url
+    # AI 이미지는 아래에서 서버 검증 후 선택한다.
+    if "image.pollinations.ai/" in lowered:
+        return url
+    # Bing News 썸네일 등 명백한 공급원 썸네일은 차단한다.
     if "bing.com" in lowered and ("th?id=" in lowered or "pid=news" in lowered or "/th" in lowered):
         return ""
     lowres_hints = (
@@ -4736,6 +4769,12 @@ def _normalize_news_image_url(image_url: str) -> str:
     if any(hint in lowered for hint in lowres_hints):
         return ""
     return url
+
+
+def _is_supabase_news_image_url(image_url: str) -> bool:
+    lowered = str(image_url or "").strip().lower()
+    return "/storage/v1/object/public/news-source-images/" in lowered or "/storage/v1/object/public/news-topic-images/" in lowered
+
 
 
 def _build_news_reader_url(
@@ -4847,9 +4886,8 @@ def render_news_reader():
         if image_url:
             image_html = (
                 f"""<div class="news-reader-image-shell">
-                <img class="news-reader-image" src="{_escape_html(image_url)}" alt="" loading="eager" decoding="async"
-                     onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='block';">
-                <div class="news-reader-static-image" style="display:none;">{static_reader_svg}</div>
+                <div class="news-reader-static-image" style="display:block;">{static_reader_svg}</div>
+                <img class="news-reader-image" src="{_escape_html(image_url)}" alt="" loading="eager" decoding="async">
                 </div>"""
             )
         elif static_reader_svg:
@@ -5260,13 +5298,18 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         static_topic_image = _get_news_topic_image_url(news_topic)
         static_topic_svg = _get_news_topic_svg_markup(news_topic)
 
-        # 이미지 우선순위:
-        # 1) 수집기가 저장한 원본 최고화질 이미지
-        # 2) 공급원 이미지
-        # 3) 기사별 섹터 AI 이미지 10장 풀
-        # 4) 앱 내부 SVG — 외부 이미지가 실패해도 빈/흰 박스로 끝나지 않는 최종 안전망
+        # 원본 이미지가 Supabase Storage에 캐시되어 있으면 그것을 최우선으로 사용한다.
+        # 캐시되지 않은 외부 공급원 URL은 브라우저에서 직접 사용하지 않는다.
         image_url = image_urls[idx] if idx < len(image_urls) else ""
-        image_url = image_url or _normalize_news_image_url(provided_image_url)
+        image_url = _normalize_news_image_url(image_url)
+        if image_url and not _is_supabase_news_image_url(image_url):
+            image_url = ""
+        if not image_url:
+            provided = _normalize_news_image_url(provided_image_url)
+            image_url = provided if _is_supabase_news_image_url(provided) else ""
+
+        # 원본 캐시가 없는 기사만 섹터 AI pool을 사용한다. 이 URL도 외부 응답 실패를
+        # 전제로 하며, 아래의 inline SVG가 브라우저 측 최종 안전망이다.
         if not image_url:
             image_url = _get_news_topic_ai_image_url(
                 news_topic,
@@ -5308,11 +5351,12 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 '<div class="live-news-image-fallback">'
                 '<span>📰</span><small>이미지 준비 중</small></div>'
             )
+            # 브라우저 JS를 사용하지 않는다. 외부 이미지가 실패하면 빈 영역 대신
+            # CSS의 fallback 레이어를 즉시 보여주는 구조로만 렌더링한다.
             media_html = (
                 f"""<div class="live-news-image-wrap">
-                <img class="live-news-image" src="{_escape_html(image_url)}" alt="" loading="lazy" decoding="async"
-                     onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex';">
-                <div class="live-news-static-fallback" style="display:none;">{fallback_html}</div>
+                <div class="live-news-static-fallback">{fallback_html}</div>
+                <img class="live-news-image" src="{_escape_html(image_url)}" alt="" loading="lazy" decoding="async">
                 </div>"""
             )
         elif static_topic_svg:
