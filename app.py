@@ -4063,10 +4063,34 @@ def _get_news_topic_key(title: str = "", description: str = "", query: str = "",
     return "global_markets"
 
 
+@st.cache_data(ttl=3600, show_spinner=False)
+def _get_news_topic_image_map() -> dict:
+    """Supabase Storage에 저장된 고정 뉴스 이미지를 topic_key별로 가져온다."""
+    if not supabase:
+        return {}
+    try:
+        rows = (
+            supabase.table("news_topic_images")
+            .select("topic_key, public_url")
+            .execute()
+            .data
+            or []
+        )
+        return {
+            str(row.get("topic_key") or "").strip(): str(row.get("public_url") or "").strip()
+            for row in rows
+            if str(row.get("topic_key") or "").strip()
+            and str(row.get("public_url") or "").startswith("https://")
+        }
+    except Exception as exc:
+        print(f"[Live News Images] Supabase mapping lookup failed: {type(exc).__name__}: {exc}")
+        return {}
+
+
 def _get_news_topic_image_url(topic_key: str) -> str:
-    """브라우저가 직접 로드할 안정적인 HTTPS 주제 이미지 URL을 반환한다."""
-    key = str(topic_key or "global_markets")
-    return NEWS_TOPIC_IMAGE_FILES.get(key, NEWS_TOPIC_IMAGE_FILES["global_markets"])
+    """Supabase Storage의 고정 주제 이미지 public URL을 반환한다."""
+    key = str(topic_key or "global_markets").strip()
+    return _get_news_topic_image_map().get(key, "")
 
 
 def _normalize_news_image_url(image_url: str) -> str:
@@ -4166,8 +4190,8 @@ def render_news_reader():
 
     if not news_topic:
         news_topic = _get_news_topic_key(title, description, category, source)
-    static_reader_svg = _get_news_topic_svg_markup(news_topic)
-    image_url = ""
+    static_reader_image = _get_news_topic_image_url(news_topic)
+    image_url = static_reader_image
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     with col_logo:
@@ -4186,8 +4210,7 @@ def render_news_reader():
 
     with article_main:
         image_html = (
-            f'<img class="news-reader-image" src="{_escape_html(image_url)}" alt="" loading="eager" decoding="async" '
-            f'onerror="this.onerror=null;this.src=\'{_escape_html(static_reader_image)}\';">'
+            f'<img class="news-reader-image" src="{_escape_html(image_url)}" alt="" loading="eager" decoding="async">'
             if image_url else ""
         )
         st.html(
@@ -4557,9 +4580,27 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
         article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
         article_urls.append(original_url or article_url)
-    # 공급원이 이미 가진 대표 이미지 URL을 우선 복원한다.
-    # 원문 HTML 재조회는 하지 않아 기존 로딩 성능 개선은 유지한다.
-    image_urls = [getattr(item, "image_url", "") for item in selected_items]
+    # 공급원 이미지가 없거나 명백한 썸네일이면 원문 기사에서
+    # srcset / JSON-LD / og:image 순으로 최고 해상도 후보를 찾아온다.
+    image_urls = [
+        _normalize_news_image_url(getattr(item, "image_url", ""))
+        for item in selected_items
+    ]
+    source_lookup = []
+    for idx, item in enumerate(selected_items):
+        if image_urls[idx]:
+            continue
+        original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
+        article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
+        source_lookup.append((idx, original_url or article_url))
+    if source_lookup:
+        with ThreadPoolExecutor(max_workers=min(5, len(source_lookup))) as executor:
+            fetched = executor.map(
+                lambda pair: (pair[0], _get_news_image_url(pair[1])),
+                source_lookup,
+            )
+            for idx, image_url_candidate in fetched:
+                image_urls[idx] = _normalize_news_image_url(image_url_candidate)
 
     localized_cards = {}
     translation_input = tuple(
@@ -4608,9 +4649,10 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
         static_topic_image = _get_news_topic_image_url(news_topic)
 
-        # 기존 공급원 이미지가 있으면 사용하고, 브라우저에서 실패하는 경우
-        # onerror가 동일 카드의 안정적인 주제 이미지로 즉시 교체한다.
-        image_url = _normalize_news_image_url(provided_image_url) or static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL
+        # 최고 해상도의 원문/공급원 이미지를 우선하고,
+        # 없으면 Supabase의 고정 주제 이미지를 사용한다.
+        image_url = image_urls[idx] if idx < len(image_urls) else ""
+        image_url = image_url or static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL
 
         direct_url = original_url or article_url
         # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
@@ -4641,14 +4683,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             media_html = (
                 f"<div class='live-news-image-wrap'>"
                 f"<img class='live-news-image' src='{_escape_html(image_url)}' alt='' loading='lazy' decoding='async' "
-                f"onerror=\"this.style.display='none';this.nextElementSibling.style.display='flex';\">"
-                f"<div class='live-news-static-fallback' style='display:none;'>{static_topic_svg}</div>"
-                f"</div>"
-            )
-        elif static_topic_svg:
-            media_html = (
-                f"<div class='live-news-image-wrap live-news-static-svg'>"
-                f"{static_topic_svg}"
+                f"onerror=\"this.onerror=null;this.src='{_escape_html(static_topic_image or AI_NEWS_FALLBACK_IMAGE_URL)}';\">"
                 f"</div>"
             )
         else:
