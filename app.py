@@ -4846,12 +4846,13 @@ def render_news_reader():
     with article_main:
         if image_url:
             image_html = (
-                f'<div class="news-reader-image-shell">'
-                f'<img class="news-reader-image" src="{_escape_html(image_url)}" alt="" loading="eager" decoding="async" '
-                f'onerror="this.onerror=null;this.style.display=\\\'none\\\';this.nextElementSibling.style.display=\\\'block\\\';">'
-                f'<div class="news-reader-static-image" style="display:none;">{static_reader_svg}</div>'
-                f'</div>'
+                f"""<div class="news-reader-image-shell">
+                <img class="news-reader-image" src="{_escape_html(image_url)}" alt="" loading="eager" decoding="async"
+                     onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='block';">
+                <div class="news-reader-static-image" style="display:none;">{static_reader_svg}</div>
+                </div>"""
             )
+        elif static_reader_svg:
         elif static_reader_svg:
             image_html = f'<div class="news-reader-static-image">{static_reader_svg}</div>'
         else:
@@ -5309,14 +5310,13 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 '<span>📰</span><small>이미지 준비 중</small></div>'
             )
             media_html = (
-                f"<div class='live-news-image-wrap'>"
-                f"<img class='live-news-image' src='{_escape_html(image_url)}' alt='' loading='lazy' decoding='async' "
-                f"onerror='this.onerror=null;this.style.display=\"none\";this.nextElementSibling.style.display=\"flex\";'">"
-                f"<div class='live-news-static-fallback' style='display:none;'>"
-                f"{fallback_html}"
-                f"</div>"
-                f"</div>"
+                f"""<div class="live-news-image-wrap">
+                <img class="live-news-image" src="{_escape_html(image_url)}" alt="" loading="lazy" decoding="async"
+                     onerror="this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex';">
+                <div class="live-news-static-fallback" style="display:none;">{fallback_html}</div>
+                </div>"""
             )
+        elif static_topic_svg:
         elif static_topic_svg:
             media_html = (
                 f"<div class='live-news-image-wrap live-news-static-svg'>"
