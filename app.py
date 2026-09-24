@@ -5316,7 +5316,6 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 </div>"""
             )
         elif static_topic_svg:
-        elif static_topic_svg:
             media_html = (
                 f"<div class='live-news-image-wrap live-news-static-svg'>"
                 f"{static_topic_svg}"
@@ -5328,9 +5327,6 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 '<span>📰</span><small>이미지 준비 중</small>'
                 '</div>'
             )
-
-        cards.append(
-
 
         cards.append(
             f'<a class="live-news-card-link" href="{_escape_html(reader_url)}" target="_blank" rel="noopener noreferrer">'
