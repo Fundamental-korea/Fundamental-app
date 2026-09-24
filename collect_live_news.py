@@ -1,4 +1,5 @@
 import os
+import hashlib
 import re
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import replace
@@ -170,7 +171,80 @@ def _extract_best_source_image(article_url: str) -> str:
         return ""
 
 
-def _enrich_news_items_with_source_images(items):
+def _is_cached_source_image_url(image_url: str) -> bool:
+    url = str(image_url or "").strip().lower()
+    return "/storage/v1/object/public/news-source-images/" in url
+
+
+def _cache_source_image(client, source_image_url: str) -> str:
+    """원문 대표 이미지를 원본 바이트 그대로 Supabase Storage에 캐시한다."""
+    url = str(source_image_url or "").strip()
+    if not _usable_news_image_url(url):
+        return ""
+
+    try:
+        response = requests.get(
+            url,
+            timeout=10,
+            headers={"User-Agent": "Mozilla/5.0 (compatible; FundamentalNewsImageCache/1.0)"},
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+        content_type = (
+            str(response.headers.get("Content-Type") or "image/jpeg")
+            .split(";")[0]
+            .strip()
+            .lower()
+        )
+        allowed_types = {"image/jpeg": ".jpg", "image/png": ".png", "image/webp": ".webp"}
+        suffix = allowed_types.get(content_type)
+        if not suffix:
+            return ""
+
+        data = response.content
+        if not data or len(data) > 8 * 1024 * 1024:
+            return ""
+
+        cache_key = hashlib.sha256(url.encode("utf-8")).hexdigest()[:40]
+        path = f"{cache_key}{suffix}"
+        upload = (
+            client.storage
+            .from_("news-source-images")
+            .upload(
+                path,
+                data,
+                {
+                    "content-type": content_type,
+                    "cache-control": "31536000",
+                    "upsert": "true",
+                },
+            )
+        )
+        if getattr(upload, "error", None):
+            print(
+                f"[LIVE NEWS] source image storage upload failed | "
+                f"{upload.error.message}"
+            )
+            return ""
+
+        public_url = client.storage.from_("news-source-images").get_public_url(path)
+        if isinstance(public_url, str):
+            return public_url
+        data = getattr(public_url, "data", None)
+        if isinstance(data, dict):
+            return str(data.get("publicUrl") or "")
+        if isinstance(public_url, dict):
+            return str(public_url.get("publicUrl") or "")
+        return ""
+    except Exception as exc:
+        print(
+            f"[LIVE NEWS] source image cache failed | {url[:120]} | "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return ""
+
+
+def _enrich_news_items_with_source_images(items, client=None):
     items = list(items)
     if not items:
         return items
@@ -178,40 +252,55 @@ def _enrich_news_items_with_source_images(items):
     targets = []
     for idx, item in enumerate(items):
         current = str(getattr(item, "image_url", "") or "").strip()
-        if _usable_news_image_url(current):
+        if _is_cached_source_image_url(current):
             continue
-        source_url = str(getattr(item, "original_link", "") or getattr(item, "link", "") or "").strip()
+        source_url = str(
+            getattr(item, "original_link", "") or getattr(item, "link", "") or ""
+        ).strip()
         if source_url:
-            targets.append((idx, source_url))
+            # 항상 원문 HTML을 검사해 기존 공급원 썸네일보다 더 큰 원본을 우선한다.
+            targets.append((idx, source_url, current))
 
     if not targets:
         return items
 
     results = {}
     with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
-        fetched = executor.map(lambda pair: (pair[0], _extract_best_source_image(pair[1])), targets)
+        fetched = executor.map(
+            lambda triple: (triple[0], _extract_best_source_image(triple[1])),
+            targets,
+        )
         for idx, image_url in fetched:
             if image_url:
                 results[idx] = image_url
 
+    if client is None and results:
+        from news_earnings import _get_supabase_client
+        client = _get_supabase_client()
+
     enriched = []
-    cleared = 0
+    cached_count = 0
+    external_count = 0
     for idx, item in enumerate(items):
-        current = getattr(item, "image_url", "")
-        image_url = results.get(idx) or current
-        if not _usable_news_image_url(image_url):
-            image_url = ""
-            cleared += 1
-        enriched.append(replace(item, image_url=image_url))
+        current = str(getattr(item, "image_url", "") or "").strip()
+        best_source = results.get(idx) or current
+        cached_url = _cache_source_image(client, best_source) if client and best_source else ""
+        final_url = cached_url or current or best_source
+        if _is_cached_source_image_url(final_url):
+            cached_count += 1
+        elif final_url:
+            external_count += 1
+        enriched.append(replace(item, image_url=final_url))
+
     print(
         f"[LIVE NEWS] source image enrichment: targets={len(targets)} "
-        f"resolved={len(results)} cleared={cleared}"
+        f"resolved={len(results)} cached={cached_count} external_fallback={external_count}"
     )
     return enriched
 
 
 def _backfill_missing_db_images(client) -> int:
-    """기존 20개 피드 중 image_url이 비어 있는 행도 원문 대표 이미지로 보강한다."""
+    """기존 20개 피드의 외부/누락 이미지를 원문 최고해상도 이미지로 보강하고 Storage에 캐시한다."""
     rows = (
         client.table("news_items")
         .select("id,article_url,original_url,metadata")
@@ -223,35 +312,47 @@ def _backfill_missing_db_images(client) -> int:
         .data
         or []
     )
+
     targets = []
     for row in rows:
         metadata = row.get("metadata") or {}
         current = str(metadata.get("image_url") or "").strip() if isinstance(metadata, dict) else ""
-        if _usable_news_image_url(current):
+        if _is_cached_source_image_url(current):
             continue
         source_url = str(row.get("original_url") or row.get("article_url") or "").strip()
         if source_url:
-            targets.append((row, source_url))
+            targets.append((row, source_url, current))
 
     if not targets:
         return 0
 
     resolved = 0
+    cached = 0
     with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
-        fetched = executor.map(lambda pair: _extract_best_source_image(pair[1]), targets)
-        for (row, _), image_url in zip(targets, fetched):
-            if not image_url:
-                continue
-    with ThreadPoolExecutor(max_workers=min(6, len(targets))) as executor:
-        fetched = executor.map(lambda pair: _extract_best_source_image(pair[1]), targets)
-        for (row, _), image_url in zip(targets, fetched):
-            metadata = dict(row.get("metadata") or {})
-            metadata["image_url"] = image_url if _usable_news_image_url(image_url) else ""
-            client.table("news_items").update({"metadata": metadata}).eq("id", row["id"]).execute()
-            if image_url and _usable_news_image_url(image_url):
-                resolved += 1
-    print(f"[LIVE NEWS] DB image backfill: targets={len(targets)} resolved={resolved}")
-    return resolved
+        fetched = executor.map(
+            lambda triple: (triple[0], _extract_best_source_image(triple[1])),
+            targets,
+        )
+        fetched = list(fetched)
+
+    for row, image_url in fetched:
+        metadata = dict(row.get("metadata") or {})
+        current = str(metadata.get("image_url") or "").strip()
+        best_source = image_url or current
+        cached_url = _cache_source_image(client, best_source) if best_source else ""
+        final_url = cached_url or current or best_source
+        metadata["image_url"] = final_url
+        client.table("news_items").update({"metadata": metadata}).eq("id", row["id"]).execute()
+        if image_url:
+            resolved += 1
+        if _is_cached_source_image_url(final_url):
+            cached += 1
+
+    print(
+        f"[LIVE NEWS] DB image backfill: targets={len(targets)} "
+        f"resolved={resolved} cached={cached}"
+    )
+    return cached
 
 
 
@@ -346,7 +447,7 @@ def main() -> None:
         new_items.append(item)
 
     # 신규 기사도 수집 시점에 원문 대표 이미지를 보강해 웹페이지가 외부 HTML을 다시 조회하지 않도록 한다.
-    new_items = _enrich_news_items_with_source_images(new_items)
+    new_items = _enrich_news_items_with_source_images(new_items, client=client)
     saved = persist_live_news_snapshot(new_items, supabase_client=client)
 
     # 기존 최신 20개 중 image_url이 비어 있는 과거 기사도 이번 실행에서 한 번 보강한다.
