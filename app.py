@@ -12,6 +12,7 @@ import calendar as pycalendar
 from datetime import datetime, date, timedelta, timezone
 from concurrent.futures import ThreadPoolExecutor
 from html import unescape
+from html.parser import HTMLParser
 from urllib.parse import quote, urlencode, urlparse
 from zoneinfo import ZoneInfo
 import hashlib
@@ -3885,6 +3886,186 @@ def _translate_news_cards(
 
     return localized
 
+class _NewsArticleTextParser(HTMLParser):
+    """뉴스 원문 HTML에서 본문 문단을 최대한 보수적으로 추출한다."""
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.article_depth = 0
+        self.main_depth = 0
+        self.skip_depth = 0
+        self.in_p = False
+        self.p_context = "body"
+        self.current_parts = []
+        self.article_paragraphs = []
+        self.main_paragraphs = []
+        self.body_paragraphs = []
+
+    def handle_starttag(self, tag, attrs):
+        tag = str(tag or "").lower()
+        if tag in {"script", "style", "noscript", "svg", "template"}:
+            self.skip_depth += 1
+            return
+
+        if tag == "article":
+            self.article_depth += 1
+        elif tag == "main":
+            self.main_depth += 1
+
+        if tag == "p" and not self.skip_depth:
+            self.in_p = True
+            self.current_parts = []
+            if self.article_depth > 0:
+                self.p_context = "article"
+            elif self.main_depth > 0:
+                self.p_context = "main"
+            else:
+                self.p_context = "body"
+
+    def handle_endtag(self, tag):
+        tag = str(tag or "").lower()
+        if tag in {"script", "style", "noscript", "svg", "template"}:
+            self.skip_depth = max(0, self.skip_depth - 1)
+            return
+
+        if tag == "p" and self.in_p:
+            value = re.sub(r"\s+", " ", unescape("".join(self.current_parts))).strip()
+            if len(value) >= 25:
+                if self.p_context == "article":
+                    self.article_paragraphs.append(value)
+                elif self.p_context == "main":
+                    self.main_paragraphs.append(value)
+                else:
+                    self.body_paragraphs.append(value)
+            self.in_p = False
+            self.current_parts = []
+            self.p_context = "body"
+
+        if tag == "article":
+            self.article_depth = max(0, self.article_depth - 1)
+        elif tag == "main":
+            self.main_depth = max(0, self.main_depth - 1)
+
+    def handle_data(self, data):
+        if self.in_p and not self.skip_depth and data:
+            self.current_parts.append(data)
+
+
+def _extract_jsonld_article_body(html: str) -> str:
+    """JSON-LD의 articleBody가 있으면 가장 충실한 원문 후보로 사용한다."""
+    candidates = []
+    pattern = re.compile(
+        r'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>',
+        flags=re.IGNORECASE | re.DOTALL,
+    )
+    for raw in pattern.findall(html or ""):
+        raw = raw.strip()
+        if not raw:
+            continue
+        try:
+            payload = json.loads(raw)
+        except Exception:
+            continue
+
+        stack = payload if isinstance(payload, list) else [payload]
+        while stack:
+            node = stack.pop()
+            if isinstance(node, list):
+                stack.extend(node)
+                continue
+            if not isinstance(node, dict):
+                continue
+            article_body = str(node.get("articleBody") or "").strip()
+            if article_body:
+                candidates.append(article_body)
+            graph = node.get("@graph")
+            if graph:
+                stack.append(graph)
+
+    if not candidates:
+        return ""
+    return max(candidates, key=len)
+
+
+@st.cache_data(ttl=1800, show_spinner=False)
+def _fetch_source_article_text(article_url: str) -> str:
+    """원문 기사 페이지를 읽어 AI 편집용 본문 문맥을 확보한다."""
+    url = str(article_url or "").strip()
+    if not url.startswith(("http://", "https://")):
+        return ""
+
+    try:
+        response = requests.get(
+            url,
+            timeout=8,
+            headers={
+                "User-Agent": (
+                    "Mozilla/5.0 (compatible; FundamentalNewsReader/1.0; "
+                    "+https://github.com/Fundamental-korea/Fundamental-app)"
+                )
+            },
+            allow_redirects=True,
+        )
+        response.raise_for_status()
+        html = response.text[:2_500_000]
+    except Exception as exc:
+        print(
+            f"[News Reader] source article fetch failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return ""
+
+    jsonld_body = _extract_jsonld_article_body(html)
+    if len(jsonld_body) >= 700:
+        return re.sub(r"\s+", " ", unescape(jsonld_body)).strip()[:28000]
+
+    try:
+        parser = _NewsArticleTextParser()
+        parser.feed(html)
+        parser.close()
+    except Exception as exc:
+        print(
+            f"[News Reader] source article parse failed: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return ""
+
+    def choose(paragraphs):
+        out = []
+        seen = set()
+        for paragraph in paragraphs:
+            cleaned = re.sub(r"\s+", " ", str(paragraph or "")).strip()
+            if len(cleaned) < 25:
+                continue
+            key = cleaned.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            out.append(cleaned)
+        return out
+
+    article_paragraphs = choose(parser.article_paragraphs)
+    main_paragraphs = choose(parser.main_paragraphs)
+    body_paragraphs = choose(parser.body_paragraphs)
+
+    if article_paragraphs:
+        paragraphs = article_paragraphs
+    elif main_paragraphs:
+        paragraphs = main_paragraphs
+    else:
+        paragraphs = body_paragraphs
+
+    # 너무 짧은 단락만 모인 경우는 원문 본문으로 보기 어렵다.
+    paragraphs = [
+        p for p in paragraphs
+        if len(p) >= 45 or re.search(r"\d", p)
+    ]
+    if not paragraphs:
+        return ""
+
+    text = "\n\n".join(paragraphs)
+    return text[:28000]
+
+
 @st.cache_data(ttl=86400, show_spinner=False)
 def _generate_ai_news_article(
     title: str,
@@ -3893,50 +4074,51 @@ def _generate_ai_news_article(
     keywords: str = "",
     entities: str = "",
     source: str = "",
+    article_url: str = "",
 ) -> dict:
-    """Translate the source headline into Korean and generate a Korean financial brief."""
+    """원문 본문을 읽은 뒤, 사실관계를 유지하면서 한국어 기사로 재구성한다."""
     api_key = str(st.secrets.get("GEMINI_API_KEY", "")).strip()
     if not api_key:
         return {}
 
     model = str(st.secrets.get("GEMINI_NEWS_MODEL", "gemini-3.5-flash-lite")).strip()
+    resolved_article_url = str(article_url or "").strip()
+    source_article = _fetch_source_article_text(resolved_article_url)
+
     source_material = "\n".join([
         f"원문 제목: {title}",
         f"출처: {source}",
-        f"설명: {description}",
-        f"짧은 본문 문맥: {snippet}",
+        f"공급원 설명: {description}",
+        f"짧은 문맥: {snippet}",
         f"핵심 키워드: {keywords}",
         f"관련 기업·자산: {entities}",
+        f"원문 기사 본문:\n{source_article or '(원문 본문을 직접 확보하지 못함 — 공급원 설명과 문맥만 사용)'}",
     ])
 
     prompt = f"""
-너는 미국·한국 금융시장 전문 뉴스 에디터다.
-아래 자료는 실제 뉴스 공급원이 제공한 메타데이터와 짧은 문맥이다.
+너는 한국의 금융·경제 뉴스 전문 편집자다.
+아래 자료 중 '원문 기사 본문'을 최우선 근거로 사용하고, 공급원 설명과 키워드는 보조 자료로 사용하라.
 
 {source_material}
 
-위 자료만 근거로 한국어 금융뉴스를 작성하라.
-원문 제목이 영어라면 의미를 정확히 보존한 자연스러운 한국어 금융 제목으로 먼저 번역하고,
-그 한국어 주제를 중심으로 본문을 작성하라.
-
-작성 규칙:
-1. 원문 문장을 그대로 복사하지 말고 완전히 다른 표현으로 재구성한다.
-2. 자료에 없는 사실, 숫자, 인용, 발언, 일정, 전망을 절대로 만들어내지 않는다.
-3. 자료만으로 확인할 수 없는 내용은 추측하지 않는다.
-4. 본문은 7~9개 문단, 총 1200~1800자 정도로 작성한다.
-5. 첫 문단은 무슨 일이 있었는지를 바로 설명한다.
-6. 이어서 배경, 핵심 사실, 시장 영향, 향후 체크포인트 순서로 설명한다.
-7. 시장 영향은 자료에서 합리적으로 연결되는 범위에서만 설명한다.
-8. 투자 추천이나 매수·매도 지시는 하지 않는다.
-9. 기업명·자산명·시장명·수치가 제공된 경우 정확하게 유지한다.
-10. AI 안내문이나 출처 표시는 출력하지 않는다.
-11. 아래 형식을 정확히 지킨다.
+요청:
+- 기사의 핵심 사실과 정보 범위를 원문 대비 약 80% 수준으로 충분히 유지한다.
+- 단순 요약문이 아니라 원문의 흐름과 핵심 정보를 충분히 담은 한국어 기사로 재구성한다.
+- 문장과 문단 표현은 원문과 다르게 새로 작성한다. 원문을 장문으로 그대로 복사하지 않는다.
+- 원문에 확인되는 주요 수치, 날짜, 회사명, 인물 발언, 정책 내용, 시장 반응, 배경 설명은 가능한 한 빠뜨리지 않는다.
+- 원문에서 확인할 수 없는 사실, 숫자, 인용, 전망, 원인, 의도는 절대로 추가하지 않는다.
+- 서술은 전부 자연스러운 한국어로 작성한다. 회사명·티커·고유명사처럼 원문 표기가 필요한 경우를 제외하고 영어 문장을 남기지 않는다.
+- 투자 추천, 매수·매도 지시, 과도한 평가를 추가하지 않는다.
+- 원문이 짧으면 억지로 내용을 늘리지 말고 확보된 사실만 충실하게 재구성한다.
+- 본문은 10~14개 문단, 총 2400~4500자 정도를 목표로 한다.
+- 첫 문단에서 핵심 사건을 바로 설명하고, 이후 세부 사실 → 배경 → 관련 발언/수치 → 시장·산업 맥락 → 향후 확인할 사안 순으로 자연스럽게 전개한다.
+- 출력은 아래 형식을 정확히 지킨다.
 
 제목:
 <한국어 제목>
 
 본문:
-<본문>
+<한국어 본문>
 """
     try:
         response = requests.post(
@@ -3947,9 +4129,12 @@ def _generate_ai_news_article(
             },
             json={
                 "contents": [{"parts": [{"text": prompt}]}],
-                "generationConfig": {"maxOutputTokens": 2200},
+                "generationConfig": {
+                    "maxOutputTokens": 6000,
+                    "temperature": 0.2,
+                },
             },
-            timeout=30,
+            timeout=60,
         )
         response.raise_for_status()
         payload = response.json()
@@ -3974,7 +4159,8 @@ def _generate_ai_news_article(
                 ai_body = ai_body.strip()
 
         return {"title": ai_title, "body": ai_body}
-    except Exception:
+    except Exception as exc:
+        print(f"[Gemini Live News Article] Request failed: {type(exc).__name__}: {exc}")
         return {}
 
 def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -> str:
@@ -4200,6 +4386,7 @@ def render_news_reader():
         keywords=keywords,
         entities=entities,
         source=source,
+        article_url=original_url or article_url,
     )
     ai_title = str(ai_result.get("title") or "").strip()
     ai_body = str(ai_result.get("body") or "").strip()
@@ -4212,6 +4399,8 @@ def render_news_reader():
 
     if not news_topic:
         news_topic = _get_news_topic_key(title, description, category, source)
+    # 기사 리더는 카드의 원문 썸네일과 분리된 AI 편집 이미지를 사용한다.
+    # 카드에서는 기존 최고해상도 원문 이미지 로직을 그대로 유지한다.
     static_reader_image = _get_news_topic_image_url(news_topic)
     image_url = static_reader_image
 
@@ -4256,7 +4445,7 @@ def render_news_reader():
         )
         st.html(
             f'<div class="news-reader-disclosure" style="color:{THEME["text_muted"]};">'
-            '※ AI에 의해 작성된 기사입니다. 원출처의 정보를 바탕으로 재구성했으며, 원문을 그대로 복제하지 않습니다.'
+            '※ AI로 작성된 이미지와 기사입니다. 원출처의 정보를 바탕으로 재구성했습니다.'
             '</div>'
         )
         source_url = original_url or article_url
@@ -4701,7 +4890,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             )
 
         cards.append(
-            f'<a class="live-news-card-link" href="{_escape_html(reader_url)}" target="_self" rel="noopener">'
+            f'<a class="live-news-card-link" href="{_escape_html(reader_url)}" target="_blank" rel="noopener noreferrer">'
             f'<article class="live-news-card">'
             f'{media_html}'
             f'<div class="live-news-card-body">'
