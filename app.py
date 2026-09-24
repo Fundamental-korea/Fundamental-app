@@ -519,9 +519,9 @@ st.markdown(
         border: 1px solid #E5E7EB;
         z-index: 2;
         background-repeat: no-repeat;
-        background-position: center;
-        background-size: cover;
-        background-color: transparent;
+        background-position: center, center;
+        background-size: cover, cover;
+        background-color: #F3F4F6;
     }
     .news-reader-static-image > svg {
         display: block !important;
@@ -666,9 +666,9 @@ st.markdown(
         height: 100%;
         z-index: 2;
         background-repeat: no-repeat;
-        background-position: center;
-        background-size: cover;
-        background-color: transparent;
+        background-position: center, center;
+        background-size: cover, cover;
+        background-color: #F3F4F6;
     }
     .live-news-image-fallback {
         display: flex;
@@ -5033,7 +5033,7 @@ def render_news_reader():
             image_html = (
                 f"""<div class="news-reader-image-shell">
                 <div class="news-reader-static-image">{static_reader_svg}</div>
-                <div class="news-reader-image-layer" style="background-image:url('{_escape_html(image_url)}');"></div>
+                <div class="news-reader-image-layer" style="background-image:url('{_escape_html(image_url)}'),url('{_escape_html(static_reader_image)}');"></div>
                 </div>"""
             )
         elif static_reader_svg:
@@ -5519,7 +5519,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             media_html = (
                 f"""<div class="live-news-image-wrap">
                 <div class="live-news-static-fallback">{fallback_html}</div>
-                <div class="live-news-image-layer" style="background-image:url('{_escape_html(image_url)}');"></div>
+                <div class="live-news-image-layer" style="background-image:url('{_escape_html(image_url)}'),url('{_escape_html(static_topic_image)}');"></div>
                 </div>"""
             )
         elif static_topic_svg:
