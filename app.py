@@ -526,7 +526,10 @@ st.markdown(
     .news-reader-static-image > svg {
         display: block !important;
         width: 100% !important;
-        height: auto !important;
+        height: 100% !important;
+        min-width: 100% !important;
+        min-height: 100% !important;
+        object-fit: cover;
     }
     .news-reader-image-shell {
         position: relative;
