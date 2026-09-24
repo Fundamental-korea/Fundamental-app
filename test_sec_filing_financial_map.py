@@ -145,6 +145,22 @@ def test_borrowing_capacity_is_not_debt():
     assert classify_debt_fact(row("AuthorizedShortTermBorrowings"))[0] is None
     assert classify_debt_fact(row("AmountOfTotalBorrowingCapacity"))[0] is None
 
+def test_additional_debt_lookalikes_are_excluded():
+    assert classify_debt_fact(row("DebtIssuanceCostsLineOfCreditArrangementsNet"))[0] is None
+    assert classify_debt_fact(row("FederalHomeLoanBankAdvancesGeneralDebtObligationsDisclosuresCollateralPledged1"))[0] is None
+    assert classify_debt_fact(row("BorrowingsUndiscountedCashFlows"))[0] is None
+    assert classify_debt_fact(row("DeferredTaxAssetDiscountedDebt"))[0] is None
+    assert classify_debt_fact(row("DebtDiscountOnNotesPayable"))[0] is None
+
+
+def test_additional_interest_lookalikes_are_excluded():
+    assert classify_interest_fact(row("IncomeTaxExaminationPenaltiesAndInterestExpense", instant=False, start="2025-01-01"))[0] is None
+    assert classify_interest_fact(row("AdjustmentsForInterestExpense", instant=False, start="2025-01-01"))[0] is None
+    assert classify_interest_fact(row("AdjustmentsForFinanceCosts", instant=False, start="2025-01-01"))[0] is None
+    assert classify_interest_fact(row("PaymentsOfFinancingCosts", instant=False, start="2025-01-01"))[0] is None
+    assert classify_interest_fact(row("InterestExpenseDeposits", instant=False, start="2025-01-01"))[0] is None
+
+
 
 def test_custom_debt_bucket_is_inferred():
     assert classify_debt_fact(row("ShortTermBorrowingsOutstanding", namespace="acme"))[0] == "custom_issuer_debt_current"

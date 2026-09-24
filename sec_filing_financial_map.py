@@ -15,6 +15,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import asdict, dataclass
+import time
 import math
 import re
 from typing import Any, Iterable
@@ -206,6 +207,17 @@ DEBT_EXCLUSIONS = (
     "unusedborrowingfacilities",
     "availableborrowingcapacity",
     "amountoftotalborrowingcapacity",
+    "debtissuancecost",
+    "issuancecost",
+    "collateralpledged",
+    "maximumamountavailable",
+    "maximumoutstanding",
+    "cashflows",
+    "undiscountedcashflows",
+    "deferredtax",
+    "debtdiscount",
+    "debtpremium",
+    "discounteddebt",
 )
 
 STANDARD_INTEREST_GROSS = {
@@ -279,6 +291,22 @@ INTEREST_EXCLUSIONS = (
     "netoftax",
     "fairvalue",
     "derivative",
+    "incometaxexamination",
+    "incometaxinterest",
+    "taxexamination",
+    "adjustmentsforinterestexpense",
+    "adjustmentsforfinancecosts",
+    "paymentsoffinancingcosts",
+    "paymentsforfinancingcosts",
+    "paymentsforfinancecosts",
+    "deferredfinancingcost",
+    "noncashfinancingcost",
+    "interestexpensedeposits",
+    "interestexpensenowaccounts",
+    "interestexpensedemanddeposit",
+    "interestexpensetimedeposit",
+    "interestexpensesavingsdeposit",
+    "interestexpensedomesticdeposit",
 )
 ACTIVITY_EXCLUSIONS = (
     "proceeds",
@@ -618,6 +646,8 @@ def _select_component_interest(components: list[FinancialFact]) -> dict[str, Any
             "confidence": "high",
             "unit": chosen.unit,
             "components": [asdict(chosen)],
+            "end": chosen.end, "start": chosen.start, "filed": chosen.filed,
+            "form": chosen.form, "context_ref": chosen.context_ref,
         }
 
     if len(items) == 1:
@@ -631,6 +661,8 @@ def _select_component_interest(components: list[FinancialFact]) -> dict[str, Any
             "confidence": chosen.confidence,
             "unit": chosen.unit,
             "components": [asdict(chosen)],
+            "end": chosen.end, "start": chosen.start, "filed": chosen.filed,
+            "form": chosen.form, "context_ref": chosen.context_ref,
         }
 
     groups: dict[tuple[Any, ...], list[FinancialFact]] = {}
@@ -677,6 +709,8 @@ def _select_component_interest(components: list[FinancialFact]) -> dict[str, Any
         "confidence": chosen.confidence,
         "unit": chosen.unit,
         "components": [asdict(chosen)],
+            "end": chosen.end, "start": chosen.start, "filed": chosen.filed,
+            "form": chosen.form, "context_ref": chosen.context_ref,
     }
 
 
@@ -764,6 +798,8 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
             "value": chosen.value, "basis": "reported_total", "category": chosen.category,
             "concept": chosen.concept, "namespace": chosen.namespace, "confidence": chosen.confidence,
             "unit": chosen.unit, "components": [asdict(chosen)],
+            "end": chosen.end, "start": chosen.start, "filed": chosen.filed,
+            "form": chosen.form, "context_ref": chosen.context_ref,
         }
     else:
         pairs = [(c, n) for c in current for n in noncurrent if c.end == n.end and c.unit == n.unit]
@@ -784,6 +820,8 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
                 "category": chosen.category, "concept": chosen.concept,
                 "namespace": chosen.namespace, "confidence": chosen.confidence,
                 "unit": chosen.unit, "components": [asdict(chosen)],
+            "end": chosen.end, "start": chosen.start, "filed": chosen.filed,
+            "form": chosen.form, "context_ref": chosen.context_ref,
             }
         elif len(carrying) == 1:
             chosen = carrying[0]
@@ -792,6 +830,8 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
                 "category": chosen.category, "concept": chosen.concept,
                 "namespace": chosen.namespace, "confidence": "medium",
                 "unit": chosen.unit, "components": [asdict(chosen)],
+            "end": chosen.end, "start": chosen.start, "filed": chosen.filed,
+            "form": chosen.form, "context_ref": chosen.context_ref,
             }
 
     interest_eligible = [x for x in interest if _compatible_flow(x, operating_income)]
@@ -822,6 +862,8 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
             "confidence": chosen.confidence,
             "unit": chosen.unit,
             "components": [asdict(chosen)],
+            "end": chosen.end, "start": chosen.start, "filed": chosen.filed,
+            "form": chosen.form, "context_ref": chosen.context_ref,
         }
         if chosen.value == 0:
             selected_interest["zero_reported"] = True
@@ -839,6 +881,8 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
             "confidence": chosen.confidence,
             "unit": chosen.unit,
             "components": [asdict(chosen)],
+            "end": chosen.end, "start": chosen.start, "filed": chosen.filed,
+            "form": chosen.form, "context_ref": chosen.context_ref,
         }
     else:
         component_selected = _select_component_interest(
@@ -867,6 +911,8 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
                 "confidence": chosen.confidence,
                 "unit": chosen.unit,
                 "components": [asdict(chosen)],
+            "end": chosen.end, "start": chosen.start, "filed": chosen.filed,
+            "form": chosen.form, "context_ref": chosen.context_ref,
             }
     lease_only = bool(debt) and not selected_debt and all(x.category in {"finance_lease_liability", "operating_lease_liability"} for x in debt)
     debt_status = (
@@ -921,9 +967,45 @@ def classify_filing_rows(rows: Iterable[dict[str, Any]], target_year: int | None
         },
     }
 
-def filing_map(cik: str | int, resolver: SECXBRLSearchV2_3_8, year: int | None = None) -> dict[str, Any]:
-    submissions = resolver.submissions(cik)
-    rows, meta = resolver._inline_filing_rows(cik, submissions)
+def _is_transient_sec_error(exc: Exception) -> bool:
+    text = str(exc or "").lower()
+    return any(token in text for token in (
+        "503", "service unavailable", "502", "bad gateway",
+        "504", "gateway timeout", "429", "too many requests",
+        "timed out", "timeout", "connection reset",
+    ))
+
+
+def filing_map(
+    cik: str | int,
+    resolver: SECXBRLSearchV2_3_8,
+    year: int | None = None,
+    retries: int = 4,
+) -> dict[str, Any]:
+    """Map one filing with bounded retry for transient SEC failures.
+
+    The supplied year is respected when present so forensic/recovery callers
+    can pin the target to the DB base fiscal year.
+    """
+    last_error = None
+    submissions = None
+    rows = None
+    meta = None
+
+    for attempt in range(max(1, int(retries))):
+        try:
+            submissions = resolver.submissions(cik)
+            rows, meta = resolver._inline_filing_rows(cik, submissions)
+            break
+        except Exception as exc:
+            last_error = exc
+            if not _is_transient_sec_error(exc) or attempt >= retries - 1:
+                raise
+            time.sleep(min(2 ** attempt, 12))
+
+    if submissions is None or rows is None or meta is None:
+        raise last_error or RuntimeError("SEC filing resolution failed")
+
     if year is None:
         annual_fy = resolver._latest_annual_fy(submissions)
         if annual_fy is not None:
@@ -931,6 +1013,7 @@ def filing_map(cik: str | int, resolver: SECXBRLSearchV2_3_8, year: int | None =
         else:
             dates = [_date(r.get("end")) for r in rows if r.get("end")]
             year = max((d.year for d in dates), default=None)
+
     result = classify_filing_rows(rows, target_year=year)
     result["filing"] = {
         "accession": meta.get("accession"),
