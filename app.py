@@ -524,6 +524,16 @@ st.markdown(
         width: 100% !important;
         height: auto !important;
     }
+    .news-reader-image-shell {
+        width: 100%;
+        margin: 0 0 18px;
+    }
+    .news-reader-static-image {
+        width: 100%;
+        overflow: hidden;
+        border-radius: 16px;
+        border: 1px solid #E5E7EB;
+    }
     .news-reader-body {
         font-size: 15px;
         line-height: 1.85;
@@ -4512,7 +4522,7 @@ def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -
         f"Category/context: {query or 'financial markets'}."
     )
     return (
-        "https://gen.pollinations.ai/image/"
+        "https://image.pollinations.ai/prompt/"
         + quote(prompt, safe="")
         + f"?model=flux-2-klein-4b&width=1536&height=864&seed={seed}&nologo=true&enhance=true"
     )
@@ -4580,7 +4590,7 @@ def _get_news_topic_ai_image_pool(topic_key: str) -> tuple[str, ...]:
             f"Visual treatment: {variant}."
         )
         pool.append(
-            "https://gen.pollinations.ai/image/"
+            "https://image.pollinations.ai/prompt/"
             + quote(prompt, safe="")
             + f"?model=flux-2-klein-4b&width=1536&height=864&seed={seed}&nologo=true&enhance=true"
         )
@@ -4806,6 +4816,7 @@ def render_news_reader():
     # 마지막에 기존 고정 주제 이미지를 안전한 fallback으로 사용한다.
     source_reader_image = _normalize_news_image_url(image_url)
     static_reader_image = _get_news_topic_image_url(news_topic)
+    static_reader_svg = _get_news_topic_svg_markup(news_topic)
     if source_reader_image:
         image_url = source_reader_image
     else:
@@ -4815,6 +4826,9 @@ def render_news_reader():
             description=description,
             query=category,
         ) or static_reader_image
+
+
+    col_logo, col_quote, col_login =
 
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     with col_logo:
@@ -4832,10 +4846,20 @@ def render_news_reader():
         st.markdown("<div class='ad-box-tall'>Ads</div>", unsafe_allow_html=True)
 
     with article_main:
-        image_html = (
-            f'<img class="news-reader-image" src="{_escape_html(image_url)}" alt="" loading="eager" decoding="async">'
-            if image_url else ""
-        )
+        if image_url:
+            image_html = (
+                f'<div class="news-reader-image-shell">'
+                f'<img class="news-reader-image" src="{_escape_html(image_url)}" alt="" loading="eager" decoding="async" '
+                f'onerror="this.onerror=null;this.style.display=\\\'none\\\';this.nextElementSibling.style.display=\\\'block\\\';">'
+                f'<div class="news-reader-static-image" style="display:none;">{static_reader_svg}</div>'
+                f'</div>'
+            )
+        elif static_reader_svg:
+            image_html = f'<div class="news-reader-static-image">{static_reader_svg}</div>'
+        else:
+            image_html = ""
+        st.html(
+
         st.html(
             f"""
             <div class="news-reader-wrap">
@@ -5238,9 +5262,13 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             source_hint,
         )
         static_topic_image = _get_news_topic_image_url(news_topic)
+        static_topic_svg = _get_news_topic_svg_markup(news_topic)
 
-        # 수집기가 원문에서 확보해 Supabase Storage에 캐시한 최고해상도 이미지를 최우선으로 사용한다.
-        # 원본이 없으면 기사별 섹터 AI 이미지 풀(10장), 마지막으로 기존 고정 주제 이미지를 사용한다.
+        # 이미지 우선순위:
+        # 1) 수집기가 저장한 원본 최고화질 이미지
+        # 2) 공급원 이미지
+        # 3) 기사별 섹터 AI 이미지 10장 풀
+        # 4) 앱 내부 SVG — 외부 이미지가 실패해도 빈/흰 박스로 끝나지 않는 최종 안전망
         image_url = image_urls[idx] if idx < len(image_urls) else ""
         image_url = image_url or _normalize_news_image_url(provided_image_url)
         if not image_url:
@@ -5251,10 +5279,10 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 query=query,
                 used_urls=used_ai_image_urls,
             )
-        if image_url and image_url.startswith("https://gen.pollinations.ai/image/"):
+        if image_url and image_url.startswith("https://image.pollinations.ai/prompt/"):
             used_ai_image_urls.add(image_url)
-        image_url = image_url or static_topic_image
 
+        direct_url = original_url or article_url
         direct_url = original_url or article_url
         # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
         source_label = _news_source_label(direct_url, source_hint or "뉴스")
@@ -5281,10 +5309,23 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         # 메인 카드에는 AI 이미지 여부를 별도 배지로 표시하지 않는다.
 
         if image_url:
+            fallback_html = static_topic_svg or (
+                '<div class="live-news-image-fallback">'
+                '<span>📰</span><small>이미지 준비 중</small></div>'
+            )
             media_html = (
                 f"<div class='live-news-image-wrap'>"
                 f"<img class='live-news-image' src='{_escape_html(image_url)}' alt='' loading='lazy' decoding='async' "
-                f"onerror=\"this.onerror=null;this.src='{_escape_html(static_topic_image)}';\">"
+                f"onerror=\\"this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex';\\">"
+                f"<div class='live-news-static-fallback' style='display:none;'>"
+                f"{fallback_html}"
+                f"</div>"
+                f"</div>"
+            )
+        elif static_topic_svg:
+            media_html = (
+                f"<div class='live-news-image-wrap live-news-static-svg'>"
+                f"{static_topic_svg}"
                 f"</div>"
             )
         else:
@@ -5293,6 +5334,9 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 '<span>📰</span><small>이미지 준비 중</small>'
                 '</div>'
             )
+
+        cards.append(
+
 
         cards.append(
             f'<a class="live-news-card-link" href="{_escape_html(reader_url)}" target="_blank" rel="noopener noreferrer">'
