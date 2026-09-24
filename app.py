@@ -4634,28 +4634,29 @@ NEWS_TOPIC_VISUAL_DIRECTIONS = {
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _get_news_topic_ai_image_pool(topic_key: str) -> tuple[str, ...]:
-    """섹터별 10개 AI 이미지 풀. 모두 현재 카드 비율과 동일한 1536x864로 생성한다."""
+    """Supabase에 미리 생성해 둔 섹터별 AI 이미지 3장만 AI fallback pool로 사용한다."""
     key = str(topic_key or "global_markets").strip()
-    visual_direction = NEWS_TOPIC_VISUAL_DIRECTIONS.get(
-        key,
-        NEWS_TOPIC_VISUAL_DIRECTIONS["global_markets"],
-    )
     pool = []
-    for idx, variant in enumerate(NEWS_AI_IMAGE_VARIANTS, start=1):
-        seed_source = f"fundamental-live-news|{key}|{idx}"
-        seed = int(hashlib.sha256(seed_source.encode("utf-8")).hexdigest()[:8], 16)
-        prompt = (
-            "Create a premium high-resolution 16:9 editorial image for a professional financial news website. "
-            "Photorealistic, crisp fine details, realistic lighting, natural depth, clean composition, "
-            "journalistic visual storytelling. No readable text, no watermarks, no logos, no fake charts, "
-            "no recognizable real people, and avoid generic repeated stock-photo layouts. "
-            f"Subject sector: {visual_direction}. "
-            f"Visual treatment: {variant}."
-        )
-        pool.append(
-            "https://image.pollinations.ai/prompt/"
-            + quote(prompt, safe="")
-            + f"?model=flux-2-klein-4b&width=1536&height=864&seed={seed}&nologo=true&enhance=true"
+    try:
+        if supabase is not None:
+            rows = (
+                supabase.table("news_topic_images")
+                .select("topic_key,public_url,storage_path")
+                .eq("topic_key", key)
+                .like("storage_path", "generated/%")
+                .order("storage_path")
+                .execute()
+                .data
+                or []
+            )
+            for row in rows:
+                url = str(row.get("public_url") or "").strip()
+                if url.startswith(("http://", "https://")) and url not in pool:
+                    pool.append(url)
+    except Exception as exc:
+        print(
+            f"[Live News AI Images] Supabase AI pool lookup failed: "
+            f"{type(exc).__name__}: {exc}"
         )
     return tuple(pool)
 
@@ -4667,21 +4668,13 @@ def _get_news_topic_ai_image_url(
     query: str = "",
     used_urls=None,
 ) -> str:
-    """기사별로 섹터 AI 이미지 풀에서 하나를 고르며, 같은 화면에서는 중복을 피한다."""
+    """기사에 원문 이미지가 없을 때 Supabase에 저장된 섹터 AI 이미지 중 하나를 무작위 선택한다."""
     pool = list(_get_news_topic_ai_image_pool(topic_key))
     if not pool:
         return ""
-    fingerprint = "|".join(
-        str(value or "").strip()
-        for value in (topic_key, title, description, query)
-    )
-    start = int(hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:8], 16) % len(pool)
     blocked = set(str(url or "") for url in (used_urls or set()) if url)
-    for offset in range(len(pool)):
-        candidate = pool[(start + offset) % len(pool)]
-        if candidate not in blocked:
-            return candidate
-    return pool[start]
+    available = [url for url in pool if url not in blocked] or pool
+    return random.choice(available)
 
 
 def _public_news_ai_image_url(ai_url: str) -> str:
