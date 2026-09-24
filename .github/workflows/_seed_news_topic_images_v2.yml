@@ -26,3 +26,5 @@ jobs:
             echo "${response}"
             echo "${response}" | grep -q '"ok":true'
           done
+
+# retrigger after generate-news-topic-image version 4
