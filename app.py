@@ -4010,6 +4010,20 @@ def _get_ai_news_image_url(title: str, description: str = "", query: str = "") -
     )
 
 
+NEWS_TOPIC_KEYS = (
+    "global_markets",
+    "interest_rates",
+    "bonds_yields",
+    "dollar_fx",
+    "energy_oil",
+    "ai_semiconductors",
+    "trade_global",
+    "korea_asia",
+    "economy_jobs",
+    "crypto_assets",
+)
+
+
 NEWS_TOPIC_IMAGE_FILES = {
     "global_markets": "assets/news_topics/global_markets.svg",
     "interest_rates": "assets/news_topics/interest_rates.svg",
