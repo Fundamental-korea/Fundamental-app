@@ -5376,7 +5376,25 @@ def render_home_market_overview(market):
     source_names = sorted({str(row.get("source")) for row in rows if row.get("source")})
     asof_text = latest_dates[-1] if latest_dates else "—"
     source_text = " · ".join(source_names) if source_names else "market snapshot"
-    st.caption(f"시장 데이터: {source_text} · 최신 확인 가능 일봉 · 최근 기준일 {asof_text}")
+
+    # "시장 기준일"과 "DB 업데이트 시각"을 분리해 미국 장의 다음날(KST) 표시가
+    # 데이터가 하루 늦게 수집된 것으로 오해되지 않게 한다.
+    updated_values = [str(row.get("updated_at")) for row in rows if row.get("updated_at")]
+    updated_text = "—"
+    if updated_values:
+        try:
+            latest_updated = max(
+                datetime.fromisoformat(v.replace("Z", "+00:00"))
+                for v in updated_values
+            )
+            updated_text = latest_updated.astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
+        except Exception:
+            updated_text = updated_values[-1]
+
+    st.caption(
+        f"시장 데이터: {source_text} · 시장 기준일 {asof_text} · "
+        f"DB 업데이트 {updated_text} KST"
+    )
 
 
 
