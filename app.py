@@ -5172,12 +5172,18 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         original_url = item.original_link if hasattr(item, "original_link") else item.get("original_url", "")
         article_url = item.link if hasattr(item, "link") else item.get("article_url", "")
         article_urls.append(original_url or article_url)
-    # 수집기에서 이미 원문 최고해상도 대표 이미지로 보강한 URL을 사용한다.
-    # 따라서 페이지 진입 시 외부 기사 HTML을 다시 조회하지 않아 로딩 지연을 막는다.
-    image_urls = [
-        _normalize_news_image_url(getattr(item, "image_url", ""))
+    # 이미지 우선순위:
+    # 1) 수집기에 이미 들어온 원문/공급원 이미지
+    # 2) 이미지가 비어 있으면 원문 페이지에서 고화질 대표 이미지 탐색
+    # 3) 그래도 원문 이미지가 없을 때만 섹터별 AI 이미지 3장 사용
+    provided_image_urls = [
+        str(getattr(item, "image_url", "") or "").strip()
         for item in selected_items
     ]
+    image_urls = _get_news_images(
+        article_urls,
+        provided_urls=provided_image_urls,
+    )
 
     # 이미지 선택은 번역과 완전히 분리한다.
     # 번역 결과가 바뀌거나 Gemini가 실패해도 이미지 선택/URL은 영향을 받지 않는다.
@@ -5201,12 +5207,19 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
 
         image_url = ""
-        if _is_supabase_news_image_url(image_urls[len(resolved_image_urls)]):
-            image_url = image_urls[len(resolved_image_urls)]
+        source_candidate = _normalize_news_image_url(
+            image_urls[len(resolved_image_urls)]
+            if len(image_urls) > len(resolved_image_urls)
+            else ""
+        )
+        if source_candidate and _news_image_quality_ok(source_candidate):
+            image_url = source_candidate
+
         if not image_url:
             provided = _normalize_news_image_url(provided_image_url)
-            if _is_supabase_news_image_url(provided):
+            if provided and _news_image_quality_ok(provided):
                 image_url = provided
+
         if not image_url:
             pool = list(_get_news_topic_ai_image_pool(news_topic))
             if pool:
