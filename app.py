@@ -5311,7 +5311,7 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
             media_html = (
                 f"<div class='live-news-image-wrap'>"
                 f"<img class='live-news-image' src='{_escape_html(image_url)}' alt='' loading='lazy' decoding='async' "
-                f"onerror=\\"this.onerror=null;this.style.display='none';this.nextElementSibling.style.display='flex';\\">"
+                f"onerror='this.onerror=null;this.style.display=\"none\";this.nextElementSibling.style.display=\"flex\";'">"
                 f"<div class='live-news-static-fallback' style='display:none;'>"
                 f"{fallback_html}"
                 f"</div>"
