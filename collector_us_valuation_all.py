@@ -19,7 +19,30 @@ from collector_us_valuation_only import collect_valuation_one
 PAGE_SIZE = 100
 
 
-def load_targets(sb):
+CORE_VALUATION_KEYS = (
+    "price",
+    "eps",
+    "bps",
+    "current_shares_outstanding",
+    "period_end_shares_outstanding",
+)
+
+
+def _valuation_core_complete(valuation):
+    if not isinstance(valuation, dict):
+        return False
+    if any(valuation.get(key) is None for key in CORE_VALUATION_KEYS):
+        return False
+    try:
+        current_shares = float(valuation.get("current_shares_outstanding"))
+        period_shares = float(valuation.get("period_end_shares_outstanding"))
+    except (TypeError, ValueError):
+        return False
+    return current_shares > 0 and period_shares > 0
+
+
+def load_targets(sb, start_after=""):
+
     rows = []
     offset = 0
     while True:
@@ -42,18 +65,10 @@ def load_targets(sb):
                 valuation = snapshot.get("valuation")
                 # Rebuild when the block is absent or any core valuation output
                 # is missing. This lets failed/incomplete prior rows self-heal.
-                if not isinstance(valuation, dict) or any(
-                    valuation.get(key) is None
-                    for key in (
-                        "price",
-                        "eps",
-                        "bps",
-                        "per",
-                        "pbr",
-                        "current_shares_outstanding",
-                        "period_end_shares_outstanding",
-                    )
-                ):
+                if not _valuation_core_complete(valuation):
+                    ticker = str(row.get("ticker") or "").strip()
+                    if start_after and ticker <= start_after:
+                        continue
                     rows.append(row)
         if len(page) < PAGE_SIZE:
             break
@@ -65,17 +80,25 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--limit", type=int, default=0)
     parser.add_argument("--sleep", type=float, default=0.15)
+    parser.add_argument(
+        "--start-after",
+        default="",
+        help="Resume after this ticker (exclusive). Use the last processed ticker from the prior batch.",
+    )
     args = parser.parse_args()
 
     if not SUPABASE_KEY:
         raise RuntimeError("SUPABASE_SECRET_KEY or SUPABASE_KEY is required")
 
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
-    rows = load_targets(sb)
+    rows = load_targets(sb, start_after=args.start_after.strip().upper())
     if args.limit:
         rows = rows[:max(0, args.limit)]
 
-    print(f"[US VALUATION] targets={len(rows)}", flush=True)
+    print(
+        f"[US VALUATION] targets={len(rows)} start_after={args.start_after.strip().upper() or '-'}",
+        flush=True,
+    )
 
     import requests
     session = requests.Session()
