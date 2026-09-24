@@ -510,18 +510,18 @@ st.markdown(
         line-height: 1.5;
         margin-bottom: 18px;
     }
-    .news-reader-image {
+    .news-reader-image-layer {
         position: absolute;
         inset: 0;
         width: 100%;
         height: 100%;
-        max-height: none;
-        object-fit: cover;
         border-radius: 16px;
-        display: block;
-        margin: 0;
         border: 1px solid #E5E7EB;
         z-index: 2;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: cover;
+        background-color: transparent;
     }
     .news-reader-static-image > svg {
         display: block !important;
@@ -656,14 +656,16 @@ st.markdown(
         height: 100%;
         background: #F3F4F6;
     }
-    .live-news-image {
+    .live-news-image-layer {
         position: absolute;
         inset: 0;
-        display: block;
         width: 100%;
         height: 100%;
-        object-fit: cover;
         z-index: 2;
+        background-repeat: no-repeat;
+        background-position: center;
+        background-size: cover;
+        background-color: transparent;
     }
     .live-news-image-fallback {
         display: flex;
@@ -4886,8 +4888,8 @@ def render_news_reader():
         if image_url:
             image_html = (
                 f"""<div class="news-reader-image-shell">
-                <div class="news-reader-static-image" style="display:block;">{static_reader_svg}</div>
-                <img class="news-reader-image" src="{_escape_html(image_url)}" alt="" loading="eager" decoding="async">
+                <div class="news-reader-static-image">{static_reader_svg}</div>
+                <div class="news-reader-image-layer" style="background-image:url('{_escape_html(image_url)}');"></div>
                 </div>"""
             )
         elif static_reader_svg:
@@ -5249,6 +5251,42 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         for item in selected_items
     ]
 
+    # 이미지 선택은 번역과 완전히 분리한다.
+    # 번역 결과가 바뀌거나 Gemini가 실패해도 이미지 선택/URL은 영향을 받지 않는다.
+    resolved_image_urls = []
+    used_ai_image_urls = set()
+    for item in selected_items:
+        original_title = item.title if hasattr(item, "title") else item.get("title", "")
+        original_desc = item.description if hasattr(item, "description") else item.get("description", "")
+        query = item.query if hasattr(item, "query") else ""
+        source_hint = item.source if hasattr(item, "source") else item.get("source", "")
+        provided_image_url = getattr(item, "image_url", "")
+        news_topic = _get_news_topic_key(
+            original_title,
+            original_desc,
+            query,
+            source_hint,
+        )
+
+        image_url = ""
+        if _is_supabase_news_image_url(image_urls[len(resolved_image_urls)]):
+            image_url = image_urls[len(resolved_image_urls)]
+        if not image_url:
+            provided = _normalize_news_image_url(provided_image_url)
+            if _is_supabase_news_image_url(provided):
+                image_url = provided
+        if not image_url:
+            image_url = _get_news_topic_ai_image_url(
+                news_topic,
+                title=original_title,
+                description=original_desc,
+                query=query,
+                used_urls=used_ai_image_urls,
+            )
+        if image_url and image_url.startswith("https://image.pollinations.ai/prompt/"):
+            used_ai_image_urls.add(image_url)
+        resolved_image_urls.append(image_url)
+
     localized_cards = {}
     translation_input = tuple(
         (
@@ -5273,7 +5311,6 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
 
     cards = []
-    used_ai_image_urls = set()
     for idx, item in enumerate(selected_items):
         title_text = item.title if hasattr(item, "title") else item.get("title", "")
         desc_text = item.description if hasattr(item, "description") else item.get("description", "")
@@ -5297,29 +5334,8 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         )
         static_topic_image = _get_news_topic_image_url(news_topic)
         static_topic_svg = _get_news_topic_svg_markup(news_topic)
-
-        # 원본 이미지가 Supabase Storage에 캐시되어 있으면 그것을 최우선으로 사용한다.
-        # 캐시되지 않은 외부 공급원 URL은 브라우저에서 직접 사용하지 않는다.
-        image_url = image_urls[idx] if idx < len(image_urls) else ""
-        image_url = _normalize_news_image_url(image_url)
-        if image_url and not _is_supabase_news_image_url(image_url):
-            image_url = ""
-        if not image_url:
-            provided = _normalize_news_image_url(provided_image_url)
-            image_url = provided if _is_supabase_news_image_url(provided) else ""
-
-        # 원본 캐시가 없는 기사만 섹터 AI pool을 사용한다. 이 URL도 외부 응답 실패를
-        # 전제로 하며, 아래의 inline SVG가 브라우저 측 최종 안전망이다.
-        if not image_url:
-            image_url = _get_news_topic_ai_image_url(
-                news_topic,
-                title=title_text,
-                description=desc_text,
-                query=query,
-                used_urls=used_ai_image_urls,
-            )
-        if image_url and image_url.startswith("https://image.pollinations.ai/prompt/"):
-            used_ai_image_urls.add(image_url)
+        # 위에서 번역 전에 확정한 이미지를 그대로 사용한다.
+        image_url = resolved_image_urls[idx] if idx < len(resolved_image_urls) else ""
 
         direct_url = original_url or article_url
         # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
@@ -5351,12 +5367,12 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
                 '<div class="live-news-image-fallback">'
                 '<span>📰</span><small>이미지 준비 중</small></div>'
             )
-            # 브라우저 JS를 사용하지 않는다. 외부 이미지가 실패하면 빈 영역 대신
-            # CSS의 fallback 레이어를 즉시 보여주는 구조로만 렌더링한다.
+            # <img>의 브라우저 실패 아이콘을 사용하지 않는다.
+            # CSS background-image가 실패해도 아래 inline SVG fallback은 그대로 보인다.
             media_html = (
                 f"""<div class="live-news-image-wrap">
                 <div class="live-news-static-fallback">{fallback_html}</div>
-                <img class="live-news-image" src="{_escape_html(image_url)}" alt="" loading="lazy" decoding="async">
+                <div class="live-news-image-layer" style="background-image:url('{_escape_html(image_url)}');"></div>
                 </div>"""
             )
         elif static_topic_svg:
