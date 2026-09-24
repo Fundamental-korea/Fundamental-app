@@ -4828,8 +4828,6 @@ def render_news_reader():
         ) or static_reader_image
 
 
-    col_logo, col_quote, col_login =
-
     col_logo, col_quote, col_login = st.columns([1.0, 6.8, 1.0])
     with col_logo:
         st.markdown("<div class='logo-box'>📈 Fundamental</div>", unsafe_allow_html=True)
@@ -4858,8 +4856,6 @@ def render_news_reader():
             image_html = f'<div class="news-reader-static-image">{static_reader_svg}</div>'
         else:
             image_html = ""
-        st.html(
-
         st.html(
             f"""
             <div class="news-reader-wrap">
@@ -5282,7 +5278,6 @@ def _render_news_cards(items, limit=9, title="📰 Live News", subtitle="", back
         if image_url and image_url.startswith("https://image.pollinations.ai/prompt/"):
             used_ai_image_urls.add(image_url)
 
-        direct_url = original_url or article_url
         direct_url = original_url or article_url
         # 카드 표지는 검증된 원문/공급원 이미지 또는 AI 금융 보조 이미지를 사용한다.
         source_label = _news_source_label(direct_url, source_hint or "뉴스")
