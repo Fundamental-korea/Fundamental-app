@@ -1,0 +1,32 @@
+name: Seed Live News Topic Images
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "news_topic_images.trigger"
+
+permissions:
+  contents: read
+
+jobs:
+  generate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate and upload 30 topic images
+        env:
+          SUPABASE_URL: https://cnweggechipghcivruie.supabase.co
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: python generate_news_topic_images.py
