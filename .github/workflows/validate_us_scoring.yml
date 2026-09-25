@@ -52,5 +52,5 @@ jobs:
 
       - name: Run regression tests
         run: |
-          python -m unittest -v test_us_scoring.py test_us_classification.py test_historical_pattern.py test_chart_indicators.py test_us_recovery.py test_valuation.py 2>/dev/null || true
+          python -m unittest -v test_us_scoring.py test_us_classification.py test_historical_pattern.py test_chart_indicators.py test_us_recovery.py test_us_valuation.py
           pytest -q test_us_filing_recovery.py
