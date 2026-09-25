@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   push:
     paths:
-      - "collector_us_controlled_recollect.yml"
+      - ".github/workflows/us_controlled_recollect.yml"
 
 permissions:
   contents: read
