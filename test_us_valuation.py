@@ -64,8 +64,8 @@ class TestUSValuation(unittest.TestCase):
                     "StockholdersEquity": {"units": {"USD": [{"val": 1000, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
                     "EntityCommonStockSharesOutstanding": {
                         "units": {"shares": [
-                            {"val": 100, "end": "2026-08-31", "filed": "2026-09-01", "form": "10-Q"},
-                            {"val": 110, "end": "2026-09-15", "filed": "2026-09-15", "form": "10-Q"},
+                            {"val": 100, "end": "2026-09-15", "filed": "2026-09-15", "form": "10-Q"},
+                            {"val": 110, "end": "2026-08-15", "filed": "2026-09-01", "form": "10-Q"},
                         ]}
                     },
                     "EarningsPerShareDiluted": {
@@ -76,7 +76,7 @@ class TestUSValuation(unittest.TestCase):
         }
         result = build_valuation_snapshot(facts, "2026-06-30", {"price": 12, "current_shares": 100})
         self.assertEqual(result["period_end_shares_outstanding"], 110.0)
-        self.assertEqual(result["period_end_shares_days_after_fiscal_end"], 77)
+        self.assertEqual(result["period_end_shares_days_after_fiscal_end"], 46)
 
     def test_nci_inclusive_equity_is_reduced(self):
         facts = {
