@@ -66,6 +66,80 @@ def _latest_full_year(rows):
     return candidates[0]
 
 
+_CURRENCY_ALIASES = {
+    "USD": "USD", "US DOLLAR": "USD", "US$": "USD", "$": "USD",
+    "CAD": "CAD", "C$": "CAD", "CANADIAN DOLLAR": "CAD",
+    "AUD": "AUD", "A$": "AUD", "AU$": "AUD",
+    "NZD": "NZD", "NZ$": "NZD",
+    "BRL": "BRL", "R$": "BRL",
+    "CLP": "CLP", "MXN": "MXN", "ARS": "ARS",
+    "EUR": "EUR", "€": "EUR",
+    "GBP": "GBP", "£": "GBP",
+    "CHF": "CHF",
+    "JPY": "JPY", "¥": "JPY",
+    "CNY": "CNY", "RMB": "CNY", "CN¥": "CNY",
+    "HKD": "HKD", "HK$": "HKD",
+    "SGD": "SGD", "S$": "SGD",
+    "INR": "INR", "₹": "INR",
+    "KRW": "KRW", "₩": "KRW",
+    "ZAR": "ZAR", "SEK": "SEK", "NOK": "NOK", "DKK": "DKK",
+    "TRY": "TRY", "PLN": "PLN", "ILS": "ILS",
+}
+
+
+def normalize_currency(value):
+    text = re.sub(r"\s+", " ", str(value or "").strip()).upper()
+    if not text:
+        return None
+    for key in sorted(_CURRENCY_ALIASES, key=len, reverse=True):
+        if key in text:
+            return _CURRENCY_ALIASES[key]
+    compact = re.sub(r"[^A-Z]", "", text)
+    if compact in _CURRENCY_ALIASES:
+        return _CURRENCY_ALIASES[compact]
+    return compact if len(compact) == 3 else None
+
+
+def currency_from_unit(unit):
+    text = str(unit or "").strip()
+    if not text:
+        return None
+    return normalize_currency(text.split("/", 1)[0].strip())
+
+
+def currency_from_text(text):
+    return normalize_currency(text)
+
+
+def currencies_compatible(left, right):
+    """Known currencies must agree; unknown currency does not manufacture a mismatch."""
+    left_norm = normalize_currency(left)
+    right_norm = normalize_currency(right)
+    if not left_norm or not right_norm:
+        return True
+    return left_norm == right_norm
+
+
+def _infer_reporting_currency(companyfacts, fiscal_end):
+    candidates = [
+        {"us-gaap": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "Assets", "Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax"]},
+        {"ifrs-full": ["EquityAttributableToOwnersOfParent", "Equity", "Assets", "Revenue", "RevenueFromContractsWithCustomers"]},
+    ]
+    for tags in candidates:
+        rows = _fact_rows(companyfacts, tags)
+        instant = _best_instant(rows, fiscal_end)
+        if instant:
+            currency = currency_from_unit(instant.get("unit"))
+            if currency:
+                return currency
+        annual = _latest_full_year(rows)
+        if annual:
+            currency = currency_from_unit(annual.get("unit"))
+            if currency:
+                return currency
+    return None
+
+
 EPS_UNIT_MARKERS = ("/share", "/shares")
 EPS_SEMANTIC_EXCLUSIONS = (
     "weightedaverage",
@@ -210,6 +284,15 @@ def _best_reported_annual_eps(rows):
         reverse=True,
     )
     return annual[0]
+
+
+def _looks_like_preferred_security(ticker):
+    """Conservatively recognize Yahoo-style preferred/security-class tickers such as ATH-PA."""
+    text = str(ticker or "").strip().upper()
+    if "-" not in text:
+        return False
+    suffix = text.rsplit("-", 1)[-1]
+    return 1 <= len(suffix) <= 3 and suffix.startswith("P")
 
 
 def _reported_eps(companyfacts):
@@ -406,7 +489,14 @@ def _market_field(market_data, *keys):
     return None
 
 
-def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None, filing_shares=None, current_filing_shares=None):
+def build_valuation_snapshot(
+    companyfacts,
+    fiscal_end,
+    market_data=None,
+    filing_shares=None,
+    current_filing_shares=None,
+    security_ticker=None,
+):
     market_data = market_data or {}
     eps_row, eps_basis = _reported_eps(companyfacts)
     equity_row, nci_row = _equity_and_nci(companyfacts, fiscal_end)
@@ -416,6 +506,11 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None, filing_
         period_shares_basis = "filing-fiscal-end-fallback"
 
     price = _market_field(market_data, "price", "current_price", "regularMarketPrice")
+    quote_currency = normalize_currency((market_data or {}).get("currency"))
+    reporting_currency = _infer_reporting_currency(companyfacts, fiscal_end)
+    eps_currency = currency_from_unit(eps_row.get("unit")) if eps_row else reporting_currency
+    bps_currency = currency_from_unit(equity_row.get("unit")) if equity_row else reporting_currency
+
     current_shares = _market_field(market_data, "current_shares", "shares_outstanding")
     current_shares_basis = "market-data" if current_shares is not None else None
     if current_shares is None:
@@ -429,11 +524,65 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None, filing_
     period_shares = _clean(period_shares_row["value"]) if period_shares_row else None
     equity = _clean(equity_row["value"]) if equity_row else None
     eps = _clean(eps_row["value"]) if eps_row else None
-    bps = equity / period_shares if equity is not None and period_shares and period_shares > 0 else None
+
+    preferred_security = _looks_like_preferred_security(security_ticker)
+    if preferred_security:
+        bps = None
+        bps_status = "not-applicable-preferred-security"
+    elif equity is None:
+        bps = None
+        bps_status = "unavailable-no-equity"
+    elif not period_shares or period_shares <= 0:
+        bps = None
+        bps_status = "unavailable-no-period-end-shares"
+    else:
+        bps = equity / period_shares
+        bps_status = "available"
+
     market_cap = price * current_shares if price is not None and current_shares and current_shares > 0 else None
-    per = price / eps if price is not None and eps is not None and eps > 0 else None
-    pbr = price / bps if price is not None and bps is not None and bps > 0 else None
-    result = {"price": price, "market_cap": market_cap, "current_shares_outstanding": current_shares, "current_shares_source": current_shares_basis, "period_end_shares_outstanding": period_shares, "period_end_shares_source": period_shares_row["tag"] if period_shares_row else None, "period_end_shares_basis": period_shares_basis, "eps": eps, "eps_source": eps_row["tag"] if eps_row else None, "eps_unit": eps_row.get("unit") if eps_row else None, "eps_report_label": eps_row.get("_label") if eps_row else None, "eps_basis": eps_basis, "bps": bps, "bps_basis": "parent-attributable-equity-period-end-shares" if bps is not None else None, "bps_equity": equity, "bps_equity_source": equity_row["tag"] if equity_row else None, "per": per, "per_basis": "current-price/latest-full-year-reported-eps" if per is not None else None, "pbr": pbr, "pbr_basis": "current-price/period-end-bps" if pbr is not None else None}
+    per_currency_ok = currencies_compatible(eps_currency, quote_currency)
+    pbr_currency_ok = currencies_compatible(bps_currency, quote_currency)
+    per = (
+        price / eps
+        if price is not None and eps is not None and eps > 0 and per_currency_ok
+        else None
+    )
+    pbr = (
+        price / bps
+        if price is not None and bps is not None and bps > 0 and pbr_currency_ok
+        else None
+    )
+    result = {
+        "price": price,
+        "quote_currency": quote_currency,
+        "reporting_currency": reporting_currency,
+        "market_cap": market_cap,
+        "current_shares_outstanding": current_shares,
+        "current_shares_source": current_shares_basis,
+        "period_end_shares_outstanding": period_shares,
+        "period_end_shares_source": period_shares_row["tag"] if period_shares_row else None,
+        "period_end_shares_basis": period_shares_basis,
+        "eps": eps,
+        "eps_source": eps_row["tag"] if eps_row else None,
+        "eps_unit": eps_row.get("unit") if eps_row else None,
+        "eps_report_label": eps_row.get("_label") if eps_row else None,
+        "eps_currency": eps_currency,
+        "eps_basis": eps_basis,
+        "bps": bps,
+        "bps_status": bps_status,
+        "bps_basis": "parent-attributable-equity-period-end-shares" if bps is not None else None,
+        "bps_equity": equity,
+        "bps_equity_source": equity_row["tag"] if equity_row else None,
+        "bps_currency": bps_currency,
+        "per": per,
+        "per_basis": "current-price/latest-full-year-reported-eps" if per is not None else None,
+        "per_currency_compatible": per_currency_ok,
+        "per_status": "currency-mismatch" if per is None and eps is not None and eps > 0 and not per_currency_ok else None,
+        "pbr": pbr,
+        "pbr_basis": "current-price/period-end-bps" if pbr is not None else None,
+        "pbr_currency_compatible": pbr_currency_ok,
+        "pbr_status": "currency-mismatch" if pbr is None and bps is not None and bps > 0 and not pbr_currency_ok else None,
+    }
     if equity_row and equity_row.get("basis"):
         result["bps_equity_basis"] = equity_row["basis"]
         result["bps_nci_source_tag"] = equity_row.get("nci_source_tag")
@@ -450,8 +599,17 @@ def normalize_market_quote(info, history=None):
     """Normalize yfinance quote information and one-year history."""
     info = info or {}
     result = {}
-    mapping = {"price": ("currentPrice", "regularMarketPrice", "lastPrice"), "volume": ("regularMarketVolume", "volume"), "day_high": ("dayHigh", "regularMarketDayHigh"), "day_low": ("dayLow", "regularMarketDayLow"), "week52_high": ("fiftyTwoWeekHigh", "52WeekHigh"), "week52_low": ("fiftyTwoWeekLow", "52WeekLow"), "current_shares": ("sharesOutstanding", "impliedSharesOutstanding")}
+    mapping = {"price": ("currentPrice", "regularMarketPrice", "lastPrice"), "volume": ("regularMarketVolume", "volume"), "day_high": ("dayHigh", "regularMarketDayHigh"), "day_low": ("dayLow", "regularMarketDayLow"), "week52_high": ("fiftyTwoWeekHigh", "52WeekHigh"), "week52_low": ("fiftyTwoWeekLow", "52WeekLow"), "current_shares": ("sharesOutstanding", "impliedSharesOutstanding"), "currency": ("currency", "financialCurrency")}
     for target, aliases in mapping.items():
+        if target == "currency":
+            for alias in aliases:
+                raw = info.get(alias)
+                if raw:
+                    currency = normalize_currency(raw)
+                    if currency:
+                        result[target] = currency
+                        break
+            continue
         value = _market_field(info, *aliases)
         if value is not None:
             result[target] = value
