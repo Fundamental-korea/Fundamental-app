@@ -18,6 +18,8 @@ from supabase import create_client
 from scoring import worst_value
 from us_scoring import calculate_us_score
 from downturn_us import calculate_downturn_defense
+from sec_filing_financial_map import filing_map
+from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8
 
 try:
     from us_classification import classify_company as classify_us_company
@@ -186,7 +188,10 @@ def clean_number(value):
 
 
 def sanitize_growth(value):
-    if value is None or not math.isfinite(value) or abs(value) > 500:
+    # After filing-first EPS validation, very large year-over-year moves can be
+    # legitimate. Keep a high guard against malformed ratios without erasing
+    # real turnaround / small-base EPS growth.
+    if value is None or not math.isfinite(value) or abs(value) > 5000:
         return None
     return value
 
@@ -522,9 +527,15 @@ def debt_rate(liabilities, equity):
     return liabilities / equity * 100.0
 
 
-def annual_metrics(index, year):
-    revenue = latest_annual_value(index, "revenue", year)
-    opinc = latest_annual_value(index, "operating_income", year)
+def annual_metrics(index, year, annual_overrides=None):
+    overrides = (annual_overrides or {}).get(int(year), {})
+
+    def value_for(metric):
+        override = clean_number(overrides.get(metric))
+        return override if override is not None else latest_annual_value(index, metric, year)
+
+    revenue = value_for("revenue")
+    opinc = value_for("operating_income")
     pretax_income = latest_annual_value(index, "pretax_income", year)
     other_nonoperating = latest_annual_value(index, "other_nonoperating", year)
     consolidated_net_income = latest_annual_value(index, "net_income", year)
@@ -537,7 +548,7 @@ def annual_metrics(index, year):
     else:
         net_income = consolidated_net_income
     assets = latest_annual_value(index, "assets", year)
-    equity = latest_annual_value(index, "equity", year)
+    equity = value_for("equity")
     equity_nci = latest_annual_value(index, "equity_nci", year)
     equity_row = (index.get("equity") or {}).get(year)
     equity_tag = (equity_row or {}).get("tag") or ""
@@ -546,10 +557,10 @@ def annual_metrics(index, year):
     liabilities = latest_annual_value(index, "liabilities", year)
     current_assets = latest_annual_value(index, "current_assets", year)
     current_liabilities = latest_annual_value(index, "current_liabilities", year)
-    cash = latest_annual_value(index, "cash", year)
+    cash = value_for("cash")
     receivables = latest_annual_value(index, "receivables", year)
     inventory = latest_annual_value(index, "inventory", year)
-    interest = latest_annual_value(index, "interest_expense", year)
+    interest = value_for("interest_expense")
     # Some issuers report only net interest income/(expense). For coverage,
     # a negative net expense is converted to a positive interest burden.
     if interest is None:
@@ -558,11 +569,14 @@ def annual_metrics(index, year):
             interest = abs(float(net_interest))
     ocf = latest_annual_value(index, "operating_cash_flow", year)
     sga = latest_annual_value(index, "sga", year)
-    eps = latest_annual_value(index, "eps", year)
+    eps = value_for("eps")
     debt_current = latest_annual_value(index, "debt_current", year)
     debt_noncurrent = latest_annual_value(index, "debt_noncurrent", year)
     debt_total = latest_annual_value(index, "debt_total", year)
-    if debt_total is not None:
+    debt_override = clean_number(overrides.get("debt"))
+    if debt_override is not None:
+        debt = debt_override
+    elif debt_total is not None:
         # Prefer explicitly reported total debt over partial maturity buckets.
         debt = debt_total
     elif debt_current is not None or debt_noncurrent is not None:
@@ -632,7 +646,245 @@ def load_company(session, ticker, cik):
     return fetch_json(session, SEC_FACTS_URL.format(cik=cik10)), fetch_json(session, SEC_SUBMISSIONS_URL.format(cik=cik10))
 
 
-def period_metrics_pair(index, latest_year, period):
+
+# ============================================================
+# FILING-FIRST CRITICAL METRIC RECOVERY
+# ============================================================
+
+CRITICAL_ROIC_PROFILES = {"standard", "defense"}
+CRITICAL_INTEREST_PROFILES = {"standard", "reit", "bdc", "defense", "utility"}
+
+EPS_EXCLUDED_TOKENS = (
+    "textblock",
+    "numerator",
+    "denominator",
+    "weightedaverage",
+    "sharesoutstanding",
+    "sharecount",
+    "stocksplit",
+    "splitadjustment",
+    "antidilutive",
+    "potentiallydilutive",
+    "effectofdilution",
+    "epsimpact",
+    "proforma",
+    "adjustment",
+    "discontinued",
+    "segment",
+    "netincome",
+    "profitloss",
+    "marketprice",
+    "stockprice",
+    "dividend",
+)
+
+EPS_POSITIVE_TOKENS = (
+    "earningspershare",
+    "basicearningspershare",
+    "dilutedearningspershare",
+)
+
+EPS_LABEL_POSITIVE = (
+    "earnings per share",
+    "earnings (loss) per share",
+    "basic eps",
+    "diluted eps",
+)
+
+
+def _candidate_attr(candidate, name, default=None):
+    return getattr(candidate, name, default)
+
+
+def _local_candidate_concept(candidate):
+    concept = _candidate_attr(candidate, "concept", "") or ""
+    return str(concept).rsplit("}", 1)[-1].rsplit(":", 1)[-1]
+
+
+def _eps_candidate_rank(candidate):
+    """Return a conservative ranking for a validated filing EPS candidate."""
+    concept = _local_candidate_concept(candidate)
+    compact = "".join(ch for ch in concept.lower() if ch.isalnum())
+    label = str(_candidate_attr(candidate, "label", "") or "").lower()
+    label_compact = "".join(ch for ch in label if ch.isalnum())
+    combined = f"{compact} {label_compact}"
+    if any(token in combined for token in EPS_EXCLUDED_TOKENS):
+        return None
+
+    exact_rank = {
+        "EarningsPerShareDiluted": 0,
+        "EarningsPerShareBasic": 1,
+    }.get(concept)
+
+    looks_like_eps = (
+        exact_rank is not None
+        or any(token in compact for token in EPS_POSITIVE_TOKENS)
+        or any(phrase in label for phrase in EPS_LABEL_POSITIVE)
+    )
+    if not looks_like_eps:
+        return None
+
+    value = clean_number(_candidate_attr(candidate, "value"))
+    if value is None:
+        return None
+
+    return (
+        0 if exact_rank is None else exact_rank + 1,
+        -float(_candidate_attr(candidate, "score", 0.0) or 0.0),
+        str(_candidate_attr(candidate, "namespace", "") or ""),
+        compact,
+    )
+
+
+def select_eps_pair(current_candidates, prior_candidates):
+    """Select current/prior EPS facts on one security basis and one unit."""
+    current = []
+    prior = []
+    for candidate in current_candidates or []:
+        rank = _eps_candidate_rank(candidate)
+        if rank is not None:
+            current.append((candidate, rank))
+    for candidate in prior_candidates or []:
+        rank = _eps_candidate_rank(candidate)
+        if rank is not None:
+            prior.append((candidate, rank))
+
+    if not current or not prior:
+        return None
+
+    pairs = []
+    for cur, cur_rank in current:
+        cur_unit = str(_candidate_attr(cur, "unit", "") or "").strip().lower()
+        cur_concept = _local_candidate_concept(cur)
+        for old, old_rank in prior:
+            old_unit = str(_candidate_attr(old, "unit", "") or "").strip().lower()
+            if not cur_unit or not old_unit or cur_unit != old_unit:
+                continue
+            old_concept = _local_candidate_concept(old)
+            same_concept = cur_concept == old_concept
+            same_kind = (
+                ("diluted" in cur_concept.lower() and "diluted" in old_concept.lower())
+                or ("basic" in cur_concept.lower() and "basic" in old_concept.lower())
+            )
+            concept_bonus = 3 if same_concept else (2 if same_kind else 0)
+            exact_bonus = 4 if cur_concept in {"EarningsPerShareDiluted", "EarningsPerShareBasic"} else 0
+            score = (
+                concept_bonus + exact_bonus,
+                -cur_rank[0],
+                -old_rank[0],
+                -cur_rank[1],
+                -old_rank[1],
+            )
+            pairs.append((score, cur, old))
+
+    if not pairs:
+        return None
+
+    pairs.sort(key=lambda x: x[0], reverse=True)
+    _, cur, old = pairs[0]
+    return {
+        "current": {
+            "value": clean_number(_candidate_attr(cur, "value")),
+            "unit": _candidate_attr(cur, "unit"),
+            "concept": _local_candidate_concept(cur),
+            "namespace": _candidate_attr(cur, "namespace"),
+            "start": _candidate_attr(cur, "start"),
+            "end": _candidate_attr(cur, "end"),
+            "filed": _candidate_attr(cur, "filed"),
+            "source": "sec-filing-xbrl-inline",
+        },
+        "prior": {
+            "value": clean_number(_candidate_attr(old, "value")),
+            "unit": _candidate_attr(old, "unit"),
+            "concept": _local_candidate_concept(old),
+            "namespace": _candidate_attr(old, "namespace"),
+            "start": _candidate_attr(old, "start"),
+            "end": _candidate_attr(old, "end"),
+            "filed": _candidate_attr(old, "filed"),
+            "source": "sec-filing-xbrl-inline",
+        },
+    }
+
+
+def recover_critical_filing_metrics(
+    cik,
+    latest_year,
+    profile,
+    resolver,
+    cache=None,
+    need_roic=False,
+    need_interest=False,
+    need_eps_growth=False,
+):
+    """Recover ROIC / Interest Coverage / EPS Growth from the annual filing."""
+    cache = cache if cache is not None else {}
+    key = (str(cik), int(latest_year))
+    if key in cache:
+        return cache[key]
+
+    result = {
+        "annual_overrides": {},
+        "sources": {},
+        "errors": [],
+    }
+
+    filing_mapped = None
+
+    if need_roic or need_interest:
+        try:
+            filing_mapped = filing_map(cik, resolver, year=int(latest_year))
+            roic_inputs = filing_mapped.get("roic_inputs") or {}
+            equity = roic_inputs.get("equity")
+            cash = roic_inputs.get("cash")
+            opinc = roic_inputs.get("operating_income")
+            debt = filing_mapped.get("selected_debt")
+
+            if need_roic and all(x is not None for x in (equity, cash, opinc, debt)):
+                result["annual_overrides"][int(latest_year)] = {
+                    "equity": equity["value"],
+                    "cash": cash["value"],
+                    "debt": debt["value"],
+                    "operating_income": opinc["value"],
+                }
+                result["sources"]["roic"] = {
+                    "filing": filing_mapped.get("filing"),
+                    "debt_status": filing_mapped.get("debt_status"),
+                    "equity": equity,
+                    "cash": cash,
+                    "operating_income": opinc,
+                    "debt": debt,
+                }
+
+            if need_interest and opinc is not None:
+                selected_interest = filing_mapped.get("selected_interest")
+                if selected_interest and clean_number(selected_interest.get("value")) not in (None, 0):
+                    result["annual_overrides"].setdefault(int(latest_year), {})["operating_income"] = opinc["value"]
+                    result["annual_overrides"][int(latest_year)]["interest_expense"] = selected_interest["value"]
+                    result["sources"]["interest_coverage"] = {
+                        "filing": filing_mapped.get("filing"),
+                        "interest_status": filing_mapped.get("interest_status"),
+                        "operating_income": opinc,
+                        "interest": selected_interest,
+                    }
+        except Exception as exc:
+            result["errors"].append({"metric": "roic_interest", "error": str(exc)})
+
+    if need_eps_growth:
+        try:
+            current_candidates, _ = resolver.search_filing(cik, "eps", year=int(latest_year), limit=50)
+            prior_candidates, _ = resolver.search_filing(cik, "eps", year=int(latest_year) - 1, limit=50)
+            pair = select_eps_pair(current_candidates, prior_candidates)
+            if pair is not None:
+                result["annual_overrides"].setdefault(int(latest_year), {})["eps"] = pair["current"]["value"]
+                result["annual_overrides"].setdefault(int(latest_year) - 1, {})["eps"] = pair["prior"]["value"]
+                result["sources"]["eps_growth"] = pair
+        except Exception as exc:
+            result["errors"].append({"metric": "eps_growth", "error": str(exc)})
+
+    cache[key] = result
+    return result
+
+def period_metrics_pair(index, latest_year, period, annual_overrides=None):
     """Build Korean-compatible US period structure: avg + worst + yearly breakdown."""
     all_years = sorted({y for rows in index.values() for y in rows.keys()})
     if latest_year not in all_years:
@@ -663,7 +915,7 @@ def period_metrics_pair(index, latest_year, period):
         else:
             oldest, newest = window_years[0], window_years[-1]
             actual_span = newest - oldest
-    yearly = {y: annual_metrics(index, y) for y in window_years}
+    yearly = {y: annual_metrics(index, y, annual_overrides=annual_overrides) for y in window_years}
 
     latest_metrics = dict(yearly[newest])
     revenue_growth = growth_cagr(
@@ -750,7 +1002,17 @@ def period_metrics(index, latest_year, period):
 
 
 
-def build_result(ticker, cik, company_name, facts, submissions, universe_row=None, market_prices=None):
+def build_result(
+    ticker,
+    cik,
+    company_name,
+    facts,
+    submissions,
+    universe_row=None,
+    market_prices=None,
+    filing_resolver=None,
+    filing_recovery_cache=None,
+):
     universe_row = universe_row or {}
     index = build_fact_index(facts)
     all_years = sorted({y for rows in index.values() for y in rows.keys()})
@@ -787,6 +1049,31 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
     latest_year = max(flow_years) if flow_years else max(all_years)
     profile = universe_row.get("scoring_profile") or "standard"
 
+    filing_overrides = {}
+    filing_recovery_meta = {}
+    if filing_resolver is not None and latest_year is not None:
+        latest_probe = annual_metrics(index, latest_year)
+        prior_probe = annual_metrics(index, latest_year - 1)
+        need_roic = profile in CRITICAL_ROIC_PROFILES and latest_probe.get("roic") is None
+        need_interest = profile in CRITICAL_INTEREST_PROFILES and latest_probe.get("interest_coverage") is None
+        need_eps_growth = (
+            latest_probe.get("eps") is None
+            or prior_probe.get("eps") is None
+        )
+        if need_roic or need_interest or need_eps_growth:
+            recovery = recover_critical_filing_metrics(
+                cik,
+                latest_year,
+                profile,
+                filing_resolver,
+                cache=filing_recovery_cache,
+                need_roic=need_roic,
+                need_interest=need_interest,
+                need_eps_growth=need_eps_growth,
+            )
+            filing_overrides = recovery.get("annual_overrides") or {}
+            filing_recovery_meta = recovery
+
     downturn_value, downturn_detail = calculate_downturn_defense(
         ticker,
         market=(market_prices or {}).get("market"),
@@ -798,7 +1085,7 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
     latest_missing = 0
 
     for period in PERIODS:
-        pdata = period_metrics_pair(index, latest_year, period)
+        pdata = period_metrics_pair(index, latest_year, period, annual_overrides=filing_overrides)
         if pdata is None:
             continue
 
@@ -869,6 +1156,7 @@ def build_result(ticker, cik, company_name, facts, submissions, universe_row=Non
         "data_unavailable": not bool(period_scores),
         "data_reliability": reliability,
         "missing_metric_count": latest_missing,
+        "filing_recovery": filing_recovery_meta,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "downturn_defense": downturn_value,
         "downturn_detail": downturn_detail,
@@ -907,6 +1195,11 @@ def main():
     rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
     session = requests.Session()
     session.headers.update({"User-Agent": SEC_USER_AGENT})
+    filing_resolver = SECXBRLSearchV2_3_8(
+        user_agent=SEC_USER_AGENT,
+        session=session,
+    )
+    filing_recovery_cache = {}
     market = None
     stock_cache = {}
     try:
@@ -924,7 +1217,17 @@ def main():
                     stock_cache[ticker] = _close_series(ticker)
                 except Exception:
                     stock_cache[ticker] = None
-            result = build_result(ticker, cik, row.get("company_name") or submissions.get("name") or ticker, facts, submissions, universe_row=row, market_prices={"market": market, "stock": stock_cache.get(ticker)})
+            result = build_result(
+                ticker,
+                cik,
+                row.get("company_name") or submissions.get("name") or ticker,
+                facts,
+                submissions,
+                universe_row=row,
+                market_prices={"market": market, "stock": stock_cache.get(ticker)},
+                filing_resolver=filing_resolver,
+                filing_recovery_cache=filing_recovery_cache,
+            )
             sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
             print(f"[{i}/{len(rows)}] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} reliability={result['data_reliability']} snapshot={result.get('snapshot_fiscal_end')}")
         except Exception as exc:
