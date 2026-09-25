@@ -31,6 +31,8 @@ jobs:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
           TICKERS=$(grep -v '^#' US_FILING_RECOVERY_SAFE_TARGETS.txt | grep -v '^
+          echo "Recovery target count: $(echo "$TICKERS" | tr ',' '\n' | wc -l)"
+          python collector_us_fundamental.py --tickers "$TICKERS"
  | paste -sd, -)
           echo "Recovery target count: $(echo "$TICKERS" | tr ',' '\n' | wc -l)"
           python collector_us_fundamental.py --tickers "$TICKERS"
