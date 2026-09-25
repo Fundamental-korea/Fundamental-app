@@ -1,2 +1,3 @@
+id=t3_valuation_eps_currency_shareclass
 limit=100
 start_after=
