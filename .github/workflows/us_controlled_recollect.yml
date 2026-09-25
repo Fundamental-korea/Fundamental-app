@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - ".github/workflows/us_controlled_recollect.yml"
+      - "US_FILING_RECOVERY_SAFE_TARGETS.txt"
 
 permissions:
   contents: read
@@ -30,9 +31,6 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: |
-          TICKERS=$(grep -v '^#' US_FILING_RECOVERY_SAFE_TARGETS.txt | grep -v '^
-          echo "Recovery target count: $(echo "$TICKERS" | tr ',' '\n' | wc -l)"
-          python collector_us_fundamental.py --tickers "$TICKERS"
- | paste -sd, -)
+          TICKERS=$(grep -v '^#' US_FILING_RECOVERY_SAFE_TARGETS.txt | grep -v '^$' | paste -sd, -)
           echo "Recovery target count: $(echo "$TICKERS" | tr ',' '\n' | wc -l)"
           python collector_us_fundamental.py --tickers "$TICKERS"
