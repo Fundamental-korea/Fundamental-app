@@ -1,7 +1,5 @@
-# Safe filing-recovery targets generated from full-universe forensic census (282 unique tickers)
-# ROIC: 66 score-relevant filing-calculable
-# Interest coverage: 229 score-relevant filing-calculable
-# Overlap: 13
+# Safe filing-recovery targets generated from full-universe forensic census
+# 282 unique score-relevant filing-calculable companies
 AGCC
 AHRO
 ALDX
@@ -134,7 +132,6 @@ FUNI
 FWDI
 FWRD
 GEDC
-GFLT
 GGBY
 GIFT
 GLGI
@@ -150,7 +147,6 @@ HCIL
 HLYK
 HNOI
 HWKE
-HXHX
 ICTSF
 INDO
 INGR
@@ -158,11 +154,8 @@ INMB
 INTZ
 IOSP
 JCSE
-JDZG
 JETMF
 KAYS
-KIDZ
-KNOP
 KPEA
 KYMR
 LAB
@@ -184,7 +177,6 @@ MI
 MITI
 MKZR
 MNDO
-MRP
 MTW
 MVNC
 MWAI
@@ -210,7 +202,6 @@ ORISF
 OTLC
 OWLS
 PAG
-PAYP
 PBMLF
 PCYN
 PFAI
@@ -235,13 +226,11 @@ RMCO
 RMSG
 ROG
 RPGL
-RTNTF
 RYDE
 SAFE
 SAH
 SAIC
 SBAC
-SEAL-PA
 SFCX
 SIGY
 SINT
@@ -249,14 +238,12 @@ SKYI
 SLGB
 SMJF
 SMRT
-SPPL
 SPQS
 SPST
 SRRE
 STQN
 STRL
 STRO
-STRS
 SUIC
 SUPX
 SVCO
@@ -264,7 +251,6 @@ SVRN
 SWAGW
 SYRE
 TER
-THH
 TITN
 TONX
 TORO
@@ -275,7 +261,6 @@ TTGT
 TUSK
 TVRD
 UP
-UPXI
 USPH
 VAL
 VCYT
