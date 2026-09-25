@@ -1,0 +1,49 @@
+name: US Company Internal Universe QA
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "collector_us_company_internal_universe_qa.py"
+      - ".github/workflows/us_company_internal_universe_qa.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: us-company-internal-universe-qa
+  cancel-in-progress: false
+
+jobs:
+  qa:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install supabase
+
+      - name: Run internal universe QA
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          python collector_us_company_internal_universe_qa.py
+
+      - name: Upload QA report
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-company-internal-universe-qa
+          path: artifacts/us_company_internal_universe_qa_v1.json
+          retention-days: 14
