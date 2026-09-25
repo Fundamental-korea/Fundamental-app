@@ -13,9 +13,8 @@ class TestUSValuation(unittest.TestCase):
                         {"val": 1.20, "start": "2026-04-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"},
                         {"val": 4.80, "start": "2025-07-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-K"},
                     ]}},
-                    "EntityCommonStockSharesOutstanding": {"units": {"shares": [
+                    "CommonStockSharesOutstanding": {"units": {"shares": [
                         {"val": 100, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"},
-                        {"val": 110, "end": "2026-08-15", "filed": "2026-08-15", "form": "10-Q"},
                     ]}},
                 }
             }
@@ -86,7 +85,7 @@ class TestUSValuation(unittest.TestCase):
                 "us-gaap": {
                     "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest": {"units": {"USD": [{"val": 1200, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
                     "NoncontrollingInterestInConsolidatedEntity": {"units": {"USD": [{"val": 200, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
-                    "EntityCommonStockSharesOutstanding": {"units": {"shares": [{"val": 100, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
+                    "CommonStockSharesOutstanding": {"units": {"shares": [{"val": 100, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
                     "EarningsPerShareDiluted": {"units": {"USD/shares": [{"val": 3.0, "start": "2025-07-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-K"}] }},
                 }
             }
