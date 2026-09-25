@@ -28,10 +28,37 @@ CORE_VALUATION_KEYS = (
 )
 
 
+def _eps_source_looks_safe(valuation):
+    source = str(valuation.get("eps_source") or "").strip()
+    basis = str(valuation.get("eps_basis") or "").strip().lower()
+    if not source or valuation.get("eps") is None:
+        return False
+    if source in {"EarningsPerShareDiluted", "EarningsPerShareBasic", "filing:xbrl-reported-eps"}:
+        return True
+    if not basis.startswith("reported-"):
+        return False
+    lower = source.lower()
+    return not any(
+        token in lower
+        for token in (
+            "weightedaverage",
+            "sharesoutstanding",
+            "antidilutive",
+            "dilutivesecurities",
+            "adjustmentstoreconcile",
+            "redemptionpremium",
+            "financingcost",
+            "proformaweightedaverage",
+        )
+    )
+
+
 def _valuation_core_complete(valuation):
     if not isinstance(valuation, dict):
         return False
     if any(valuation.get(key) is None for key in CORE_VALUATION_KEYS):
+        return False
+    if not _eps_source_looks_safe(valuation):
         return False
     try:
         current_shares = float(valuation.get("current_shares_outstanding"))
