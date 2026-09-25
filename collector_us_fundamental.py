@@ -1255,7 +1255,6 @@ def build_result(
         "data_unavailable": not bool(period_scores),
         "data_reliability": reliability,
         "missing_metric_count": latest_missing,
-        "filing_recovery": filing_recovery_meta,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "downturn_defense": downturn_value,
         "downturn_detail": downturn_detail,
