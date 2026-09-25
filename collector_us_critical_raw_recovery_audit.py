@@ -155,7 +155,9 @@ def venue_map(resolver):
 def main():
  if not KEY: raise RuntimeError("Supabase key required")
  sb=create_client(URL,KEY)
- rows=fetch_all(sb)
+ scalar_rows=fetch_scalar_rows(sb)
+ scores=fetch_period_scores(sb,[r["ticker"] for r in scalar_rows])
+ rows=[{**base,"period_scores":scores.get(base["ticker"])} for base in scalar_rows]
  candidates={k:[] for k in TARGETS}
  for row in rows:
   for key in selector(row):
@@ -170,7 +172,7 @@ def main():
  resolver=SECXBRLSearchV2_3_8(user_agent=UA)
  venues=venue_map(resolver)
  results=[]; errors=Counter(); target_counts=Counter()
- print(f"=== US CRITICAL RAW RECOVERY AUDIT v1 === usable={len(rows)} selected={len(selected)}")
+ print(f"=== US CRITICAL RAW RECOVERY AUDIT v1 === deficient_scalar_candidates={len(scalar_rows)} selected={len(selected)}")
  for i,(db,target) in enumerate(selected,1):
   t=db["ticker"]; c=cik(db["cik"]); stage="submissions"
   item={"ticker":t,"cik":c,"company_name":db["company_name"],"base_year":db.get("base_year"),
