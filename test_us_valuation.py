@@ -99,6 +99,24 @@ class TestUSValuation(unittest.TestCase):
         self.assertEqual(result["value"], 2.50)
         self.assertEqual(result["currency"], "USD")
 
+    def test_filing_eps_currency_parser_handles_local_currency_and_avoids_substring_match(self):
+        cad = """
+        <table>
+          <tr><td>Diluted earnings per share (CAD per share)</td><td>2.50</td></tr>
+        </table>
+        """
+        result = parse_reported_eps_from_report(cad)
+        self.assertEqual(result["value"], 2.50)
+        self.assertEqual(result["currency"], "CAD")
+
+        plain = """
+        <table>
+          <tr><td>Earnings per share</td><td>2.50</td></tr>
+        </table>
+        """
+        result = parse_reported_eps_from_report(plain)
+        self.assertIsNone(result["currency"])
+
     def test_currency_mismatch_blocks_per_and_pbr(self):
         facts = {
             "facts": {
