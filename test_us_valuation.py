@@ -62,14 +62,16 @@ class TestUSValuation(unittest.TestCase):
             "facts": {
                 "us-gaap": {
                     "StockholdersEquity": {"units": {"USD": [{"val": 1000, "end": "2026-06-30", "filed": "2026-08-01", "form": "10-Q"}]}},
+                    "EarningsPerShareDiluted": {
+                        "units": {"USD/shares": [{"val": 3.0, "start": "2025-07-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-K"}]}
+                    },
+                },
+                "dei": {
                     "EntityCommonStockSharesOutstanding": {
                         "units": {"shares": [
                             {"val": 100, "end": "2026-09-15", "filed": "2026-09-15", "form": "10-Q"},
                             {"val": 110, "end": "2026-08-15", "filed": "2026-09-01", "form": "10-Q"},
                         ]}
-                    },
-                    "EarningsPerShareDiluted": {
-                        "units": {"USD/shares": [{"val": 3.0, "start": "2025-07-01", "end": "2026-06-30", "filed": "2026-08-01", "form": "10-K"}]}
                     },
                 }
             }
