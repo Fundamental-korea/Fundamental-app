@@ -153,6 +153,18 @@ def classify(doc, local):
     last_periodic = max(periodic, key=lambda x: x[0])[1] if periodic else None
     last_periodic_date = max((x[0] for x in periodic), default=None)
 
+    periodic_forms = sorted({x[1].get("form") for x in periodic if x[1].get("form")})
+    us_periodic_forms = {"10-K", "10-K/A", "10-Q", "10-Q/A"}
+    foreign_periodic_forms = {"20-F", "20-F/A", "40-F", "40-F/A"}
+    has_us_periodic = bool(set(periodic_forms) & us_periodic_forms)
+    has_foreign_periodic = bool(set(periodic_forms) & foreign_periodic_forms)
+
+    sec_entity_type = norm((doc or {}).get("entityType"))
+    sic_description = norm((doc or {}).get("sicDescription"))
+    adr_sic_signal = "AMERICAN DEPOSITARY RECEIPTS" in sic_description
+    listed_exchange_signal = bool(exchanges & {"NYSE", "NASDAQ", "CBOE"})
+    otc_signal = "OTC" in exchanges
+
     if local_ticker in tickers:
         identity = "SUBMISSIONS_TICKER_MATCH"
     elif tickers:
@@ -169,15 +181,39 @@ def classify(doc, local):
     else:
         activity = "NO_RECENT_SEC_FILINGS"
 
+    if identity != "SUBMISSIONS_TICKER_MATCH":
+        review_bucket = "IDENTITY_REVIEW"
+    elif adr_sic_signal:
+        review_bucket = "FOREIGN_ADR_SIGNAL"
+    elif otc_signal:
+        review_bucket = "OTC"
+    elif listed_exchange_signal and has_foreign_periodic and not has_us_periodic:
+        review_bucket = "FOREIGN_ISSUER_EXCHANGE"
+    elif listed_exchange_signal and sec_entity_type == "operating" and has_us_periodic:
+        review_bucket = "US_EXCHANGE_STANDARD_REPORTING"
+    elif listed_exchange_signal and has_us_periodic:
+        review_bucket = "US_EXCHANGE_OTHER_ENTITY"
+    elif listed_exchange_signal:
+        review_bucket = "EXCHANGE_NON_STANDARD"
+    else:
+        review_bucket = "NO_SEC_EXCHANGE"
+
     return {
         "activity_status": activity,
+        "review_bucket": review_bucket,
         "identity_status": identity,
         "sec_entity_name": (doc or {}).get("name"),
         "sec_entity_type": (doc or {}).get("entityType"),
         "sec_sic": (doc or {}).get("sic"),
         "sec_sic_description": (doc or {}).get("sicDescription"),
-        "sec_tick ers": sorted(tickers),
+        "sec_state_of_incorporation": (doc or {}).get("stateOfIncorporation"),
+        "sec_state_of_incorporation_description": (doc or {}).get("stateOfIncorporationDescription"),
+        "sec_tickers": sorted(tickers),
         "sec_exchanges": sorted(exchanges),
+        "periodic_forms_seen": periodic_forms,
+        "has_us_periodic": has_us_periodic,
+        "has_foreign_periodic": has_foreign_periodic,
+        "adr_sic_signal": adr_sic_signal,
         "sec_fiscal_year_end": (doc or {}).get("fiscalYearEnd"),
         "last_filing_date": last_filing.isoformat() if last_filing else None,
         "last_periodic_form": last_periodic.get("form") if last_periodic else None,
@@ -200,6 +236,7 @@ def main():
     results = []
     counts = Counter()
     identity_counts = Counter()
+    review_counts = Counter()
     exchange_counts = Counter()
     errors = []
 
@@ -234,6 +271,7 @@ def main():
 
         counts[info["activity_status"]] += 1
         identity_counts[info["identity_status"]] += 1
+        review_counts[info["review_bucket"]] += 1
         for ex in info["sec_exchanges"] or ["<NONE>"]:
             exchange_counts[ex] += 1
 
@@ -249,6 +287,7 @@ def main():
         "eligible": len(companies),
         "activity_status": dict(counts),
         "identity_status": dict(identity_counts),
+        "review_bucket": dict(review_counts),
         "sec_exchange_distribution": dict(exchange_counts),
         "source": "SEC submissions endpoint",
         "recent_days": RECENT_DAYS,
@@ -264,6 +303,10 @@ def main():
     print("\n[IDENTITY STATUS]")
     for key, value in identity_counts.most_common():
         print(f"{key}={value}")
+    print("\n[REVIEW BUCKET]")
+    for key, value in review_counts.most_common():
+        print(f"{key}={value}")
+
     print("\n[SEC EXCHANGE]")
     for key, value in exchange_counts.most_common():
         print(f"{key}={value}")
