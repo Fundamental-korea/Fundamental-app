@@ -136,6 +136,53 @@ def venue_map(resolver):
  fields=doc.get("fields") or []; idx={k:i for i,k in enumerate(fields)}
  return {(norm((z:= {k:r[i] if i<len(r) else None for k,i in idx.items()}).get("ticker")),cik(z.get("cik"))):norm(z.get("exchange")) for r in doc.get("data") or []}
 
+OPERATING_EXCLUDED_TOKENS=(
+ "segment","margin","percentage","ratio","rate","lease","revenue","sales",
+ "cost","expense","cashflow","discontinued","restructur","per share",
+ "pershare","weightedaverage","tax","reconciliation","forecast","budget",
+ "proforma","nonoperating","non-operating",
+)
+OPERATING_CANONICAL={"OperatingIncomeLoss","OperatingIncome","OperatingProfitLoss","IncomeFromOperations","ProfitLossFromOperatingActivities"}
+
+def operating_like_candidates(rows, year):
+ out=[]
+ signals=(
+  "operatingincome","operatingprofit","operatingresult",
+  "incomefromoperations","profitfromoperations",
+  "profitlossfromoperatingactivities","resultfromoperatingactivities",
+  "operatingearnings","operatingloss",
+ )
+ for r in rows or []:
+  if r.get("form") not in ANNUAL_FORMS or not r.get("start") or not r.get("end") or r.get("dimensioned"):
+   continue
+  if str(r.get("end",""))[:4] != str(year):
+   continue
+  concept=str(r.get("concept") or "").rsplit("}",1)[-1].rsplit(":",1)[-1]
+  label=str(r.get("label") or "")
+  compact=re.sub(r"[^a-z0-9]+","",(concept+" "+label).lower())
+  if concept in OPERATING_CANONICAL:
+   continue
+  if any(x.replace(" ","") in compact for x in OPERATING_EXCLUDED_TOKENS):
+   continue
+  if not any(sig in compact for sig in signals):
+   continue
+  try:
+   value=float(r.get("value"))
+  except Exception:
+   continue
+  out.append({
+   "namespace":r.get("namespace") or "",
+   "concept":concept,
+   "label":label,
+   "value":value,
+   "unit":r.get("unit"),
+   "start":r.get("start"),
+   "end":r.get("end"),
+   "filed":r.get("filed"),
+   "contextRef":r.get("contextRef"),
+  })
+ return out
+
 def main():
  if not KEY: raise RuntimeError("Supabase key required")
  sb=create_client(URL,KEY)
@@ -183,6 +230,9 @@ def main():
      # compatibility guards.
      filing_rows, filing_meta = resolver._inline_filing_rows(c, sub)
      mapped = classify_filing_rows(filing_rows, target_year=fy)
+     op_candidates = operating_like_candidates(filing_rows, fy)
+     item["operating_like_candidates"] = op_candidates[:30]
+     item["operating_like_candidate_count"] = len(op_candidates)
      item["filing_map_summary"]={
        "rows":len(filing_rows),
        "accession":filing_meta.get("accession"),
@@ -267,8 +317,13 @@ def main():
   else: item["status"]="OK"
   results.append(item)
   print(f"[{i}/{len(selected)}] {t} {item['status']} target={target}")
+ op_concept_freq=Counter()
+ for r in results:
+  for c in r.get("operating_like_candidates") or []:
+   op_concept_freq[(c.get("concept") or "UNKNOWN", c.get("namespace") or "")]+=1
  summary={"generated_at":datetime.now(timezone.utc).isoformat(),"usable_rows":len(rows),"selected":len(selected),"plan":plan,
-          "errors_by_stage":dict(errors),"target_counts":dict(target_counts)}
+          "errors_by_stage":dict(errors),"target_counts":dict(target_counts),
+          "operating_like_concepts":[{"concept":c[0],"namespace":c[1],"companies":n} for c,n in op_concept_freq.most_common(100)]}
  for k in ("roic_filing_ready","interest_filing_ready","eps_growth_filing_ready","companyfacts_roic_raw_ready","companyfacts_interest_raw_ready","companyfacts_eps_growth_raw_ready"):
   summary[k+"_count"]=sum(1 for r in results if r.get(k) is True)
  for metric,field in (("roic","roic_recoverability"),("interest","interest_recoverability"),("eps_growth","eps_growth_recoverability")):
