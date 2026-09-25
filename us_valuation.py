@@ -66,38 +66,49 @@ def _latest_full_year(rows):
     return candidates[0]
 
 
-_CURRENCY_ALIASES = {
-    "USD": "USD", "US DOLLAR": "USD", "US$": "USD", "$": "USD",
-    "CAD": "CAD", "C$": "CAD", "CANADIAN DOLLAR": "CAD",
-    "AUD": "AUD", "A$": "AUD", "AU$": "AUD",
-    "NZD": "NZD", "NZ$": "NZD",
-    "BRL": "BRL", "R$": "BRL",
-    "CLP": "CLP", "MXN": "MXN", "ARS": "ARS",
-    "EUR": "EUR", "€": "EUR",
-    "GBP": "GBP", "£": "GBP",
-    "CHF": "CHF",
-    "JPY": "JPY", "¥": "JPY",
-    "CNY": "CNY", "RMB": "CNY", "CN¥": "CNY",
-    "HKD": "HKD", "HK$": "HKD",
-    "SGD": "SGD", "S$": "SGD",
-    "INR": "INR", "₹": "INR",
-    "KRW": "KRW", "₩": "KRW",
-    "ZAR": "ZAR", "SEK": "SEK", "NOK": "NOK", "DKK": "DKK",
-    "TRY": "TRY", "PLN": "PLN", "ILS": "ILS",
+_CURRENCY_SYMBOLS = {
+    "US$": "USD", "C$": "CAD", "A$": "AUD", "AU$": "AUD", "NZ$": "NZD",
+    "R$": "BRL", "CN¥": "CNY", "HK$": "HKD", "S$": "SGD",
+    "$": "USD", "€": "EUR", "£": "GBP", "¥": "JPY", "₹": "INR", "₩": "KRW",
 }
+
+_CURRENCY_CODES = {
+    "USD", "CAD", "AUD", "NZD", "BRL", "CLP", "MXN", "ARS",
+    "EUR", "GBP", "CHF", "JPY", "CNY", "HKD", "SGD", "INR",
+    "KRW", "ZAR", "SEK", "NOK", "DKK", "TRY", "PLN", "ILS",
+}
+
+_CURRENCY_PHRASES = (
+    ("US DOLLAR", "USD"),
+    ("CANADIAN DOLLAR", "CAD"),
+    ("AUSTRALIAN DOLLAR", "AUD"),
+    ("NEW ZEALAND DOLLAR", "NZD"),
+)
 
 
 def normalize_currency(value):
+    """Extract a currency without matching ISO codes inside ordinary words."""
     text = re.sub(r"\s+", " ", str(value or "").strip()).upper()
     if not text:
         return None
-    for key in sorted(_CURRENCY_ALIASES, key=len, reverse=True):
-        if key in text:
-            return _CURRENCY_ALIASES[key]
-    compact = re.sub(r"[^A-Z]", "", text)
-    if compact in _CURRENCY_ALIASES:
-        return _CURRENCY_ALIASES[compact]
-    return compact if len(compact) == 3 else None
+
+    # Prefer explicit currency symbols/prefixes before the standalone "$"
+    # symbol so "C$" and "R$" cannot collapse to USD.
+    for symbol in sorted(_CURRENCY_SYMBOLS, key=len, reverse=True):
+        if symbol in text:
+            return _CURRENCY_SYMBOLS[symbol]
+
+    for phrase, code in _CURRENCY_PHRASES:
+        if re.search(rf"\b{re.escape(phrase)}(?:S)?\b", text):
+            return code
+
+    # ISO codes must be standalone tokens. This prevents false matches such
+    # as ILS inside "DETAILS".
+    for code in sorted(_CURRENCY_CODES, key=len, reverse=True):
+        if re.search(rf"(?<![A-Z]){re.escape(code)}(?![A-Z])", text):
+            return code
+
+    return None
 
 
 def currency_from_unit(unit):
