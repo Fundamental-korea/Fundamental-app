@@ -1,6 +1,9 @@
 name: US Valuation Snapshot Backfill
 
 on:
+  push:
+    paths:
+      - "US_VALUATION_TRIGGER.txt"
   workflow_run:
     workflows: ["Sync US Score Columns"]
     types: [completed]
@@ -27,7 +30,8 @@ concurrency:
 jobs:
   backfill:
     if: >-
-      ${{ github.event_name == 'workflow_dispatch' ||
+      ${{ github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
       github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
@@ -55,6 +59,12 @@ jobs:
         run: |
           LIMIT="${{ inputs.limit || '1000' }}"
           START_AFTER="${{ inputs.start_after || '' }}"
+          if [ "${{ github.event_name }}" = "push" ] && [ -f US_VALUATION_TRIGGER.txt ]; then
+            FILE_LIMIT="$(sed -n 's/^limit=//p' US_VALUATION_TRIGGER.txt | head -n 1)"
+            FILE_START_AFTER="$(sed -n 's/^start_after=//p' US_VALUATION_TRIGGER.txt | head -n 1)"
+            [ -n "$FILE_LIMIT" ] && LIMIT="$FILE_LIMIT"
+            [ -n "$FILE_START_AFTER" ] && START_AFTER="$FILE_START_AFTER"
+          fi
           ARGS=(collector_us_valuation_all.py --limit "$LIMIT")
           if [ -n "$START_AFTER" ]; then
             ARGS+=(--start-after "$START_AFTER")
