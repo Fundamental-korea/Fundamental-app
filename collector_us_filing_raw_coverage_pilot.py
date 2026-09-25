@@ -178,7 +178,12 @@ def main():
             item["status"]=pre_error
             source_errors[pre_error]+=1; results.append(item); continue
         try:
-            facts=resolver.company_facts(cik)
+            facts_error = None
+            try:
+                facts=resolver.company_facts(cik)
+            except Exception as exc:
+                facts={"facts":{}}
+                facts_error=f"{type(exc).__name__}:{exc}"
             annual=latest_annual_target(sub)
             accession=(annual[2] if annual else None)
             fy=(annual[1] if annual else None)
@@ -200,6 +205,7 @@ def main():
                 "latest_annual_form":annual[4] if annual else None,
                 "latest_annual_filed":annual[0] if annual else None,
                 "latest_accession":accession,
+                "companyfacts_error":facts_error,
                 "inline_row_count":len(filing_rows),
                 "companyfacts_present":facts_p,
                 "filing_annual_candidate_present":filing_p,
