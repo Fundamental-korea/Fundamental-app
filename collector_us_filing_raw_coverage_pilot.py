@@ -23,7 +23,49 @@ from supabase import create_client
 
 from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8, _local_concept
 from sec_filing_financial_map import classify_filing_rows
-from collector_us_fundamental import FACT_ALIASES, IFRS_FACT_ALIASES
+
+# Keep this pilot independent from collector_us_fundamental.py so its QA run
+# does not pull the full scoring/market-data dependency chain.
+FACT_ALIASES = {
+    "revenue": ["RevenueFromContractWithCustomerExcludingAssessedTax", "RevenueFromContractWithCustomerIncludingAssessedTax", "Revenues", "SalesRevenueNet", "SalesRevenueGoodsNet"],
+    "operating_income": ["OperatingIncomeLoss", "OperatingIncome", "OperatingProfitLoss", "IncomeFromOperations"],
+    "net_income": ["NetIncomeLoss", "ProfitLoss"],
+    "assets": ["Assets"],
+    "equity": ["StockholdersEquity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest", "Equity", "PartnersCapital", "MembersEquity", "EquityAttributableToOwnersOfParent"],
+    "liabilities": ["Liabilities"],
+    "current_assets": ["AssetsCurrent"],
+    "current_liabilities": ["LiabilitiesCurrent"],
+    "cash": ["CashAndCashEquivalentsAtCarryingValue", "CashCashEquivalentsRestrictedCashAndRestrictedCashEquivalents"],
+    "inventory": ["InventoryNet", "InventoryGross"],
+    "receivables": ["AccountsReceivableNetCurrent", "AccountsReceivableNet", "AccountsAndNotesReceivableNetCurrent", "AccountsReceivableGrossCurrent"],
+    "debt_current": ["LongTermDebtCurrent", "LongTermDebtAndCapitalLeaseObligationsCurrent", "LongTermDebtAndFinanceLeaseObligationsCurrent", "CurrentBorrowings", "CurrentPortionOfLongtermBorrowings", "ShortTermBorrowings", "ShorttermBorrowings", "FinanceLeaseLiabilityCurrent", "ConvertibleDebtCurrent", "DebtCurrent", "NotesPayableCurrent", "NotesAndLoansPayableCurrent", "ShortTermBankLoansAndNotesPayable", "CommercialPaper", "LineOfCreditCurrent", "RevolvingCreditFacilityCurrent", "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings"],
+    "debt_noncurrent": ["LongTermDebtNoncurrent", "LongTermDebt", "LongTermDebtAndCapitalLeaseObligationsNoncurrent", "LongTermDebtAndFinanceLeaseObligationsNoncurrent", "NoncurrentBorrowings", "LongtermBorrowings", "FinanceLeaseLiabilityNoncurrent", "ConvertibleDebtNoncurrent", "DebtNoncurrent", "NotesPayableNoncurrent", "NotesPayable", "LongTermNotesPayable", "LoansPayable", "LongTermLoansPayable", "OtherBorrowings", "UnsecuredDebt", "SecuredDebt", "OtherLongTermDebt", "FederalHomeLoanBankAdvances", "LongTermNotesAndLoans", "LineOfCreditNoncurrent", "RevolvingCreditFacilityNoncurrent"],
+    "debt_total": ["Borrowings", "DebtLongtermAndShorttermCombinedAmount", "DebtAndCapitalLeaseObligations", "LongTermDebtCurrentAndNoncurrent", "LongTermDebtAndCapitalLeaseObligations", "LongTermDebtAndFinanceLeaseObligations", "DebtAndFinanceLeaseLiabilities", "Debt"],
+    "interest_expense": ["InterestExpenseNonoperating", "InterestExpenseNonOperating", "InterestExpenseDebt", "InterestExpenseNonoperatingAndOther", "InterestAndDebtExpense", "InterestExpense", "InterestExpenseOnDebtInstrumentsIssued", "InterestExpenseOnBorrowings", "InterestExpenseOnOtherFinancialLiabilities", "InterestExpenseOnBankLoansAndOverdrafts", "InterestExpenseOnBonds", "InterestExpenseLongTermDebt", "InterestExpenseShortTermBorrowings", "InterestExpenseOtherLongTermDebt", "InterestExpenseOtherShortTermBorrowings", "InterestExpenseSubordinatedNotesAndDebentures", "InterestCostsIncurred", "FinancingInterestExpense"],
+    "operating_cash_flow": ["NetCashProvidedByUsedInOperatingActivities"],
+    "sga": ["SellingGeneralAndAdministrativeExpense", "SellingGeneralAndAdministrativeExpenseIncludingDepreciationAmortization", "GeneralAndAdministrativeExpense", "SellingExpense"],
+    "eps": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
+}
+IFRS_FACT_ALIASES = {
+    "revenue": ["Revenue", "RevenueFromContractsWithCustomers"],
+    "operating_income": ["ProfitLossFromOperatingActivities", "OperatingIncomeLoss"],
+    "net_income": ["ProfitLoss", "ProfitLossAttributableToOwnersOfParent"],
+    "assets": ["Assets"],
+    "equity": ["EquityAttributableToOwnersOfParent", "Equity"],
+    "liabilities": ["Liabilities"],
+    "current_assets": ["CurrentAssets"],
+    "current_liabilities": ["CurrentLiabilities"],
+    "cash": ["CashAndCashEquivalents"],
+    "inventory": ["Inventories"],
+    "receivables": ["TradeAndOtherReceivables", "TradeReceivables"],
+    "debt_current": ["CurrentBorrowings", "CurrentPortionOfLongtermBorrowings", "ShorttermBorrowings", "CurrentBorrowingsAndCurrentPortionOfNoncurrentBorrowings", "LongTermDebtCurrent", "FinanceLeaseLiabilityCurrent"],
+    "debt_noncurrent": ["LongtermBorrowings", "NoncurrentBorrowings", "LongTermDebtNoncurrent", "LongTermDebt", "LongTermNotesPayable", "FinanceLeaseLiabilityNoncurrent"],
+    "debt_total": ["Borrowings", "LoansAndBorrowings", "DebtLongtermAndShorttermCombinedAmount", "LongTermDebtAndFinanceLeaseObligations", "LongTermDebtAndCapitalLeaseObligations"],
+    "interest_expense": ["FinanceCosts", "InterestExpense", "InterestExpenseOnBorrowings", "InterestExpenseOnDebtInstrumentsIssued", "InterestExpenseOnOtherFinancialLiabilities", "InterestExpenseOnBankLoansAndOverdrafts", "InterestExpenseOnBonds", "InterestExpenseLongTermDebt", "InterestCostsIncurred"],
+    "operating_cash_flow": ["CashFlowsFromUsedInOperatingActivities"],
+    "sga": ["SellingGeneralAndAdministrativeExpense"],
+    "eps": ["EarningsPerShareDiluted", "EarningsPerShareBasic"],
+}
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
 SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_KEY", "")
