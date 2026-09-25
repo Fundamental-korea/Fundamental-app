@@ -153,7 +153,7 @@ def main():
  resolver=SECXBRLSearchV2_3_8(user_agent=UA)
  venues=venue_map(resolver)
  results=[]; errors=Counter(); target_counts=Counter()
- print(f"=== US CRITICAL RAW RECOVERY AUDIT v1 === deficient_scalar_candidates={len(scalar_rows)} selected={len(selected)}")
+ print(f"=== US CRITICAL RAW RECOVERY AUDIT v1 === target_rows={len(rows)} selected={len(selected)}")
  for i,(db,target) in enumerate(selected,1):
   t=db["ticker"]; c=cik(db["cik"]); stage="submissions"
   item={"ticker":t,"cik":c,"company_name":db["company_name"],"base_year":db.get("base_year"),
