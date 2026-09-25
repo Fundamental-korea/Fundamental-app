@@ -1,0 +1,46 @@
+name: US Filing Raw Coverage Pilot
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "collector_us_filing_raw_coverage_pilot.py"
+      - ".github/workflows/us_filing_raw_coverage_pilot.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: us-filing-raw-coverage-pilot
+  cancel-in-progress: false
+
+jobs:
+  pilot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests supabase
+      - name: Run filing raw coverage pilot
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          python collector_us_filing_raw_coverage_pilot.py
+      - name: Upload filing raw pilot
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-filing-raw-coverage-pilot
+          path: artifacts/us_filing_raw_coverage_pilot_v1.json
+          retention-days: 14
