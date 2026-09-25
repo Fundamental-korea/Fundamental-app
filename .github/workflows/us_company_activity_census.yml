@@ -11,7 +11,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: us-company-activity-census
+  group: us-company-activity-census-v2
   cancel-in-progress: false
 
 jobs:
