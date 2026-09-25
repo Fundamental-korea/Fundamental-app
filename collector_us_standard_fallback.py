@@ -359,6 +359,10 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
     # writes the same 1y/3y/5y/10y -> avg/worst structure as the normal collector.
     from collector_us_fundamental import (
         period_metrics_pair,
+        annual_metrics,
+        recover_critical_filing_metrics,
+        CRITICAL_ROIC_PROFILES,
+        CRITICAL_INTEREST_PROFILES,
         calculate_us_score,
         calculate_downturn_defense,
     )
@@ -381,6 +385,34 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
     latest_year = max(flow_years) if flow_years else max(all_years)
     profile = universe_row.get("scoring_profile") or "standard"
 
+    filing_overrides = {}
+    filing_recovery_meta = {}
+    latest_probe = annual_metrics(index, latest_year)
+    prior_probe = annual_metrics(index, latest_year - 1)
+    need_roic = profile in CRITICAL_ROIC_PROFILES and latest_probe.get("roic") is None
+    need_interest = profile in CRITICAL_INTEREST_PROFILES and latest_probe.get("interest_coverage") is None
+    need_eps_growth = (
+        latest_probe.get("eps") is None
+        or prior_probe.get("eps") is None
+    )
+    if need_roic or need_interest or need_eps_growth:
+        cache = getattr(resolver, "_critical_recovery_cache", None)
+        if cache is None:
+            cache = {}
+            resolver._critical_recovery_cache = cache
+        recovery = recover_critical_filing_metrics(
+            cik,
+            latest_year,
+            profile,
+            resolver,
+            cache=cache,
+            need_roic=need_roic,
+            need_interest=need_interest,
+            need_eps_growth=need_eps_growth,
+        )
+        filing_overrides = recovery.get("annual_overrides") or {}
+        filing_recovery_meta = recovery
+
     downturn_value, downturn_detail = calculate_downturn_defense(
         ticker,
         market=(market_prices or {}).get("market"),
@@ -392,7 +424,7 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
     latest_missing = 0
 
     for period in PERIODS:
-        pdata = period_metrics_pair(index, latest_year, period)
+        pdata = period_metrics_pair(index, latest_year, period, annual_overrides=filing_overrides)
         if pdata is None:
             continue
 
@@ -455,6 +487,7 @@ def build_result_with_v238(ticker, cik, company_name, facts, submissions,
         "data_unavailable": not bool(period_scores),
         "data_reliability": data_reliability_from_periods(period_scores),
         "missing_metric_count": latest_missing,
+        "filing_recovery": filing_recovery_meta,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "downturn_defense": downturn_value,
         "downturn_detail": downturn_detail,
@@ -498,36 +531,3 @@ def main():
         raise RuntimeError("SUPABASE_SECRET_KEY or SUPABASE_KEY is required")
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
     tickers = [args.ticker.upper().strip()] if args.ticker else ([x.upper().strip() for x in args.tickers.split(",") if x.strip()] if args.tickers else None)
-    rows = get_standard_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
-    print(f"[UNIVERSE] Standard companies selected: {len(rows)}")
-    session = requests.Session()
-    session.headers.update({"User-Agent": SEC_USER_AGENT})
-    resolver = SECXBRLSearchV2_3_8(session=session)
-    market = None
-    stock_cache = {}
-    try:
-        from downturn_us import _close_series, BENCHMARK
-        market = _close_series(BENCHMARK)
-    except Exception as exc:
-        print(f"[US] downturn market data unavailable: {exc}")
-    for i, row in enumerate(rows, 1):
-        ticker, cik = row["ticker"], row["cik"]
-        try:
-            facts, submissions = _load_company_resilient(session, ticker, cik)
-            resolver.prime_company(cik, facts, submissions)
-            if ticker not in stock_cache:
-                try:
-                    from downturn_us import _close_series
-                    stock_cache[ticker] = _close_series(ticker)
-                except Exception:
-                    stock_cache[ticker] = None
-            result = build_result_with_v238(ticker, cik, row.get("company_name") or submissions.get("name") or ticker, facts, submissions, universe_row=row, market_prices={"market": market, "stock": stock_cache.get(ticker)}, resolver=resolver)
-            sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
-            print(f"[{i}/{len(rows)}] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} reliability={result['data_reliability']} snapshot={result.get('snapshot_fiscal_end')}")
-        except Exception as exc:
-            print(f"[{i}/{len(rows)}] {ticker}: FAILED: {exc}")
-    print("Completed.")
-
-
-if __name__ == "__main__":
-    main()
