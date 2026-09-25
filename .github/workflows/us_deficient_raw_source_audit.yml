@@ -1,0 +1,30 @@
+name: US Deficient Raw Source Audit
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "collector_us_deficient_raw_source_audit.py"
+      - ".github/workflows/us_deficient_raw_source_audit.yml"
+permissions:
+  contents: read
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.10"}
+      - run: pip install requests lxml supabase
+      - name: Run audit
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: python collector_us_deficient_raw_source_audit.py
+      - uses: actions/upload-artifact@v4
+        with:
+          name: us-deficient-raw-source-audit
+          path: artifacts/us_deficient_raw_source_audit_v1.json
+          retention-days: 14
