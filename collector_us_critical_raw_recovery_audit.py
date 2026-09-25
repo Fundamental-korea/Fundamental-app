@@ -20,6 +20,7 @@ from datetime import datetime,timezone
 from pathlib import Path
 from supabase import create_client
 from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8
+from sec_filing_financial_map import classify_filing_rows
 
 URL=os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
 KEY=os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_KEY","")
@@ -164,48 +165,96 @@ def main():
    sub=resolver.submissions(c); stage="companyfacts"
    try: facts=resolver.company_facts(c); cf_err=None
    except Exception as exc: facts={"facts":{}}; cf_err=f"{type(exc).__name__}:{exc}"
-   a=latest_fy(sub); fy=a[1] if a else db.get("base_year")
-   item.update({"latest_annual_fy":fy,"latest_annual_form":a[2] if a else None,"latest_annual_filed":a[0] if a else None,"companyfacts_error":cf_err})
+   # Pin the audit to the DB's current base_year. This is the same provenance
+   # target used by production critical-metric recovery.
+   fy=int(db["base_year"]) if db.get("base_year") is not None else None
+   a=latest_fy(sub)
+   item.update({"latest_submission_fy":a[1] if a else None,"latest_annual_form":a[2] if a else None,
+                "latest_annual_filed":a[0] if a else None,"target_year":fy,"companyfacts_error":cf_err})
    stage="filing"
-   prereq={
-    "roic":["equity","cash","operating_income"],
-    "interest_coverage":["operating_income","interest_expense"],
-    "eps_growth":["eps","eps_prior"],
-   }
    cf={}
    fi={}
    details={}
+   mapped=None
+   if fy:
+    try:
+     # One filing parse + economic map is more reliable than checking each
+     # concept independently because debt/interest require same-period/unit
+     # compatibility guards.
+     filing_rows, filing_meta = resolver._inline_filing_rows(c, sub)
+     mapped = classify_filing_rows(filing_rows, target_year=fy)
+     item["filing_map_summary"]={
+       "rows":len(filing_rows),
+       "accession":filing_meta.get("accession"),
+       "filed":filing_meta.get("filed"),
+       "debt_status":mapped.get("debt_status"),
+       "interest_status":mapped.get("interest_status"),
+     }
+    except Exception as exc:
+     details["filing_map"]=f"{type(exc).__name__}:{exc}"
    for fam in {"equity","cash","operating_income","interest_expense","eps","debt_total","debt_current","debt_noncurrent"}:
     cf[fam]=annual_present(facts,fam,fy) if fy else False
-   if target=="roic_missing":
-    for fam in ("equity","cash","operating_income","debt_total","debt_current","debt_noncurrent"):
-     ok,cand,err=filing_has(resolver,c,fam,fy,sub) if fy else (False,None,"NO_FY")
-     fi[fam]=ok
-     if err: details[fam]=err
-    roic_filing_ready=(fi["equity"] and fi["cash"] and fi["operating_income"] and (fi["debt_total"] or (fi["debt_current"] and fi["debt_noncurrent"])))
-   elif target=="interest_missing":
-    for fam in ("operating_income","interest_expense"):
-     ok,cand,err=filing_has(resolver,c,fam,fy,sub) if fy else (False,None,"NO_FY")
-     fi[fam]=ok
-     if err: details[fam]=err
-    roic_filing_ready=False
-    item["interest_filing_ready"]=fi["operating_income"] and fi["interest_expense"]
-   elif target=="eps_growth_missing":
-    ok1,cand1,err1=filing_has(resolver,c,"eps",fy,sub) if fy else (False,None,"NO_FY")
-    ok2,cand2,err2=filing_has(resolver,c,"eps",fy-1,sub) if fy else (False,None,"NO_FY")
-    fi["eps_current"]=ok1; fi["eps_prior"]=ok2
-    if err1: details["eps_current"]=err1
-    if err2: details["eps_prior"]=err2
-    roic_filing_ready=False
-    item["eps_growth_filing_ready"]=ok1 and ok2
-   else:
-    for fam in ("operating_income","interest_expense","eps"):
-     ok,cand,err=filing_has(resolver,c,fam,fy,sub) if fy else (False,None,"NO_FY")
-     fi[fam]=ok
-     if err: details[fam]=err
-    roic_filing_ready=False
+
+   if mapped:
+    ri=mapped.get("roic_inputs") or {}
+    debt=mapped.get("selected_debt")
+    intr=mapped.get("selected_interest")
+    eq=ri.get("equity"); cash=ri.get("cash"); op=ri.get("operating_income")
+
+    roic_inputs_complete=bool(eq and cash and op and debt)
+    if target=="roic_missing" or target=="critical_extreme":
+     if roic_inputs_complete:
+      invested=float(eq["value"])+float(debt["value"])-float(cash["value"])
+      if invested<=0:
+       item["roic_recoverability"]="SOURCE_COMPLETE_BUT_UNDEFINED"
+       item["roic_undefined_reason"]="NONPOSITIVE_INVESTED_CAPITAL"
+      else:
+       value=float(op["value"])*0.78/invested*100.0
+       item["roic_recoverability"]="SOURCE_COMPLETE_CALCULABLE"
+       item["roic_candidate_value"]=value
+     else:
+      item["roic_recoverability"]="SOURCE_INCOMPLETE"
+
+    if target=="interest_missing" or target=="critical_extreme":
+     interest_complete=bool(op and intr)
+     if interest_complete:
+      iv=float(intr["value"])
+      if iv==0:
+       item["interest_recoverability"]="SOURCE_COMPLETE_BUT_UNDEFINED"
+       item["interest_undefined_reason"]="ZERO_REPORTED_INTEREST"
+      else:
+       item["interest_recoverability"]="SOURCE_COMPLETE_CALCULABLE"
+       item["interest_candidate_value"]=float(op["value"])/iv
+     else:
+      item["interest_recoverability"]="SOURCE_INCOMPLETE"
+
+   if target=="eps_growth_missing" or target=="critical_extreme":
+    try:
+     cur,_=resolver.search_filing(c,"eps",year=fy,limit=20)
+     old,_=resolver.search_filing(c,"eps",year=fy-1,limit=20) if fy else ([],{})
+     pairs=[]
+     for cc in cur or []:
+      cu=str(getattr(cc,"unit","") or "").strip().lower()
+      cv=getattr(cc,"value",None)
+      if cv is None or not cu: continue
+      for oo in old or []:
+       ou=str(getattr(oo,"unit","") or "").strip().lower()
+       ov=getattr(oo,"value",None)
+       if ov in (None,0) or ou!=cu: continue
+       pairs.append((cc,oo))
+     if pairs:
+      cc,oo=pairs[0]
+      growth=(float(cc.value)-float(oo.value))/abs(float(oo.value))*100.0
+      item["eps_growth_recoverability"]="SOURCE_COMPLETE_CALCULABLE"
+      item["eps_growth_candidate_value"]=growth
+      item["eps_pair"]={"current":cc.compact(),"prior":oo.compact()}
+     else:
+      item["eps_growth_recoverability"]="SOURCE_INCOMPLETE"
+    except Exception as exc:
+     item["eps_growth_recoverability"]="SOURCE_ERROR"
+     details["eps_growth"]=f"{type(exc).__name__}:{exc}"
    item.update({"companyfacts_prerequisites":cf,"filing_prerequisites":fi,"filing_errors":details})
-   if target=="roic_missing": item["roic_filing_ready"]=roic_filing_ready
+   if target=="roic_missing": item["roic_filing_ready"]=item.get("roic_recoverability")=="SOURCE_COMPLETE_CALCULABLE"
    if target=="roic_missing":
     item["companyfacts_roic_raw_ready"]=cf["equity"] and cf["cash"] and cf["operating_income"] and (cf["debt_total"] or (cf["debt_current"] and cf["debt_noncurrent"]))
    elif target=="interest_missing":
@@ -222,6 +271,9 @@ def main():
           "errors_by_stage":dict(errors),"target_counts":dict(target_counts)}
  for k in ("roic_filing_ready","interest_filing_ready","eps_growth_filing_ready","companyfacts_roic_raw_ready","companyfacts_interest_raw_ready","companyfacts_eps_growth_raw_ready"):
   summary[k+"_count"]=sum(1 for r in results if r.get(k) is True)
+ for metric,field in (("roic","roic_recoverability"),("interest","interest_recoverability"),("eps_growth","eps_growth_recoverability")):
+  ctr=Counter(r.get(field) for r in results if r.get(field))
+  summary[metric+"_recoverability"]=dict(ctr)
  out=OUT/"us_critical_raw_recovery_audit_v1.json"
  out.write_text(json.dumps({"summary":summary,"companies":results},indent=2,ensure_ascii=False),encoding="utf-8")
  print(json.dumps(summary,indent=2))
