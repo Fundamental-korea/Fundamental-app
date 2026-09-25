@@ -47,40 +47,23 @@ def norm(v): return (v or "").strip().upper()
 def cik(v): return str(int(v)).zfill(10)
 def stable(v): return int(hashlib.sha256(v.encode()).hexdigest()[:12],16)
 
-def fetch_scalar_rows(sb):
+def fetch_target_rows(sb):
  rows=[];off=0
+ select_expr="ticker,cik,company_name,base_year,total_score,missing_metric_count,data_reliability,metric_scores:period_scores->1y->avg->metric_scores"
  while True:
   p=(sb.table("US_Fundamental")
-    .select("ticker,cik,company_name,base_year,total_score,missing_metric_count,data_reliability")
+    .select(select_expr)
     .eq("data_unavailable",False)
-    .gt("missing_metric_count",0)
-    .order("missing_metric_count",desc=True)
     .order("ticker")
     .range(off,off+PAGE-1).execute().data or [])
   if not p: break
   rows+=p
   if len(p)<PAGE: break
   off+=PAGE
-  if off>=1000: break
  return rows
 
-def fetch_period_scores(sb, tickers):
- out=[]
- for i in range(0,len(tickers),50):
-  batch=tickers[i:i+50]
-  p=(sb.table("US_Fundamental")
-     .select("ticker,period_scores")
-     .in_("ticker",batch)
-     .execute().data or [])
-  out.extend(p)
- return {r["ticker"]:r.get("period_scores") for r in out}
-
 def metric_scores(row):
- ps=row.get("period_scores") or {}
- one=ps.get("1y") or {}
- avg=one.get("avg") or {}
- ms=avg.get("metric_scores") or one.get("metric_scores") or {}
- return ms
+ return row.get("metric_scores") or {}
 
 def value_of(row,metric):
  x=metric_scores(row).get(metric) or {}
@@ -155,9 +138,7 @@ def venue_map(resolver):
 def main():
  if not KEY: raise RuntimeError("Supabase key required")
  sb=create_client(URL,KEY)
- scalar_rows=fetch_scalar_rows(sb)
- scores=fetch_period_scores(sb,[r["ticker"] for r in scalar_rows])
- rows=[{**base,"period_scores":scores.get(base["ticker"])} for base in scalar_rows]
+ rows=fetch_target_rows(sb)
  candidates={k:[] for k in TARGETS}
  for row in rows:
   for key in selector(row):
