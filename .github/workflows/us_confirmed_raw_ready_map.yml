@@ -18,5 +18,8 @@ jobs:
       - run: pip install requests lxml supabase
       - name: Run diagnostic
         env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
         run: python collector_us_confirmed_raw_ready_map.py
