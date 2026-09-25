@@ -4,9 +4,6 @@ on:
   push:
     paths:
       - "US_VALUATION_TRIGGER.txt"
-  workflow_run:
-    workflows: ["Sync US Score Columns"]
-    types: [completed]
   workflow_dispatch:
     inputs:
       limit:
@@ -29,10 +26,7 @@ concurrency:
 
 jobs:
   backfill:
-    if: >-
-      ${{ github.event_name == 'push' ||
-      github.event_name == 'workflow_dispatch' ||
-      github.event.workflow_run.conclusion == 'success' }}
+    if: ${{ github.event_name == 'push' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
     timeout-minutes: 360
     steps:

@@ -66,14 +66,40 @@ def _latest_full_year(rows):
     return candidates[0]
 
 
-def _all_eps_fact_rows(companyfacts):
-    """Find numeric EPS facts across all SEC namespaces/tags.
+EPS_UNIT_MARKERS = ("/share", "/shares")
+EPS_SEMANTIC_EXCLUSIONS = (
+    "weightedaverage",
+    "sharesoutstanding",
+    "antidilutive",
+    "dilutivesecurities",
+    "adjustmentstoreconcile",
+    "redemptionpremium",
+    "financingcost",
+    "proformaweightedaverage",
+)
 
-    Company Facts normally exposes us-gaap EarningsPerShareDiluted/Basic, but
-    some issuers use a different taxonomy/tag for an otherwise directly
-    reported EPS. Search the fact metadata (tag/label) without reconstructing
-    EPS from net income or shares.
-    """
+def _is_reported_eps_semantic(tag, label, description, unit):
+    """Return True only for a directly reported per-share earnings concept."""
+    tag_lower = str(tag or "").lower()
+    label_lower = str(label or "").lower()
+    description_lower = str(description or "").lower()
+    unit_lower = re.sub(r"\s+", "", str(unit or "").lower())
+    haystack = f"{tag_lower} {label_lower} {description_lower}".replace("_", "")
+    if not any(marker in unit_lower for marker in EPS_UNIT_MARKERS):
+        return False
+    if any(token in haystack for token in EPS_SEMANTIC_EXCLUSIONS):
+        return False
+    normalized_label = re.sub(r"[^a-z0-9]+", " ", label_lower).strip()
+    return (
+        "earningspershare" in tag_lower
+        or "earnings per share" in label_lower
+        or "earnings per common share" in label_lower
+        or "net income per share" in normalized_label
+        or "net income per common share" in normalized_label
+    )
+
+def _all_eps_fact_rows(companyfacts):
+    """Find numeric directly reported EPS facts across SEC namespaces."""
     root = companyfacts.get("facts") or {}
     rows = []
     annual_forms = {"10-K", "10-K/A", "20-F", "20-F/A", "40-F", "40-F/A"}
@@ -91,26 +117,15 @@ def _all_eps_fact_rows(companyfacts):
             haystack = f"{tag} {label} {description}".lower().replace("_", " ")
             label_normalized = re.sub(r"[^a-z0-9]+", " ", label.lower()).strip()
 
-            is_eps = (
-                "earningspershare" in tag_lower
-                or (
-                    "earnings" in label_normalized
-                    and "per" in label_normalized
-                    and "share" in label_normalized
-                    and ("common" in label_normalized or "diluted" in label_normalized or "basic" in label_normalized)
-                )
-                or "earnings per share" in haystack
-                or "earnings per common share" in haystack
-            )
-            if not is_eps:
-                continue
-
-            # Ignore text/abstract facts even if their labels mention EPS.
+            # Generic fallback is semantic + unit gated so helper
+            # concepts such as weighted-average shares cannot become EPS.
             if "abstract" in tag_lower or "textblock" in tag_lower:
                 continue
 
             for unit, unit_rows in (fact.get("units") or {}).items():
                 if not isinstance(unit_rows, list):
+                    continue
+                if not _is_reported_eps_semantic(tag, label, description, unit):
                     continue
                 for row in unit_rows:
                     form = row.get("form")
@@ -270,10 +285,11 @@ def _period_end_shares(companyfacts, fiscal_end):
         target = date.fromisoformat(fiscal_end)
     except ValueError:
         return None, None
+    # Only a near-term subsequent cover date is accepted as a fallback.
     future_dates = sorted({r["end"] for r in dei_rows if not r.get("start") and r["end"] > fiscal_end})
     for end in future_dates:
         delta = (date.fromisoformat(end) - target).days
-        if 0 < delta <= 120:
+        if 0 < delta <= 60:
             row = _sum_dei_shares_on_date(dei_rows, end)
             if row is not None:
                 row["basis"] = "nearest-subsequent-cover-date"
@@ -417,7 +433,7 @@ def build_valuation_snapshot(companyfacts, fiscal_end, market_data=None, filing_
     market_cap = price * current_shares if price is not None and current_shares and current_shares > 0 else None
     per = price / eps if price is not None and eps is not None and eps > 0 else None
     pbr = price / bps if price is not None and bps is not None and bps > 0 else None
-    result = {"price": price, "market_cap": market_cap, "current_shares_outstanding": current_shares, "current_shares_source": current_shares_basis, "period_end_shares_outstanding": period_shares, "period_end_shares_source": period_shares_row["tag"] if period_shares_row else None, "period_end_shares_basis": period_shares_basis, "eps": eps, "eps_source": eps_row["tag"] if eps_row else None, "eps_basis": eps_basis, "bps": bps, "bps_basis": "parent-attributable-equity-period-end-shares" if bps is not None else None, "bps_equity": equity, "bps_equity_source": equity_row["tag"] if equity_row else None, "per": per, "per_basis": "current-price/latest-full-year-reported-eps" if per is not None else None, "pbr": pbr, "pbr_basis": "current-price/period-end-bps" if pbr is not None else None}
+    result = {"price": price, "market_cap": market_cap, "current_shares_outstanding": current_shares, "current_shares_source": current_shares_basis, "period_end_shares_outstanding": period_shares, "period_end_shares_source": period_shares_row["tag"] if period_shares_row else None, "period_end_shares_basis": period_shares_basis, "eps": eps, "eps_source": eps_row["tag"] if eps_row else None, "eps_unit": eps_row.get("unit") if eps_row else None, "eps_report_label": eps_row.get("_label") if eps_row else None, "eps_basis": eps_basis, "bps": bps, "bps_basis": "parent-attributable-equity-period-end-shares" if bps is not None else None, "bps_equity": equity, "bps_equity_source": equity_row["tag"] if equity_row else None, "per": per, "per_basis": "current-price/latest-full-year-reported-eps" if per is not None else None, "pbr": pbr, "pbr_basis": "current-price/period-end-bps" if pbr is not None else None}
     if equity_row and equity_row.get("basis"):
         result["bps_equity_basis"] = equity_row["basis"]
         result["bps_nci_source_tag"] = equity_row.get("nci_source_tag")
