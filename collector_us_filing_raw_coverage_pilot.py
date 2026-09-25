@@ -169,36 +169,32 @@ def main():
     companies=fetch_eligible(sb)
     resolver=SECXBRLSearchV2_3_8(user_agent=SEC_USER_AGENT)
 
-    # Determine venue from SEC submissions exchange list and retain profile strata.
-    # No eligibility changes occur here.
+    # Build strata from the single official SEC ticker/CIK/exchange file.
+    # This avoids fetching 7,035 submissions just to choose a sample.
     strata=defaultdict(list)
-    preclassified=[]
-    for c in companies:
-        try:
-            sub=resolver.submissions(c["cik"])
-        except Exception as exc:
-            preclassified.append((c,None, f"SUBMISSIONS_ERROR:{type(exc).__name__}"))
-            continue
-        ex=set(x.upper() for x in (sub.get("exchanges") or []) if x)
-        venue="OTC" if "OTC" in ex else "EXCHANGE_LISTED" if ex else "NO_SEC_EXCHANGE"
-        strata[(c.get("scoring_profile") or "standard",venue)].append(c)
-        preclassified.append((c,sub,None))
+    ticker_exchange_url="https://www.sec.gov/files/company_tickers_exchange.json"
+    raw=resolver._get(ticker_exchange_url).json()
+    fields=raw.get("fields") or []
+    idx={name:i for i,name in enumerate(fields)}
+    sec_pair={}
+    for row in raw.get("data") or []:
+        item={k:row[i] if i<len(row) else None for k,i in idx.items()}
+        sec_pair[(str(item.get("ticker") or "").strip().upper(), cik10(item.get("cik")))] = item
+
+    for company in companies:
+        key=(str(company.get("ticker") or "").strip().upper(), cik10(company.get("cik")))
+        sec_item=sec_pair.get(key) or {}
+        ex=str(sec_item.get("exchange") or "").strip().upper()
+        venue="OTC" if ex=="OTC" else "EXCHANGE_LISTED" if ex else "NO_SEC_EXCHANGE"
+        strata[(company.get("scoring_profile") or "standard",venue)].append(company)
 
     selected=[]
     plan={}
     for key,rows in sorted(strata.items()):
-        rows=sorted(rows,key=lambda x:stable(x["ticker"]))
-        take=min(PER_BUCKET,len(rows))
-        plan[f"{key[0]}|{key[1]}"]=take
-        selected.extend((c,s,e) for c,s,e in preclassified if c in rows and e is None)  # deterministic subset below
-    # The comprehension above can retain all; select deterministically per stratum.
-    selected=[]
-    for key,rows in sorted(strata.items()):
         chosen=sorted(rows,key=lambda x:stable(x["ticker"]))[:min(PER_BUCKET,len(rows))]
-        submap={c["ticker"]:(c,s,e) for c,s,e in preclassified if c["ticker"] in {x["ticker"] for x in chosen}}
-        for c in chosen:
-            cc,s,e=submap[c["ticker"]]
-            selected.append((cc,s,e,key[1]))
+        plan[f"{key[0]}|{key[1]}"]=len(chosen)
+        for company in chosen:
+            selected.append((company,None,None,key[1]))
 
     results=[]
     summary=Counter()
