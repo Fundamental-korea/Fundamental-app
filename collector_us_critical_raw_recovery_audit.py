@@ -47,18 +47,33 @@ def norm(v): return (v or "").strip().upper()
 def cik(v): return str(int(v)).zfill(10)
 def stable(v): return int(hashlib.sha256(v.encode()).hexdigest()[:12],16)
 
-def fetch_all(sb):
+def fetch_scalar_rows(sb):
  rows=[];off=0
  while True:
   p=(sb.table("US_Fundamental")
-    .select("ticker,cik,company_name,base_year,period_scores,total_score,missing_metric_count,data_reliability")
+    .select("ticker,cik,company_name,base_year,total_score,missing_metric_count,data_reliability")
     .eq("data_unavailable",False)
-    .order("ticker").range(off,off+PAGE-1).execute().data or [])
+    .gt("missing_metric_count",0)
+    .order("missing_metric_count",desc=True)
+    .order("ticker")
+    .range(off,off+PAGE-1).execute().data or [])
   if not p: break
   rows+=p
   if len(p)<PAGE: break
   off+=PAGE
+  if off>=1000: break
  return rows
+
+def fetch_period_scores(sb, tickers):
+ out=[]
+ for i in range(0,len(tickers),50):
+  batch=tickers[i:i+50]
+  p=(sb.table("US_Fundamental")
+     .select("ticker,period_scores")
+     .in_("ticker",batch)
+     .execute().data or [])
+  out.extend(p)
+ return {r["ticker"]:r.get("period_scores") for r in out}
 
 def metric_scores(row):
  ps=row.get("period_scores") or {}
