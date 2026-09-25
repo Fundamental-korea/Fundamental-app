@@ -27,7 +27,12 @@ from collector_us_valuation import (
 )
 from downturn_us import BENCHMARK, _close_series
 from sec_filing_utils import filing_text_resilient, find_annual_filing_with_history, find_filing_with_history
-from us_valuation import build_valuation_snapshot, parse_common_shares_from_filing
+from us_valuation import (
+    build_valuation_snapshot,
+    currencies_compatible,
+    currency_from_text,
+    parse_common_shares_from_filing,
+)
 
 STANDARD_SECTORS = (
     "technology",
@@ -165,12 +170,29 @@ def find_eps_report_documents(session, cik, annual_filing):
             continue
 
         searchable = f"{short_name} {long_name} {menu_category}"
-        if "earnings per share" not in searchable and "earnings" not in searchable:
+        # Skip report families that are clearly supporting schedules/narratives.
+        # "Details" alone is allowed because genuine XBRL rows are often
+        # rendered with a "(Details)" suffix.
+        if any(
+            token in searchable
+            for token in (
+                "schedule",
+                "supplemental",
+                "narrative",
+                "antidilutive",
+                "reconciliation",
+            )
+        ):
             continue
-        if "per share" not in searchable and "eps" not in searchable:
+        if "earnings per share" not in searchable and "net income per share" not in searchable:
+            continue
+        if "per share" not in searchable:
             continue
 
-        details_rank = 0 if "details" in searchable else 1
+        details_rank = 0 if short_name in {
+            "earnings per share",
+            "earnings per share attributable to ordinary equity holders of the parent",
+        } else 1
         exact_rank = 0 if short_name == "earnings per share" else 1
         matches.append((details_rank, exact_rank, html_file))
 
@@ -199,10 +221,39 @@ def _normalized_report_rows(text):
 
 
 def _eps_row_label_kind(label):
-    """Rank an EPS report row label; diluted/common-share rows come first."""
+    """Rank only direct EPS rows; exclude schedules, narratives and share-count helpers."""
     text = _collapse_space(label).lower()
-    if "earnings" not in text or "share" not in text:
+    if not text:
         return None
+
+    blocked = (
+        "schedule",
+        "supplemental",
+        "narrative",
+        "antidilutive",
+        "reconciliation",
+        "numerator",
+        "denominator",
+        "weighted average",
+        "shares outstanding",
+        "shares in ",
+        "dilutive securities",
+        "excluded from computation",
+    )
+    if any(token in text for token in blocked):
+        return None
+
+    direct_prefix = re.search(
+        r"\b(?:earnings|net income)\s+per\s+(?:common\s+)?share\b",
+        text,
+    )
+    attributable_prefix = re.search(
+        r"\bearnings\s+per\s+share\s+attributable\b",
+        text,
+    )
+    if not direct_prefix and not attributable_prefix:
+        return None
+
     if "per common share" in text and "assuming dilution" in text:
         return 0
     if "per common share" in text and "diluted" in text:
@@ -213,9 +264,12 @@ def _eps_row_label_kind(label):
         return 1
     if "per share" in text and "basic" in text:
         return 2
-    if "per share" in text:
-        return 3
-    return None
+    return 3
+
+
+def is_safe_reported_eps_label(label):
+    """Public gate shared with the valuation target selector."""
+    return _eps_row_label_kind(label) is not None
 
 
 def parse_reported_eps_from_report(text):
@@ -232,7 +286,9 @@ def parse_reported_eps_from_report(text):
                 continue
 
             values = []
+            detected_currency = currency_from_text(cell)
             for later_cell in row[index + 1 :]:
+                detected_currency = detected_currency or currency_from_text(later_cell)
                 for token in re.findall(
                     r"(?:\(-?\$?\d[\d,]*(?:\.\d+)?\)|-?\$?\d[\d,]*(?:\.\d+)?)",
                     later_cell,
@@ -242,19 +298,20 @@ def parse_reported_eps_from_report(text):
                         values.append(value)
 
             if values:
-                candidates.append((kind, values[0], cell))
+                candidates.append((kind, values[0], cell, detected_currency))
 
     if not candidates:
         return None
 
     candidates.sort(key=lambda item: item[0])
-    kind, value, label = candidates[0]
+    kind, value, label, detected_currency = candidates[0]
     return {
         "value": value,
         "tag": "filing:xbrl-reported-eps",
         "namespace": "filing",
         "basis": "directly-reported-annual-sec-xbrl-eps",
         "report_label": label,
+        "currency": detected_currency,
     }
 
 
@@ -344,6 +401,7 @@ def collect_valuation_one(session, row):
         quote,
         filing_shares=period_filing_shares,
         current_filing_shares=current_filing_shares,
+        security_ticker=ticker,
     )
 
     # Company Facts is the first source for annual EPS. Some issuers do not
@@ -371,12 +429,31 @@ def collect_valuation_one(session, row):
                 valuation["eps_report_document"] = report_document
                 valuation["eps_report_label"] = filing_eps.get("report_label")
                 valuation["eps_filing_source_cik"] = annual_filing.get("source_cik")
+
+                eps_currency = filing_eps.get("currency") or valuation.get("reporting_currency")
+                valuation["eps_currency"] = eps_currency
+
                 price = valuation.get("price")
                 eps = filing_eps["value"]
-                valuation["per"] = price / eps if price is not None and eps > 0 else None
+                quote_currency = valuation.get("quote_currency")
+                per_currency_ok = currencies_compatible(eps_currency, quote_currency)
+                valuation["per_currency_compatible"] = per_currency_ok
+                valuation["per"] = (
+                    price / eps
+                    if price is not None and eps > 0 and per_currency_ok
+                    else None
+                )
                 valuation["per_basis"] = (
                     "current-price/directly-reported-annual-sec-xbrl-eps"
                     if valuation.get("per") is not None
+                    else None
+                )
+                valuation["per_status"] = (
+                    "currency-mismatch"
+                    if valuation.get("per") is None
+                    and price is not None
+                    and eps > 0
+                    and not per_currency_ok
                     else None
                 )
                 valuation["eps_filing_form"] = annual_filing["form"]
