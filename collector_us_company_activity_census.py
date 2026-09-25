@@ -189,7 +189,7 @@ def classify(doc, local):
         review_bucket = "OTC"
     elif listed_exchange_signal and has_foreign_periodic and not has_us_periodic:
         review_bucket = "FOREIGN_ISSUER_EXCHANGE"
-    elif listed_exchange_signal and sec_entity_type == "operating" and has_us_periodic:
+    elif listed_exchange_signal and sec_entity_type == "OPERATING" and has_us_periodic:
         review_bucket = "US_EXCHANGE_STANDARD_REPORTING"
     elif listed_exchange_signal and has_us_periodic:
         review_bucket = "US_EXCHANGE_OTHER_ENTITY"
