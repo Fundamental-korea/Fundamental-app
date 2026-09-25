@@ -806,6 +806,69 @@ def select_eps_pair(current_candidates, prior_candidates):
     }
 
 
+def _resolver_candidate_fact(candidate):
+    value = clean_number(_candidate_attr(candidate, "value"))
+    end = _candidate_attr(candidate, "end")
+    if value is None or not end:
+        return None
+    return {
+        "value": value,
+        "unit": _candidate_attr(candidate, "unit"),
+        "end": end,
+        "start": _candidate_attr(candidate, "start"),
+        "filed": _candidate_attr(candidate, "filed"),
+        "form": _candidate_attr(candidate, "form"),
+        "namespace": _candidate_attr(candidate, "namespace"),
+        "concept": _local_candidate_concept(candidate),
+        "fy": _candidate_attr(candidate, "fy"),
+        "source": "sec-filing-xbrl-inline",
+    }
+
+
+def _search_matching_candidate(resolver, cik, metric, year, *, end=None, unit=None, limit=20):
+    candidates, _ = resolver.search_filing(cik, metric, year=int(year), limit=limit)
+    for candidate in candidates or []:
+        fact = _resolver_candidate_fact(candidate)
+        if fact is None:
+            continue
+        if end is not None and fact["end"] != end:
+            continue
+        if unit is not None and str(fact.get("unit") or "").strip().lower() != str(unit or "").strip().lower():
+            continue
+        return fact
+    return None
+
+
+def _search_matching_debt(resolver, cik, year, anchor_end, anchor_unit):
+    total = _search_matching_candidate(
+        resolver, cik, "debt_total", year, end=anchor_end, unit=anchor_unit, limit=10
+    )
+    if total is not None:
+        return total
+
+    current = _search_matching_candidate(
+        resolver, cik, "debt_current", year, end=anchor_end, unit=anchor_unit, limit=10
+    )
+    noncurrent = _search_matching_candidate(
+        resolver, cik, "debt_noncurrent", year, end=anchor_end, unit=anchor_unit, limit=10
+    )
+    if current is None or noncurrent is None:
+        return None
+
+    return {
+        "value": current["value"] + noncurrent["value"],
+        "unit": anchor_unit,
+        "end": anchor_end,
+        "start": None,
+        "filed": max(current.get("filed") or "", noncurrent.get("filed") or ""),
+        "form": current.get("form") or noncurrent.get("form"),
+        "namespace": "derived",
+        "concept": "DerivedDebtFromCurrentPlusNoncurrent",
+        "source": "filing-xbrl-derived",
+        "components": [current, noncurrent],
+    }
+
+
 def recover_critical_filing_metrics(
     cik,
     latest_year,
@@ -838,6 +901,51 @@ def recover_critical_filing_metrics(
             cash = roic_inputs.get("cash")
             opinc = roic_inputs.get("operating_income")
             debt = filing_mapped.get("selected_debt")
+            selected_interest = filing_mapped.get("selected_interest")
+
+            # The strict filing mapper is the first choice. If one component
+            # remains unresolved, query the same annual Inline-XBRL filing for
+            # that exact economic metric and require the filing basis to match
+            # the already-selected date/unit anchor.
+            anchor_end = (equity or {}).get("end") or (cash or {}).get("end")
+            anchor_unit = (equity or {}).get("unit") or (cash or {}).get("unit")
+
+            if equity is None and anchor_end is None:
+                equity = _search_matching_candidate(resolver, cik, "equity", latest_year)
+                anchor_end = (equity or {}).get("end")
+                anchor_unit = (equity or {}).get("unit")
+            if cash is None and anchor_end is not None:
+                cash = _search_matching_candidate(
+                    resolver, cik, "cash", latest_year, end=anchor_end, unit=anchor_unit
+                )
+            if opinc is None:
+                opinc_anchor_end = anchor_end or (selected_interest or {}).get("end")
+                opinc_anchor_unit = anchor_unit or (selected_interest or {}).get("unit")
+                opinc = _search_matching_candidate(
+                    resolver,
+                    cik,
+                    "operating_income",
+                    latest_year,
+                    end=opinc_anchor_end,
+                    unit=opinc_anchor_unit,
+                )
+            if debt is None and anchor_end and anchor_unit:
+                debt = _search_matching_debt(
+                    resolver,
+                    cik,
+                    latest_year,
+                    anchor_end,
+                    anchor_unit,
+                )
+            if selected_interest is None and opinc is not None:
+                selected_interest = _search_matching_candidate(
+                    resolver,
+                    cik,
+                    "interest_expense",
+                    latest_year,
+                    end=opinc.get("end"),
+                    unit=opinc.get("unit"),
+                )
 
             if need_roic and all(x is not None for x in (equity, cash, opinc, debt)):
                 result["annual_overrides"][int(latest_year)] = {
@@ -856,7 +964,6 @@ def recover_critical_filing_metrics(
                 }
 
             if need_interest and opinc is not None:
-                selected_interest = filing_mapped.get("selected_interest")
                 if selected_interest and clean_number(selected_interest.get("value")) not in (None, 0):
                     result["annual_overrides"].setdefault(int(latest_year), {})["operating_income"] = opinc["value"]
                     result["annual_overrides"][int(latest_year)]["interest_expense"] = selected_interest["value"]
@@ -998,242 +1105,3 @@ def period_metrics(index, latest_year, period):
     pair = period_metrics_pair(index, latest_year, period)
     if pair is None:
         return None, {}, None
-    return latest_year, pair["worst_metrics"], latest_year - period
-
-
-
-def build_result(
-    ticker,
-    cik,
-    company_name,
-    facts,
-    submissions,
-    universe_row=None,
-    market_prices=None,
-    filing_resolver=None,
-    filing_recovery_cache=None,
-):
-    universe_row = universe_row or {}
-    index = build_fact_index(facts)
-    all_years = sorted({y for rows in index.values() for y in rows.keys()})
-    snapshot = build_latest_snapshot(facts)
-
-    if not all_years:
-        return {
-            "ticker": ticker,
-            "cik": str(cik),
-            "company_name": company_name,
-            "sector": universe_row.get("sector_common") or classify_company(submissions),
-            "base_year": None,
-            "period_scores": {},
-            "total_score": None,
-            "grade": None,
-            "data_unavailable": True,
-            "data_reliability": "none",
-            "missing_metric_count": 10,
-            "snapshot": snapshot,
-            "snapshot_fiscal_end": snapshot.get("fiscal_end") if snapshot else None,
-            "snapshot_period": snapshot.get("fiscal_period") if snapshot else None,
-            "snapshot_form": snapshot.get("form") if snapshot else None,
-            "snapshot_filed": snapshot.get("filed") if snapshot else None,
-            "snapshot_basis": snapshot.get("basis") if snapshot else None,
-            "snapshot_updated_at": datetime.now(timezone.utc).isoformat(),
-            "updated_at": datetime.now(timezone.utc).isoformat(),
-        }
-
-    flow_years = sorted(
-        set(index.get("revenue", {}).keys())
-        | set(index.get("operating_income", {}).keys())
-        | set(index.get("net_income", {}).keys())
-    )
-    latest_year = max(flow_years) if flow_years else max(all_years)
-    profile = universe_row.get("scoring_profile") or "standard"
-
-    filing_overrides = {}
-    filing_recovery_meta = {}
-    if filing_resolver is not None and latest_year is not None:
-        latest_probe = annual_metrics(index, latest_year)
-        prior_probe = annual_metrics(index, latest_year - 1)
-        need_roic = profile in CRITICAL_ROIC_PROFILES and latest_probe.get("roic") is None
-        need_interest = profile in CRITICAL_INTEREST_PROFILES and latest_probe.get("interest_coverage") is None
-        need_eps_growth = (
-            latest_probe.get("eps") is None
-            or prior_probe.get("eps") is None
-        )
-        if need_roic or need_interest or need_eps_growth:
-            recovery = recover_critical_filing_metrics(
-                cik,
-                latest_year,
-                profile,
-                filing_resolver,
-                cache=filing_recovery_cache,
-                need_roic=need_roic,
-                need_interest=need_interest,
-                need_eps_growth=need_eps_growth,
-            )
-            filing_overrides = recovery.get("annual_overrides") or {}
-            filing_recovery_meta = recovery
-
-    downturn_value, downturn_detail = calculate_downturn_defense(
-        ticker,
-        market=(market_prices or {}).get("market"),
-        stock=(market_prices or {}).get("stock"),
-    )
-
-    period_scores = {}
-    latest_score = latest_grade = None
-    latest_missing = 0
-
-    for period in PERIODS:
-        pdata = period_metrics_pair(index, latest_year, period, annual_overrides=filing_overrides)
-        if pdata is None:
-            continue
-
-        avg_metrics = dict(pdata["avg_metrics"])
-        worst_metrics = dict(pdata["worst_metrics"])
-        avg_metrics["downturn_defense"] = downturn_value
-        worst_metrics["downturn_defense"] = downturn_value
-
-        avg_score = calculate_us_score(avg_metrics, profile=profile)
-        worst_score = calculate_us_score(worst_metrics, profile=profile)
-
-        for scored, metrics in ((avg_score, avg_metrics), (worst_score, worst_metrics)):
-            for growth_key in ("revenue_growth", "eps_growth"):
-                value = metrics.get(growth_key)
-                if value is not None and abs(value) >= 100:
-                    if growth_key in scored.get("metric_scores", {}):
-                        scored["metric_scores"][growth_key]["is_extreme"] = True
-
-        period_scores[f"{period}y"] = {
-            "years_used": pdata["years_used"],
-            "yearly_breakdown": pdata["yearly_breakdown"],
-            "avg": {
-                "total_score": avg_score["total_score"],
-                "grade": avg_score["grade"],
-                "metric_scores": avg_score["metric_scores"],
-                "sub_scores": avg_score.get("sub_scores", {}),
-                "financial_adjusted": False,
-                "missing_metric_count": avg_score["missing_metric_count"],
-                "scoring_version": avg_score["scoring_version"],
-                "available_weight": avg_score["available_weight"],
-                "coverage_pct": avg_score["coverage_pct"],
-                "score_cap": avg_score["score_cap"],
-                "confidence_level": avg_score["confidence_level"],
-            },
-            "worst": {
-                "total_score": worst_score["total_score"],
-                "grade": worst_score["grade"],
-                "metric_scores": worst_score["metric_scores"],
-                "sub_scores": worst_score.get("sub_scores", {}),
-                "financial_adjusted": False,
-                "missing_metric_count": worst_score["missing_metric_count"],
-                "scoring_version": worst_score["scoring_version"],
-                "available_weight": worst_score["available_weight"],
-                "coverage_pct": worst_score["coverage_pct"],
-                "score_cap": worst_score["score_cap"],
-                "confidence_level": worst_score["confidence_level"],
-            },
-        }
-
-        if period == 1:
-            latest_score = avg_score["total_score"]
-            latest_grade = avg_score["grade"]
-            latest_missing = avg_score["missing_metric_count"]
-
-    from us_scoring import data_reliability_from_periods
-
-    reliability = data_reliability_from_periods(period_scores)
-
-    return {
-        "ticker": ticker,
-        "cik": str(cik),
-        "company_name": company_name,
-        "sector": universe_row.get("sector_common") or classify_company(submissions),
-        "base_year": latest_year,
-        "period_scores": period_scores,
-        "total_score": int(round(latest_score)) if latest_score is not None else None,
-        "grade": latest_grade,
-        "data_unavailable": not bool(period_scores),
-        "data_reliability": reliability,
-        "missing_metric_count": latest_missing,
-        "filing_recovery": filing_recovery_meta,
-        "updated_at": datetime.now(timezone.utc).isoformat(),
-        "downturn_defense": downturn_value,
-        "downturn_detail": downturn_detail,
-        "snapshot": snapshot,
-        "snapshot_fiscal_end": snapshot.get("fiscal_end") if snapshot else None,
-        "snapshot_period": snapshot.get("fiscal_period") if snapshot else None,
-        "snapshot_form": snapshot.get("form") if snapshot else None,
-        "snapshot_filed": snapshot.get("filed") if snapshot else None,
-        "snapshot_basis": snapshot.get("basis") if snapshot else None,
-        "snapshot_updated_at": datetime.now(timezone.utc).isoformat(),
-    }
-
-
-
-def get_universe(sb, tickers=None, limit=None, all_rows=False):
-    columns = "ticker,cik,company_name,sector_common,company_type,scoring_profile"
-    if tickers:
-        return sb.table("US_Companies").select(columns).in_("ticker", tickers).eq("is_fundamental_eligible", True).execute().data
-    query = sb.table("US_Companies").select(columns).eq("is_fundamental_eligible", True).order("ticker")
-    if not all_rows:
-        query = query.limit(limit or 5)
-    return query.execute().data
-
-
-def main():
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--ticker")
-    parser.add_argument("--tickers")
-    parser.add_argument("--limit", type=int, default=5)
-    parser.add_argument("--all", action="store_true", dest="all_rows")
-    args = parser.parse_args()
-    if not SUPABASE_KEY:
-        raise RuntimeError("SUPABASE_SECRET_KEY or SUPABASE_KEY is required")
-    sb = create_client(SUPABASE_URL, SUPABASE_KEY)
-    tickers = [args.ticker.upper().strip()] if args.ticker else ([x.upper().strip() for x in args.tickers.split(",") if x.strip()] if args.tickers else None)
-    rows = get_universe(sb, tickers=tickers, limit=args.limit, all_rows=args.all_rows)
-    session = requests.Session()
-    session.headers.update({"User-Agent": SEC_USER_AGENT})
-    filing_resolver = SECXBRLSearchV2_3_8(
-        user_agent=SEC_USER_AGENT,
-        session=session,
-    )
-    filing_recovery_cache = {}
-    market = None
-    stock_cache = {}
-    try:
-        from downturn_us import _close_series, BENCHMARK
-        market = _close_series(BENCHMARK)
-    except Exception as exc:
-        print(f"[US] downturn market data unavailable: {exc}")
-    for i, row in enumerate(rows, 1):
-        ticker, cik = row["ticker"], row["cik"]
-        try:
-            facts, submissions = load_company(session, ticker, cik)
-            if ticker not in stock_cache:
-                try:
-                    from downturn_us import _close_series
-                    stock_cache[ticker] = _close_series(ticker)
-                except Exception:
-                    stock_cache[ticker] = None
-            result = build_result(
-                ticker,
-                cik,
-                row.get("company_name") or submissions.get("name") or ticker,
-                facts,
-                submissions,
-                universe_row=row,
-                market_prices={"market": market, "stock": stock_cache.get(ticker)},
-                filing_resolver=filing_resolver,
-                filing_recovery_cache=filing_recovery_cache,
-            )
-            sb.table("US_Fundamental").upsert(result, on_conflict="ticker").execute()
-            print(f"[{i}/{len(rows)}] {ticker}: score={result['total_score']} grade={result['grade']} periods={len(result['period_scores'])} reliability={result['data_reliability']} snapshot={result.get('snapshot_fiscal_end')}")
-        except Exception as exc:
-            print(f"[{i}/{len(rows)}] {ticker}: FAILED: {exc}")
-    print("Completed.")
-
-
-if __name__ == "__main__":
-    main()
