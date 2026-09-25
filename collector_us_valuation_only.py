@@ -286,7 +286,9 @@ def parse_reported_eps_from_report(text):
                 continue
 
             values = []
+            detected_currency = currency_from_text(cell)
             for later_cell in row[index + 1 :]:
+                detected_currency = detected_currency or currency_from_text(later_cell)
                 for token in re.findall(
                     r"(?:\(-?\$?\d[\d,]*(?:\.\d+)?\)|-?\$?\d[\d,]*(?:\.\d+)?)",
                     later_cell,
@@ -296,20 +298,20 @@ def parse_reported_eps_from_report(text):
                         values.append(value)
 
             if values:
-                candidates.append((kind, values[0], cell))
+                candidates.append((kind, values[0], cell, detected_currency))
 
     if not candidates:
         return None
 
     candidates.sort(key=lambda item: item[0])
-    kind, value, label = candidates[0]
+    kind, value, label, detected_currency = candidates[0]
     return {
         "value": value,
         "tag": "filing:xbrl-reported-eps",
         "namespace": "filing",
         "basis": "directly-reported-annual-sec-xbrl-eps",
         "report_label": label,
-        "currency": currency_from_text(label),
+        "currency": detected_currency,
     }
 
 
