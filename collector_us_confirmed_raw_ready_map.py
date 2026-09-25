@@ -4,15 +4,24 @@ import json,os,traceback
 from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8
 from sec_filing_financial_map import classify_filing_rows
 
-TICKERS={
- "QMCO":"0001835681","LUNR":"0001782837","BOW":"0001551306",
- "AQB":"0000823469","SB":"0000081680","NPKI":"0000072237","CWD":"0001037387",
-}
+TICKERS=("QMCO","LUNR","BOW","AQB","SB","NPKI","CWD")
 UA=os.environ.get("SEC_USER_AGENT","Fundamental-app contact@example.com")
+SUPABASE_URL=os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
+SUPABASE_KEY=os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_KEY","")
 
 def main():
+ if not SUPABASE_KEY: raise RuntimeError("Supabase key required")
+ from supabase import create_client
+ sb=create_client(SUPABASE_URL,SUPABASE_KEY)
+ rows=sb.table("US_Companies").select("ticker,cik,company_name").in_("ticker",list(TICKERS)).execute().data or []
+ cik_map={x["ticker"]:x for x in rows}
  r=SECXBRLSearchV2_3_8(user_agent=UA)
- for t,cik in TICKERS.items():
+ for t in TICKERS:
+  rec=cik_map.get(t)
+  cik=rec["cik"] if rec else None
+  print("\nDB_RECORD",t,rec)
+  if not cik:
+   print("ERROR missing DB CIK"); continue
   print("\n===",t,cik,"===")
   try:
    sub=r.submissions(cik)
