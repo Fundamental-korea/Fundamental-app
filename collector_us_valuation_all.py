@@ -14,7 +14,7 @@ import time
 from supabase import create_client
 
 from collector_us_fundamental import SUPABASE_KEY, SUPABASE_URL
-from collector_us_valuation_only import collect_valuation_one
+from collector_us_valuation_only import collect_valuation_one, is_safe_reported_eps_label
 
 PAGE_SIZE = 100
 
@@ -33,8 +33,10 @@ def _eps_source_looks_safe(valuation):
     basis = str(valuation.get("eps_basis") or "").strip().lower()
     if not source or valuation.get("eps") is None:
         return False
-    if source in {"EarningsPerShareDiluted", "EarningsPerShareBasic", "filing:xbrl-reported-eps"}:
+    if source in {"EarningsPerShareDiluted", "EarningsPerShareBasic"}:
         return True
+    if source == "filing:xbrl-reported-eps":
+        return is_safe_reported_eps_label(valuation.get("eps_report_label"))
     if not basis.startswith("reported-"):
         return False
     lower = source.lower()
@@ -56,8 +58,11 @@ def _eps_source_looks_safe(valuation):
 def _valuation_core_complete(valuation):
     if not isinstance(valuation, dict):
         return False
-    if any(valuation.get(key) is None for key in CORE_VALUATION_KEYS):
-        return False
+    for key in CORE_VALUATION_KEYS:
+        if key == "bps" and valuation.get("bps_status") == "not-applicable-preferred-security":
+            continue
+        if valuation.get(key) is None:
+            return False
     if not _eps_source_looks_safe(valuation):
         return False
     try:
