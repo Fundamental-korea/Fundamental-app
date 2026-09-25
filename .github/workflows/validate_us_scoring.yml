@@ -23,6 +23,7 @@ on:
       - "us_valuation.py"
       - "collector_us_valuation_all.py"
       - "test_us_valuation.py"
+      - "test_us_filing_recovery.py"
       - ".github/workflows/validate_us_scoring.yml"
   workflow_dispatch:
 
@@ -48,4 +49,4 @@ jobs:
         run: python -m py_compile app.py collector_us_fundamental.py collector_us_standard_fallback.py collector_us_utility_v4.py collector_us_full_recollect.py collector_us_recover_unupdated.py collector_us_snapshot_recover.py collector_us_roic_recover.py collector_us_valuation_all.py us_scoring.py us_classification.py backfill_us_score_metadata.py us_valuation.py chart_indicators.py historical_pattern.py search_aliases.py test_us_scoring.py test_us_classification.py test_historical_pattern.py test_chart_indicators.py test_us_recovery.py test_us_snapshot.py test_us_valuation.py
 
       - name: Run regression tests
-        run: python -m unittest -v test_us_scoring.py test_us_classification.py test_historical_pattern.py test_chart_indicators.py test_us_recovery.py test_us_valuation.py
+        run: python -m unittest -v test_us_scoring.py test_us_classification.py test_historical_pattern.py test_chart_indicators.py test_us_recovery.py test_us_valuation.py test_us_filing_recovery.py
