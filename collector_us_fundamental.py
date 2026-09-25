@@ -806,6 +806,67 @@ def select_eps_pair(current_candidates, prior_candidates):
     }
 
 
+def _resolver_candidate_fact(candidate):
+    value = clean_number(_candidate_attr(candidate, "value"))
+    end = _candidate_attr(candidate, "end")
+    if value is None or not end:
+        return None
+    return {
+        "value": value,
+        "unit": _candidate_attr(candidate, "unit"),
+        "end": end,
+        "start": _candidate_attr(candidate, "start"),
+        "filed": _candidate_attr(candidate, "filed"),
+        "form": _candidate_attr(candidate, "form"),
+        "namespace": _candidate_attr(candidate, "namespace"),
+        "concept": _local_candidate_concept(candidate),
+        "fy": _candidate_attr(candidate, "fy"),
+        "source": "sec-filing-xbrl-inline",
+    }
+
+
+def _search_matching_candidate(resolver, cik, metric, year, *, end=None, unit=None, limit=20):
+    candidates, _ = resolver.search_filing(cik, metric, year=int(year), limit=limit)
+    for candidate in candidates or []:
+        fact = _resolver_candidate_fact(candidate)
+        if fact is None:
+            continue
+        if end is not None and fact["end"] != end:
+            continue
+        if unit is not None and str(fact.get("unit") or "").strip().lower() != str(unit or "").strip().lower():
+            continue
+        return fact
+    return None
+
+
+def _search_matching_debt(resolver, cik, year, anchor_end, anchor_unit):
+    total = _search_matching_candidate(
+        resolver, cik, "debt_total", year, end=anchor_end, unit=anchor_unit, limit=10
+    )
+    if total is not None:
+        return total
+    current = _search_matching_candidate(
+        resolver, cik, "debt_current", year, end=anchor_end, unit=anchor_unit, limit=10
+    )
+    noncurrent = _search_matching_candidate(
+        resolver, cik, "debt_noncurrent", year, end=anchor_end, unit=anchor_unit, limit=10
+    )
+    if current is None or noncurrent is None:
+        return None
+    return {
+        "value": current["value"] + noncurrent["value"],
+        "unit": anchor_unit,
+        "end": anchor_end,
+        "start": None,
+        "filed": max(current.get("filed") or "", noncurrent.get("filed") or ""),
+        "form": current.get("form") or noncurrent.get("form"),
+        "namespace": "derived",
+        "concept": "DerivedDebtFromCurrentPlusNoncurrent",
+        "source": "filing-xbrl-derived",
+        "components": [current, noncurrent],
+    }
+
+
 def recover_critical_filing_metrics(
     cik,
     latest_year,
@@ -838,6 +899,45 @@ def recover_critical_filing_metrics(
             cash = roic_inputs.get("cash")
             opinc = roic_inputs.get("operating_income")
             debt = filing_mapped.get("selected_debt")
+            selected_interest = filing_mapped.get("selected_interest")
+
+            anchor_end = (equity or {}).get("end") or (cash or {}).get("end")
+            anchor_unit = (equity or {}).get("unit") or (cash or {}).get("unit")
+
+            if equity is None:
+                equity = _search_matching_candidate(resolver, cik, "equity", latest_year)
+                anchor_end = (equity or {}).get("end") or anchor_end
+                anchor_unit = (equity or {}).get("unit") or anchor_unit
+
+            if cash is None and anchor_end is not None:
+                cash = _search_matching_candidate(
+                    resolver, cik, "cash", latest_year, end=anchor_end, unit=anchor_unit
+                )
+
+            if opinc is None:
+                opinc = _search_matching_candidate(
+                    resolver,
+                    cik,
+                    "operating_income",
+                    latest_year,
+                    end=anchor_end,
+                    unit=anchor_unit,
+                )
+
+            if debt is None and anchor_end and anchor_unit:
+                debt = _search_matching_debt(
+                    resolver, cik, latest_year, anchor_end, anchor_unit
+                )
+
+            if selected_interest is None and opinc is not None:
+                selected_interest = _search_matching_candidate(
+                    resolver,
+                    cik,
+                    "interest_expense",
+                    latest_year,
+                    end=opinc.get("end"),
+                    unit=opinc.get("unit"),
+                )
 
             if need_roic and all(x is not None for x in (equity, cash, opinc, debt)):
                 result["annual_overrides"][int(latest_year)] = {
@@ -856,7 +956,6 @@ def recover_critical_filing_metrics(
                 }
 
             if need_interest and opinc is not None:
-                selected_interest = filing_mapped.get("selected_interest")
                 if selected_interest and clean_number(selected_interest.get("value")) not in (None, 0):
                     result["annual_overrides"].setdefault(int(latest_year), {})["operating_income"] = opinc["value"]
                     result["annual_overrides"][int(latest_year)]["interest_expense"] = selected_interest["value"]
@@ -1156,7 +1255,6 @@ def build_result(
         "data_unavailable": not bool(period_scores),
         "data_reliability": reliability,
         "missing_metric_count": latest_missing,
-        "filing_recovery": filing_recovery_meta,
         "updated_at": datetime.now(timezone.utc).isoformat(),
         "downturn_defense": downturn_value,
         "downturn_detail": downturn_detail,
