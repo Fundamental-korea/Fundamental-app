@@ -44,7 +44,7 @@ HIGH_IMPACT_FIELDS = (
     "eps",
 )
 
-OTC_EXCHANGES = {"PNK", "OTCM", "OTCMKTS", "OTC", "PINK"}
+OTC_EXCHANGES = {"PNK", "OTCM", "OTCMKTS", "OTC", "PINK", "OQB", "OQX", "OID"}
 FOREIGN_FORMS = {"20-F", "20-F/A", "40-F", "40-F/A"}
 ADR_RE = re.compile(r"(/ADR\b|\bADR\b|AMERICAN DEPOSITARY|DEPOSITARY RECEIPT)", re.I)
 
@@ -101,6 +101,7 @@ def sec_profile(cik: str) -> dict[str, Any]:
         "recent_forms": [],
         "sec_sic": None,
         "sec_entity_type": None,
+        "annual_domestic_filing": False,
     }
     url = SEC_SUBMISSIONS_URL.format(cik=str(cik).zfill(10))
     try:
@@ -111,6 +112,7 @@ def sec_profile(cik: str) -> dict[str, Any]:
         forms = list(recent.get("form") or [])
         out["recent_forms"] = forms[:20]
         out["foreign_filing"] = any(f in FOREIGN_FORMS for f in forms[:20])
+        out["annual_domestic_filing"] = any(f in {"10-K", "10-K/A"} for f in forms[:20])
         out["sec_sic"] = data.get("sic")
         out["sec_entity_type"] = data.get("entityType")
         out["sec_ok"] = True
@@ -150,6 +152,28 @@ def classify_404(company: dict[str, Any]) -> dict[str, Any]:
     if otc:
         class_flags.append("otc")
 
+    classification = "+".join(class_flags) if class_flags else "us_non_adr_non_otc_or_unknown"
+
+    recovery_eligible = bool(
+        s.get("sec_ok")
+        and y.get("yahoo_ok")
+        and s.get("annual_domestic_filing")
+        and not foreign
+        and not adr
+        and not otc
+    )
+
+    if recovery_eligible:
+        recovery_track = "us_domestic_sec"
+    elif foreign or adr or otc:
+        recovery_track = "exclude_non_domestic_or_otc"
+    elif not s.get("sec_ok") or not y.get("yahoo_ok"):
+        recovery_track = "unknown_insufficient_profile"
+    elif not s.get("annual_domestic_filing"):
+        recovery_track = "no_recent_10k_signal"
+    else:
+        recovery_track = "manual_review"
+
     return {
         "ticker": ticker,
         "cik": str(company.get("cik") or ""),
@@ -160,7 +184,10 @@ def classify_404(company: dict[str, Any]) -> dict[str, Any]:
         "is_otc": otc,
         "is_adr": adr,
         "is_foreign": foreign,
-        "classification": "+".join(class_flags) if class_flags else "us_non_adr_non_otc_or_unknown",
+        "classification": classification,
+        "recovery_track": recovery_track,
+        "recovery_eligible": recovery_eligible,
+        "annual_domestic_filing": bool(s.get("annual_domestic_filing")),
         "yahoo_exchange": y.get("yahoo_exchange"),
         "yahoo_country": y.get("yahoo_country"),
         "recent_forms": s.get("recent_forms") or [],
