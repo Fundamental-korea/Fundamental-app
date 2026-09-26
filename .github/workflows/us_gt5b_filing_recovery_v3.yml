@@ -54,7 +54,7 @@ jobs:
       - name: Recover >$5B CompanyFacts-404 filings
         run: |
           set -euo pipefail
-          python collector_us_gt5b_filing_recovery_v3.py             --queue-csv /tmp/planner/us_404_priority_queue.csv             --bucket over_5b             --expected-targets 166             --out-dir /tmp/filing_recovery
+          python collector_us_gt5b_filing_recovery_v3.py             --queue-csv /tmp/planner/us_404_priority_queue.csv             --bucket over_5b             --eligible-only             --out-dir /tmp/filing_recovery
 
       - name: Upload recovery result
         uses: actions/upload-artifact@v4
