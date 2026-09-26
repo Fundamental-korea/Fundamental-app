@@ -120,3 +120,90 @@ jobs:
           fi
           python collector_us_fundamental.py --tickers "$TICKERS"
 
+
+  canonical_inventory:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[RUN_CANONICAL_INVENTORY]') }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        batch: [0,1,2,3,4,5,6,7,8,9,10,11,12,13]
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    env:
+      BATCH_INDEX: ${{ matrix.batch }}
+      BATCH_SIZE: 500
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install inventory dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests supabase
+
+      - name: Run canonical field inventory batch
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/canonical_inventory
+          python collector_us_canonical_field_inventory.py batch \
+            --batch "$BATCH_INDEX" \
+            --batch-size "$BATCH_SIZE" \
+            --out "/tmp/canonical_inventory/batch-${BATCH_INDEX}.json"
+
+      - name: Upload inventory batch
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-inventory-${{ matrix.batch }}
+          path: /tmp/canonical_inventory/batch-${{ matrix.batch }}.json
+          if-no-files-found: error
+
+  canonical_inventory_merge:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[RUN_CANONICAL_INVENTORY]') }}
+    needs: canonical_inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Download inventory batches
+        uses: actions/download-artifact@v4
+        with:
+          pattern: canonical-inventory-*
+          path: /tmp/canonical_inventory
+          merge-multiple: true
+
+      - name: Merge inventory
+        run: |
+          set -euo pipefail
+          python collector_us_canonical_field_inventory.py merge \
+            --input-dir /tmp/canonical_inventory \
+            --out-json /tmp/us_canonical_field_inventory.json \
+            --out-txt /tmp/us_canonical_field_inventory.txt
+
+      - name: Upload merged inventory report
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-canonical-field-inventory-report
+          path: |
+            /tmp/us_canonical_field_inventory.json
+            /tmp/us_canonical_field_inventory.txt
+          if-no-files-found: error
