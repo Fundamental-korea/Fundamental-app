@@ -119,7 +119,7 @@ def fetch_annual(sb, tickers: list[str]) -> dict[str, list[dict[str, Any]]]:
             page = (
                 sb.table("US_Fundamental_Annual")
                 .select(
-                    "ticker,fiscal_year,period_end,filed,form,fiscal_period,"
+                    "ticker,cik,company_name,fiscal_year,period_end,filed,form,fiscal_period,"
                     "source_kind,source_accession,source_document,canonical,"
                     "provenance,completeness,recovery_status,recovery_notes,updated_at"
                 )
@@ -368,6 +368,8 @@ def merge_filing_rows(
 
         if old is None:
             merged = dict(src)
+            merged["cik"] = merged.get("cik") or ""
+            merged["company_name"] = merged.get("company_name") or ""
             merged["recovery_status"] = "targeted_filing_recovery"
             merged["recovery_notes"] = {
                 **(merged.get("recovery_notes") or {}),
@@ -396,6 +398,8 @@ def merge_filing_rows(
         if not changed:
             continue
 
+        old["cik"] = old.get("cik") or src.get("cik") or ""
+        old["company_name"] = old.get("company_name") or src.get("company_name") or ""
         old["canonical"] = old_can
         old["provenance"] = old_prov
         old["completeness"] = dict(
@@ -653,6 +657,28 @@ def main() -> None:
     ) as fh:
         json.dump(result, fh, ensure_ascii=False, indent=2)
 
+    from collections import Counter
+
+    failure_reason_counts = Counter(
+        str(item.get("error", "")).split(":", 1)[0]
+        for item in failures
+    )
+    unchanged_metric_counts = Counter()
+    unchanged_attempt_error_counts = Counter()
+    for item in unchanged:
+        for metric in item.get("targets", []):
+            unchanged_metric_counts[metric] += 1
+        for attempt in item.get("attempts", []):
+            unchanged_attempt_error_counts[
+                str(attempt.get("error") or "unknown")
+            ] += 1
+
+    result["failure_reason_counts"] = dict(failure_reason_counts)
+    result["unchanged_metric_counts"] = dict(unchanged_metric_counts)
+    result["unchanged_attempt_error_counts"] = dict(
+        unchanged_attempt_error_counts
+    )
+
     print(
         json.dumps(
             {
@@ -666,6 +692,9 @@ def main() -> None:
                     "recovered",
                     "unchanged",
                     "failures",
+                    "failure_reason_counts",
+                    "unchanged_metric_counts",
+                    "unchanged_attempt_error_counts",
                 )
             },
             ensure_ascii=False,
