@@ -4597,7 +4597,7 @@ NEWS_TOPIC_KEYS = (
 
 @st.cache_data(ttl=86400, show_spinner=False)
 def _get_news_topic_ai_image_pool(topic_key: str) -> tuple[str, ...]:
-    """Supabase Storage에 미리 저장된 섹터별 AI 이미지 3장만 사용한다."""
+    """Supabase Storage에 미리 저장된 섹터별 AI 이미지 6장을 사용한다."""
     key = str(topic_key or "global_markets").strip()
     base = (
         f"{str(SUPABASE_URL).rstrip('/')}/storage/v1/object/public/"
@@ -4605,7 +4605,7 @@ def _get_news_topic_ai_image_pool(topic_key: str) -> tuple[str, ...]:
     )
     return tuple(
         f"{base}{key}_{idx:02d}.jpg"
-        for idx in range(1, 4)
+        for idx in range(1, 7)
     )
 
 
