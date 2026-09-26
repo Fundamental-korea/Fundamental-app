@@ -23,7 +23,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        offset: [0, 800, 1600, 2400]
+        offset: [0]
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -49,4 +49,4 @@ jobs:
       - name: Run deterministic recovery chunk
         run: |
           set -euo pipefail
-          python collector_us_deterministic_recovery.py             --min-missing 1             --max-missing 3             --offset ${{ matrix.offset }}             --limit 800
+          python collector_us_deterministic_recovery.py             --min-missing 1             --max-missing 3             --offset ${{ matrix.offset }}             --limit 4000
