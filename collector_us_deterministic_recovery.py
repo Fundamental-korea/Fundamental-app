@@ -219,6 +219,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--min-missing", type=int, default=1)
     parser.add_argument("--max-missing", type=int, default=3)
+    parser.add_argument("--offset", type=int, default=0)
     parser.add_argument("--limit", type=int, default=0)
     args = parser.parse_args()
 
@@ -227,17 +228,19 @@ def main():
 
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    fundamentals = fetch_rows(
-        sb,
-        "US_Fundamental",
-        "*",
-        filters=[
-            ("eq", ("data_unavailable", False)),
-            ("gte", ("missing_metric_count", args.min_missing)),
-            ("lte", ("missing_metric_count", args.max_missing)),
-        ],
-        order_col="ticker",
+    q = (
+        sb.table("US_Fundamental")
+        .select("*")
+        .eq("data_unavailable", False)
+        .gte("missing_metric_count", args.min_missing)
+        .lte("missing_metric_count", args.max_missing)
+        .order("ticker")
     )
+    if args.limit:
+        q = q.range(args.offset, args.offset + args.limit - 1)
+    else:
+        q = q.range(args.offset, args.offset + PAGE_SIZE - 1)
+    fundamentals = q.execute().data or []
 
     meta_rows = fetch_rows(
         sb,
@@ -258,12 +261,12 @@ def main():
             continue
         targets.append(row)
 
-    if args.limit:
-        targets = targets[: max(0, args.limit)]
+    if not args.limit and args.offset:
+        targets = targets[:PAGE_SIZE]
 
     tickers = [r["ticker"] for r in targets]
     print(
-        f"[DETERMINISTIC] candidates={len(fundamentals)} "
+        f"[DETERMINISTIC] offset={args.offset} candidates={len(fundamentals)} "
         f"targets={len(targets)} profile_scope={sorted(PROFILES)}",
         flush=True,
     )
