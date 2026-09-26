@@ -1933,7 +1933,8 @@ supabase = init_supabase()
 def get_investor_quotes():
     """investor_quotes 테이블에서 active=true인 명언 전체를 가져옴
     (RLS: anon/authenticated는 active=true 행만 SELECT 가능하도록 이미 정책 설정돼 있음).
-    1시간 캐싱 후, 렌더링할 때마다 random.choice()로 하나씩 뽑아 보여줌."""
+    활성 명언 목록은 DB에서 가져오고, 페이지 이동/재실행과 무관하게
+    KST 기준 하루 3개 시간대(06:00 / 14:00 / 22:00)에만 선택 명언이 바뀐다."""
     fallback = [
         {
              "investor_name": "Warren Buffett",
@@ -1969,10 +1970,37 @@ def get_investor_quotes():
     return fallback
 
 
+def _get_quote_slot_key():
+    """KST 기준 하루 3개 시간대마다 같은 명언을 유지하기 위한 결정적 키."""
+    now_kst = datetime.now(ZoneInfo("Asia/Seoul"))
+    if now_kst.hour < 6:
+        slot = 2
+        anchor_date = (now_kst - timedelta(days=1)).date()
+    elif now_kst.hour < 14:
+        slot = 0
+        anchor_date = now_kst.date()
+    elif now_kst.hour < 22:
+        slot = 1
+        anchor_date = now_kst.date()
+    else:
+        slot = 2
+        anchor_date = now_kst.date()
+    return f"{anchor_date.isoformat()}-{slot}"
+
+
 def render_quote_box():
     """상단 명언 박스 렌더링 (인물 사진 + 영문 명언 + 국문 번역 + 출처)"""
     quotes = get_investor_quotes()
-    q = random.choice(quotes)
+    stable_quotes = sorted(
+        quotes,
+        key=lambda item: (
+            item.get("investor_name", ""),
+            item.get("quote_en", ""),
+            item.get("quote_ko", ""),
+        ),
+    )
+    rng = random.Random(_get_quote_slot_key())
+    q = rng.choice(stable_quotes)
 
     name = q.get("investor_name_ko") or q.get("investor_name", "")
     affiliation = q.get("investor_affiliation_ko") or q.get("investor_affiliation", "")
