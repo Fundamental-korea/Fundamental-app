@@ -515,6 +515,74 @@ def main() -> None:
                 built = build_rows(
                     builder_company, submissions, filing_rows, filing_meta
                 )
+
+                target_diagnostics = {}
+                built_by_year = {
+                    int(r["fiscal_year"]): (r.get("canonical") or {})
+                    for r in built
+                    if r.get("fiscal_year") is not None
+                }
+                built_current = built_by_year.get(company["base_year"], {})
+                built_previous = built_by_year.get(company["base_year"] - 1, {})
+                for metric in sorted(targets):
+                    if metric == "sga_ratio":
+                        presence = {
+                            "revenue": built_current.get("revenue") is not None,
+                            "sga": (
+                                built_current.get("sga") is not None
+                                or built_current.get("general_and_administrative_expense") is not None
+                                or built_current.get("selling_expense") is not None
+                            ),
+                        }
+                    elif metric == "quick_ratio":
+                        presence = {
+                            "current_liabilities": built_current.get("current_liabilities") is not None,
+                            "quick_assets_source": (
+                                "current_assets" if built_current.get("current_assets") is not None
+                                else "cash_or_receivables"
+                                if (
+                                    built_current.get("cash") is not None
+                                    or built_current.get("receivables") is not None
+                                )
+                                else None
+                            ),
+                        }
+                    elif metric == "eps_growth":
+                        presence = {
+                            "eps_current": built_current.get("eps") is not None,
+                            "eps_previous": built_previous.get("eps") is not None,
+                        }
+                    elif metric == "revenue_growth":
+                        presence = {
+                            "revenue_current": built_current.get("revenue") is not None,
+                            "revenue_previous": built_previous.get("revenue") is not None,
+                        }
+                    elif metric == "roic":
+                        presence = {
+                            "operating_income": built_current.get("operating_income") is not None,
+                            "cash": built_current.get("cash") is not None,
+                            "equity": built_current.get("equity") is not None,
+                            "debt": (
+                                built_current.get("debt_total") is not None
+                                or built_current.get("debt") is not None
+                                or built_current.get("debt_current") is not None
+                                or built_current.get("debt_noncurrent") is not None
+                            ),
+                        }
+                    else:
+                        reqs = {
+                            "opm": ("revenue", "operating_income"),
+                            "debt_rate": ("liabilities", "equity"),
+                            "ocf_ratio": ("operating_cash_flow", "net_income"),
+                            "interest_coverage": ("operating_income", "interest_expense"),
+                            "roa": ("net_income", "assets"),
+                        }.get(metric, ())
+                        presence = {field: built_current.get(field) is not None for field in reqs}
+                    target_diagnostics[metric] = {
+                        "target_year_present": company["base_year"] in built_by_year,
+                        "presence": presence,
+                    }
+
                 merged_rows, changed_rows = merge_filing_rows(
                     annual_by_ticker.get(ticker) or [],
                     built,
@@ -569,6 +637,7 @@ def main() -> None:
                         "filed": candidate.get("filed"),
                         "error": "filing_parsed_but_target_metric_still_unavailable",
                         "targets": sorted(targets),
+                        "target_diagnostics": target_diagnostics,
                     })
                     continue
 
@@ -650,13 +719,6 @@ def main() -> None:
         "failure_detail": failures,
     }
 
-    with open(
-        os.path.join(out_dir, "us_targeted_raw_recovery_result.json"),
-        "w",
-        encoding="utf-8",
-    ) as fh:
-        json.dump(result, fh, ensure_ascii=False, indent=2)
-
     from collections import Counter
 
     failure_reason_counts = Counter(
@@ -678,6 +740,13 @@ def main() -> None:
     result["unchanged_attempt_error_counts"] = dict(
         unchanged_attempt_error_counts
     )
+
+    with open(
+        os.path.join(out_dir, "us_targeted_raw_recovery_result.json"),
+        "w",
+        encoding="utf-8",
+    ) as fh:
+        json.dump(result, fh, ensure_ascii=False, indent=2)
 
     print(
         json.dumps(
