@@ -6066,8 +6066,10 @@ def render_home_market_overview(market):
     asof_text = latest_dates[-1] if latest_dates else "—"
     source_text = " · ".join(source_names) if source_names else "market snapshot"
 
-    # "시장 기준일"과 "DB 업데이트 시각"을 분리해 미국 장의 다음날(KST) 표시가
-    # 데이터가 하루 늦게 수집된 것으로 오해되지 않게 한다.
+    # "시장 기준일"과 "DB 업데이트 시각"을 분리한다.
+    # 화면에 표시하는 업데이트 시각은 실제 저장 완료 시각이 아니라
+    # 시장별 운영 스케줄(KST)을 기준으로 고정한다.
+    # US: 05:30 KST / KR: 16:00 KST.
     updated_values = [str(row.get("updated_at")) for row in rows if row.get("updated_at")]
     updated_text = "—"
     if updated_values:
@@ -6075,8 +6077,9 @@ def render_home_market_overview(market):
             latest_updated = max(
                 datetime.fromisoformat(v.replace("Z", "+00:00"))
                 for v in updated_values
-            )
-            updated_text = latest_updated.astimezone(ZoneInfo("Asia/Seoul")).strftime("%Y-%m-%d %H:%M")
+            ).astimezone(ZoneInfo("Asia/Seoul"))
+            schedule_time = "05:30" if market == "US" else "16:00"
+            updated_text = f"{latest_updated.strftime('%Y-%m-%d')} {schedule_time}"
         except Exception:
             updated_text = updated_values[-1]
 
