@@ -229,19 +229,32 @@ def main():
 
     sb = create_client(SUPABASE_URL, SUPABASE_KEY)
 
-    q = (
-        sb.table("US_Fundamental")
-        .select("*")
-        .eq("data_unavailable", False)
-        .gte("missing_metric_count", args.min_missing)
-        .lte("missing_metric_count", args.max_missing)
-        .order("ticker")
-    )
-    if args.limit:
-        q = q.range(args.offset, args.offset + args.limit - 1)
-    else:
-        q = q.range(args.offset, args.offset + PAGE_SIZE - 1)
-    fundamentals = q.execute().data or []
+    fundamentals = []
+    fetch_offset = args.offset
+    remaining = args.limit if args.limit else None
+
+    while True:
+        page_size = min(PAGE_SIZE, remaining) if remaining is not None else PAGE_SIZE
+        if page_size <= 0:
+            break
+        q = (
+            sb.table("US_Fundamental")
+            .select("*")
+            .eq("data_unavailable", False)
+            .gte("missing_metric_count", args.min_missing)
+            .lte("missing_metric_count", args.max_missing)
+            .order("ticker")
+            .range(fetch_offset, fetch_offset + page_size - 1)
+        )
+        page = q.execute().data or []
+        fundamentals.extend(page)
+        if len(page) < page_size:
+            break
+        fetch_offset += len(page)
+        if remaining is not None:
+            remaining -= len(page)
+            if remaining <= 0:
+                break
 
     meta_rows = fetch_rows(
         sb,
@@ -262,8 +275,8 @@ def main():
             continue
         targets.append(row)
 
-    if not args.limit and args.offset:
-        targets = targets[:PAGE_SIZE]
+    # Candidate rows are snapshotted in memory before any DB updates, so the
+    # target set does not shift while missing_metric_count changes.
 
     tickers = [r["ticker"] for r in targets]
     print(
