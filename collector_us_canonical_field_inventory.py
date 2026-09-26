@@ -223,10 +223,26 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "aliases": (
             "SellingGeneralAndAdministrativeExpense",
             "SellingGeneralAndAdministrativeExpenseIncludingDepreciationAmortization",
-            "GeneralAndAdministrativeExpense", "SellingExpense",
         ),
-        "keywords": ("selling general and administrative", "general and administrative expense",
-                     "selling expense"),
+        "keywords": ("selling general and administrative",),
+        "exclude": ("segment", "ratio", "percent"),
+    },
+    "general_and_administrative_expense": {
+        "kind": "flow",
+        "aliases": (
+            "GeneralAndAdministrativeExpense",
+            "OtherGeneralAndAdministrativeExpense",
+        ),
+        "keywords": ("general and administrative expense",),
+        "exclude": ("segment", "ratio", "percent"),
+    },
+    "selling_expense": {
+        "kind": "flow",
+        "aliases": (
+            "SellingExpense",
+            "OtherSellingGeneralAndAdministrativeExpense",
+        ),
+        "keywords": ("selling expense",),
         "exclude": ("segment", "ratio", "percent"),
     },
     "pretax_income": {
@@ -245,10 +261,16 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "kind": "flow",
         "aliases": (
             "IncomeTaxExpenseBenefit", "IncomeTaxExpenseBenefitContinuingOperations",
-            "IncomeTaxExpenseBenefitNonoperating", "IncomeTaxesPaid",
+            "IncomeTaxExpenseBenefitNonoperating",
         ),
         "keywords": ("income tax expense", "income tax benefit", "tax expense"),
         "exclude": ("paid", "payable", "deferred tax asset", "tax rate"),
+    },
+    "tax_paid": {
+        "kind": "flow",
+        "aliases": ("IncomeTaxesPaid",),
+        "keywords": ("income taxes paid", "taxes paid"),
+        "exclude": ("segment", "forecast", "proforma"),
     },
     "eps": {
         "kind": "flow",
@@ -415,6 +437,15 @@ def _logical_presence(exact_results: dict[str, Any]):
         exact_results.get("debt_current") and exact_results.get("debt_noncurrent")
     ))
     out["debt"] = debt
+    # SGA is trusted when the filing provides total SGA directly, or when both
+    # G&A and selling expense components are present and can be summed.
+    out["sga"] = bool(
+        exact_results.get("sga")
+        or (
+            exact_results.get("general_and_administrative_expense")
+            and exact_results.get("selling_expense")
+        )
+    )
     # net_income / EPS are canonical alternatives only within their own family.
     return out
 
@@ -606,9 +637,34 @@ def run_batch(args):
 
 def merge_reports(paths: list[Path], out_json: Path, out_txt: Path):
     companies = []
+    batch_meta = []
     for p in sorted(paths):
         payload = json.loads(p.read_text(encoding="utf-8"))
+        batch_meta.append({
+            "file": p.name,
+            "batch": payload.get("batch"),
+            "batch_size": payload.get("batch_size"),
+            "eligible_total": payload.get("eligible_total"),
+            "requested_rows": payload.get("requested_rows"),
+            "start": payload.get("start"),
+            "errors": payload.get("errors") or {},
+        })
         companies.extend(payload.get("companies") or [])
+
+    expected_totals = {m["eligible_total"] for m in batch_meta if m["eligible_total"] is not None}
+    if len(expected_totals) != 1:
+        raise RuntimeError(f"Inconsistent eligible_total across batches: {sorted(expected_totals)}")
+    expected_total = next(iter(expected_totals))
+    if len(companies) != expected_total:
+        raise RuntimeError(
+            f"Batch coverage incomplete: merged={len(companies)} expected={expected_total}. "
+            f"Check matrix/ranges before trusting the inventory."
+        )
+
+    tickers = [str(c.get("ticker") or "").strip() for c in companies]
+    duplicates = [ticker for ticker, count in Counter(tickers).items() if ticker and count > 1]
+    if duplicates:
+        raise RuntimeError(f"Duplicate tickers in merged inventory: {duplicates[:20]}")
 
     eligible = len(companies)
     successful = [c for c in companies if not c.get("error")]
@@ -645,6 +701,8 @@ def merge_reports(paths: list[Path], out_json: Path, out_txt: Path):
     report = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "eligible_companies": eligible,
+        "batch_count": len(batch_meta),
+        "batch_ranges": batch_meta,
         "successful_companyfacts_fetch": len(successful),
         "companyfacts_errors": len(errors),
         "field_coverage": {
@@ -688,6 +746,7 @@ def merge_reports(paths: list[Path], out_json: Path, out_txt: Path):
     lines.append("US CANONICAL FIELD INVENTORY")
     lines.append("=" * 72)
     lines.append(f"Eligible companies: {eligible:,}")
+    lines.append(f"Batch files merged: {len(batch_meta):,}")
     lines.append(f"Successful SEC Company Facts fetch: {len(successful):,}")
     lines.append(f"Company Facts errors: {len(errors):,}")
     lines.append("")
@@ -719,6 +778,7 @@ def merge_reports(paths: list[Path], out_json: Path, out_txt: Path):
     lines.append("- Exact coverage is the current conservative canonical mapping.")
     lines.append("- Fuzzy candidates are discovery evidence only; they are not promoted automatically.")
     lines.append("- 'Core missing distribution' counts logical source families, with debt treated as present when total debt exists OR current+noncurrent debt both exist.")
+    lines.append("- SGA is treated as present when direct total SGA exists OR both G&A and selling-expense components exist for a filing.")
     lines.append("- Growth readiness in this inventory means the current raw field exists; a later two-year pair validation is still required.")
     out_txt.parent.mkdir(parents=True, exist_ok=True)
     out_txt.write_text("\n".join(lines), encoding="utf-8")
