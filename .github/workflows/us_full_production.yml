@@ -5,6 +5,7 @@ on:
   push:
     paths:
       - ".github/workflows/us_full_production.yml"
+      - "US_FULL_PRODUCTION_TRIGGER.txt"
 
 permissions:
   contents: read
