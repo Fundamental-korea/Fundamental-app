@@ -320,7 +320,7 @@ def main() -> None:
             f"404 market cap unknown: {summary['404_market_cap_unknown']:,}",
             "",
             "404 CLASSIFICATION",
-            *[f"{k:40s} {v:6d}" for k, v in summary["404_classification_counts"].most_common()],
+            *[f"{k:40s} {v:6d}" for k, v in sorted(summary["404_classification_counts"].items(), key=lambda kv: (-kv[1], kv[0]))],
         ]),
         encoding="utf-8",
     )
