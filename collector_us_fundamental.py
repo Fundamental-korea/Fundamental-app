@@ -289,8 +289,27 @@ def _all_fact_rows(companyfacts, metric):
                     continue
                 for r in rows:
                     end = r.get("end")
+                    filed = r.get("filed") or ""
                     if not end or r.get("form") not in SNAPSHOT_FORMS:
                         continue
+
+                    # SEC Company Facts can contain malformed/stale observations whose
+                    # fiscal end is in the future or whose filing date predates the period end.
+                    # Such rows must never be eligible for the "latest snapshot".
+                    try:
+                        end_date = datetime.fromisoformat(str(end)).date()
+                    except ValueError:
+                        continue
+                    if end_date > datetime.now(timezone.utc).date():
+                        continue
+                    if filed:
+                        try:
+                            filed_date = datetime.fromisoformat(str(filed)).date()
+                        except ValueError:
+                            filed_date = None
+                        if filed_date is not None and filed_date < end_date:
+                            continue
+
                     value = clean_number(r.get("val"))
                     if value is None:
                         continue
