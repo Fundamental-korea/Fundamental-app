@@ -11,6 +11,11 @@ permissions:
   contents: read
   actions: read
 
+# Prevent duplicate full raw-layer runs from concurrently hammering Supabase.
+concurrency:
+  group: us-companyfacts-annual-raw
+  cancel-in-progress: true
+
 jobs:
   raw_layer:
     if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[RUN_RAW_LAYER]') }}
