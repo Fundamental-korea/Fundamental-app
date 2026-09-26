@@ -86,3 +86,4 @@ jobs:
             exit 0
           fi
           python collector_us_fundamental.py --tickers "$TICKERS"
+# production batch workflow
