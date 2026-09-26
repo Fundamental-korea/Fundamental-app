@@ -20,8 +20,12 @@ concurrency:
 
 jobs:
   deterministic_recovery:
+    strategy:
+      fail-fast: false
+      matrix:
+        offset: [0, 800, 1600, 2400]
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 60
     env:
       SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
       SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -42,8 +46,7 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install supabase requests pandas yfinance
 
-      - name: Run deterministic recovery for 1-3 missing metrics
+      - name: Run deterministic recovery chunk
         run: |
           set -euo pipefail
-          python collector_us_deterministic_recovery.py             --min-missing 1             --max-missing 3
-
+          python collector_us_deterministic_recovery.py             --min-missing 1             --max-missing 3             --offset ${{ matrix.offset }}             --limit 800
