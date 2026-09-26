@@ -2,10 +2,10 @@ name: Automated Market Overview Snapshot
 
 on:
   schedule:
-    # Korea close: 16:30 KST = 07:30 UTC
-    - cron: "30 7 * * 1-5"
-    # US close: 07:30 KST (22:30 UTC previous day)
-    - cron: "30 22 * * 1-5"
+    # Korea market close: 16:00 KST = 07:00 UTC
+    - cron: "0 7 * * 1-5"
+    # US market close: 05:30 KST = 20:30 UTC previous day
+    - cron: "30 20 * * 1-5"
   push:
     paths:
       - "market_overview.py"
@@ -41,4 +41,23 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
-        run: python market_overview.py
+        run: |
+          if [ "${{ github.event_name }}" = "schedule" ]; then
+            case "${{ github.event.schedule }}" in
+              "0 7 * * 1-5")
+                echo "[MARKET_OVERVIEW] Korea schedule -> KR"
+                python market_overview.py --market KR
+                ;;
+              "30 20 * * 1-5")
+                echo "[MARKET_OVERVIEW] US schedule -> US"
+                python market_overview.py --market US
+                ;;
+              *)
+                echo "[MARKET_OVERVIEW] Unknown schedule -> BOTH"
+                python market_overview.py
+                ;;
+            esac
+          else
+            echo "[MARKET_OVERVIEW] Manual/push run -> BOTH"
+            python market_overview.py
+          fi
