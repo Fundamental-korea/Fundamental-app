@@ -32,10 +32,10 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 180
     env:
-      SUPABASE_URL: \${{ secrets.SUPABASE_URL }}
-      SUPABASE_SECRET_KEY: \${{ secrets.SUPABASE_SECRET_KEY }}
-      SUPABASE_KEY: \${{ secrets.SUPABASE_KEY }}
-      SEC_USER_AGENT: \${{ secrets.SEC_USER_AGENT }}
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
 
     steps:
       - name: Checkout
@@ -52,15 +52,19 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install supabase requests pandas lxml
 
+      - name: Compile targeted collector
+        run: |
+          python -m py_compile collector_us_targeted_raw_recovery.py
+          python -m py_compile collector_us_deterministic_recovery.py
+          python -m py_compile collector_us_gt1b_filing_recovery.py
+
       - name: Run targeted recovery
         run: |
           set -euo pipefail
-          LIMIT="\${{ github.event.inputs.limit || '250' }}"
-          OFFSET="\${{ github.event.inputs.offset || '0' }}"
-          echo "[TARGETED] limit=\${LIMIT} offset=\${OFFSET}"
-          python collector_us_targeted_raw_recovery.py \
-            --limit "\${LIMIT}" \
-            --offset "\${OFFSET}"
+          LIMIT="${{ github.event.inputs.limit || '250' }}"
+          OFFSET="${{ github.event.inputs.offset || '0' }}"
+          echo "[TARGETED] limit=${LIMIT} offset=${OFFSET}"
+          python collector_us_targeted_raw_recovery.py             --limit "${LIMIT}"             --offset "${OFFSET}"
 
       - name: Upload targeted recovery report
         uses: actions/upload-artifact@v4
