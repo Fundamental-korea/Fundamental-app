@@ -290,6 +290,9 @@ def main() -> None:
                     "is_adr": False,
                     "is_foreign": False,
                     "classification": "classification_error",
+                    "recovery_track": "classification_error",
+                    "recovery_eligible": False,
+                    "annual_domestic_filing": False,
                     "classification_error": f"{type(exc).__name__}:{exc}",
                 })
             if i % 50 == 0 or i == len(error_companies):
