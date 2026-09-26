@@ -197,7 +197,8 @@ def recover_one(sb, fundamental, annual_rows, profile):
     grade = latest.get("grade")
     missing_count = latest.get("missing_metric_count")
 
-    return {
+    result = dict(fundamental)
+    result.update({
         "ticker": fundamental["ticker"],
         "period_scores": new_periods,
         "total_score": int(round(total_score)) if total_score is not None else fundamental.get("total_score"),
@@ -206,7 +207,8 @@ def recover_one(sb, fundamental, annual_rows, profile):
         "data_unavailable": False,
         "data_reliability": data_reliability_from_periods(new_periods),
         "updated_at": datetime.now(timezone.utc).isoformat(),
-    }
+    })
+    return result
 
 
 def main():
@@ -224,7 +226,7 @@ def main():
     fundamentals = fetch_rows(
         sb,
         "US_Fundamental",
-        "ticker,period_scores,total_score,grade,missing_metric_count,data_unavailable",
+        "*",
         filters=[
             ("eq", ("data_unavailable", False)),
             ("gte", ("missing_metric_count", args.min_missing)),
