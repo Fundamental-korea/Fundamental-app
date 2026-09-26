@@ -24,6 +24,7 @@ SUPABASE_KEY = base.SUPABASE_KEY
 PROFILES = {"standard", "defense", "financial", "reit", "bdc"}
 PAGE_SIZE = 500
 TICKER_BATCH = 100
+DB_UPSERT_BATCH = 20
 
 
 def fetch_rows(sb, table: str, columns: str, *, filters=None, order_col=None):
@@ -395,9 +396,11 @@ def main():
                 flush=True,
             )
 
-    for start in range(0, len(updates), 100):
+    # Keep JSONB upserts small enough to stay below Supabase statement
+    # timeout limits when period_scores contains all 1/3/5/10Y structures.
+    for start in range(0, len(updates), DB_UPSERT_BATCH):
         sb.table("US_Fundamental").upsert(
-            updates[start:start + 100],
+            updates[start:start + DB_UPSERT_BATCH],
             on_conflict="ticker",
         ).execute()
 
