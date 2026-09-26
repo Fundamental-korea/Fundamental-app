@@ -1,5 +1,5 @@
 """Deterministic US score recovery from the existing annual raw layer.
-# Stable 1-3 snapshot runs avoid moving-offset skips.
+# Stable 1-3 snapshot runs avoid moving-offset skips; use current gap set only.
 
 No SEC/network calls are made. This runner only recomputes score metrics that
 are derivable from values already stored in US_Fundamental_Annual, preserving
