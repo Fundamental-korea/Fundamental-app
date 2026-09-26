@@ -3864,8 +3864,8 @@ def _get_earnings_events_db(days_back=90, days_forward=120):
 
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def _get_home_market_overview(market):
+@st.cache_data(ttl=60, show_spinner=False)
+def _get_home_market_overview(market, cache_version="market-overview-v2"):
     """DB snapshot first; direct source fallback keeps the home page resilient."""
     target = str(market).upper()
     try:
