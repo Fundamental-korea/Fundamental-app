@@ -83,11 +83,15 @@ def merge_metric_values(calculated, old_period, side):
 
 
 def period_recovery(index, old_period, period, profile):
-    latest_years = [int(y) for rows in index.values() for y in rows.keys()]
-    if not latest_years:
+    flow_years = sorted(
+        set(index.get("revenue", {}).keys())
+        | set(index.get("operating_income", {}).keys())
+        | set(index.get("net_income", {}).keys())
+    )
+    if not flow_years:
         return old_period, False
 
-    latest_year = max(latest_years)
+    latest_year = max(flow_years)
     pair = base.period_metrics_pair(index, latest_year, period)
     if pair is None:
         return old_period, False
