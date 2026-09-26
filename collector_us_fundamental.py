@@ -541,7 +541,10 @@ def ratio(numerator, denominator, multiplier=1.0):
 
 def debt_rate(liabilities, equity):
     liabilities, equity = clean_number(liabilities), clean_number(equity)
-    if liabilities is None or equity is None or equity <= 0:
+    # Keep signed debt/equity when equity is negative so the raw metric remains
+    # visible and available to downstream scoring/reporting. Only zero equity
+    # makes the ratio mathematically undefined.
+    if liabilities is None or equity in (None, 0):
         return None
     return liabilities / equity * 100.0
 
@@ -617,7 +620,10 @@ def annual_metrics(index, year, annual_overrides=None):
     invested_capital = None
     if equity is not None and debt is not None:
         invested_capital = equity + debt - (cash or 0.0)
-        if invested_capital <= 0:
+        # Preserve the signed result. A negative invested-capital denominator
+        # produces a signed ROIC that can be displayed and scored; only zero
+        # is mathematically undefined.
+        if invested_capital == 0:
             invested_capital = None
     quick_assets = current_assets - (inventory or 0.0) if current_assets is not None else ((cash or 0.0) + (receivables or 0.0) if cash is not None or receivables is not None else None)
     return {"revenue": revenue, "eps": eps, "revenue_growth": None, "eps_growth": None, "opm": ratio(opinc, revenue, 100.0), "roic": ratio(nopat, invested_capital, 100.0), "debt_rate": debt_rate(liabilities, equity), "quick_ratio": ratio(quick_assets, current_liabilities), "interest_coverage": ratio(opinc, interest), "ocf_ratio": ratio(ocf, net_income), "sga_ratio": ratio(sga, revenue, 100.0), "downturn_defense": None, "roa": ratio(net_income, assets, 100.0), "net_income": net_income, "assets": assets}
