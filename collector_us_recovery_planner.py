@@ -314,6 +314,8 @@ def main() -> None:
         },
         "404_priority_counts": dict(Counter(r["priority"] for r in classification_rows)),
         "404_classification_counts": dict(Counter(r["classification"] for r in classification_rows)),
+        "404_recovery_track_counts": dict(Counter(r["recovery_track"] for r in classification_rows)),
+        "404_recovery_eligible": sum(1 for r in classification_rows if r.get("recovery_eligible")),
         "404_bucket_counts": dict(Counter(r["market_cap_bucket"] for r in classification_rows)),
         "404_market_cap_known": sum(1 for r in classification_rows if r.get("market_cap")),
         "404_market_cap_unknown": sum(1 for r in classification_rows if not r.get("market_cap")),
@@ -345,6 +347,10 @@ def main() -> None:
             "",
             f"404 market cap known: {summary['404_market_cap_known']:,}",
             f"404 market cap unknown: {summary['404_market_cap_unknown']:,}",
+            f"SEC domestic recovery eligible: {summary['404_recovery_eligible']:,}",
+            "",
+            "404 RECOVERY TRACK",
+            *[f"{k:40s} {v:6d}" for k, v in sorted(summary["404_recovery_track_counts"].items(), key=lambda kv: (-kv[1], kv[0]))],
             "",
             "404 CLASSIFICATION",
             *[f"{k:40s} {v:6d}" for k, v in sorted(summary["404_classification_counts"].items(), key=lambda kv: (-kv[1], kv[0]))],
@@ -355,8 +361,9 @@ def main() -> None:
     with (out / "us_404_priority_queue.csv").open("w", newline="", encoding="utf-8-sig") as fh:
         cols = [
             "priority","ticker","cik","company_name","market_cap","market_cap_bucket",
-            "classification","is_foreign","is_adr","is_otc",
-            "yahoo_exchange","yahoo_country","recent_forms","market_cap_source",
+            "classification","recovery_track","recovery_eligible","annual_domestic_filing",
+            "is_foreign","is_adr","is_otc",
+            "yahoo_exchange","yahoo_country","yahoo_quote_type","recent_forms","market_cap_source",
         ]
         w = csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
         w.writeheader()
