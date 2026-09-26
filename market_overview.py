@@ -148,11 +148,17 @@ def fetch_market_overview(market: str) -> list[dict[str, Any]]:
     for spec in specs:
         row = None
         if spec.get("fdr_symbol"):
-            # Korea core indices: KRX/FDR first, Yahoo fallback.
-            # FinanceDataReader is preferred because Yahoo can lag on KRX index dates.
-            row = _fetch_fdr(market, spec)
-            if row is None:
-                row = _fetch_yfinance(market, spec)
+            # Korea core indices: query both sources and keep the freshest trading date.
+            # FDR can occasionally lag for several sessions, so source priority is
+            # determined by asof_date rather than by provider name.
+            fdr_row = _fetch_fdr(market, spec)
+            yahoo_row = _fetch_yfinance(market, spec)
+            candidates = [item for item in (fdr_row, yahoo_row) if item is not None]
+            if candidates:
+                row = max(
+                    candidates,
+                    key=lambda item: str(item.get("asof_date") or ""),
+                )
         else:
             row = _fetch_yfinance(market, spec)
 
