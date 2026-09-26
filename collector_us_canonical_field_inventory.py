@@ -440,14 +440,22 @@ def _discover_fuzzy(facts: dict[str, Any], field: str, spec: dict[str, Any]):
             rows = list(_rows_by_unit(fact, spec["kind"]))
             if not rows:
                 continue
-            best = max(rows, key=lambda r: (str(r.get("end") or ""), str(r.get("filed") or "")))
+            # _rows_by_unit yields (unit, row); keep the pair together so
+            # discovery never treats the tuple as if it were the SEC row dict.
+            best_unit, best_row = max(
+                rows,
+                key=lambda item: (
+                    str(item[1].get("end") or ""),
+                    str(item[1].get("filed") or ""),
+                ),
+            )
             candidates.append({
                 "namespace": namespace,
                 "concept": tag,
                 "label": label,
-                "unit": next((u for u, r in _rows_by_unit(fact, spec["kind"]) if r is best), None),
-                "end": best.get("end"),
-                "filed": best.get("filed"),
+                "unit": best_unit,
+                "end": best_row.get("end"),
+                "filed": best_row.get("filed"),
             })
     return candidates
 
