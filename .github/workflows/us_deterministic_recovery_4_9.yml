@@ -1,4 +1,5 @@
 name: US Deterministic Score Recovery 4-9
+# Trigger deterministic 4-9 recovery after workflow registration.
 
 on:
   workflow_dispatch:
