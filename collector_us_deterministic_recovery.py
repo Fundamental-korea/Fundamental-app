@@ -288,18 +288,24 @@ def main():
     annual_by_ticker = defaultdict(list)
     for start in range(0, len(tickers), TICKER_BATCH):
         batch = tickers[start:start + TICKER_BATCH]
-        rows = (
-            sb.table("US_Fundamental_Annual")
-            .select("ticker,fiscal_year,canonical,provenance")
-            .in_("ticker", batch)
-            .order("ticker")
-            .order("fiscal_year")
-            .execute()
-            .data
-            or []
-        )
-        for row in rows:
-            annual_by_ticker[row["ticker"]].append(row)
+        batch_offset = 0
+        while True:
+            page = (
+                sb.table("US_Fundamental_Annual")
+                .select("ticker,fiscal_year,canonical,provenance")
+                .in_("ticker", batch)
+                .order("ticker")
+                .order("fiscal_year")
+                .range(batch_offset, batch_offset + PAGE_SIZE - 1)
+                .execute()
+                .data
+                or []
+            )
+            for row in page:
+                annual_by_ticker[row["ticker"]].append(row)
+            if len(page) < PAGE_SIZE:
+                break
+            batch_offset += len(page)
         print(
             f"[DETERMINISTIC] annual_fetch={min(start + TICKER_BATCH, len(tickers))}/{len(tickers)}",
             flush=True,
