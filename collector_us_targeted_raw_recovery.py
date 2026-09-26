@@ -39,16 +39,26 @@ PAGE_SIZE = 500
 TICKER_BATCH = 100
 DB_UPSERT_BATCH = 20
 
-TARGET_METRICS = {
-    "opm",
-    "roic",
-    "debt_rate",
-    "ocf_ratio",
-    "sga_ratio",
-    "quick_ratio",
-    "interest_coverage",
-    "eps_growth",
-    "revenue_growth",
+PROFILE_TARGET_METRICS = {
+    "standard": {
+        "opm", "roic", "debt_rate", "ocf_ratio", "sga_ratio",
+        "quick_ratio", "interest_coverage", "eps_growth", "revenue_growth",
+    },
+    "defense": {
+        "opm", "roic", "debt_rate", "ocf_ratio", "sga_ratio",
+        "quick_ratio", "interest_coverage", "eps_growth", "revenue_growth",
+    },
+    "financial": {
+        "roa", "eps_growth", "revenue_growth",
+    },
+    "reit": {
+        "roa", "debt_rate", "ocf_ratio", "interest_coverage",
+        "eps_growth", "revenue_growth",
+    },
+    "bdc": {
+        "roa", "debt_rate", "ocf_ratio", "interest_coverage",
+        "eps_growth",
+    },
 }
 
 
@@ -157,11 +167,43 @@ def sga_present(canonical: dict[str, Any]) -> bool:
     )
 
 
+def eps_present(canonical: dict[str, Any]) -> bool:
+    if canonical.get("eps") is not None:
+        return True
+    ni = canonical.get("net_income")
+    shares = (
+        canonical.get("weighted_avg_diluted_shares")
+        or canonical.get("weighted_avg_basic_shares")
+    )
+    return ni is not None and shares not in (None, 0)
+
+
+def quick_ratio_present(canonical: dict[str, Any]) -> bool:
+    current_liabilities = canonical.get("current_liabilities")
+    if current_liabilities is None:
+        return False
+    current_assets = canonical.get("current_assets")
+    if current_assets is not None:
+        return True
+    cash = canonical.get("cash")
+    receivables = canonical.get("receivables")
+    return cash is not None or receivables is not None
+
+
+def interest_present(canonical: dict[str, Any]) -> bool:
+    return (
+        canonical.get("interest_expense") is not None
+        or canonical.get("interest_expense_net") is not None
+    )
+
+
 def missing_prerequisites(
     metric: str,
     current: dict[str, Any],
     previous: dict[str, Any],
 ) -> list[str]:
+    # These prerequisites intentionally mirror collector_us_fundamental.annual_metrics()
+    # and the deterministic scorer's canonical_to_index() derivations.
     checks = {
         "opm": (
             ("revenue", present(current, "revenue")),
@@ -179,28 +221,30 @@ def missing_prerequisites(
         ),
         "ocf_ratio": (
             ("operating_cash_flow", present(current, "operating_cash_flow")),
-            ("revenue", present(current, "revenue")),
+            ("net_income", present(current, "net_income")),
         ),
         "sga_ratio": (
             ("sga", sga_present(current)),
             ("revenue", present(current, "revenue")),
         ),
         "quick_ratio": (
-            ("current_assets", present(current, "current_assets")),
-            ("inventory", present(current, "inventory")),
-            ("current_liabilities", present(current, "current_liabilities")),
+            ("quick_assets", quick_ratio_present(current)),
         ),
         "interest_coverage": (
             ("operating_income", present(current, "operating_income")),
-            ("interest_expense", present(current, "interest_expense")),
+            ("interest_expense", interest_present(current)),
         ),
         "eps_growth": (
-            ("eps_current", present(current, "eps")),
-            ("eps_previous", present(previous, "eps")),
+            ("eps_current", eps_present(current)),
+            ("eps_previous", eps_present(previous)),
         ),
         "revenue_growth": (
             ("revenue_current", present(current, "revenue")),
             ("revenue_previous", present(previous, "revenue")),
+        ),
+        "roa": (
+            ("net_income", present(current, "net_income")),
+            ("assets", present(current, "assets")),
         ),
     }
     return [field for field, ok in checks.get(metric, ()) if not ok]
@@ -263,7 +307,8 @@ def build_target_queue(
         previous = (by_year.get(base_year - 1) or {}).get("canonical") or {}
 
         recoverable_metrics: dict[str, str] = {}
-        for metric in TARGET_METRICS:
+        active_metrics = PROFILE_TARGET_METRICS.get(profile, set())
+        for metric in active_metrics:
             entry = avg.get(metric) or {}
             if entry.get("value") is not None:
                 continue
@@ -488,12 +533,38 @@ def main() -> None:
                     profile,
                 )
 
-                if not changed_rows and not score_result:
+                old_avg = (
+                    (((old_fundamental.get("period_scores") or {}).get("1y") or {})
+                     .get("avg") or {})
+                    .get("metric_scores")
+                    or {}
+                )
+                new_avg = (
+                    (((score_result or {}).get("period_scores") or {}).get("1y") or {})
+                    .get("avg") or {}
+                )
+                new_metric_scores = new_avg.get("metric_scores") or {}
+                newly_available_targets = sorted(
+                    metric
+                    for metric in targets
+                    if (old_avg.get(metric) or {}).get("value") is None
+                    and (new_metric_scores.get(metric) or {}).get("value") is not None
+                )
+
+                if not newly_available_targets:
+                    if changed_rows:
+                        for start in range(0, len(changed_rows), DB_UPSERT_BATCH):
+                            sb.table("US_Fundamental_Annual").upsert(
+                                changed_rows[start:start + DB_UPSERT_BATCH],
+                                on_conflict="ticker,fiscal_year",
+                            ).execute()
+                        annual_by_ticker[ticker] = merged_rows
                     attempts.append({
                         "accession": candidate.get("accession"),
                         "form": candidate.get("form"),
                         "filed": candidate.get("filed"),
-                        "error": "filing_parsed_but_no_new_target_source",
+                        "error": "filing_parsed_but_target_metric_still_unavailable",
+                        "targets": sorted(targets),
                     })
                     continue
 
@@ -503,27 +574,28 @@ def main() -> None:
                         on_conflict="ticker,fiscal_year",
                     ).execute()
 
-                if score_result:
-                    score_result["filing_recovery"] = {
-                        **(old_fundamental.get("filing_recovery") or {}),
-                        "targeted_raw_recovery": {
-                            "source_kind": "sec_annual_inline_xbrl",
-                            "accession": filing_meta.get("accession"),
-                            "document": filing_meta.get("primary_document"),
-                            "target_metrics": sorted(targets),
-                            "updated_at": datetime.now(timezone.utc).isoformat(),
-                        },
-                    }
-                    sb.table("US_Fundamental").upsert(
-                        score_result, on_conflict="ticker"
-                    ).execute()
+                score_result["filing_recovery"] = {
+                    **(old_fundamental.get("filing_recovery") or {}),
+                    "targeted_raw_recovery": {
+                        "source_kind": "sec_annual_inline_xbrl",
+                        "accession": filing_meta.get("accession"),
+                        "document": filing_meta.get("primary_document"),
+                        "target_metrics": sorted(targets),
+                        "newly_available_metrics": newly_available_targets,
+                        "updated_at": datetime.now(timezone.utc).isoformat(),
+                    },
+                }
+                sb.table("US_Fundamental").upsert(
+                    score_result, on_conflict="ticker"
+                ).execute()
 
                 annual_by_ticker[ticker] = merged_rows
                 recovered.append({
                     "ticker": ticker,
                     "targets": sorted(targets),
+                    "newly_available_metrics": newly_available_targets,
                     "changed_annual_rows": len(changed_rows),
-                    "score_updated": bool(score_result),
+                    "score_updated": True,
                     "accession": filing_meta.get("accession"),
                     "form": filing_meta.get("form"),
                     "parser": filing_meta.get("reason"),
