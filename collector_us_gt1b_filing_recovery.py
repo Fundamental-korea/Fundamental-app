@@ -18,7 +18,10 @@ from typing import Any
 from supabase import create_client
 
 from collector_us_canonical_field_inventory import FIELD_SPECS
+from sec_xbrl_inline import parse_inline_xbrl
 from sec_xbrl_search_v2_3_8 import SECXBRLSearchV2_3_8
+
+SEC_SUBMISSIONS_URL = "https://data.sec.gov/submissions"
 
 SUPABASE_URL = os.environ.get("SUPABASE_URL") or "https://cnweggechipghcivruie.supabase.co"
 SUPABASE_KEY = os.environ.get("SUPABASE_SECRET_KEY") or os.environ.get("SUPABASE_KEY", "")
@@ -106,6 +109,121 @@ def same_basis(prov: dict[str, Any], keys: list[str]) -> bool:
         return False
     return len({v.get("end") for v in vals}) == 1 and len({v.get("unit") for v in vals}) == 1
 
+
+
+def _add_annual_records(records: list[dict[str, Any]], block: dict[str, Any] | None) -> None:
+    """Append annual SEC submission rows from a recent/archive filing block."""
+    if not block:
+        return
+    forms = block.get("form", []) or []
+    accessions = block.get("accessionNumber", []) or []
+    documents = block.get("primaryDocument", []) or []
+    filed_dates = block.get("filingDate", []) or []
+    for i, form in enumerate(forms):
+        if form not in ANNUAL_FORMS:
+            continue
+        accession = accessions[i] if i < len(accessions) else None
+        if not accession:
+            continue
+        records.append({
+            "accession": accession,
+            "primary_document": documents[i] if i < len(documents) else None,
+            "filed": filed_dates[i] if i < len(filed_dates) else None,
+            "form": form,
+        })
+
+
+def annual_filing_candidates(resolver: SECXBRLSearchV2_3_8, submissions: dict[str, Any], max_candidates: int = 6) -> list[dict[str, Any]]:
+    """Find annual filings in both recent submissions and SEC submission archives."""
+    records: list[dict[str, Any]] = []
+    filings = submissions.get("filings", {}) or {}
+    _add_annual_records(records, filings.get("recent"))
+
+    # The SEC keeps older submissions in files such as
+    # CIK0000000000-submissions-001.json. CompanyFacts-404 issuers often have
+    # their useful 20-F/40-F records there rather than in filings.recent.
+    for archive in filings.get("files", []) or []:
+        name = archive.get("name") if isinstance(archive, dict) else None
+        if not name:
+            continue
+        try:
+            archived = resolver._get(f"{SEC_SUBMISSIONS_URL}/{name}").json()
+        except Exception:
+            continue
+        block = archived.get("filings", {}).get("recent") if isinstance(archived.get("filings"), dict) else archived.get("recent")
+        _add_annual_records(records, block)
+
+    dedup: dict[str, dict[str, Any]] = {}
+    for row in records:
+        acc = row.get("accession")
+        if acc:
+            old = dedup.get(acc)
+            if old is None or str(row.get("filed") or "") > str(old.get("filed") or ""):
+                dedup[acc] = row
+    return sorted(dedup.values(), key=lambda r: str(r.get("filed") or ""), reverse=True)[:max_candidates]
+
+
+def fetch_filing_rows(resolver: SECXBRLSearchV2_3_8, cik: str, candidate: dict[str, Any]) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """Parse a chosen annual filing, supporting 10-K/20-F/40-F and XBRL instance fallback."""
+    accession = candidate.get("accession")
+    primary_document = candidate.get("primary_document")
+    filed = candidate.get("filed")
+    form = candidate.get("form") or "10-K"
+    if not accession or not primary_document:
+        return [], {"used": False, "reason": "missing_accession_or_primary_document"}
+
+    index, compact = resolver.filing_index(cik, accession)
+    label_file = resolver._choose_label_file(index)
+    labels = {}
+    if label_file:
+        label_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{compact}/{label_file}"
+        try:
+            labels = resolver._parse_labels(resolver._get(label_url).text)
+        except Exception:
+            labels = {}
+
+    rows: list[dict[str, Any]] = []
+    primary_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{compact}/{primary_document}"
+    try:
+        primary_text = resolver._get(primary_url).text
+        rows = parse_inline_xbrl(primary_text, labels=labels, filed=filed, form=form)
+    except Exception:
+        rows = []
+
+    parser_used = "inline_xbrl_primary_document" if rows else None
+    instance = None
+    if not rows:
+        # Some older foreign filings keep the numeric facts in a separate XBRL
+        # instance even when the primary HTML has little/no ix:nonFraction data.
+        instance = resolver._choose_instance(index, primary_document)
+        if instance:
+            try:
+                instance_url = f"https://www.sec.gov/Archives/edgar/data/{int(cik)}/{compact}/{instance}"
+                rows = resolver._parse_instance(resolver._get(instance_url).text, labels)
+                for row in rows:
+                    row["filed"] = filed
+                    row["form"] = form
+                parser_used = "xbrl_instance"
+            except Exception:
+                rows = []
+
+    for row in rows:
+        row["form"] = form
+        row["filed"] = filed
+        end = valid_date(row.get("end"))
+        row["fy"] = end.year if end else None
+
+    return rows, {
+        "used": bool(rows),
+        "reason": parser_used or "annual_filing_no_numeric_xbrl_facts",
+        "accession": accession,
+        "primary_document": primary_document,
+        "filed": filed,
+        "form": form,
+        "label_file": label_file,
+        "instance": instance,
+        "concept_count": len({r.get("concept") for r in rows}),
+    }
 
 def build_rows(company: dict[str, Any], submissions: dict[str, Any], rows: list[dict[str, Any]], meta: dict[str, Any]) -> list[dict[str, Any]]:
     series = {
@@ -226,18 +344,52 @@ def main() -> None:
         try:
             cik = str(company["cik"]).zfill(10)
             submissions = resolver.submissions(cik)
-            accession, primary_document, filed = resolver.latest_annual_filing(submissions)
-            if not accession:
-                raise RuntimeError("No annual SEC filing in submissions")
-            rows, meta = resolver._inline_filing_rows(cik, submissions)
-            filing_meta = {
-                "accession": accession,
-                "primary_document": primary_document,
-                "filed": filed,
-            }
-            annual_rows = build_rows(company, submissions, rows, filing_meta)
+            candidates = annual_filing_candidates(resolver, submissions, max_candidates=6)
+            if not candidates:
+                raise RuntimeError("No annual SEC filing found in recent submissions or SEC submission archives")
+
+            annual_rows = []
+            selected_meta = None
+            attempted = []
+            for candidate in candidates:
+                try:
+                    rows, meta = fetch_filing_rows(resolver, cik, candidate)
+                except Exception as exc:
+                    attempted.append({
+                        "accession": candidate.get("accession"),
+                        "form": candidate.get("form"),
+                        "filed": candidate.get("filed"),
+                        "error": f"{type(exc).__name__}:{exc}",
+                    })
+                    continue
+                if not rows:
+                    attempted.append({
+                        "accession": candidate.get("accession"),
+                        "form": candidate.get("form"),
+                        "filed": candidate.get("filed"),
+                        "error": meta.get("reason"),
+                    })
+                    continue
+                filing_meta = {
+                    "accession": meta.get("accession"),
+                    "primary_document": meta.get("primary_document"),
+                    "filed": meta.get("filed"),
+                }
+                candidate_rows = build_rows(company, submissions, rows, filing_meta)
+                if candidate_rows:
+                    annual_rows = candidate_rows
+                    selected_meta = meta
+                    break
+                attempted.append({
+                    "accession": candidate.get("accession"),
+                    "form": candidate.get("form"),
+                    "filed": candidate.get("filed"),
+                    "error": "xbrl parsed but no canonical fields matched",
+                })
+
             if not annual_rows:
-                raise RuntimeError("Annual filing parsed but no canonical fields matched")
+                raise RuntimeError(f"Annual filing candidates exhausted; attempts={json.dumps(attempted, ensure_ascii=False)}")
+
             for j in range(0, len(annual_rows), 100):
                 sb.table("US_Fundamental_Annual").upsert(
                     annual_rows[j:j + 100],
@@ -248,7 +400,9 @@ def main() -> None:
                 "market_cap": float(company["market_cap"]) if company.get("market_cap") else None,
                 "annual_rows": len(annual_rows),
                 "fields_latest": len(max(annual_rows, key=lambda r: r["fiscal_year"])["canonical"]),
-                "accession": accession,
+                "accession": selected_meta.get("accession") if selected_meta else None,
+                "form": selected_meta.get("form") if selected_meta else None,
+                "parser": selected_meta.get("reason") if selected_meta else None,
             })
         except Exception as exc:
             failures.append({
