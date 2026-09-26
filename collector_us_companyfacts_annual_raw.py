@@ -258,12 +258,28 @@ def main() -> None:
         if i % 25 == 0 or i == len(batch):
             print(f"[RAW-LAYER] batch={args.batch} progress={i}/{len(batch)} rows={len(all_rows)}")
 
-    # Supabase/PostgREST payloads are kept comfortably below request-size limits.
-    for chunk_start in range(0, len(all_rows), 100):
-        sb.table("US_Fundamental_Annual").upsert(
-            all_rows[chunk_start:chunk_start + 100],
-            on_conflict="ticker,fiscal_year",
-        ).execute()
+    # Keep payloads small and retry transient/statement-timeout failures.
+    # Large concurrent annual batches can otherwise hit PostgREST/Supabase
+    # statement_timeout even after SEC collection itself completed.
+    chunk_size = 25
+    for chunk_start in range(0, len(all_rows), chunk_size):
+        payload = all_rows[chunk_start:chunk_start + chunk_size]
+        last_exc = None
+        for attempt in range(4):
+            try:
+                sb.table("US_Fundamental_Annual").upsert(
+                    payload,
+                    on_conflict="ticker,fiscal_year",
+                ).execute()
+                last_exc = None
+                break
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= 3:
+                    raise
+                time.sleep(min(2 ** attempt, 8))
+        if last_exc is not None:
+            raise last_exc
 
     summary = {
         "batch": args.batch,
