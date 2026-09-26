@@ -6061,9 +6061,17 @@ def render_home_market_overview(market):
                     **kwargs,
                 )
 
+    # 시장 기준일은 해당 시장의 핵심 지수(국내는 KOSPI/KOSDAQ)의 거래일을 우선한다.
+    # 환율·원자재는 주말/휴장일에도 날짜가 더 최신일 수 있으므로 전체 행의
+    # 최대 날짜를 그대로 사용하면 국내 시장 기준일이 왜곡될 수 있다.
+    market_index_dates = sorted({
+        str(row.get("asof_date"))
+        for row in rows
+        if row.get("asof_date") and row.get("metric_group") == "market"
+    })
     latest_dates = sorted({str(row.get("asof_date")) for row in rows if row.get("asof_date")})
     source_names = sorted({str(row.get("source")) for row in rows if row.get("source")})
-    asof_text = latest_dates[-1] if latest_dates else "—"
+    asof_text = market_index_dates[-1] if market_index_dates else (latest_dates[-1] if latest_dates else "—")
     source_text = " · ".join(source_names) if source_names else "market snapshot"
 
     # "시장 기준일"과 "DB 업데이트 시각"을 분리한다.
