@@ -289,7 +289,8 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--queue-csv", required=True)
     ap.add_argument("--bucket", default="over_5b")
-    ap.add_argument("--expected-targets", type=int, default=166)
+    ap.add_argument("--expected-targets", type=int, default=0)
+    ap.add_argument("--eligible-only", action="store_true")
     ap.add_argument("--out-dir", required=True)
     args = ap.parse_args()
 
@@ -299,10 +300,13 @@ def main() -> None:
     queue: list[dict[str, Any]] = []
     with open(args.queue_csv, newline="", encoding="utf-8-sig") as fh:
         for row in csv.DictReader(fh):
-            if row.get("market_cap_bucket") == args.bucket:
-                queue.append(row)
+            if row.get("market_cap_bucket") != args.bucket:
+                continue
+            if args.eligible_only and str(row.get("recovery_eligible") or "").strip().lower() != "true":
+                continue
+            queue.append(row)
 
-    if len(queue) != args.expected_targets:
+    if args.expected_targets and len(queue) != args.expected_targets:
         raise RuntimeError(
             f"Expected {args.expected_targets} {args.bucket} targets, got {len(queue)}"
         )
