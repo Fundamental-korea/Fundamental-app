@@ -1,0 +1,61 @@
+name: US Deterministic Score Recovery 4-9
+# Trigger deterministic 4-9 recovery after workflow registration.
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/us-company-universe-census
+    paths:
+      - "collector_us_deterministic_recovery.py"
+      - "collector_us_fundamental.py"
+      - "us_scoring.py"
+      - ".github/workflows/us_deterministic_recovery_4_9.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: us-deterministic-recovery-4-9
+  cancel-in-progress: false
+
+jobs:
+  deterministic_recovery_4_9:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install supabase requests pandas yfinance
+
+      - name: Run deterministic recovery 4-9
+        run: |
+          set -euo pipefail
+          python collector_us_deterministic_recovery.py             --min-missing 4             --max-missing 9
+
+      - name: Verify
+        run: |
+          python - <<'PY'
+          import os
+          from supabase import create_client
+          sb=create_client(os.environ["SUPABASE_URL"],os.environ["SUPABASE_KEY"])
+          for n in [0,4,5,6,7,8,9]:
+              q=(sb.table("US_Fundamental").select("ticker",count="exact",head=True)
+                   .eq("data_unavailable",False).eq("missing_metric_count",n).execute())
+              print(f"missing={n}: {q.count}")
+          PY

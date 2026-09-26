@@ -1,0 +1,65 @@
+name: US CompanyFacts Annual Raw Layer
+
+on:
+  push:
+    paths:
+      - "collector_us_companyfacts_annual_raw.py"
+      - ".github/workflows/us_companyfacts_annual_raw.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+# Prevent duplicate full raw-layer runs from concurrently hammering Supabase.
+concurrency:
+  group: us-companyfacts-annual-raw
+  cancel-in-progress: true
+
+jobs:
+  raw_layer:
+    if: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.head_commit.message, '[RUN_RAW_LAYER]') }}
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        batch: [0,1,2,3,4,5,6,7,8,9,10,11,12]
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    env:
+      INVENTORY_RUN_ID: "36232189823"
+      BATCH_INDEX: ${{ matrix.batch }}
+      BATCH_SIZE: 500
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download canonical inventory
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/inventory
+          mkdir -p /tmp/inventory
+          gh run download "$INVENTORY_RUN_ID" -R "$GITHUB_REPOSITORY"             -n us-canonical-field-inventory-report -D /tmp/inventory
+          test -s /tmp/inventory/us_canonical_field_inventory.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests supabase
+
+      - name: Collect CompanyFacts annual raw layer
+        run: |
+          set -euo pipefail
+          python collector_us_companyfacts_annual_raw.py             --inventory-json /tmp/inventory/us_canonical_field_inventory.json             --batch "$BATCH_INDEX"             --batch-size "$BATCH_SIZE"
+

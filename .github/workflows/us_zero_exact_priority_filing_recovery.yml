@@ -1,0 +1,58 @@
+name: US Zero-Exact Priority Filing Recovery
+
+on:
+  push:
+    paths:
+      - "collector_us_zero_exact_priority_filing_recovery.py"
+      - ".github/workflows/us_zero_exact_priority_filing_recovery.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  recover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      DIAGNOSTIC_RUN_ID: "36238663940"
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download zero-exact diagnostic
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -rf /tmp/diagnostic
+          mkdir -p /tmp/diagnostic
+          gh run download "$DIAGNOSTIC_RUN_ID" -R "$GITHUB_REPOSITORY"             -n us-zero-exact-diagnostic -D /tmp/diagnostic
+          test -s /tmp/diagnostic/zero_exact_companyfacts_diagnostic.json
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests supabase lxml
+
+      - name: Recover priority zero-exact companies
+        run: |
+          set -euo pipefail
+          python collector_us_zero_exact_priority_filing_recovery.py             --diagnostic-json /tmp/diagnostic/zero_exact_companyfacts_diagnostic.json             --out-dir /tmp/zero_exact_recovery
+
+      - name: Upload recovery result
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-zero-exact-priority-recovery
+          path: /tmp/zero_exact_recovery/zero_exact_priority_recovery.json
+          if-no-files-found: error

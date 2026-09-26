@@ -1,0 +1,50 @@
+name: US Company Activity Census
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "collector_us_company_activity_census.py"
+      - ".github/workflows/us_company_activity_census.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: us-company-activity-census-v2
+  cancel-in-progress: false
+
+jobs:
+  census:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests supabase
+
+      - name: Run SEC submissions census
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          python collector_us_company_activity_census.py
+
+      - name: Upload activity report
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-company-activity-census
+          path: artifacts/us_company_activity_census_v1.json
+          retention-days: 14

@@ -375,6 +375,13 @@ def calculate_metric_score_us(
     if not bands:
         return 0
 
+    # A negative debt/equity ratio normally means book equity is negative.
+    # Keep the signed raw value available for display/audit, but do not let
+    # "more negative" equity manufacture a favorable leverage score merely
+    # because debt_rate is a lower-is-better metric.
+    if metric == "debt_rate" and clean < 0:
+        return 0
+
     return _score_from_bands(
         clean,
         bands,

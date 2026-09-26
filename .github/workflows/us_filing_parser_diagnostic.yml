@@ -1,0 +1,23 @@
+name: US Filing Parser Diagnostic
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "collector_us_filing_parser_diagnostic.py"
+      - ".github/workflows/us_filing_parser_diagnostic.yml"
+permissions:
+  contents: read
+jobs:
+  diagnostic:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+      - run: pip install requests lxml
+      - name: Run diagnostic
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: python collector_us_filing_parser_diagnostic.py

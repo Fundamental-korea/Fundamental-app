@@ -1,0 +1,41 @@
+name: US Filing Recovery Retry
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/us_filing_recovery_retry.yml"
+      - "US_FILING_RECOVERY_RETRY_TARGETS.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  retry:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install collector dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests supabase pandas yfinance lxml
+
+      - name: Retry selected filing-recovery targets
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          set -euo pipefail
+          TICKERS=$(paste -sd, US_FILING_RECOVERY_RETRY_TARGETS.txt)
+          echo "Retry target count: $(grep -cve '^\s*$' US_FILING_RECOVERY_RETRY_TARGETS.txt)"
+          echo "Targets: $TICKERS"
+          python collector_us_fundamental.py --tickers "$TICKERS"

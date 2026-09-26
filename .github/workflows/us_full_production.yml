@@ -1,0 +1,90 @@
+name: US Fundamental Full Production
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/us_full_production.yml"
+      - "US_FULL_PRODUCTION_TRIGGER.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  collect:
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        batch: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    env:
+      BATCH_INDEX: ${{ matrix.batch }}
+      BATCH_SIZE: 350
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install collector dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests supabase pandas yfinance lxml
+
+      - name: Select eligible-company batch
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from supabase import create_client
+
+          url = os.environ["SUPABASE_URL"]
+          key = os.environ["SUPABASE_SECRET_KEY"] or os.environ.get("SUPABASE_KEY", "")
+          batch = int(os.environ["BATCH_INDEX"])
+          size = int(os.environ["BATCH_SIZE"])
+          start = batch * size
+          end = start + size - 1
+
+          sb = create_client(url, key)
+          rows = (
+              sb.table("US_Companies")
+              .select("ticker")
+              .eq("is_fundamental_eligible", True)
+              .order("ticker")
+              .range(start, end)
+              .execute()
+              .data
+              or []
+          )
+
+          tickers = [str(r["ticker"]).strip() for r in rows if r.get("ticker")]
+          with open("/tmp/batch_tickers.txt", "w", encoding="utf-8") as fh:
+              fh.write(",".join(tickers))
+
+          print(f"Batch {batch}: rows={len(tickers)} range={start}-{end}")
+          if tickers:
+              print(f"First={tickers[0]} Last={tickers[-1]}")
+          PY
+
+      - name: Run production collector batch
+        run: |
+          set -euo pipefail
+          TICKERS=$(cat /tmp/batch_tickers.txt)
+          if [ -z "$TICKERS" ]; then
+            echo "Empty batch; nothing to collect."
+            exit 0
+          fi
+          python collector_us_fundamental.py --tickers "$TICKERS"
+# production batch workflow

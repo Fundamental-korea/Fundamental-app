@@ -1,0 +1,74 @@
+name: US Targeted Raw Recovery
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: "Maximum targeted companies per run"
+        required: false
+        default: "250"
+        type: string
+      offset:
+        description: "Queue offset for the targeted batch"
+        required: false
+        default: "0"
+        type: string
+  push:
+    branches:
+      - feat/us-company-universe-census
+    paths:
+      - "collector_us_targeted_raw_recovery.py"
+      - ".github/workflows/us_targeted_raw_recovery.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: us-targeted-raw-recovery
+  cancel-in-progress: false
+
+jobs:
+  targeted_recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install supabase requests pandas lxml yfinance
+
+      - name: Compile targeted collector
+        run: |
+          python -m py_compile collector_us_targeted_raw_recovery.py
+          python -m py_compile collector_us_deterministic_recovery.py
+          python -m py_compile collector_us_gt1b_filing_recovery.py
+
+      - name: Run targeted recovery
+        run: |
+          set -euo pipefail
+          LIMIT="${{ github.event.inputs.limit || '250' }}"
+          OFFSET="${{ github.event.inputs.offset || '0' }}"
+          echo "[TARGETED] limit=${LIMIT} offset=${OFFSET}"
+          python collector_us_targeted_raw_recovery.py             --limit "${LIMIT}"             --offset "${OFFSET}"
+
+      - name: Upload targeted recovery report
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-targeted-raw-recovery
+          path: artifacts/us_targeted_raw_recovery/
+          retention-days: 14

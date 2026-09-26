@@ -1,0 +1,216 @@
+name: US Production Preflight
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - ".github/workflows/us_production_preflight.yml"
+      - "US_PREFLIGHT_TARGETS.txt"
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install collector dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests supabase pandas yfinance lxml
+
+      - name: Run production collector preflight
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          set -euo pipefail
+          TICKERS=$(paste -sd, US_PREFLIGHT_TARGETS.txt)
+          COUNT=$(grep -cve '^\s*$' US_PREFLIGHT_TARGETS.txt)
+          echo "Preflight target count: $COUNT"
+          test "$COUNT" -eq 150
+          python collector_us_fundamental.py --tickers "$TICKERS"
+  full_production:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[RUN_FULL]') }}
+    needs: preflight
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        batch: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
+
+    runs-on: ubuntu-latest
+    timeout-minutes: 55
+
+    env:
+      BATCH_INDEX: ${{ matrix.batch }}
+      BATCH_SIZE: 350
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install collector dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests supabase pandas yfinance lxml
+
+      - name: Select eligible-company batch
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import os
+          from supabase import create_client
+
+          url = os.environ["SUPABASE_URL"]
+          key = os.environ["SUPABASE_SECRET_KEY"] or os.environ.get("SUPABASE_KEY", "")
+          batch = int(os.environ["BATCH_INDEX"])
+          size = int(os.environ["BATCH_SIZE"])
+          start = batch * size
+          end = start + size - 1
+
+          sb = create_client(url, key)
+          rows = (
+              sb.table("US_Companies")
+              .select("ticker")
+              .eq("is_fundamental_eligible", True)
+              .order("ticker")
+              .range(start, end)
+              .execute()
+              .data
+              or []
+          )
+
+          tickers = [str(r["ticker"]).strip() for r in rows if r.get("ticker")]
+          with open("/tmp/batch_tickers.txt", "w", encoding="utf-8") as fh:
+              fh.write(",".join(tickers))
+
+          print(f"Batch {batch}: rows={len(tickers)} range={start}-{end}")
+          if tickers:
+              print(f"First={tickers[0]} Last={tickers[-1]}")
+          PY
+
+      - name: Run full production collector batch
+        run: |
+          set -euo pipefail
+          TICKERS=$(cat /tmp/batch_tickers.txt)
+          if [ -z "$TICKERS" ]; then
+            echo "Empty batch; nothing to collect."
+            exit 0
+          fi
+          python collector_us_fundamental.py --tickers "$TICKERS"
+
+
+  canonical_inventory:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[RUN_CANONICAL_INVENTORY]') }}
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        batch: [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14]
+        # 15 batches cover the full eligible universe, including the 35-company tail.
+        # Canonical mapping refresh: rerun after alias/fuzzy audit improvements.
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+
+    env:
+      BATCH_INDEX: ${{ matrix.batch }}
+      BATCH_SIZE: 500
+      SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+      SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install inventory dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests supabase
+
+      - name: Run canonical field inventory batch
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/canonical_inventory
+          python collector_us_canonical_field_inventory.py batch \
+            --batch "$BATCH_INDEX" \
+            --batch-size "$BATCH_SIZE" \
+            --out "/tmp/canonical_inventory/batch-${BATCH_INDEX}.json"
+
+      - name: Upload inventory batch
+        uses: actions/upload-artifact@v4
+        with:
+          name: canonical-inventory-${{ matrix.batch }}
+          path: /tmp/canonical_inventory/batch-${{ matrix.batch }}.json
+          if-no-files-found: error
+
+  canonical_inventory_merge:
+    if: ${{ github.event_name == 'push' && contains(github.event.head_commit.message, '[RUN_CANONICAL_INVENTORY]') }}
+    needs: canonical_inventory
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install merge dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install requests supabase
+
+      - name: Download inventory batches
+        uses: actions/download-artifact@v4
+        with:
+          pattern: canonical-inventory-*
+          path: /tmp/canonical_inventory
+          merge-multiple: true
+
+      - name: Merge inventory
+        run: |
+          set -euo pipefail
+          python collector_us_canonical_field_inventory.py merge \
+            --input-dir /tmp/canonical_inventory \
+            --out-json /tmp/us_canonical_field_inventory.json \
+            --out-txt /tmp/us_canonical_field_inventory.txt
+
+      - name: Upload merged inventory report
+        uses: actions/upload-artifact@v4
+        with:
+          name: us-canonical-field-inventory-report
+          path: |
+            /tmp/us_canonical_field_inventory.json
+            /tmp/us_canonical_field_inventory.txt
+          if-no-files-found: error
