@@ -78,6 +78,7 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "aliases": (
             "EquityAttributableToOwnersOfParent",
             "StockholdersEquity",
+            "Equity",
             "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest",
             "Equity", "PartnersCapital", "MembersEquity", "ProprietaryCapital",
         ),
@@ -119,6 +120,7 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
             "AccountsReceivableNetCurrent", "AccountsReceivableNet",
             "AccountsAndNotesReceivableNetCurrent", "AccountsReceivableGrossCurrent",
             "TradeAndOtherReceivables", "TradeReceivables",
+            "CurrentTradeReceivables",
         ),
         "keywords": ("accounts receivable", "trade receivables", "trade and other receivables"),
         "exclude": ("long term", "segment", "financing receivable"),
@@ -167,7 +169,8 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "kind": "instant",
         "aliases": (
             "Borrowings", "DebtLongtermAndShorttermCombinedAmount",
-            "DebtAndCapitalLeaseObligations", "LongTermDebtCurrentAndNoncurrent",
+            "DebtAndCapitalLeaseObligations", "DebtInstrumentCarryingAmount",
+            "LongTermDebtCurrentAndNoncurrent",
             "LongTermDebtAndCapitalLeaseObligations",
             "LongTermDebtAndFinanceLeaseObligations", "DebtAndFinanceLeaseLiabilities",
             "Debt", "TotalDebt",
@@ -209,6 +212,7 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "aliases": (
             "PaymentsToAcquirePropertyPlantAndEquipment",
             "PaymentsToAcquireProductiveAssets",
+            "PurchaseOfPropertyPlantAndEquipment",
             "PaymentsToAcquirePropertyPlantAndEquipmentAndOtherProductiveAssets",
             "PaymentsForAdditionsToPropertyPlantAndEquipment",
             "PaymentsForPropertyPlantAndEquipment",
@@ -223,6 +227,7 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "aliases": (
             "SellingGeneralAndAdministrativeExpense",
             "SellingGeneralAndAdministrativeExpenseIncludingDepreciationAmortization",
+            "OtherSellingGeneralAndAdministrativeExpense",
         ),
         "keywords": ("selling general and administrative",),
         "exclude": ("segment", "ratio", "percent"),
@@ -250,6 +255,7 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "aliases": (
             "IncomeLossFromContinuingOperationsBeforeIncomeTaxesExtraordinaryItemsNoncontrollingInterest",
             "IncomeLossFromContinuingOperationsBeforeIncomeTaxesMinorityInterestAndIncomeLossFromEquityMethodInvestments",
+            "ResultsOfOperationsIncomeBeforeIncomeTaxes",
             "IncomeLossFromContinuingOperationsBeforeIncomeTaxes",
             "ProfitLossBeforeTax",
         ),
@@ -262,6 +268,7 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "aliases": (
             "IncomeTaxExpenseBenefit", "IncomeTaxExpenseBenefitContinuingOperations",
             "IncomeTaxExpenseBenefitNonoperating",
+            "IncomeTaxExpenseContinuingOperations", "CurrentTaxExpense",
         ),
         "keywords": ("income tax expense", "income tax benefit", "tax expense"),
         "exclude": ("paid", "payable", "deferred tax asset", "tax rate"),
@@ -274,7 +281,10 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
     },
     "eps": {
         "kind": "flow",
-        "aliases": ("EarningsPerShareDiluted", "EarningsPerShareBasic"),
+        "aliases": (
+            "EarningsPerShareDiluted", "EarningsPerShareBasic",
+            "EarningsPerShareBasicAndDiluted",
+        ),
         "keywords": ("earnings per share", "basic eps", "diluted eps"),
         "exclude": ("weighted average", "numerator", "denominator", "market price",
                     "proforma", "segment"),
@@ -316,6 +326,7 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "aliases": (
             "DepreciationDepletionAndAmortization",
             "DepreciationAmortizationAndAccretionNet",
+            "OtherDepreciationAndAmortization",
             "DepreciationAndAmortization",
             "DepreciationDepletionAndAmortizationPropertyPlantAndEquipment",
         ),
@@ -326,6 +337,7 @@ FIELD_SPECS: dict[str, dict[str, Any]] = {
         "kind": "flow",
         "aliases": (
             "ShareBasedCompensation", "ShareBasedCompensationArrangementByShareBasedPaymentAwardEquityInstrumentsOtherThanOptionsGrantsInPeriodTotal",
+            "AllocatedShareBasedCompensationExpense",
         ),
         "keywords": ("share based compensation", "stock based compensation"),
         "exclude": ("segment", "fair value", "weighted average"),
@@ -464,9 +476,33 @@ def _discover_fuzzy(facts: dict[str, Any], field: str, spec: dict[str, Any]):
                 continue
             label = str(fact.get("label") or fact.get("description") or "")
             concept_text = _compact(f"{tag} {label}")
-            if not any(k in concept_text for k in keywords):
+            tag_text = _compact(tag)
+            label_text = _compact(label)
+            keyword_hit = any(k in label_text or k in tag_text for k in keywords)
+            if not keyword_hit:
                 continue
-            if any(x and x in concept_text for x in excludes):
+            if any(x and x in label_text or x and x in tag_text for x in excludes):
+                continue
+            # Avoid broad false positives when a keyword is generic (e.g. sales,
+            # debt, assets, income). A discovery candidate should look like the
+            # field itself, not merely contain a related financial word.
+            strong_phrases = {
+                "revenue": ("revenue", "sales revenue", "revenue from contract", "turnover"),
+                "operating_income": ("operating income", "operating profit", "income from operations", "operating activities"),
+                "liabilities": ("liabilities",),
+                "assets": ("assets",),
+                "debt_current": ("current debt", "current borrowings", "short term borrowings", "current portion of", "current debt instrument"),
+                "debt_noncurrent": ("long term debt", "long term borrowings", "noncurrent borrowings", "noncurrent debt"),
+                "debt_total": ("total debt", "borrowings", "debt instrument carrying amount", "debt and capital lease"),
+                "interest_expense": ("interest expense", "finance cost", "financing cost", "borrowing cost"),
+                "inventory": ("inventory", "inventories"),
+                "receivables": ("accounts receivable", "trade receivables", "trade and other receivables"),
+                "tax_expense": ("income tax expense", "income tax benefit", "tax expense"),
+                "eps": ("earnings per share", "basic eps", "diluted eps"),
+                "cash_dividends": ("cash dividends", "dividends common stock", "dividends cash"),
+                "stock_based_compensation": ("share based compensation", "stock based compensation"),
+            }.get(field)
+            if strong_phrases and not any(p.replace(" ", "") in label_text or p.replace(" ", "") in tag_text for p in strong_phrases):
                 continue
             rows = list(_rows_by_unit(fact, spec["kind"]))
             if not rows:
@@ -674,6 +710,7 @@ def merge_reports(paths: list[Path], out_json: Path, out_txt: Path):
     fuzzy_companies = Counter()
     fuzzy_concepts = defaultdict(Counter)
     missing_dist = Counter()
+    all_field_missing_dist = Counter()
     derived_ready = Counter()
 
     for c in companies:
@@ -692,6 +729,8 @@ def merge_reports(paths: list[Path], out_json: Path, out_txt: Path):
         m = c.get("core_missing_count")
         if m is not None:
             missing_dist[str(m if m <= 5 else "5+")] += 1
+        exact_count = sum(1 for f in FIELD_SPECS if exact.get(f))
+        all_field_missing_dist[str(len(FIELD_SPECS) - exact_count)] += 1
         for metric, ready in (c.get("derived_input_ready") or {}).items():
             if ready:
                 derived_ready[metric] += 1
@@ -715,6 +754,9 @@ def merge_reports(paths: list[Path], out_json: Path, out_txt: Path):
         },
         "core_field_missing_distribution": dict(
             sorted(missing_dist.items(), key=lambda kv: (99 if kv[0] == "5+" else int(kv[0])))
+        ),
+        "all_27_field_missing_distribution": dict(
+            sorted(all_field_missing_dist.items(), key=lambda kv: int(kv[0]))
         ),
         "derived_metric_input_ready": {
             m: {
@@ -758,6 +800,11 @@ def merge_reports(paths: list[Path], out_json: Path, out_txt: Path):
     lines.append("2) CORE 20-FIELD MISSING DISTRIBUTION")
     lines.append("-" * 72)
     for k, v in report["core_field_missing_distribution"].items():
+        lines.append(f"missing {k:>2s}: {v:5d}")
+    lines.append("")
+    lines.append("2b) ALL 27-CANONICAL-FIELD MISSING DISTRIBUTION")
+    lines.append("-" * 72)
+    for k, v in report["all_27_field_missing_distribution"].items():
         lines.append(f"missing {k:>2s}: {v:5d}")
     lines.append("")
     lines.append("3) DERIVED METRIC INPUT READINESS")
