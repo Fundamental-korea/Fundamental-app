@@ -45,6 +45,23 @@ def fetch_rows(sb, table: str, columns: str, *, filters=None, order_col=None):
 
 def canonical_to_index(rows):
     index = defaultdict(dict)
+
+    def add(field, year, value, provenance=None, *, tag=None, namespace=None):
+        if value is None:
+            return
+        provenance = provenance or {}
+        index[field][year] = {
+            "val": value,
+            "tag": tag or provenance.get("concept") or "",
+            "unit": provenance.get("unit"),
+            "end": provenance.get("end"),
+            "filed": provenance.get("filed"),
+            "form": provenance.get("form"),
+            "fy": provenance.get("fy"),
+            "start": provenance.get("start"),
+            "namespace": namespace or provenance.get("namespace"),
+        }
+
     for row in rows:
         year = row.get("fiscal_year")
         if year is None:
@@ -52,20 +69,56 @@ def canonical_to_index(rows):
         year = int(year)
         canonical = row.get("canonical") or {}
         provenance = row.get("provenance") or {}
+
+        # Keep canonical fields, while normalizing aliases used by the score
+        # calculator. Existing canonical values always win.
         for field, value in canonical.items():
-            if value is None:
-                continue
-            p = provenance.get(field) or {}
-            index[field][year] = {
-                "val": value,
-                "tag": p.get("concept") or "",
-                "unit": p.get("unit"),
-                "end": p.get("end"),
-                "filed": p.get("filed"),
-                "form": p.get("form"),
-                "fy": p.get("fy"),
-                "start": p.get("start"),
-            }
+            if value is not None:
+                add(field, year, value, provenance.get(field))
+
+        if index["debt_total"].get(year) is None and canonical.get("debt") is not None:
+            add("debt_total", year, canonical["debt"], provenance.get("debt"),
+                tag="CanonicalDebtAlias")
+        if index["sga"].get(year) is None:
+            ga = canonical.get("general_and_administrative_expense")
+            selling = canonical.get("selling_expense")
+            if ga is not None and selling is not None:
+                add("sga", year, float(ga) + float(selling), {},
+                    tag="DerivedSGAFromGeneralAndAdministrativePlusSelling")
+            elif ga is not None:
+                add("sga", year, ga, provenance.get("general_and_administrative_expense"),
+                    tag="CanonicalSGAFromGeneralAndAdministrativeExpense")
+            elif selling is not None:
+                add("sga", year, selling, provenance.get("selling_expense"),
+                    tag="CanonicalSGAFromSellingExpense")
+
+        # Reconstruct accounting identities only when the source values are
+        # present for the same fiscal year. These are deterministic, not
+        # estimates, and they only fill an otherwise missing logical field.
+        if index["equity"].get(year) is None:
+            assets = canonical.get("assets")
+            liabilities = canonical.get("liabilities")
+            if assets is not None and liabilities is not None:
+                add("equity", year, float(assets) - float(liabilities), {},
+                    tag="DerivedEquityFromAssetsMinusLiabilities")
+        if index["liabilities"].get(year) is None:
+            assets = canonical.get("assets")
+            equity = canonical.get("equity")
+            if assets is not None and equity is not None:
+                add("liabilities", year, float(assets) - float(equity), {},
+                    tag="DerivedLiabilitiesFromAssetsMinusEquity")
+
+        # EPS can be reconstructed from reported net income and weighted
+        # average shares when EPS itself is absent.
+        if index["eps"].get(year) is None:
+            ni = canonical.get("net_income")
+            shares = canonical.get("weighted_avg_diluted_shares")
+            if shares is None:
+                shares = canonical.get("weighted_avg_basic_shares")
+            if ni is not None and shares not in (None, 0):
+                add("eps", year, float(ni) / float(shares), {},
+                    tag="DerivedEPSFromNetIncomeAndWeightedAverageShares")
+
     return dict(index)
 
 
