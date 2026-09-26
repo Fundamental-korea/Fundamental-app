@@ -189,9 +189,6 @@ def deterministic_recovery(company: dict[str, Any]) -> list[dict[str, Any]]:
     if not exact.get("sga") and exact.get("general_and_administrative_expense") and exact.get("selling_expense"):
         add("sga", "sum_g_and_a_plus_selling", ["general_and_administrative_expense", "selling_expense"])
 
-    if not exact.get("fcf_margin") if False else False:
-        pass
-
     # Metric-level deterministic readiness from currently trusted exact fields.
     logical_debt = bool(
         exact.get("debt_total")
